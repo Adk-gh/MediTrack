@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can add any custom global overrides here if needed */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9f9f9;
+}
+/* Add this to the bottom of your index.css */
+
+@keyframes fadeInSlideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.animate-fade-in-slide {
+  animation: fadeInSlideUp 0.3s ease-in-out forwards;
+}
+
+/* Add to frontend/src/index.css */
+
+:root {
+  --meditrack-teal: #466460;
+  --meditrack-teal-light: #5a7a76;
+  --meditrack-teal-lighter: #8aacaa;
+  --meditrack-teal-soft: #e0eceb;
+  --accent-sunset: #e07a5f;
+  --accent-gold: #e9c46a;
+  --accent-sage: #81b29a;
+}
+
+/* Base custom classes from your design */
+.glass-card { 
+  background: white; 
+  border-radius: 12px; 
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+.filter-pill { 
+  display: inline-block; 
+  padding: 4px 12px; 
+  border-radius: 20px; 
+  font-size: 10px; 
+  font-weight: 600; 
+  cursor: pointer; 
+  background: #f1f5f9; 
+  color: #475569; 
+}
+.filter-pill.active { 
+  background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-light)); 
+  color: white; 
+}
+
+/* Page transition animation */
+@keyframes fadeInSlide {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in { 
+  animation: fadeInSlide 0.4s ease-out forwards; 
+}

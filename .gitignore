@@ -1,0 +1,8 @@
+node_modules/
+.env
+configs/serviceAccountkey.json
+__pycache__/
+*.pyc
+.paddleocr/
+dist/
+build/
