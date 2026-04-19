@@ -6,3 +6,8 @@ __pycache__/
 .paddleocr/
 dist/
 build/
+# Ignore Python virtual environments
+venv/
+venv_ocr/
+*.pyd
+*.dll
