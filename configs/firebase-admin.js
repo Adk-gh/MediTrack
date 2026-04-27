@@ -13,4 +13,4 @@ const db = admin.firestore();
 const auth = admin.auth(); // <--- MAKE SURE THIS LINE EXISTS
 
 // 2. Export BOTH db and auth
-module.exports = { db, auth }; // <--- BOTH MUST BE IN THIS OBJECT
+module.exports = { db, auth}; // <--- BOTH MUST BE IN THIS OBJECT

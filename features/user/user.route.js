@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const userController = require("./user.controller");
-const { authorized } = require("../middleware/authorized");
-const validateData = require("../validation/validate-data");
+const { authorized } = require("../../middleware/authorized");
+const validateData = require("../../validation/validate-data");
 const {
   registerSchema,
   loginSchema,

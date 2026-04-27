@@ -1,4 +1,4 @@
-const { db, auth } = require('../configs/firebase-admin');
+const { db, auth } = require('../../configs/firebase-admin');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 

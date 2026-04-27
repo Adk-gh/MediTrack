@@ -3,6 +3,7 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const upload = require('../middleware/upload');
 
+
 // 1. Signup: Includes the 'image' upload middleware for OCR verification
 router.post('/signup', upload.single('image'), authController.register);
 

@@ -1,0 +1,6 @@
+from (C:\Users\HP\MediTrack\frontend\src\features) move the Announcements.jsx, Appointment.Jsx, Dashboard.jsx, Examinations.jsx and Records.jsx into C:\Users\HP\MediTrack\frontend\src\features\admin-clinic
+
+then from the C:\Users\HP\MediTrack\frontend\src\layouts move the Headers.jsx and Sidebar.jsx to C:\Users\HP\MediTrack\frontend\src\components
+
+
+(C:\Users\HP\MediTrack\frontend\src\components\LoginForm.jsx, C:\Users\HP\MediTrack\frontend\src\components\SignupForm.jsx) move the LoginForm.jsx and SignupForm.jsx into the C:\Users\HP\MediTrack\frontend\src\features

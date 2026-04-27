@@ -1,7 +1,8 @@
-// frontend/src/features/Examination.jsx
+// frontend/src/features/admin-clinic/Examinations.jsx
 import React, { useState, useEffect } from 'react';
-import { DashboardLayout } from '../layouts/DashboardLayout.jsx';
+import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 import { useSearchParams } from 'react-router-dom';
+import * as examinationsService from '../../services/examinations.service';
 
 // Dummy data to simulate a database lookup for pre-filling
 const peopleData = [
@@ -61,17 +62,33 @@ export const Examinations = () => {
     setFormData(prev => ({ ...prev, birthday: e.target.value, age: Math.abs(age_dt.getUTCFullYear() - 1970) }));
   };
 
-  const handleSaveVisit = () => {
+  const handleSaveVisit = async () => {
     if (!formData.bp || !formData.nurse) {
       return alert("Please enter at least BP and Nurse/Staff name before logging.");
     }
     const date = new Date().toLocaleDateString('en-PH');
     const vitals = `${formData.bp} / ${formData.pr} / ${formData.rr} / ${formData.temp}°C`;
     const bodyMeasure = `${formData.ht}cm / ${formData.wt}kg / ${formData.waist}cm`;
-    const staff = `🧑‍⚕️ N: ${formData.nurse} | 👨‍⚕️ D: ${formData.physician}`;
-    
-    setLogs([{ date, vitals, bodyMeasure, staff, remarks: formData.remarks }, ...logs]);
-    
+    const staff = `N: ${formData.nurse} | D: ${formData.physician}`;
+
+    const logEntry = { date, vitals, bodyMeasure, staff, remarks: formData.remarks };
+
+    setLogs([logEntry, ...logs]);
+
+    // Try to save to API
+    try {
+      const examinationData = {
+        patientId: formData.studentId,
+        lastName: formData.lastName,
+        firstName: formData.firstName,
+        ...formData,
+        logs: [logEntry, ...logs],
+      };
+      await examinationsService.createExamination(examinationData);
+    } catch (error) {
+      console.log("Could not save to API:", error.message);
+    }
+
     // Clear visit inputs
     setFormData(prev => ({ ...prev, bp: '', pr: '', rr: '', temp: '', wt: '', ht: '', waist: '', lmp: '', remarks: '' }));
     showMessage("✓ Examination record logged successfully!");
@@ -82,12 +99,45 @@ export const Examinations = () => {
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.lastName) {
       setPhase(1);
       return alert("Please fill in patient's last name.");
     }
+
+    // Try to save full examination to API
+    try {
+      const examinationData = {
+        patientId: formData.studentId,
+        lastName: formData.lastName,
+        firstName: formData.firstName,
+        middleName: formData.middleName,
+        suffix: formData.suffix,
+        studentId: formData.studentId,
+        schoolYear: formData.schoolYear,
+        course: formData.course,
+        yearSection: formData.yearSection,
+        address: formData.address,
+        birthday: formData.birthday,
+        gender: formData.gender,
+        age: formData.age,
+        contactNo: formData.contactNo,
+        email: formData.email,
+        civilStatus: formData.civilStatus,
+        emergencyName: formData.emergencyName,
+        emergencyRelation: formData.emergencyRelation,
+        emergencyPhone: formData.emergencyPhone,
+        nurse: formData.nurse,
+        physician: formData.physician,
+        remarks: formData.remarks,
+        logs: logs,
+      };
+      await examinationsService.createExamination(examinationData);
+    } catch (error) {
+      console.log("Could not save to API:", error.message);
+    }
+
     showMessage("✓ Medical record submitted successfully! All data has been saved.");
     setTimeout(() => {
       if(window.confirm('Record saved! Clear form for new patient?')) window.location.reload();

@@ -32,7 +32,7 @@ const firebaseAuth = async (req, res, next) => {
 
 const getProfile = async (req, res, next) => {
   try {
-    const user = await userService.getProfile(req.user.id);
+    const user = await userService.getProfile(req.user.uid);
     res.status(200).json({ success: true, data: user });
   } catch (error) {
     next(error);

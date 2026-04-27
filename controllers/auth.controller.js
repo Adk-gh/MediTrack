@@ -3,19 +3,19 @@ const FormData = require('form-data');
 const { db, auth } = require('../configs/firebase-admin');
 
 /**
- * REGISTER: Handles Student ID OCR verification and account creation
+ * REGISTER: Handles University ID OCR verification and account creation
  */
 exports.register = async (req, res) => {
     try {
         // 1. Get data from the request
-        const { name, email, password, studentId: inputStudentId } = req.body;
+        const { name, email, password, universityId: inputUniversityId } = req.body;
         const idFile = req.file;
 
         // Initial Validations
         if (!idFile) {
-            return res.status(400).json({ success: false, message: "Please upload your Student ID image." });
+            return res.status(400).json({ success: false, message: "Please upload your University ID image." });
         }
-        if (!name || !email || !password || !inputStudentId) {
+        if (!name || !email || !password || !inputUniversityId) {
             return res.status(400).json({ success: false, message: "Missing required fields." });
         }
 
@@ -29,40 +29,75 @@ exports.register = async (req, res) => {
         });
 
         console.log(">>> Forwarding to Python OCR Service...");
-        const ocrResponse = await axios.post('http://localhost:5001/ocr', ocrForm, {
-            headers: { ...ocrForm.getHeaders() }
-        });
+        let ocrResponse;
+        try {
+            ocrResponse = await axios.post('http://localhost:5001/ocr', ocrForm, {
+                headers: { ...ocrForm.getHeaders() }
+            });
+        } catch (ocrErr) {
+            console.error('OCR service error:', ocrErr.message);
+            return res.status(502).json({ success: false, message: 'ID verification service is unavailable.' });
+        }
 
-        const extractedText = ocrResponse.data.text;
-        
-        // 3. REGEX: Find Student ID on the card (Pattern: XX-XXXXX)
-        const idPattern = /\d{2}-\d{5}/;
-        const match = extractedText.match(idPattern);
+        const ocrData = ocrResponse.data;
 
-        if (!match) {
+        console.log('\n=== WHAT PADDLEOCR ACTUALLY SAW ===');
+        console.log(JSON.stringify(ocrData, null, 2));
+        console.log('===================================\n');
+
+        if (!ocrData.success) {
+            return res.status(400).json({ success: false, message: ocrData.error || "OCR Failed to process the image." });
+        }
+
+        const { parsed, raw_text } = ocrData;
+
+        // 3. Extract ID number — parsed result first, raw text fallback
+        let ocrId = parsed?.id_number || null;
+
+        // Normalization: strips ALL spaces and special characters, keeping ONLY letters and numbers.
+        const normalize = (id) => (id || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const normalizedInputId = normalize(inputUniversityId);
+
+        // If the OCR parser didn't hand us the exact ID, hunt for it in the raw text
+        if (!ocrId && raw_text) {
+            const normalizedRawText = normalize(raw_text);
+            
+            // Fallback A: Does the normalized raw text contain the exact typed ID?
+            if (normalizedRawText.includes(normalizedInputId)) {
+                ocrId = inputUniversityId; 
+            } else {
+                // Fallback B: Looser alphanumeric regex
+                const match = raw_text.match(/\b([A-Z0-9]{2,}[\s\-]?[0-9]{2,})\b/i);
+                if (match) ocrId = match[1];
+            }
+        }
+
+        if (!ocrId) {
             return res.status(400).json({ 
                 success: false, 
-                message: "OCR Failed: Could not find a Student ID on the uploaded card. Please ensure the photo is clear." 
+                message: "OCR Failed: Could not find an ID number on the card. Please ensure the photo is clear." 
             });
         }
 
-        const ocrStudentId = match[0]; 
-        console.log(`>>> AI found on card: ${ocrStudentId} | User typed: ${inputStudentId}`);
+        console.log(`>>> AI found on card: ${ocrId} | User typed: ${inputUniversityId}`);
 
         // 4. VERIFICATION: Compare Manual Input vs AI Result
-        if (inputStudentId !== ocrStudentId) {
+        if (normalizedInputId !== normalize(ocrId)) {
             return res.status(400).json({ 
                 success: false, 
-                message: `Verification Failed: Typed ID (${inputStudentId}) does not match ID on card (${ocrStudentId}).` 
+                message: `Verification Failed: Typed ID (${inputUniversityId}) does not match ID on card (${ocrId}).` 
             });
         }
+
+        // Determine role based on Python's parsed classification
+        const role = parsed?.id_type === 'Employee ID' ? 'employee' : 'student';
 
         // 5. DUPLICATE CHECK (Firestore)
         const userRef = db.collection('users');
-        const duplicateCheck = await userRef.where('studentId', '==', ocrStudentId).get();
+        const duplicateCheck = await userRef.where('universityId', '==', ocrId).get();
         
         if (!duplicateCheck.empty) {
-            return res.status(400).json({ success: false, message: "This Student ID is already registered." });
+            return res.status(400).json({ success: false, message: "This University ID is already registered." });
         }
 
         // 6. FIREBASE AUTH: Create the Account
@@ -76,9 +111,9 @@ exports.register = async (req, res) => {
         const userData = {
             name,
             email: email.toLowerCase(),
-            studentId: ocrStudentId,
+            universityId: ocrId,
             isVerified: true,
-            role: 'student',
+            role: role, 
             createdAt: new Date().toISOString()
         };
 
@@ -117,11 +152,9 @@ exports.login = async (req, res) => {
         }
 
         // 1. Authenticate with Firebase Auth REST API
-        // NOTE: Replace 'YOUR_FIREBASE_WEB_API_KEY' with the key from your Firebase Project Settings
-        // Ensure the variable name exactly matches your .env file!
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY; 
+        const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY; 
 
-const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`;
+        const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`;
 
         const signInResponse = await axios.post(signInUrl, {    
             email,
@@ -149,7 +182,7 @@ const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWith
                 uid: localId,
                 name: userData.name,
                 email: userData.email,
-                studentId: userData.studentId,
+                universityId: userData.universityId,
                 role: userData.role
             }
         });

@@ -1,16 +1,19 @@
-import React from 'react';  
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import SignupForm from './components/SignupForm.jsx';
-import LoginForm from './components/LoginForm.jsx';
+import SignupForm from './features/SignupForm.jsx';
+import LoginForm from './features/LoginForm.jsx';
 import { DashboardLayout } from './layouts/DashboardLayout.jsx';
 import ProfileSetup from './components/ProfileSetup.jsx';
 import './index.css';
 import HealthProfileSetup from './components/HealthProfileSetup.jsx';
-import  Records  from './features/Records.jsx';
-import  Appointments from './features/Appointments.jsx';
-import { Dashboard } from './features/Dashboard.jsx';
-import  Examination  from './features/Examinations.jsx';
-import  Announcements  from './features/Announcements.jsx'; 
+import  Records  from './features/admin-clinic/Records.jsx';
+import  Appointments from './features/admin-clinic/Appointments.jsx';
+import { Dashboard } from './features/admin-clinic/Dashboard.jsx';
+import  Examination  from './features/admin-clinic/Examinations.jsx';
+import  Announcements  from './features/admin-clinic/Announcements.jsx'; 
+
+import Meditrack from './features/users/Meditrack.jsx';
+
 
 function App() {
   return (
@@ -24,6 +27,8 @@ function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/examinations" element={<Examination />} />
       <Route path="/announcements" element={<Announcements />} />
+
+      <Route path="/student/meditrack" element={<Meditrack />} />
       
       
       {/* Wrap the Dashboard in the Layout */}
