@@ -1,7 +1,11 @@
 const cors = require("cors");
 
 const corsOptions = {
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  // Add your ngrok URL here!
+  origin: [
+    "http://localhost:5173", 
+    "https://gabrielle-unshedding-unsymmetrically.ngrok-free.dev"
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,

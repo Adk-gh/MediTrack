@@ -1,6 +1,8 @@
-from (C:\Users\HP\MediTrack\frontend\src\features) move the Announcements.jsx, Appointment.Jsx, Dashboard.jsx, Examinations.jsx and Records.jsx into C:\Users\HP\MediTrack\frontend\src\features\admin-clinic
+the profile setup is not saving the data to the database and its not autifilling from the users data.
 
-then from the C:\Users\HP\MediTrack\frontend\src\layouts move the Headers.jsx and Sidebar.jsx to C:\Users\HP\MediTrack\frontend\src\components
-
-
-(C:\Users\HP\MediTrack\frontend\src\components\LoginForm.jsx, C:\Users\HP\MediTrack\frontend\src\components\SignupForm.jsx) move the LoginForm.jsx and SignupForm.jsx into the C:\Users\HP\MediTrack\frontend\src\features
+todo:
+    - make the profile-users.jsx work
+    - as well as the profile drawer in the header.
+    - forgot password
+    - make the records.jsx display the users information based on the profile setup.
+    - 

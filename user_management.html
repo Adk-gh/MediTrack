@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management | MediTrack PLSP Health Services</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        :root {
+            --meditrack-teal: #466460;
+            --meditrack-teal-light: #5a7a76;
+            --meditrack-teal-lighter: #8aacaa;
+            --meditrack-teal-soft: #e0eceb;
+            --accent-sunset: #e07a5f;
+            --accent-gold: #e9c46a;
+            --accent-sage: #81b29a;
+            --bg-gray: #f4f7f6;
+            --border-color: #eef2f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body { font-family: 'Inter', sans-serif; background: #f4f7f6; color: #2d3748; overflow-x: hidden; }
+        .ui-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); color: white; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .nav-link { position: relative; color: var(--meditrack-teal); font-weight: 700; font-size: 14px; letter-spacing: 0.025em; opacity: 0.7; transition: all 0.2s; padding-bottom: 4px; background: none; border: none; cursor: pointer; }
+        .nav-link:hover { opacity: 1; color: var(--accent-sunset); }
+        .nav-link.active { opacity: 1; color: var(--meditrack-teal); }
+        .nav-link.active::after { content: ''; position: absolute; bottom: -8px; left: 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--meditrack-teal), var(--accent-sage)); border-radius: 99px; }
+        .glass-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .logo-image { width: 200px; height: 70px; object-fit: contain; display: block; background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
+        
+        /* User Management specific */
+        .user-full-container { background: white; min-height: calc(100vh - 200px); padding: 24px 32px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; transition: all 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .stat-title { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .stat-number { font-size: 28px; font-weight: 800; color: var(--meditrack-teal); }
+        .filter-bar { background: #f8fafc; border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border: 1px solid var(--border-color); }
+        .filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-chip { padding: 6px 16px; border-radius: 30px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: white; border: 1px solid #cbd5e1; color: #475569; }
+        .filter-chip:hover { background: var(--meditrack-teal-soft); border-color: var(--meditrack-teal); }
+        .filter-chip.active { background: var(--meditrack-teal); color: white; border-color: var(--meditrack-teal); }
+        .search-box { position: relative; }
+        .search-box i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 13px; }
+        .search-box input { padding: 8px 12px 8px 36px; border: 1px solid #cbd5e1; border-radius: 30px; font-size: 13px; width: 250px; outline: none; transition: all 0.2s; }
+        .search-box input:focus { border-color: var(--meditrack-teal); box-shadow: 0 0 0 3px rgba(70,100,96,0.1); }
+        .users-table { width: 100%; border-collapse: collapse; }
+        .users-table th { text-align: left; padding: 14px 12px; background: #f8fafc; border-bottom: 2px solid var(--border-color); font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
+        .users-table td { padding: 14px 12px; border-bottom: 1px solid var(--border-color); font-size: 13px; vertical-align: middle; }
+        .user-row { transition: background 0.2s; cursor: pointer; }
+        .user-row:hover { background: var(--meditrack-teal-soft); }
+        .role-badge { display: inline-block; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: 700; }
+        .role-admin { background: #fef3c7;}
+        .role-doctor { background: #dbeafe;}
+        .role-nurse { background: #dcfce7;}
+        .role-staff { background: #f3e8ff;}
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 30px; font-size: 11px; font-weight: 700; }
+        .status-active { background: #dcfce7; color: #166534; }
+        .status-inactive { background: #fee2e2; color: #dc2626; }
+        .action-buttons { display: flex; gap: 6px; }
+        .action-btn { background: none; border: none; padding: 6px 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 13px; }
+        .action-edit { color: var(--meditrack-teal); }
+        .action-edit:hover { background: var(--meditrack-teal-soft); }
+        .action-delete { color: #dc2626; }
+        .action-delete:hover { background: #fee2e2; }
+        .avatar-sm { width: 36px; height: 36px; border-radius: 50%; background: var(--meditrack-teal-soft); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--meditrack-teal); font-size: 14px; }
+        
+        /* Modal styles matching reference */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-container { background: white; border-radius: 20px; width: 500px; max-width: 90%; max-height: 85vh; overflow-y: auto; }
+        .modal-container h3 { margin: 0 0 4px 0; color: var(--meditrack-teal); font-size: 1.2rem; font-weight: 700; }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border-color); background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); color: white; border-radius: 20px 20px 0 0; }
+        .modal-body { padding: 24px; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 6px; letter-spacing: 0.5px; }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 13px; transition: all 0.2s; }
+        .form-input:focus { outline: none; border-color: var(--meditrack-teal); box-shadow: 0 0 0 3px rgba(70,100,96,0.1); }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 13px; background: white; }
+        .modal-buttons { display: flex; gap: 12px; margin-top: 24px; }
+        .btn-primary { background: var(--meditrack-teal); color: white; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; flex: 1; }
+        .btn-primary:hover { background: #3a524f; transform: translateY(-1px); }
+        .btn-secondary { background: #e2e8f0; color: #475569; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; flex: 1; }
+        .btn-secondary:hover { background: #cbd5e1; }
+        .btn-danger { background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; cursor: pointer; flex: 1; }
+        .btn-danger:hover { background: #b91c1c; }
+        
+        /* Profile drawer */
+        .profile-drawer-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2000; }
+        .profile-drawer { position: fixed; top: 0; right: -420px; width: 380px; height: 100%; background: white; box-shadow: -4px 0 30px rgba(0,0,0,0.15); z-index: 2001; transition: right 0.35s cubic-bezier(0.4,0,0.2,1); overflow-y: auto; }
+        .profile-drawer.open { right: 0; }
+        .drawer-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); padding: 30px 24px 24px; color: white; position: relative; }
+        .drawer-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .drawer-close:hover { background: rgba(255,255,255,0.35); }
+        .drawer-avatar { width: 70px; height: 70px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); overflow: hidden; margin-bottom: 12px; }
+        .drawer-section { padding: 16px 24px; border-bottom: 1px solid #f1f5f9; }
+        .drawer-section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; }
+        .drawer-info-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; color: #475569; }
+        .drawer-info-row i { color: var(--meditrack-teal); width: 16px; text-align: center; }
+        .drawer-logout-btn { width: calc(100% - 48px); margin: 16px 24px; padding: 10px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        
+        /* Snackbar */
+        .snackbar { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e293b; color: white; padding: 14px 24px; border-radius: 12px; font-size: 13px; font-weight: 600; z-index: 9999; transition: transform 0.4s cubic-bezier(0.4,0,0.2,1); display: flex; align-items: center; gap: 10px; }
+        .snackbar.show { transform: translateX(-50%) translateY(0); }
+        .snackbar.success { background: linear-gradient(135deg, #166534, #15803d); }
+        .snackbar.error { background: linear-gradient(135deg, #991b1b, #dc2626); }
+        
+        @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .user-full-container { padding: 16px; } }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <!-- Header matching reference -->
+        <header class="ui-header px-8 py-2 flex items-center justify-between shadow-lg z-10">
+            <img src="image copy.png" alt="MediTrack Logo" class="logo-image" onerror="this.src='https://placehold.co/200x70/466460/white?text=MediTrack'">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3 border-l border-white/20 pl-6">
+                    <div class="text-right"><p class="text-xs font-bold">Admin Portal</p><p class="text-[9px] text-white/60 uppercase">User Management</p></div>
+                    <div class="w-10 h-10 rounded-full border-2 border-white/30 overflow-hidden bg-white/10 cursor-pointer hover:border-white/60 transition-all" onclick="openProfileDrawer()">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=ffffff&color=466460" alt="User">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="bg-white px-8 py-4 border-b border-slate-200 flex gap-12 sticky top-0 z-10 shadow-md">
+            <button onclick="switchTab('dashboard')" class="nav-link">Dashboard</button>
+            <button onclick="switchTab('records')" class="nav-link">Records</button>
+            <button onclick="switchTab('appointments')" class="nav-link">Appointments</button>
+            <button onclick="switchTab('examination')" class="nav-link">Examination</button>
+            <button onclick="switchTab('announcements')" class="nav-link">Announcements</button>
+            <button onclick="switchTab('consultation')" class="nav-link">Consultation</button>
+            <button onclick="switchTab('users')" class="nav-link active">User Management</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1">
+            <div class="user-full-container">
+                <!-- Header with Add Button -->
+                <div class="flex justify-between items-center mb-6">
+
+                    <button onclick="openAddUserModal()" class="bg-[#466460] hover:bg-[#3a524f] text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+                        <i class="fa-solid fa-user-plus"></i> Add New User
+                    </button>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-title">Total Users</div><div class="stat-number" id="statTotal">0</div></div>
+                    <div class="stat-card"><div class="stat-title">Administrators</div><div class="stat-number" id="statAdmin">0</div></div>
+                    <div class="stat-card"><div class="stat-title">Doctors</div><div class="stat-number" id="statDoctor">0</div></div>
+                    <div class="stat-card"><div class="stat-title">Nurses</div><div class="stat-number" id="statNurse">0</div></div>
+                    <div class="stat-card"><div class="stat-title">Active Users</div><div class="stat-number" id="statActive">0</div></div>
+                </div>
+
+                <!-- Filter Bar -->
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <button class="filter-chip active" data-filter="all" onclick="setFilter('all')">All</button>
+                        <button class="filter-chip" data-filter="admin" onclick="setFilter('admin')">Admin</button>
+                        <button class="filter-chip" data-filter="doctor" onclick="setFilter('doctor')">Doctor</button>
+                        <button class="filter-chip" data-filter="nurse" onclick="setFilter('nurse')">Nurse</button>
+                        <button class="filter-chip" data-filter="staff" onclick="setFilter('staff')">Staff</button>
+                    </div>
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="searchInput" placeholder="Search by name, email, or ID..." onkeyup="filterUsers()">
+                    </div>
+                </div>
+
+                <!-- Users Table -->
+                <div class="glass-card overflow-hidden">
+                    <table class="users-table">
+                        <thead>
+                            <tr><th>User</th><th>User ID</th><th>Role</th><th>Department</th><th>Status</th><th>Last Login</th><th style="width:80px">Actions</th></tr>
+                        </thead>
+                        <tbody id="usersTableBody"></tbody>
+                    </table>
+                    <div id="noResults" class="text-center py-10 text-slate-400 hidden">No users found</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit User Modal -->
+    <div id="userModal" class="modal-overlay" onclick="if(event.target===this) closeModal()">
+        <div class="modal-container">
+            <div class="modal-header"><h3 id="modalTitle"><i class="fa-solid fa-user-plus mr-2"></i>Add New User</h3></div>
+            <div class="modal-body">
+                <form id="userForm" onsubmit="saveUser(event)">
+                    <input type="hidden" id="editId">
+                    <div class="form-group"><label class="form-label">Full Name *</label><input type="text" id="fullName" class="form-input" required placeholder="e.g., Dr. Maria Santos"></div>
+                    <div class="form-group"><label class="form-label">Email Address *</label><input type="email" id="email" class="form-input" required placeholder="name@plsp.edu.ph"></div>
+                    <div class="form-group"><label class="form-label">User ID / Employee ID *</label><input type="text" id="userId" class="form-input" required placeholder="e.g., ADM-001, DOC-101"></div>
+                    <div class="grid grid-cols-2 gap-3"><div class="form-group"><label class="form-label">Role</label><select id="role" class="form-select"><option value="admin">Administrator</option><option value="doctor">Doctor</option><option value="nurse">Nurse</option><option value="staff">Staff</option></select></div><div class="form-group"><label class="form-label">Status</label><select id="status" class="form-select"><option value="active">Active</option><option value="inactive">Inactive</option></select></div></div>
+                    <div class="form-group"><label class="form-label">Department</label><input type="text" id="department" class="form-input" placeholder="e.g., Clinic Department, IT Office"></div>
+                    <div class="form-group"><label class="form-label">Phone Number</label><input type="text" id="phone" class="form-input" placeholder="+63 XXX XXX XXXX"></div>
+                    <div class="modal-buttons"><button type="submit" class="btn-primary">Save User</button><button type="button" onclick="closeModal()" class="btn-secondary">Cancel</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal-overlay" onclick="if(event.target===this) closeDeleteModal()">
+        <div class="modal-container" style="max-width: 400px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #dc2626, #b91c1c);"><h3><i class="fa-solid fa-trash-can mr-2"></i>Delete User</h3></div>
+            <div class="modal-body"><p class="text-slate-600 mb-4">Are you sure you want to delete <strong id="deleteUserName"></strong>? This action cannot be undone.</p><div class="modal-buttons"><button onclick="confirmDelete()" class="btn-danger">Delete</button><button onclick="closeDeleteModal()" class="btn-secondary">Cancel</button></div></div>
+        </div>
+    </div>
+
+    <!-- Profile Drawer -->
+    <div class="profile-drawer-overlay" id="profileDrawerOverlay" onclick="closeProfileDrawer()"></div>
+    <div class="profile-drawer" id="profileDrawer">
+        <div class="drawer-header"><button class="drawer-close" onclick="closeProfileDrawer()"><i class="fa-solid fa-xmark"></i></button><div class="drawer-avatar"><img src="https://ui-avatars.com/api/?name=Admin+User&background=ffffff&color=466460&size=70" alt="Admin"></div><h2 style="margin:0 0 4px; font-size:1.2rem; font-weight:800;">Admin User</h2><p style="margin:0; font-size:11px; opacity:0.75;">System Administrator</p></div>
+        <div class="drawer-section"><div class="drawer-section-title">Contact Information</div><div class="drawer-info-row"><i class="fa-solid fa-envelope"></i><span>admin@plsp.edu.ph</span></div><div class="drawer-info-row"><i class="fa-solid fa-phone"></i><span>+63 912 345 6789</span></div></div>
+        <div class="drawer-section"><div class="drawer-section-title">Account Details</div><div class="drawer-info-row"><i class="fa-solid fa-id-badge"></i><span>Employee ID: ADM-001</span></div><div class="drawer-info-row"><i class="fa-solid fa-calendar-check"></i><span>Joined: June 1, 2020</span></div></div>
+        <button class="drawer-logout-btn" onclick="showSnackbar('Logged out (demo)', 'error')"><i class="fa-solid fa-right-from-bracket mr-2"></i>Sign Out</button>
+    </div>
+
+    <div class="snackbar" id="snackbar"></div>
+
+    <script>
+        // User Data
+        let users = [
+            { id: 1, name: "Admin User", email: "admin@plsp.edu.ph", userId: "ADM-001", role: "admin", status: "active", department: "IT Administration", phone: "+63 912 345 6789", lastLogin: "2026-04-28 09:30 AM" },
+            { id: 2, name: "Dr. Maria Santos", email: "maria.santos@plsp.edu.ph", userId: "DOC-101", role: "doctor", status: "active", department: "Clinic Department", phone: "+63 917 123 4567", lastLogin: "2026-04-27 03:15 PM" },
+            { id: 3, name: "Nurse John Cruz", email: "john.cruz@plsp.edu.ph", userId: "NUR-202", role: "nurse", status: "active", department: "Clinic Department", phone: "+63 920 987 6543", lastLogin: "2026-04-28 08:45 AM" },
+            { id: 4, name: "Staff Mark Garcia", email: "mark.garcia@plsp.edu.ph", userId: "STF-303", role: "staff", status: "inactive", department: "Registrar's Office", phone: "+63 915 555 1234", lastLogin: "2026-04-20 11:00 AM" },
+            { id: 5, name: "Dr. James Rivera", email: "james.rivera@plsp.edu.ph", userId: "DOC-102", role: "doctor", status: "active", department: "Medical Department", phone: "+63 918 777 8888", lastLogin: "2026-04-26 02:30 PM" },
+            { id: 6, name: "Nurse Anna Reyes", email: "anna.reyes@plsp.edu.ph", userId: "NUR-203", role: "nurse", status: "active", department: "Clinic Department", phone: "+63 922 333 4444", lastLogin: "2026-04-28 10:15 AM" },
+            { id: 7, name: "Staff Leah Fernandez", email: "leah.fernandez@plsp.edu.ph", userId: "STF-304", role: "staff", status: "active", department: "Accounting Office", phone: "+63 916 222 3333", lastLogin: "2026-04-27 01:45 PM" },
+            { id: 8, name: "Dr. Paolo Villanueva", email: "paolo.villanueva@plsp.edu.ph", userId: "DOC-103", role: "doctor", status: "inactive", department: "Pediatrics", phone: "+63 923 444 5555", lastLogin: "2026-04-19 09:00 AM" },
+            { id: 9, name: "Nurse Sarah Lopez", email: "sarah.lopez@plsp.edu.ph", userId: "NUR-204", role: "nurse", status: "active", department: "Emergency Room", phone: "+63 925 666 7777", lastLogin: "2026-04-27 11:20 AM" }
+        ];
+
+        let currentFilter = "all";
+        let currentSearch = "";
+        let deleteTargetId = null;
+
+        function getInitials(name) { return name.split(" ").slice(0,2).map(n => n[0]).join("").toUpperCase(); }
+        function getRoleLabel(role) { const labels = { admin: "Admin", doctor: "Doctor", nurse: "Nurse", staff: "Staff" }; return labels[role] || role; }
+
+        function updateStats() {
+            document.getElementById("statTotal").innerText = users.length;
+            document.getElementById("statAdmin").innerText = users.filter(u => u.role === "admin").length;
+            document.getElementById("statDoctor").innerText = users.filter(u => u.role === "doctor").length;
+            document.getElementById("statNurse").innerText = users.filter(u => u.role === "nurse").length;
+            document.getElementById("statActive").innerText = users.filter(u => u.status === "active").length;
+        }
+
+        function renderUsers() {
+            let filtered = users.filter(user => {
+                if (currentFilter !== "all" && user.role !== currentFilter) return false;
+                if (currentSearch) {
+                    const search = currentSearch.toLowerCase();
+                    return user.name.toLowerCase().includes(search) || user.email.toLowerCase().includes(search) || user.userId.toLowerCase().includes(search);
+                }
+                return true;
+            });
+            
+            const tbody = document.getElementById("usersTableBody");
+            const noResults = document.getElementById("noResults");
+            
+            if (filtered.length === 0) { tbody.innerHTML = ""; noResults.classList.remove("hidden"); updateStats(); return; }
+            noResults.classList.add("hidden");
+            
+            tbody.innerHTML = filtered.map(user => `
+                <tr class="user-row">
+                    <td><div class="flex items-center gap-3"><div class="avatar-sm">${getInitials(user.name)}</div><div><div class="font-medium text-slate-700">${escapeHtml(user.name)}</div><div class="text-xs text-slate-400">${escapeHtml(user.email)}</div></div></div></td>
+                    <td class="text-sm font-mono">${escapeHtml(user.userId)}</td>
+                    <td><span class="role-badge role-${user.role}">${getRoleLabel(user.role)}</span></td>
+                    <td class="text-sm">${escapeHtml(user.department || "—")}</td>
+                    <td><span class="status-badge status-${user.status}">${user.status === "active" ? "Active" : "Inactive"}</span></td>
+                    <td class="text-xs text-slate-500">${user.lastLogin || "Never"}</td>
+                    <td><div class="action-buttons"><button onclick="editUser(${user.id})" class="action-btn action-edit"><i class="fa-regular fa-pen-to-square"></i></button><button onclick="openDeleteModal(${user.id}, '${escapeHtml(user.name)}')" class="action-btn action-delete"><i class="fa-regular fa-trash-can"></i></button></div></td>
+                </tr>
+            `).join("");
+            updateStats();
+        }
+
+        function setFilter(role) { currentFilter = role; document.querySelectorAll(".filter-chip").forEach(chip => chip.classList.remove("active")); document.querySelector(`.filter-chip[data-filter="${role}"]`).classList.add("active"); renderUsers(); }
+        function filterUsers() { currentSearch = document.getElementById("searchInput").value; renderUsers(); }
+
+        function openAddUserModal() { document.getElementById("modalTitle").innerHTML = '<i class="fa-solid fa-user-plus mr-2"></i>Add New User'; document.getElementById("userForm").reset(); document.getElementById("editId").value = ""; document.getElementById("userModal").style.display = "flex"; }
+        
+        function editUser(id) { const user = users.find(u => u.id === id); if (!user) return; document.getElementById("modalTitle").innerHTML = '<i class="fa-solid fa-user-pen mr-2"></i>Edit User'; document.getElementById("editId").value = user.id; document.getElementById("fullName").value = user.name; document.getElementById("email").value = user.email; document.getElementById("userId").value = user.userId; document.getElementById("role").value = user.role; document.getElementById("status").value = user.status; document.getElementById("department").value = user.department || ""; document.getElementById("phone").value = user.phone || ""; document.getElementById("userModal").style.display = "flex"; }
+        
+        function saveUser(event) { event.preventDefault(); const id = document.getElementById("editId").value; const now = new Date(); const lastLogin = now.toLocaleDateString() + " " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); const userData = { name: document.getElementById("fullName").value.trim(), email: document.getElementById("email").value.trim(), userId: document.getElementById("userId").value.trim(), role: document.getElementById("role").value, status: document.getElementById("status").value, department: document.getElementById("department").value, phone: document.getElementById("phone").value, lastLogin: lastLogin }; if (id) { const index = users.findIndex(u => u.id == id); if (index !== -1) { users[index] = { ...users[index], ...userData }; showSnackbar("User updated successfully", "success"); } } else { const newId = Math.max(...users.map(u => u.id), 0) + 1; users.push({ id: newId, ...userData }); showSnackbar("User added successfully", "success"); } closeModal(); renderUsers(); }
+        
+        function openDeleteModal(id, name) { deleteTargetId = id; document.getElementById("deleteUserName").innerText = name; document.getElementById("deleteModal").style.display = "flex"; }
+        function confirmDelete() { if (deleteTargetId) { users = users.filter(u => u.id !== deleteTargetId); showSnackbar("User deleted successfully", "success"); closeDeleteModal(); renderUsers(); } }
+        function closeModal() { document.getElementById("userModal").style.display = "none"; }
+        function closeDeleteModal() { document.getElementById("deleteModal").style.display = "none"; deleteTargetId = null; }
+        
+        function escapeHtml(str) { if (!str) return ""; return str.replace(/[&<>]/g, function(m) { if (m === "&") return "&amp;"; if (m === "<") return "&lt;"; if (m === ">") return "&gt;"; return m; }); }
+        
+        function showSnackbar(msg, type = "success") { const sb = document.getElementById("snackbar"); sb.className = `snackbar ${type}`; sb.innerHTML = `<i class="fa-solid ${type === "success" ? "fa-circle-check" : "fa-circle-exclamation"}"></i> ${msg}`; sb.classList.add("show"); setTimeout(() => sb.classList.remove("show"), 3000); }
+        
+        function openProfileDrawer() { document.getElementById("profileDrawer").classList.add("open"); document.getElementById("profileDrawerOverlay").style.display = "block"; }
+        function closeProfileDrawer() { document.getElementById("profileDrawer").classList.remove("open"); document.getElementById("profileDrawerOverlay").style.display = "none"; }
+        
+        function switchTab(tabName) { showSnackbar(`Navigating to ${tabName} (Demo)`, "success"); }
+        
+        renderUsers();
+    </script>
+</body>
+</html>

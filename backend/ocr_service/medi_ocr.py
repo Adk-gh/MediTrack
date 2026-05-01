@@ -24,33 +24,42 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     fields = {}
 
     # --- 1. ID Number Extraction ---
-    # Hunts for the format YY-XXXXX or YYYY-XXXX anywhere in the text, 
-    # regardless of whether "ID No." is sitting in front of it.
     id_match = re.search(r"\b(\d{2,4}[\s\-]+\d{3,5})\b", full_text)
     if id_match:
-        # Standardize formatting to always use a hyphen
         fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
 
     # --- 2. ID Type & Role Identification ---
-    # Uses regex word boundaries (\b) to find keywords even if OCR gets messy
-    employee_pattern = re.compile(r"\b(EMPLOYEE|LECTURER|PROFESSOR|INSTRUCTOR|STAFF|FACULTY|ADMINISTRATOR)\b", re.IGNORECASE)
-    student_pattern = re.compile(r"\b(STUDENT|BSIT|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
+    # SEPARATE specific roles from generic terms
+    specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
+    specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
+    student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
+    
+    # Generic catch-alls (checked LAST)
+    generic_emp_pattern = re.compile(r"\b(EMPLOYEE|STAFF|FACULTY)\b", re.IGNORECASE)
 
-    emp_match = employee_pattern.search(full_text)
+    clc_match = specific_clinic_pattern.search(full_text)
+    acad_match = specific_acad_pattern.search(full_text)
     stu_match = student_pattern.search(full_text)
+    gen_emp_match = generic_emp_pattern.search(full_text)
 
-    # Always check for Employee signals first to prevent overlap
-    if emp_match:
+    # PRIORITY CHECKING: Look for specific job titles BEFORE generic words!
+    if clc_match:
         fields["id_type"] = "Employee ID"
-        fields["role"] = emp_match.group(1).title()
+        fields["role"] = clc_match.group(1).title() # Will capture "Nurse"
+    elif acad_match:
+        fields["id_type"] = "Employee ID"
+        fields["role"] = acad_match.group(1).title()
     elif stu_match:
         fields["id_type"] = "Student ID"
         fields["role"] = "Student"
+    elif gen_emp_match:
+        fields["id_type"] = "Employee ID"
+        fields["role"] = "Employee" # Only falls back to this if specific titles aren't found
     else:
         fields["id_type"] = "Unknown"
+        fields["role"] = "Unknown"
 
     # --- 3. Name Extraction ---
-    # Matches the standard PLSP format: LASTNAME, FIRSTNAME M.
     name_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)", full_text)
     if name_match:
         fields["name"] = name_match.group(1).strip()

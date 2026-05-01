@@ -1,6 +1,5 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Records.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 import { useNavigate } from 'react-router-dom';
 import * as recordsService from '../../services/records.service';
 
@@ -193,7 +192,7 @@ export const Records = () => {
   // RENDER
   // ============================================================
   return (
-    <DashboardLayout>
+    <>
       <div className="animate-[fadeInSlide_0.4s_ease-out_forwards]">
 
         {/* Sub Navigation */}
@@ -534,8 +533,7 @@ export const Records = () => {
 
       {/* Snackbar */}
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
-
-    </DashboardLayout>
+    </>
   );
 };
 

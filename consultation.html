@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultation Hub | MediTrack PLSP Health Services</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        :root {
+            --meditrack-teal: #466460;
+            --meditrack-teal-light: #5a7a76;
+            --meditrack-teal-lighter: #8aacaa;
+            --meditrack-teal-soft: #e0eceb;
+            --accent-sunset: #e07a5f;
+            --accent-gold: #e9c46a;
+            --accent-sage: #81b29a;
+            --bg-gray: #f4f7f6;
+            --border-color: #eef2f6;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f4f7f6; color: #2d3748; overflow-x: hidden; margin: 0; }
+        
+        .ui-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); color: white; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .logo-image { width: 200px; height: 70px; object-fit: contain; display: block; background: transparent !important; }
+
+        /* ✅ NAV LINKS - match dashboard exactly */
+        .nav-link { 
+            position: relative; 
+            color: var(--meditrack-teal);
+            font-weight: 700; 
+            font-size: 15px; 
+            letter-spacing: 0.025em; 
+            opacity: 0.7;
+            transition: all 0.2s; 
+            background: none; 
+            border: none; 
+            cursor: pointer;
+            padding-bottom: 4px;
+        }
+        .nav-link:hover { opacity: 1; color: var(--accent-sunset); }
+        .nav-link.active { opacity: 1; color: var(--meditrack-teal); }
+        .nav-link.active::after { 
+            content: ''; 
+            position: absolute; 
+            bottom: -8px; 
+            left: 0; 
+            width: 100%; 
+            height: 3px; 
+            background: linear-gradient(90deg, var(--meditrack-teal), var(--accent-sage)); 
+            border-radius: 99px; 
+        }
+        
+        /* Consultation specific layout */
+        .consult-container { display: flex; height: calc(100vh - 140px); background: white; overflow: hidden; }
+        .patients-panel { width: 380px; border-right: 1px solid var(--border-color); background: white; display: flex; flex-direction: column; flex-shrink: 0; }
+        .chat-panel { flex: 1; display: flex; flex-direction: column; background: #fefefe; }
+        .panel-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); background: #ffffff; }
+        .panel-header h3 { font-weight: 800; font-size: 1rem; color: var(--meditrack-teal); margin: 0; }
+        
+        .consult-patient-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; }
+        .consult-patient-item:hover { background: var(--meditrack-teal-soft); transform: translateX(2px); }
+        .consult-patient-item.active-patient { background: linear-gradient(90deg, var(--meditrack-teal-soft), #ffffff); border-left: 3px solid var(--meditrack-teal); }
+        .patient-avatar { width: 44px; height: 44px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--meditrack-teal); font-size: 18px; flex-shrink: 0; }
+        .patient-info { flex: 1; }
+        .patient-name { font-weight: 700; font-size: 14px; color: #1e293b; }
+        .patient-detail { font-size: 11px; color: #64748b; display: flex; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
+        .badge-role { font-size: 9px; padding: 2px 8px; border-radius: 30px; background: #eef2ff; color: #1e40af; font-weight: 600; }
+        .badge-role.instructor { background: #f3e8ff; color: #6b21a5; }
+        .badge-role.staff { background: #dcfce7; color: #166534; }
+        .unread-badge { background: var(--accent-sunset); color: white; border-radius: 20px; font-size: 9px; font-weight: 700; padding: 2px 8px; min-width: 22px; text-align: center; }
+        
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; background: #f9fbfd; }
+        .message-bubble { max-width: 75%; display: flex; flex-direction: column; }
+        .message-bubble.incoming { align-self: flex-start; }
+        .message-bubble.outgoing { align-self: flex-end; }
+        .bubble { padding: 10px 14px; border-radius: 18px; font-size: 13px; line-height: 1.4; word-break: break-word; }
+        .incoming .bubble { background: white; border: 1px solid #e2e8f0; border-bottom-left-radius: 4px; color: #1e293b; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+        .outgoing .bubble { background: var(--meditrack-teal); color: white; border-bottom-right-radius: 4px; }
+        .message-meta { font-size: 9px; margin-top: 4px; color: #94a3b8; display: flex; gap: 8px; align-items: center; }
+        .incoming .message-meta { padding-left: 12px; }
+        .outgoing .message-meta { justify-content: flex-end; padding-right: 12px; }
+        .chat-input-area { padding: 16px 20px; background: white; border-top: 1px solid var(--border-color); display: flex; gap: 12px; align-items: center; }
+        .chat-input-area input { flex: 1; border: 1px solid #e2e8f0; border-radius: 40px; padding: 12px 18px; font-size: 13px; outline: none; transition: 0.2s; }
+        .chat-input-area input:focus { border-color: var(--meditrack-teal); box-shadow: 0 0 0 2px var(--meditrack-teal-soft); }
+        .send-btn { background: var(--meditrack-teal); border: none; color: white; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; transition: 0.2s; font-size: 16px; }
+        .send-btn:hover { background: var(--meditrack-teal-light); transform: scale(1.02); }
+        .empty-chat { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #94a3b8; gap: 12px; }
+        
+        .profile-drawer-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2000; }
+        .profile-drawer { position: fixed; top: 0; right: -420px; width: 380px; height: 100%; background: white; box-shadow: -4px 0 30px rgba(0,0,0,0.15); z-index: 2001; transition: right 0.35s cubic-bezier(0.4,0,0.2,1); overflow-y: auto; }
+        .profile-drawer.open { right: 0; }
+        .drawer-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); padding: 30px 24px 24px; color: white; position: relative; }
+        .drawer-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+        .drawer-section { padding: 16px 24px; border-bottom: 1px solid #f1f5f9; }
+        .drawer-section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; }
+        .drawer-info-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; color: #475569; }
+        .drawer-stat { text-align: center; padding: 8px; background: #f8fafc; border-radius: 10px; }
+        .snackbar { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e293b; color: white; padding: 12px 24px; border-radius: 12px; font-size: 13px; font-weight: 600; z-index: 9999; transition: transform 0.3s; display: flex; align-items: center; gap: 10px; }
+        .snackbar.show { transform: translateX(-50%) translateY(0); }
+        .snackbar.success { background: linear-gradient(135deg, #166534, #15803d); }
+        .snackbar.error { background: linear-gradient(135deg, #991b1b, #dc2626); }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--meditrack-teal-lighter); border-radius: 10px; }
+    </style>
+</head>
+<body>
+<div class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="ui-header px-8 py-2 flex items-center justify-between shadow-lg z-10">
+        <img src="image copy.png" alt="MediTrack Logo" class="logo-image" onerror="this.src='https://placehold.co/200x70/466460/white?text=MediTrack'">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3 border-l border-white/20 pl-6">
+                <div class="text-right"><p class="text-xs font-bold">Doctor Portal</p><p class="text-[9px] text-white/60 uppercase">Clinic Consultation</p></div>
+                <div class="w-10 h-10 rounded-full border-2 border-white/30 overflow-hidden bg-white/10 cursor-pointer hover:border-white/60 transition-all" onclick="openProfileDrawer()">
+                    <img src="https://ui-avatars.com/api/?name=Dr.+Reyes&background=ffffff&color=466460" alt="Doctor">
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <!-- ✅ Navbar - now uses window.location.href like dashboard.html -->
+    <nav class="bg-white px-8 py-4 border-b border-slate-200 flex gap-12 sticky top-0 z-10 shadow-md">
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-link">Dashboard</button>
+        <button onclick="switchTab('records')" id="nav-records" class="nav-link">Records</button>
+        <button onclick="switchTab('appointments')" id="nav-appointments" class="nav-link">Appointments</button>
+        <button onclick="switchTab('examination')" id="nav-examination" class="nav-link">Examination</button>
+        <button onclick="switchTab('announcements')" id="nav-announcements" class="nav-link">Announcements</button>
+        <button onclick="switchTab('consultation')" id="nav-consultation" class="nav-link active">Consultation</button>
+    </nav>
+    
+    <!-- Consultation Content (always visible - this IS the consultation page) -->
+    <main style="flex:1; overflow:hidden;">
+        <div class="consult-container">
+            <!-- Left: Patient list -->
+            <div class="patients-panel">
+                <div class="panel-header">
+                    <h3><i class="fa-regular fa-comment-dots mr-2"></i> Message Requests</h3>
+                    <p class="text-[10px] text-slate-400 mt-1">Students · Staff · Instructors</p>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar">
+                    <div id="patients-list-container"></div>
+                    <div id="no-messages-placeholder" class="text-center text-slate-400 text-sm py-10 hidden">No consultation messages yet</div>
+                </div>
+            </div>
+            
+            <!-- Right: Chat Panel -->
+            <div class="chat-panel">
+                <div class="panel-header flex justify-between items-center">
+                    <div>
+                        <h3 id="chat-title">Consultation Thread</h3>
+                        <p id="chat-subtitle" class="text-[10px] text-slate-400 mt-0.5">Select a person to view conversation</p>
+                    </div>
+                </div>
+                <div id="chat-messages-area" class="chat-messages custom-scrollbar">
+                    <div class="empty-chat">
+                        <i class="fa-regular fa-message text-4xl text-slate-300"></i>
+                        <p class="text-sm">No conversation selected</p>
+                        <span class="text-xs text-slate-400">Choose a patient from the list</span>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="messageInput" placeholder="Type your consultation response or message..." autocomplete="off">
+                    <button class="send-btn" onclick="sendConsultationMessage()"><i class="fa-regular fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Profile Drawer -->
+<div class="profile-drawer-overlay" id="profileDrawerOverlay" onclick="closeProfileDrawer()"></div>
+<div class="profile-drawer" id="profileDrawer">
+    <div class="drawer-header">
+        <button class="drawer-close" onclick="closeProfileDrawer()"><i class="fa-solid fa-xmark"></i></button>
+        <div class="drawer-avatar" style="width:70px;height:70px;border-radius:50%;border:3px solid rgba(255,255,255,0.4);overflow:hidden;margin-bottom:12px;"><img src="https://ui-avatars.com/api/?name=Dr.+Maria+Reyes&background=ffffff&color=466460&size=70" alt="Doctor"></div>
+        <h2 style="margin:0 0 4px; font-size:1.2rem;">Dr. Maria Reyes</h2>
+        <p style="margin:0; font-size:11px; opacity:0.75;">Clinic Physician</p>
+        <span style="display:inline-block; background:rgba(255,255,255,0.2); padding:3px 10px; border-radius:20px; font-size:9px; margin-top:8px;">Medical Staff</span>
+    </div>
+    <div class="drawer-section"><div class="drawer-section-title">Contact</div><div class="drawer-info-row"><i class="fa-solid fa-envelope"></i><span>maria.reyes@plsp.edu.ph</span></div><div class="drawer-info-row"><i class="fa-solid fa-phone"></i><span>+63 977 123 4567</span></div></div>
+    <div class="drawer-section"><div class="drawer-section-title">Clinic Stats</div><div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;"><div class="drawer-stat"><div style="font-size:1.3rem;font-weight:800;" id="totalConsultCount">0</div><div style="font-size:9px;">Active Chats</div></div><div class="drawer-stat"><div style="font-size:1.3rem;font-weight:800;" id="totalMessagesCount">0</div><div style="font-size:9px;">Messages</div></div></div></div>
+    <button style="width:calc(100% - 48px); margin:16px 24px; background:#fef2f2; color:#dc2626; border:none; padding:10px; border-radius:10px; font-weight:600; cursor:pointer;" onclick="showSnackbar('Logged out (demo)', 'error')"><i class="fa-solid fa-right-from-bracket mr-2"></i>Sign Out</button>
+</div>
+<div class="snackbar" id="snackbar"></div>
+
+<script>
+    // ✅ FIXED: Navigation now matches dashboard.html — uses window.location.href
+    function switchTab(tabName) {
+        window.location.href = tabName + '.html';
+    }
+
+    // ========================
+    // CONSULTATION DATA & LOGIC
+    // ========================
+    let consultationMessagesMap = new Map();
+    
+    const allPeople = [
+        { id: "S-001", name: "De Vera, Jenny", role: "student", department: "College of Computing", avatarInitial: "JD", program: "BSIT", year: "3rd Year" },
+        { id: "S-002", name: "Santos, Sofia", role: "student", department: "College of Engineering", avatarInitial: "SS", program: "BSCE", year: "2nd Year" },
+        { id: "S-003", name: "Mendoza, Paolo", role: "student", department: "College of Health Sciences", avatarInitial: "PM", program: "BSN", year: "4th Year" },
+        { id: "I-101", name: "Dr. Reyes, Maria", role: "instructor", department: "College of Computing", avatarInitial: "MR", program: "PhD" },
+        { id: "I-102", name: "Prof. Cruz, Andres", role: "instructor", department: "College of Engineering", avatarInitial: "AC", program: "Masters" },
+        { id: "I-103", name: "Prof. Mercado, Liza", role: "instructor", department: "College of Arts & Sciences", avatarInitial: "LM", program: "EdD" },
+        { id: "ST-201", name: "Fernandez, Leah", role: "staff", department: "Registrar's Office", avatarInitial: "LF" },
+        { id: "ST-202", name: "Villanueva, Mark", role: "staff", department: "Maintenance", avatarInitial: "MV" },
+        { id: "ST-203", name: "Garcia, Rosalie", role: "staff", department: "Accounting Office", avatarInitial: "RG" },
+        { id: "S-004", name: "Rivera, Kevin", role: "student", department: "College of Computing", avatarInitial: "KR", program: "BSIT", year: "2nd Year" },
+        { id: "I-104", name: "Dr. Villanueva, Paolo", role: "instructor", department: "College of Health Sciences", avatarInitial: "PV", program: "MD" },
+        { id: "ST-204", name: "Reyes, Teresa", role: "staff", department: "Library", avatarInitial: "TR" }
+    ];
+    
+    function initializeMessages() {
+        consultationMessagesMap.set("S-001", [
+            { text: "Good morning, doctor! I've been having headaches for 3 days.", sender: "patient", timestamp: new Date(Date.now() - 86400000).toISOString() },
+            { text: "Any other symptoms like fever or nausea?", sender: "doctor", timestamp: new Date(Date.now() - 82800000).toISOString() },
+            { text: "Slight dizziness, but no fever. Could it be stress?", sender: "patient", timestamp: new Date(Date.now() - 80000000).toISOString() }
+        ]);
+        consultationMessagesMap.set("S-002", [
+            { text: "Hello doc, my throat has been sore since yesterday.", sender: "patient", timestamp: new Date(Date.now() - 172800000).toISOString() },
+            { text: "I recommend drinking warm fluids and taking a rest. If persists, visit clinic.", sender: "doctor", timestamp: new Date(Date.now() - 170000000).toISOString() }
+        ]);
+        consultationMessagesMap.set("I-102", [
+            { text: "Doctor, I need a medical certificate for my sick leave.", sender: "patient", timestamp: new Date(Date.now() - 43200000).toISOString() },
+            { text: "Sure, please drop by the clinic tomorrow. I'll prepare it.", sender: "doctor", timestamp: new Date(Date.now() - 40000000).toISOString() }
+        ]);
+        consultationMessagesMap.set("ST-201", [
+            { text: "I have back pain and I need physio recommendation.", sender: "patient", timestamp: new Date(Date.now() - 7200000).toISOString() }
+        ]);
+        consultationMessagesMap.set("S-004", [
+            { text: "Doctor, I feel itchy after eating seafood.", sender: "patient", timestamp: new Date(Date.now() - 10800000).toISOString() },
+            { text: "Likely allergic reaction. Take antihistamine and avoid seafood.", sender: "doctor", timestamp: new Date(Date.now() - 9000000).toISOString() }
+        ]);
+        consultationMessagesMap.set("I-104", [
+            { text: "Hi doc, need a prescription for maintenance meds.", sender: "patient", timestamp: new Date(Date.now() - 21600000).toISOString() }
+        ]);
+        consultationMessagesMap.set("ST-203", [
+            { text: "My blood pressure has been high lately. Should I adjust medication?", sender: "patient", timestamp: new Date(Date.now() - 5400000).toISOString() }
+        ]);
+    }
+    
+    let currentActivePatientId = null;
+    let allPatientsWithMessages = [];
+    
+    function rebuildActivePatientsList() {
+        const activeSet = new Set();
+        for (let [patientId] of consultationMessagesMap.entries()) {
+            activeSet.add(patientId);
+        }
+        allPatientsWithMessages = allPeople.filter(p => activeSet.has(p.id));
+        allPatientsWithMessages.sort((a,b) => {
+            const msgsA = consultationMessagesMap.get(a.id) || [];
+            const msgsB = consultationMessagesMap.get(b.id) || [];
+            const lastA = msgsA.length ? new Date(msgsA[msgsA.length-1].timestamp) : new Date(0);
+            const lastB = msgsB.length ? new Date(msgsB[msgsB.length-1].timestamp) : new Date(0);
+            return lastB - lastA;
+        });
+    }
+    
+    function getUnreadCount(patientId) {
+        const messages = consultationMessagesMap.get(patientId) || [];
+        let unread = 0;
+        for(let i=messages.length-1; i>=0; i--) {
+            if(messages[i].sender === 'patient') unread++;
+            else break;
+        }
+        return unread;
+    }
+    
+    function renderPatientsList() {
+        const container = document.getElementById('patients-list-container');
+        const placeholder = document.getElementById('no-messages-placeholder');
+        if(!allPatientsWithMessages.length) {
+            container.innerHTML = '';
+            placeholder.classList.remove('hidden');
+            return;
+        }
+        placeholder.classList.add('hidden');
+        container.innerHTML = allPatientsWithMessages.map(patient => {
+            const activeClass = currentActivePatientId === patient.id ? 'active-patient' : '';
+            const unread = getUnreadCount(patient.id);
+            const roleClass = patient.role === 'student' ? '' : (patient.role === 'instructor' ? 'instructor' : 'staff');
+            const roleLabel = patient.role === 'student' ? 'Student' : (patient.role === 'instructor' ? 'Faculty' : 'Staff');
+            const lastMsg = consultationMessagesMap.get(patient.id)?.slice(-1)[0];
+            const preview = lastMsg ? (lastMsg.text.length > 45 ? lastMsg.text.substring(0,42)+'...' : lastMsg.text) : 'No messages';
+            return `
+                <div class="consult-patient-item ${activeClass}" onclick="selectConsultPatient('${patient.id}')">
+                    <div class="patient-avatar">${patient.avatarInitial}</div>
+                    <div class="patient-info">
+                        <div class="patient-name">${escapeHtml(patient.name)}</div>
+                        <div class="patient-detail">
+                            <span class="badge-role ${roleClass}">${roleLabel}</span>
+                            <span>${escapeHtml(patient.department)}</span>
+                            ${patient.program ? `<span>${escapeHtml(patient.program)}</span>` : ''}
+                        </div>
+                        <div class="text-[10px] text-slate-400 mt-1 truncate">${escapeHtml(preview)}</div>
+                    </div>
+                    ${unread > 0 ? `<span class="unread-badge">${unread}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+        document.getElementById('totalConsultCount').innerText = allPatientsWithMessages.length;
+        let totalMsgCount = 0;
+        for(let msgs of consultationMessagesMap.values()) totalMsgCount += msgs.length;
+        document.getElementById('totalMessagesCount').innerText = totalMsgCount;
+    }
+    
+    function selectConsultPatient(patientId) {
+        const patient = allPeople.find(p => p.id === patientId);
+        if(!patient) return;
+        currentActivePatientId = patientId;
+        renderPatientsList();
+        displayChatConversation(patientId);
+        document.getElementById('chat-title').innerHTML = `<i class="fa-regular fa-user mr-1"></i> ${escapeHtml(patient.name)}`;
+        document.getElementById('chat-subtitle').innerText = `${patient.role === 'student' ? 'Student' : (patient.role === 'instructor' ? 'Faculty' : 'Staff')} · ${patient.department}`;
+        document.getElementById('messageInput').disabled = false;
+        document.getElementById('messageInput').placeholder = "Type a reply...";
+        document.getElementById('messageInput').focus();
+    }
+    
+    function displayChatConversation(patientId) {
+        const messages = consultationMessagesMap.get(patientId) || [];
+        const container = document.getElementById('chat-messages-area');
+        if(!messages.length) {
+            container.innerHTML = `<div class="empty-chat"><i class="fa-regular fa-comment"></i><p>No messages yet</p></div>`;
+            return;
+        }
+        const sorted = [...messages].sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+        container.innerHTML = sorted.map(msg => {
+            const isDoctor = (msg.sender === 'doctor');
+            const bubbleClass = isDoctor ? 'outgoing' : 'incoming';
+            const senderName = isDoctor ? 'Dr. Reyes' : (allPeople.find(p => p.id === patientId)?.name.split(',')[0] || 'Patient');
+            const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            return `
+                <div class="message-bubble ${bubbleClass}">
+                    <div class="bubble">${escapeHtml(msg.text)}</div>
+                    <div class="message-meta"><span>${escapeHtml(senderName)}</span> • <span>${timeStr}</span></div>
+                </div>
+            `;
+        }).join('');
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    function sendConsultationMessage() {
+        if(!currentActivePatientId) { showSnackbar('Select a patient first', 'error'); return; }
+        const input = document.getElementById('messageInput');
+        const text = input.value.trim();
+        if(!text) return;
+        const messages = consultationMessagesMap.get(currentActivePatientId) || [];
+        messages.push({ text, sender: 'doctor', timestamp: new Date().toISOString() });
+        consultationMessagesMap.set(currentActivePatientId, messages);
+        input.value = '';
+        displayChatConversation(currentActivePatientId);
+        rebuildActivePatientsList();
+        renderPatientsList();
+        showSnackbar('Message sent', 'success');
+    }
+    
+    function escapeHtml(str) { 
+        if(!str) return '';
+        return str.replace(/[&<>]/g, m => m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'); 
+    }
+    
+    function showSnackbar(msg, type='success') {
+        const sb = document.getElementById('snackbar');
+        sb.className = `snackbar ${type}`;
+        sb.innerHTML = `<i class="fa-solid ${type==='success'?'fa-circle-check':'fa-circle-exclamation'}"></i> ${msg}`;
+        sb.classList.add('show');
+        setTimeout(() => sb.classList.remove('show'), 3000);
+    }
+    
+    function openProfileDrawer() { 
+        document.getElementById('profileDrawer').classList.add('open'); 
+        document.getElementById('profileDrawerOverlay').style.display = 'block'; 
+    }
+    function closeProfileDrawer() { 
+        document.getElementById('profileDrawer').classList.remove('open'); 
+        document.getElementById('profileDrawerOverlay').style.display = 'none'; 
+    }
+
+    // Allow Enter key to send
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeMessages();
+        rebuildActivePatientsList();
+        renderPatientsList();
+        document.getElementById('messageInput').disabled = true;
+
+        document.getElementById('messageInput').addEventListener('keydown', e => {
+            if(e.key === 'Enter') sendConsultationMessage();
+        });
+
+        // Demo incoming message button
+        const panelHeader = document.querySelector('.patients-panel .panel-header');
+        if(panelHeader) {
+            const demoBtn = document.createElement('button');
+            demoBtn.className = 'text-[10px] bg-[#e0eceb] px-2 py-1 rounded-full text-teal-700 mt-1 font-semibold hover:bg-[#cbdcd9] transition ml-2';
+            demoBtn.innerHTML = '<i class="fa-regular fa-bell mr-1"></i>Demo Message';
+            demoBtn.onclick = () => {
+                const existing = allPeople[Math.floor(Math.random()*allPeople.length)];
+                const msgs = ["Need follow-up consultation","Medication inquiry","Headache relief","Clinic hours?","Prescription refill","Feeling unwell"];
+                const randMsg = msgs[Math.floor(Math.random()*msgs.length)];
+                let patMsgs = consultationMessagesMap.get(existing.id) || [];
+                patMsgs.push({ text: randMsg, sender: 'patient', timestamp: new Date().toISOString() });
+                consultationMessagesMap.set(existing.id, patMsgs);
+                rebuildActivePatientsList();
+                renderPatientsList();
+                if(currentActivePatientId === existing.id) displayChatConversation(existing.id);
+                showSnackbar(`New message from ${existing.name}`, 'success');
+            };
+            panelHeader.querySelector('h3').after(demoBtn);
+        }
+    });
+</script>
+</body>
+</html>

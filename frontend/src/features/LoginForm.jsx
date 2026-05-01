@@ -1,4 +1,5 @@
 // frontend/src/components/LoginForm.jsx
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
@@ -13,7 +14,6 @@ const LoginForm = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [focusedField, setFocusedField] = useState(null);
   const [touched, setTouched] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
 
@@ -48,25 +48,34 @@ const LoginForm = () => {
 
     setError('');
     setLoading(true);
+
     try {
-      const data = await authService.login({ email, password });
+      const response = await authService.login({ email, password });
+      
+      // Backend returns { success: true, data: { ...user, token } }
+      const user = response.data;
 
-      if (data.token) {
-        // Persist auth data
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('role', data.user.role);       // 👈 nested under data.user
-        localStorage.setItem('uid', data.user.uid);
-        localStorage.setItem('name', data.user.name);
+      if (user && user.token) {
+        // 1. Store individual items for quick access
+        localStorage.setItem('token', user.token);
+        localStorage.setItem('role', user.role || '');
+        localStorage.setItem('uid', user.id || '');
+        localStorage.setItem('name', `${user.firstName || ''} ${user.lastName || ''}`.trim());
 
-        const role = data.user.role;
+        // 2. Store the whole user object (required by ProfileSetup.jsx)
+        // This includes the "profileComplete" boolean from your DB
+        localStorage.setItem('user', JSON.stringify(user));
 
-        if (role === 'admin' || role === 'doctor') {
+        const role = user.role?.toLowerCase().trim() || '';
+
+        // 3. Conditional Redirect
+        if (['nurse', 'doctor', 'dentist', 'admin'].includes(role)) {
           navigate('/dashboard');
-        } else if (role === 'student' || role === 'employee') {
-          navigate('/student/meditrack');
         } else {
-          setError('Unknown account role. Please contact support.');
+          navigate('/student/meditrack');
         }
+      } else {
+        setError('Login failed. Please try again.');
       }
     } catch (err) {
       setError(err.message || 'Invalid email or password');
@@ -74,6 +83,8 @@ const LoginForm = () => {
       setLoading(false);
     }
   };
+
+  // ... (Rest of your component styles and return remain the same)
 
   return (
     <>

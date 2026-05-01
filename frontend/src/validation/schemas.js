@@ -1,9 +1,14 @@
+//C:\Users\HP\MediTrack\frontend\src\validation\schemas.js
 import { z } from "zod";
 
 // User schemas
 export const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters").max(50, "Name must be at most 50 characters"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  middleInitial: z.string().max(1).optional(),
+  suffix: z.string().optional(),
   email: z.string().email("Invalid email format"),
+  universityId: z.string().min(1, "University ID is required"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {

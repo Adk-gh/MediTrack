@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examination | MediTrack PLSP Health Services</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        :root {
+            --meditrack-teal: #466460;
+            --meditrack-teal-light: #5a7a76;
+            --meditrack-teal-lighter: #8aacaa;
+            --meditrack-teal-soft: #e0eceb;
+            --accent-sunset: #e07a5f;
+            --accent-gold: #e9c46a;
+            --accent-sage: #81b29a;
+            --bg-gray: #f4f7f6;
+            --border-color: #eef2f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body { font-family: 'Inter', sans-serif; background: #f4f7f6; color: #2d3748; overflow-x: hidden; }
+        .ui-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); color: white; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .nav-link { position: relative; color: var(--meditrack-teal); font-weight: 700; font-size: 14px; letter-spacing: 0.025em; opacity: 0.7; transition: all 0.2s; padding-bottom: 4px; background: none; border: none; cursor: pointer; }
+        .nav-link:hover { opacity: 1; color: var(--accent-sunset); }
+        .nav-link.active { opacity: 1; color: var(--meditrack-teal); }
+        .nav-link.active::after { content: ''; position: absolute; bottom: -8px; left: 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--meditrack-teal), var(--accent-sage)); border-radius: 99px; }
+        .glass-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .logo-image { width: 200px; height: 70px; object-fit: contain; display: block; background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
+        .exam-full-container { background: white; min-height: calc(100vh - 200px); padding: 24px 32px; }
+        .progress-wrapper { margin-bottom: 25px; max-width: 100%; }
+        .progress-info { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px; font-weight: bold; color: var(--meditrack-teal); }
+        .progress-container { width: 100%; background-color: #e0e0e0; border-radius: 10px; height: 10px; overflow: hidden; }
+        .progress-bar { height: 100%; background: var(--meditrack-teal); transition: width 0.4s ease; }
+        .phase { display: none; }
+        .phase.active { display: block; }
+        .section-title { background: #f8f9fa; border-left: 4px solid var(--meditrack-teal); padding: 10px 18px; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; margin: 24px 0 16px 0; display: flex; justify-content: space-between; align-items: center; color: var(--meditrack-teal); }
+        .exam-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-bottom: 20px; }
+        .exam-field { display: flex; flex-direction: column; }
+        .exam-field label { font-size: 0.7rem; font-weight: 700; margin-bottom: 6px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+        .exam-input, .exam-select, .exam-textarea { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.85rem; width: 100%; transition: all 0.2s; background: white; box-sizing: border-box; }
+        .exam-input:focus, .exam-select:focus, .exam-textarea:focus { border-color: var(--meditrack-teal); outline: none; box-shadow: 0 0 0 3px rgba(70,100,96,0.1); }
+        .exam-input[readonly] { background: #f8fafc; color: #64748b; }
+        .exam-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.8rem; }
+        .exam-table th, .exam-table td { border: 1px solid #cbd5e1; padding: 10px 8px; text-align: left; vertical-align: top; }
+        .exam-table th { background: #f1f5f9; font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: var(--meditrack-teal); }
+        .exam-table td:first-child { font-weight: 600; font-size: 0.78rem; white-space: nowrap; color: #374151; background: #fafafa; }
+        .checkbox-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 12px; font-size: 0.78rem; padding: 16px; border: 1px solid #cbd5e1; border-radius: 12px; background: #fefefe; margin-bottom: 16px; }
+        .checkbox-grid label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 0; }
+        .checkbox-grid label:hover { color: var(--meditrack-teal); }
+        .checkbox-grid input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--meditrack-teal); cursor: pointer; flex-shrink: 0; }
+        .checkbox-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 12px; font-size: 0.78rem; padding: 16px; border: 1px solid #cbd5e1; border-radius: 12px; background: #fefefe; margin-bottom: 16px; }
+        .checkbox-grid-3 label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 0; }
+        .checkbox-grid-3 label:hover { color: var(--meditrack-teal); }
+        .checkbox-grid-3 input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--meditrack-teal); cursor: pointer; flex-shrink: 0; }
+        .btn-add { background: var(--accent-sage); color: white; padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.7rem; font-weight: 600; transition: opacity 0.2s; }
+        .btn-add:hover { opacity: 0.85; }
+        .btn-remove { background: #e07a5f; color: white; padding: 4px 10px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.65rem; font-weight: 600; }
+        .nav-buttons { margin-top: 40px; display: flex; justify-content: space-between; padding-bottom: 30px; }
+        .btn-nav { padding: 12px 32px; border-radius: 10px; border: none; cursor: pointer; font-weight: 700; font-size: 0.85rem; transition: all 0.2s; }
+        .btn-next { background: var(--meditrack-teal); color: white; }
+        .btn-next:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(70,100,96,0.3); }
+        .btn-prev { background: #95a5a6; color: white; }
+        .btn-prev:hover { opacity: 0.85; }
+        .profile-drawer-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2000; }
+        .profile-drawer { position: fixed; top: 0; right: -420px; width: 380px; height: 100%; background: white; box-shadow: -4px 0 30px rgba(0,0,0,0.15); z-index: 2001; transition: right 0.35s cubic-bezier(0.4,0,0.2,1); overflow-y: auto; }
+        .profile-drawer.open { right: 0; }
+        .drawer-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); padding: 30px 24px 24px; color: white; }
+        .drawer-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .drawer-close:hover { background: rgba(255,255,255,0.35); }
+        .drawer-avatar { width: 70px; height: 70px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); overflow: hidden; margin-bottom: 12px; }
+        .drawer-section { padding: 16px 24px; border-bottom: 1px solid #f1f5f9; }
+        .drawer-section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; }
+        .drawer-info-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; color: #475569; }
+        .drawer-info-row i { color: var(--meditrack-teal); width: 16px; text-align: center; }
+        .drawer-logout-btn { width: calc(100% - 48px); margin: 16px 24px; padding: 10px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .snackbar { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e293b; color: white; padding: 14px 24px; border-radius: 12px; font-size: 13px; font-weight: 600; z-index: 9999; transition: transform 0.4s cubic-bezier(0.4,0,0.2,1); display: flex; align-items: center; gap: 10px; }
+        .snackbar.show { transform: translateX(-50%) translateY(0); }
+        .snackbar.success { background: linear-gradient(135deg, #166534, #15803d); }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-container { background: white; padding: 24px; border-radius: 20px; width: 450px; max-width: 90%; max-height: 85vh; overflow-y: auto; }
+        .modal-container h3 { margin: 0 0 16px 0; color: var(--meditrack-teal); font-size: 1.2rem; font-weight: 700; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-buttons button { flex: 1; padding: 10px; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .btn-post { background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-light)); color: white; }
+        .btn-cancel { background: #e2e8f0; color: #475569; }
+        .summary-modal { width: 680px; max-width: 95vw; }
+        .summary-section { margin-bottom: 16px; }
+        .summary-section h4 { font-size: 10px; font-weight: 800; text-transform: uppercase; color: var(--meditrack-teal); letter-spacing: 0.08em; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--meditrack-teal-soft); }
+        .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .summary-item { background: #f8fafc; border-radius: 8px; padding: 8px 10px; }
+        .summary-item .s-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; font-weight: 700; }
+        .summary-item .s-value { font-size: 12px; font-weight: 600; color: #1e293b; margin-top: 2px; }
+        #view-examination { min-height: calc(100vh - 120px); background: white; }
+        /* DENTAL CHART */
+        .dental-chart-container { overflow-x: auto; padding: 10px 0; }
+        .tooth-row-label { font-size: 10px; font-weight: 800; color: var(--meditrack-teal); text-transform: uppercase; text-align: center; padding: 6px 0; background: #f1f5f9; border-radius: 4px; margin: 8px 0 4px; letter-spacing: 0.5px; }
+        .tooth-grid { display: flex; justify-content: center; gap: 3px; margin: 4px 0; flex-wrap: nowrap; }
+        .tooth-cell { display: flex; flex-direction: column; align-items: center; width: 36px; min-width: 36px; }
+        .tooth-num { font-size: 9px; font-weight: 700; color: #64748b; text-align: center; margin-bottom: 2px; }
+        .tooth-box { width: 30px; height: 30px; border: 2px solid #94a3b8; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 8px; font-weight: 700; background: white; position: relative; }
+        .tooth-box:hover { border-color: var(--meditrack-teal); background: var(--meditrack-teal-soft); }
+        .tooth-box.caries { background: #fee2e2; border-color: #f87171; color: #dc2626; }
+        .tooth-box.filled { background: #fef9c3; border-color: #f59e0b; color: #92400e; }
+        .tooth-box.missing { background: #f1f5f9; border-color: #94a3b8; color: #64748b; }
+        .tooth-box.improved { background: #dbeafe; border-color: #60a5fa; color: #1d4ed8; }
+        .tooth-box.extracted { background: #fce7f3; border-color: #f472b6; color: #9d174d; }
+        .tooth-box.root-fragment { background: #fef3c7; border-color: #fbbf24; color: #78350f; }
+        .tooth-box.pontic { background: #ede9fe; border-color: #a78bfa; color: #5b21b6; }
+        .tooth-chart-section { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; background: #fafafa; margin-bottom: 16px; }
+        .dental-legend-wrap { background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; margin-top: 14px; overflow: hidden; }
+        .dental-legend-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--meditrack-teal); background: #e8f2f1; padding: 6px 14px; border-bottom: 1px solid #d1e7e5; }
+        .dental-legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 10px; font-size: 10px; padding: 12px 14px; }
+        .dental-legend-ops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 10px; font-size: 10px; padding: 12px 14px; border-top: 1px solid #e2e8f0; }
+        .legend-item { display: flex; align-items: center; gap: 7px; }
+        .legend-box { width: 14px; height: 14px; border: 1.5px solid #94a3b8; flex-shrink: 0; border-radius: 2px; }
+        .legend-symbol { width: 22px; height: 14px; font-size: 9px; font-weight: 800; color: #374151; text-align: center; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; }
+        .intraoral-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+        .intraoral-card { background: #fafbfc; border-radius: 10px; border: 1px solid #e2e8f0; padding: 14px 16px; }
+        .intraoral-card-title { font-size: 10px; font-weight: 700; color: var(--meditrack-teal); text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1.5px solid var(--meditrack-teal-soft); }
+        .intraoral-options { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+        .intraoral-option { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 0; }
+        .intraoral-option input[type="radio"] { accent-color: var(--meditrack-teal); width: 13px; height: 13px; }
+        .exam-subtabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
+        .exam-subtab { padding: 10px 20px; font-size: 13px; font-weight: 600; color: #64748b; background: none; border: none; cursor: pointer; position: relative; }
+        .exam-subtab:hover { color: var(--meditrack-teal); }
+        .exam-subtab.active { color: var(--meditrack-teal); }
+        .exam-subtab.active::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 100%; height: 2px; background: var(--meditrack-teal); }
+        .vital-card { background: #f9fbfd; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px; position: relative; }
+        .vital-card-header { font-size: 11px; font-weight: 700; color: var(--meditrack-teal); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        .radio-group { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .radio-group label { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
+        .radio-group input[type="radio"] { accent-color: var(--meditrack-teal); width: 13px; height: 13px; }
+        .yes-no-group { display: flex; gap: 12px; align-items: center; }
+        .yes-no-group label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+        .yes-no-group input[type="radio"] { accent-color: var(--meditrack-teal); }
+        .sub-field { margin-left: 18px; margin-top: 6px; }
+        .form-note { font-size: 10px; color: #94a3b8; font-style: italic; margin-top: 4px; }
+        .picture-box { width: 100px; height: 120px; border: 2px dashed #cbd5e1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: #94a3b8; font-size: 10px; text-align: center; gap: 6px; transition: all 0.2s; }
+        .picture-box:hover { border-color: var(--meditrack-teal); color: var(--meditrack-teal); }
+        .surgical-row { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px; position: relative; }
+        @media (max-width: 768px) { .checkbox-grid { grid-template-columns: repeat(2, 1fr); } .exam-full-container { padding: 16px; } }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <header class="ui-header px-8 py-2 flex items-center justify-between shadow-lg z-10">
+            <img src="image copy.png" alt="MediTrack Logo" class="logo-image" onerror="this.src='https://placehold.co/200x70/466460/white?text=MediTrack'">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3 border-l border-white/20 pl-6">
+                    <div class="text-right"><p class="text-xs font-bold">Admin Portal</p><p class="text-[9px] text-white/60 uppercase">University Clinic</p></div>
+                    <div class="w-10 h-10 rounded-full border-2 border-white/30 overflow-hidden bg-white/10 cursor-pointer hover:border-white/60 transition-all" onclick="openProfileDrawer()">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=ffffff&color=466460" alt="User">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <nav class="bg-white px-8 py-4 border-b border-slate-200 flex gap-12 sticky top-0 z-10 shadow-md">
+            <button onclick="switchTab('dashboard')" class="nav-link">Dashboard</button>
+            <button onclick="switchTab('records')" class="nav-link">Records</button>
+            <button onclick="switchTab('appointments')" class="nav-link">Appointments</button>
+            <button onclick="switchTab('examination')" class="nav-link active">Examination</button>
+            <button onclick="switchTab('announcements')" class="nav-link">Announcements</button>
+            <button onclick="switchTab('consultation')" class="nav-link">Consultation</button>
+        </nav>
+
+        <main class="flex-1" style="padding:0;">
+            <div id="view-examination" style="padding:0;">
+                <div class="exam-full-container">
+                    <div class="exam-subtabs">
+                        <button class="exam-subtab active" id="subtab-medical" onclick="switchExamTab('medical')"><i class="fa-solid fa-stethoscope mr-2"></i>Medical Examination</button>
+                        <button class="exam-subtab" id="subtab-dental" onclick="switchExamTab('dental')"><i class="fa-solid fa-tooth mr-2"></i>Dental Record</button>
+                    </div>
+                    <div id="medicalContent" class="exam-tab-content"></div>
+                    <div id="dentalContent" class="exam-tab-content" style="display:none;"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Drawers & Modals -->
+    <div class="profile-drawer-overlay" id="profileDrawerOverlay" onclick="closeProfileDrawer()"></div>
+    <div class="profile-drawer" id="profileDrawer">
+        <div class="drawer-header" style="position:relative;"><button class="drawer-close" onclick="closeProfileDrawer()"><i class="fa-solid fa-xmark"></i></button><div class="drawer-avatar"><img src="https://ui-avatars.com/api/?name=Admin+User&background=ffffff&color=466460&size=70" alt="Admin"></div><h2 style="margin:0 0 4px; font-size:1.2rem; font-weight:800;">Admin User</h2><p style="margin:0; font-size:11px; opacity:0.75;">University Clinic Administrator</p></div>
+        <div class="drawer-section"><div class="drawer-section-title">Contact</div><div class="drawer-info-row"><i class="fa-solid fa-envelope"></i><span>plspofficial@plsp.edu.ph</span></div></div>
+        <button class="drawer-logout-btn"><i class="fa-solid fa-right-from-bracket mr-2"></i>Sign Out</button>
+    </div>
+
+    <div class="modal-overlay" id="summaryModal">
+        <div class="modal-container summary-modal">
+            <h3><i class="fa-solid fa-clipboard-check mr-2"></i>Medical Summary</h3>
+            <div id="summaryContent"></div>
+            <div class="modal-buttons">
+                <button class="btn-post" onclick="finalSubmitExam()">Submit Record</button>
+                <button class="btn-cancel" onclick="closeSummaryModal()">Edit</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="toothModal">
+        <div class="modal-container" style="width:340px;">
+            <h3 id="toothModalTitle">Tooth #</h3>
+            <div class="exam-field mb-3">
+                <label>Condition</label>
+                <select id="toothCondition" class="exam-input">
+                    <option value="">Free from Caries ( / )</option>
+                    <option value="caries">Caries (C)</option>
+                    <option value="filled">Filled (●)</option>
+                    <option value="missing">Missing (M)</option>
+                    <option value="extracted">Indicated for Extraction (X)</option>
+                    <option value="root-fragment">Root Fragment (RF)</option>
+                    <option value="improved">Improved (IM)</option>
+                    <option value="pontic">Pontic (P)</option>
+                </select>
+            </div>
+            <div class="exam-field mb-3">
+                <label>Operation / Restoration</label>
+                <select id="toothOperation" class="exam-input">
+                    <option value="">None</option>
+                    <option value="AM">Amalgam (AM)</option>
+                    <option value="AB">Abutment (AB)</option>
+                    <option value="SI">Silicate Cement (SI)</option>
+                    <option value="GI">Gold Inlay (GI)</option>
+                    <option value="LC">Light Cure (LC)</option>
+                    <option value="GC">Gold Crown (GC)</option>
+                    <option value="SSC">Stainless Steel Crown (SSC)</option>
+                    <option value="PJC">Porcelain Jacket Crown (PJC)</option>
+                    <option value="TF">Temporary Filling (TF)</option>
+                    <option value="DC">Dowel Crown (DC)</option>
+                    <option value="SNT">Supernumerary Tooth (SNT)</option>
+                    <option value="PP">Periodontal Pocket (PP)</option>
+                    <option value="CA">Cervical Abrasion (CA)</option>
+                    <option value="R">Restorable (R)</option>
+                </select>
+            </div>
+            <div class="modal-buttons mt-4">
+                <button class="btn-post" onclick="saveToothStatus()">Save</button>
+                <button class="btn-cancel" onclick="closeToothModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="snackbar" id="snackbar"></div>
+
+    <script>
+        let peopleData = [
+            { name: "De Vera, Jenny", id: "23-00142", prog: "BSIT", year: "3rd Year", age: 21, gender: "Female", birthdate: "2003-03-15", email: "jenny@plsp.edu.ph", department: "CCS" },
+            { name: "Santos, Sofia", id: "23-23406", prog: "BSCE", year: "2nd Year", age: 20, gender: "Female", birthdate: "2004-07-22", email: "sofia@plsp.edu.ph", department: "COE" }
+        ];
+        let currentSelectedPerson = peopleData[0];
+        let currentExamPhase = 1;
+        let currentExamTab = 'medical';
+        let toothData = {};
+        let vitalRecords = [];
+        let surgicalHistoryItems = [];
+
+        // Tooth numbering
+        const permUpperRight = [18,17,16,15,14,13,12,11];
+        const permUpperLeft  = [21,22,23,24,25,26,27,28];
+        const permLowerRight = [48,47,46,45,44,43,42,41];
+        const permLowerLeft  = [31,32,33,34,35,36,37,38];
+        const decidUpperRight = [55,54,53,52,51];
+        const decidUpperLeft  = [61,62,63,64,65];
+        const decidLowerRight = [85,84,83,82,81];
+        const decidLowerLeft  = [71,72,73,74,75];
+
+        function toothLabel(n) {
+            const d = toothData[n];
+            if (!d || !d.condition) return '';
+            if (d.condition === 'caries') return 'C';
+            if (d.condition === 'filled') return '●';
+            if (d.condition === 'missing') return 'M';
+            if (d.condition === 'extracted') return 'X';
+            if (d.condition === 'root-fragment') return 'RF';
+            if (d.condition === 'improved') return 'IM';
+            if (d.condition === 'pontic') return 'P';
+            return '/';
+        }
+
+        function renderToothCell(n, isDecid) {
+            const d = toothData[n] || {};
+            const cls = d.condition || '';
+            const lbl = toothLabel(n);
+            return `<div class="tooth-cell"><div class="tooth-num">${n}</div><div class="tooth-box ${cls}" onclick="openToothModal(${n})" title="${isDecid?'Deciduous':'Permanent'} Tooth #${n}">${lbl}</div></div>`;
+        }
+
+        function renderDentalChart() {
+            return `
+            <div class="tooth-chart-section">
+                <div class="tooth-row-label">Deciduous Teeth (Upper)</div>
+                <div class="tooth-grid">${decidUpperRight.map(n=>renderToothCell(n,true)).join('')}&nbsp;&nbsp;&nbsp;${decidUpperLeft.map(n=>renderToothCell(n,true)).join('')}</div>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:9px;color:#94a3b8;text-align:center;margin:2px 0 8px;"><div>RIGHT</div><div>LEFT</div></div>
+                <div class="tooth-grid">${decidLowerRight.map(n=>renderToothCell(n,true)).join('')}&nbsp;&nbsp;&nbsp;${decidLowerLeft.map(n=>renderToothCell(n,true)).join('')}</div>
+                <div class="tooth-row-label" style="margin-top:8px;">Deciduous Teeth (Lower)</div>
+            </div>
+            <div class="tooth-chart-section">
+                <div class="tooth-row-label">Permanent Teeth (Upper)</div>
+                <div class="tooth-grid">${permUpperRight.map(n=>renderToothCell(n,false)).join('')}&nbsp;&nbsp;&nbsp;${permUpperLeft.map(n=>renderToothCell(n,false)).join('')}</div>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:9px;color:#94a3b8;text-align:center;margin:2px 0 8px;"><div>RIGHT</div><div>LEFT</div></div>
+                <div class="tooth-grid">${permLowerRight.map(n=>renderToothCell(n,false)).join('')}&nbsp;&nbsp;&nbsp;${permLowerLeft.map(n=>renderToothCell(n,false)).join('')}</div>
+                <div class="tooth-row-label" style="margin-top:8px;">Permanent Teeth (Lower)</div>
+            </div>`;
+        }
+
+        function openToothModal(n) {
+            window.currentTooth = n;
+            document.getElementById('toothModalTitle').innerText = `Tooth #${n}`;
+            document.getElementById('toothCondition').value = toothData[n]?.condition || '';
+            document.getElementById('toothOperation').value = toothData[n]?.operation || '';
+            document.getElementById('toothModal').style.display = 'flex';
+        }
+        function saveToothStatus() {
+            if (window.currentTooth) {
+                toothData[window.currentTooth] = { condition: document.getElementById('toothCondition').value, operation: document.getElementById('toothOperation').value };
+                refreshDentalChart();
+                closeToothModal();
+                showSnackbar('Tooth status updated');
+            }
+        }
+        function closeToothModal() { document.getElementById('toothModal').style.display = 'none'; }
+        function refreshDentalChart() { const c = document.getElementById('dental-chart-render'); if (c) c.innerHTML = renderDentalChart(); }
+
+        function openProfileDrawer() { document.getElementById('profileDrawer').classList.add('open'); document.getElementById('profileDrawerOverlay').style.display = 'block'; }
+        function closeProfileDrawer() { document.getElementById('profileDrawer').classList.remove('open'); document.getElementById('profileDrawerOverlay').style.display = 'none'; }
+        function showSnackbar(msg, type = 'success') { const sb = document.getElementById('snackbar'); sb.className = `snackbar ${type}`; sb.innerHTML = `<i class="fa-solid ${type==='success'?'fa-circle-check':'fa-circle-exclamation'}"></i> ${msg}`; sb.classList.add('show'); setTimeout(() => sb.classList.remove('show'), 3000); }
+        function switchTab(tabId) { window.location.href = tabId + '.html'; }
+        function switchExamTab(tab) {
+            currentExamTab = tab;
+            document.querySelectorAll('.exam-subtab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`subtab-${tab}`).classList.add('active');
+            document.getElementById('medicalContent').style.display = tab === 'medical' ? 'block' : 'none';
+            document.getElementById('dentalContent').style.display = tab === 'dental' ? 'block' : 'none';
+        }
+        function closeSummaryModal() { document.getElementById('summaryModal').style.display = 'none'; }
+        function finalSubmitExam() { showSnackbar('Medical record submitted successfully!'); document.getElementById('summaryModal').style.display = 'none'; }
+
+        // Surgical History
+        function addSurgicalHistory() {
+            surgicalHistoryItems.push({ id: Date.now(), operation: '', date: '', notes: '' });
+            renderSurgicalHistory();
+        }
+        function removeSurgicalHistory(id) { surgicalHistoryItems = surgicalHistoryItems.filter(i => i.id !== id); renderSurgicalHistory(); }
+        function updateSurgicalHistory(id, field, value) { const item = surgicalHistoryItems.find(i => i.id === id); if (item) item[field] = value; }
+        function renderSurgicalHistory() {
+            const c = document.getElementById('surgical-history-list');
+            if (!c) return;
+            if (surgicalHistoryItems.length === 0) { c.innerHTML = '<div style="color:#94a3b8;font-size:12px;font-style:italic;padding:12px;text-align:center;">No surgical history recorded. Click "Add Operation" to add.</div>'; return; }
+            c.innerHTML = surgicalHistoryItems.map(item => `
+                <div class="surgical-row">
+                    <button type="button" class="btn-remove" style="position:absolute;top:8px;right:8px;" onclick="removeSurgicalHistory(${item.id})"><i class="fa-solid fa-times"></i></button>
+                    <div class="exam-grid" style="margin-bottom:0;">
+                        <div class="exam-field" style="grid-column:span 6;"><label>Operation / Procedure</label><input type="text" class="exam-input" placeholder="e.g. Appendectomy" value="${escapeHtml(item.operation)}" onchange="updateSurgicalHistory(${item.id},'operation',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 3;"><label>Date</label><input type="date" class="exam-input" value="${item.date}" onchange="updateSurgicalHistory(${item.id},'date',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 3;"><label>Remarks / Hospital</label><input type="text" class="exam-input" placeholder="Hospital / complications" value="${escapeHtml(item.notes)}" onchange="updateSurgicalHistory(${item.id},'notes',this.value)"></div>
+                    </div>
+                </div>`).join('');
+        }
+
+        // Vital Records
+        function addVitalRecord() {
+            vitalRecords.push({ id: Date.now(), date: new Date().toISOString().split('T')[0], bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
+            renderVitalSigns();
+        }
+        function removeVitalRecord(id) { vitalRecords = vitalRecords.filter(v => v.id !== id); renderVitalSigns(); }
+        function updateVitalRecord(id, field, value) { const r = vitalRecords.find(v => v.id === id); if (r) r[field] = value; }
+        function renderVitalSigns() {
+            const c = document.getElementById('vital-signs-list');
+            if (!c) return;
+            if (vitalRecords.length === 0) { c.innerHTML = '<div style="color:#94a3b8;font-size:12px;font-style:italic;padding:12px;text-align:center;">No vital signs recorded. Click "Add Record" to add.</div>'; return; }
+            c.innerHTML = vitalRecords.map((r, idx) => `
+                <div class="vital-card">
+                    <div class="vital-card-header">Record #${idx + 1}<button type="button" class="btn-remove" onclick="removeVitalRecord(${r.id})"><i class="fa-solid fa-times"></i></button></div>
+                    <div class="exam-grid" style="margin-bottom:0;">
+                        <div class="exam-field" style="grid-column:span 2;"><label>Date</label><input type="date" class="exam-input" value="${r.date}" onchange="updateVitalRecord(${r.id},'date',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 2;"><label>BP (mmHg)</label><input type="text" class="exam-input" placeholder="120/80" value="${escapeHtml(r.bp)}" onchange="updateVitalRecord(${r.id},'bp',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 2;"><label>PR (bpm)</label><input type="text" class="exam-input" placeholder="72" value="${escapeHtml(r.pr)}" onchange="updateVitalRecord(${r.id},'pr',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 2;"><label>RR (cpm)</label><input type="text" class="exam-input" placeholder="18" value="${escapeHtml(r.rr)}" onchange="updateVitalRecord(${r.id},'rr',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 2;"><label>Temp (°C)</label><input type="text" class="exam-input" placeholder="36.5" value="${escapeHtml(r.temp)}" onchange="updateVitalRecord(${r.id},'temp',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 2;"><label>Nurse / Staff</label><input type="text" class="exam-input" placeholder="Nurse name" value="${escapeHtml(r.nurse)}" onchange="updateVitalRecord(${r.id},'nurse',this.value)"></div>
+                        <div class="exam-field" style="grid-column:span 12;"><label>Remarks</label><input type="text" class="exam-input" placeholder="Additional notes" value="${escapeHtml(r.remarks)}" onchange="updateVitalRecord(${r.id},'remarks',this.value)"></div>
+                    </div>
+                </div>`).join('');
+        }
+
+        // ==================== MEDICAL FORM ====================
+        function loadMedicalForm() {
+            const p = currentSelectedPerson;
+            const container = document.getElementById('medicalContent');
+            const totalPhases = 2;
+            container.innerHTML = `
+            <div class="progress-wrapper">
+                <div class="progress-info"><span>Phase ${currentExamPhase} of ${totalPhases}</span><span>${currentExamPhase === 1 ? 'Patient History' : 'Clinical Findings & Labs'}</span></div>
+                <div class="progress-container"><div class="progress-bar" style="width:${(currentExamPhase/totalPhases)*100}%"></div></div>
+            </div>
+            ${p ? `<div class="p-4 bg-slate-50 rounded-lg mb-4 flex items-center gap-4"><div><p class="text-xs font-bold text-slate-500">Current Patient</p><p class="text-lg font-bold text-[#466460]">${p.name}</p><p class="text-xs text-slate-500">${p.id} • ${p.department} • ${p.prog} ${p.year}</p></div></div>` : ''}
+
+            <!-- ========== PHASE 1 ========== -->
+            <div class="phase ${currentExamPhase === 1 ? 'active' : ''}" data-phase="1">
+
+                <div class="section-title">📋 Patient Demographics</div>
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 3;"><label>Last Name / Family Name</label><input type="text" id="lastName" class="exam-input" value="${p.name.split(',')[0]?.trim()||''}"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>First Name</label><input type="text" id="firstName" class="exam-input" value="${p.name.split(',')[1]?.trim()||''}"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Middle Name</label><input type="text" id="middleName" class="exam-input"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>School Year</label><input type="text" id="schoolYear" class="exam-input" placeholder="e.g. 2024-2025"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Student No.</label><input type="text" id="studentId" class="exam-input" value="${p.id}"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Course</label><input type="text" id="course" class="exam-input" value="${p.prog}"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Year / Section</label><input type="text" id="yearSection" class="exam-input" value="${p.year}"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Sex</label>
+                        <div class="radio-group" style="padding:10px 0;">
+                            <label><input type="radio" name="sex" value="Male" ${p.gender==='Male'?'checked':''}> Male</label>
+                            <label><input type="radio" name="sex" value="Female" ${p.gender==='Female'?'checked':''}> Female</label>
+                        </div>
+                    </div>
+                    <div class="exam-field" style="grid-column:span 2;"><label>Birthday</label><input type="date" id="birthday" class="exam-input" value="${p.birthdate}"></div>
+                    <div class="exam-field" style="grid-column:span 2;"><label>Age</label><input type="number" id="age" class="exam-input" value="${p.age}"></div>
+                    <div class="exam-field" style="grid-column:span 4;"><label>Address</label><input type="text" id="address" class="exam-input" placeholder="Home Address"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Contact No.</label><input type="text" id="contactNo" class="exam-input"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Landline No.</label><input type="text" id="landlineNo" class="exam-input"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Religion</label><input type="text" id="religion" class="exam-input"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Nationality</label><input type="text" id="nationality" class="exam-input" placeholder="Filipino"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Civil Status</label>
+                        <select id="civilStatus" class="exam-input"><option>Single</option><option>Married</option><option>Widowed</option><option>Separated</option></select>
+                    </div>
+                </div>
+
+                <div class="section-title">🆘 Person to Contact in Case of Emergency</div>
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 5;"><label>Name</label><input type="text" id="emergencyName" class="exam-input" placeholder="Full name"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Relationship</label><input type="text" id="emergencyRelation" class="exam-input" placeholder="e.g. Parent, Spouse"></div>
+                    <div class="exam-field" style="grid-column:span 4;"><label>Address</label><input type="text" id="emergencyAddress" class="exam-input"></div>
+                    <div class="exam-field" style="grid-column:span 4;"><label>Contact No./s</label><input type="text" id="emergencyContact" class="exam-input"></div>
+                </div>
+
+                <div class="section-title">💉 COVID-19 Vaccine History</div>
+                <table class="exam-table">
+                    <thead><tr><th>Dose</th><th>Name of Vaccine</th><th>Date</th><th>Remarks</th></tr></thead>
+                    <tbody>
+                        <tr><td>1st Dose</td><td><input type="text" id="vax1" class="exam-input"></td><td><input type="date" id="vax1Date" class="exam-input"></td><td><input type="text" id="vax1Remarks" class="exam-input"></td></tr>
+                        <tr><td>2nd Dose</td><td><input type="text" id="vax2" class="exam-input"></td><td><input type="date" id="vax2Date" class="exam-input"></td><td><input type="text" id="vax2Remarks" class="exam-input"></td></tr>
+                        <tr><td>Booster (1)</td><td><input type="text" id="booster1" class="exam-input"></td><td><input type="date" id="booster1Date" class="exam-input"></td><td><input type="text" id="booster1Remarks" class="exam-input"></td></tr>
+                        <tr><td>Booster (2)</td><td><input type="text" id="booster2" class="exam-input"></td><td><input type="date" id="booster2Date" class="exam-input"></td><td><input type="text" id="booster2Remarks" class="exam-input"></td></tr>
+                        <tr><td>History of COVID-19</td><td colspan="3"><input type="text" id="covidHistory" class="exam-input" placeholder="Date of infection, severity, treatment, recovery details"></td></tr>
+                    </tbody>
+                </table>
+
+                <div class="section-title">🏥 Past Medical History</div>
+                <p style="font-size:11px;color:#64748b;margin-bottom:10px;">Check all that apply:</p>
+                <div class="checkbox-grid" id="medicalHistoryGrid">
+                    ${['Allergy, specify','Asthma','Cancer, specify','Cerebrovascular Disease','Coronary Artery Disease','Diabetes Mellitus','Emphysema','Epilepsy/Seizure disorder','Hepatitis, specify','Hyperlipidemia','Hypertension','Peptic Ulcer Disease','Pneumonia','Thyroid Disease','Tuberculosis, specify (If PTB, category)','Urinary Tract Infection','Genito/Reproductive, specify','Others'].map(c => `<label><input type="checkbox" value="${c}"> ${c}</label>`).join('')}
+                </div>
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 12;"><label>Specify details for checked conditions above</label><input type="text" id="otherMedicalHistory" class="exam-input" placeholder="Additional details, severity, medications taken"></div>
+                </div>
+
+                <div class="section-title">⚕️ Past Surgical History <button type="button" class="btn-add" onclick="addSurgicalHistory()"><i class="fa-solid fa-plus mr-1"></i>Add Operation</button></div>
+                <div id="surgical-history-list"></div>
+
+                <div class="section-title">👨‍👩‍👧‍👦 Family History</div>
+                <p style="font-size:11px;color:#64748b;margin-bottom:10px;">Check all that apply in your family:</p>
+                <div class="checkbox-grid" id="familyHistoryGrid">
+                    ${['Allergy, specify','Asthma','Cancer, specify','Cerebrovascular disease','Coronary Artery Disease','Diabetes Mellitus','Emphysema','Epilepsy/Seizure disorder','Hepatitis, specify','Hyperlipidemia','Hypertension','Peptic Ulcer Disease','Thyroid Disease','Tuberculosis, specify (If PTB, category)','Others'].map(c => `<label><input type="checkbox" value="${c}"> ${c}</label>`).join('')}
+                </div>
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 12;"><label>Specify details for family history</label><input type="text" id="otherFamilyHistory" class="exam-input" placeholder="Specify members affected and other details"></div>
+                </div>
+
+                <div class="section-title">🍺 Personal / Social History</div>
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 4;">
+                        <label>Smoking</label>
+                        <div class="yes-no-group" style="padding:10px 0;">
+                            <label><input type="radio" name="smoking" value="Yes"> Yes</label>
+                            <label><input type="radio" name="smoking" value="No" checked> No</label>
+                        </div>
+                        <div class="sub-field"><input type="text" id="smokingDetails" class="exam-input" placeholder="If yes: Quit? No. of years / days & type"></div>
+                    </div>
+                    <div class="exam-field" style="grid-column:span 4;">
+                        <label>Alcohol</label>
+                        <div class="yes-no-group" style="padding:10px 0;">
+                            <label><input type="radio" name="alcohol" value="Yes"> Yes</label>
+                            <label><input type="radio" name="alcohol" value="No" checked> No</label>
+                        </div>
+                        <div class="sub-field"><input type="text" id="alcoholDetails" class="exam-input" placeholder="If yes: Quit? No. of bottles / days & type"></div>
+                    </div>
+                    <div class="exam-field" style="grid-column:span 4;">
+                        <label>Illicit Drugs</label>
+                        <div class="yes-no-group" style="padding:10px 0;">
+                            <label><input type="radio" name="drugs" value="Yes"> Yes</label>
+                            <label><input type="radio" name="drugs" value="No" checked> No</label>
+                        </div>
+                        <div class="sub-field"><input type="text" id="drugsDetails" class="exam-input" placeholder="If yes: Quit? Specify type / frequency"></div>
+                    </div>
+                </div>
+
+                <div class="section-title">📸 Patient Photo</div>
+                <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:16px;">
+                    <div class="picture-box" onclick="document.getElementById('photoUpload').click()">
+                        <i class="fa-solid fa-camera" style="font-size:24px;"></i>
+                        <span>1x1 Photo</span>
+                        <span>Click to upload</span>
+                    </div>
+                    <input type="file" id="photoUpload" accept="image/*" style="display:none;" onchange="previewPhoto(this)">
+                    <div>
+                        <div id="photoPreview" style="display:none;"><img id="photoImg" style="width:100px;height:120px;object-fit:cover;border-radius:8px;border:2px solid var(--meditrack-teal);"></div>
+                        <p style="font-size:11px;color:#64748b;margin-top:8px;">Upload a 1x1 ID photo of the student.</p>
+                    </div>
+                </div>
+
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 6;"><label>Signature of Student</label><input type="text" id="studentSignature" class="exam-input" placeholder="Type full name as signature"></div>
+                    <div class="exam-field" style="grid-column:span 6;"><label>Date Signed</label><input type="date" id="dateSigned" class="exam-input" value="${new Date().toISOString().split('T')[0]}"></div>
+                </div>
+
+                <div class="nav-buttons"><div></div><button class="btn-nav btn-next" onclick="showExamPhase(2)">Next: Clinical Findings →</button></div>
+            </div>
+
+            <!-- ========== PHASE 2 ========== -->
+            <div class="phase ${currentExamPhase === 2 ? 'active' : ''}" data-phase="2">
+
+                <!-- HEALTH HISTORY QUESTIONS — moved to top of Phase 2 -->
+                <div class="section-title">❓ Health History Questions</div>
+                <table class="exam-table">
+                    <thead><tr><th style="width:80%;">Question</th><th>YES</th><th>NO</th><th>Details</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>1. Are you in good health?</td>
+                            <td><input type="radio" name="q1" value="Yes"></td>
+                            <td><input type="radio" name="q1" value="No" checked></td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td>2. Are you under medical treatment now?</td>
+                            <td><input type="radio" name="q2" value="Yes"></td>
+                            <td><input type="radio" name="q2" value="No" checked></td>
+                            <td><input type="text" id="q2Details" class="exam-input" placeholder="If yes, specify"></td>
+                        </tr>
+                        <tr>
+                            <td>3. Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?</td>
+                            <td><input type="radio" name="q3" value="Yes"></td>
+                            <td><input type="radio" name="q3" value="No" checked></td>
+                            <td><input type="text" id="q3Details" class="exam-input" placeholder="If yes, specify"></td>
+                        </tr>
+                        <tr>
+                            <td>4. Are you taking any medication?</td>
+                            <td><input type="radio" name="q4" value="Yes"></td>
+                            <td><input type="radio" name="q4" value="No" checked></td>
+                            <td><input type="text" id="q4Details" class="exam-input" placeholder="If yes, specify"></td>
+                        </tr>
+                        <tr>
+                            <td>5. For women only: Are you pregnant?</td>
+                            <td><input type="radio" name="q5" value="Yes"></td>
+                            <td><input type="radio" name="q5" value="No" checked></td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td>Are you nursing?</td>
+                            <td><input type="radio" name="q5b" value="Yes"></td>
+                            <td><input type="radio" name="q5b" value="No" checked></td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- DO YOU HAVE OR HAVE YOU HAD — moved to top of Phase 2, after Health History Questions -->
+                <div class="section-title">6. Do you have or have you had any of the following?</div>
+                <div class="checkbox-grid-3" id="conditionsGrid">
+                    ${[
+                        'Heart Attack','High Blood Pressure','Low Blood Pressure','Heart Trouble',
+                        'HIV/AIDS and Documented Dx','Hay Fever / Allergies','Epilepsy/Convulsions','Fainting/Seizure',
+                        'Rapid Weight Loss','Sexually Transmitted Dx / Ulcers','Diabetes','Heart Problem/Surgery',
+                        'Cancer / Tumors','Anemia','Asthma','Stomach Troubles / Ulcers',
+                        'Head Injuries','Allergies/Drugs',
+                        'Rheumatic Heart Disease','Respiratory Dx / PTB','Stroke','Kidney Disease',
+                        'Thyroid Problem','Hepatitis'
+                    ].filter((v,i,a)=>a.indexOf(v)===i).map(c => `<label><input type="checkbox" value="${c}"> ${c}</label>`).join('')}
+                </div>
+
+                <div class="section-title">🔬 Laboratory Results</div>
+                <table class="exam-table">
+                    <thead><tr><th style="width:200px;">Test</th><th>Results</th><th style="width:200px;">Name of Lab Facility</th><th style="width:160px;">Date Reported by Lab</th></tr></thead>
+                    <tbody>
+                        <tr><td>Complete Blood Count (CBC)</td><td><input type="text" id="labCbc" class="exam-input"></td><td><input type="text" id="labCbcFacility" class="exam-input"></td><td><input type="date" id="labCbcDate" class="exam-input"></td></tr>
+                        <tr><td>Urinalysis</td><td><input type="text" id="labUa" class="exam-input"></td><td><input type="text" id="labUaFacility" class="exam-input"></td><td><input type="date" id="labUaDate" class="exam-input"></td></tr>
+                        <tr><td>Chest X-Ray</td><td><input type="text" id="labXray" class="exam-input"></td><td><input type="text" id="labXrayFacility" class="exam-input"></td><td><input type="date" id="labXrayDate" class="exam-input"></td></tr>
+                        <tr><td><input type="text" id="labOther1Name" class="exam-input" placeholder="Other test, specify"></td><td><input type="text" id="labOther1Result" class="exam-input"></td><td><input type="text" id="labOther1Facility" class="exam-input"></td><td><input type="date" id="labOther1Date" class="exam-input"></td></tr>
+                    </tbody>
+                </table>
+
+                <div class="section-title">📏 Anthropometric Measurements & Vital Signs <button type="button" class="btn-add" onclick="addVitalRecord()"><i class="fa-solid fa-plus mr-1"></i>Add Vital Record</button></div>
+                <div id="vital-signs-list"></div>
+                <div class="exam-grid" style="margin-top:16px;">
+                    <div class="exam-field" style="grid-column:span 3;"><label>Height (cm)</label><input type="text" id="height" class="exam-input" placeholder="cm"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Weight (kg)</label><input type="text" id="weight" class="exam-input" placeholder="kg"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>BMI (auto-calc)</label><input type="text" id="bmi" class="exam-input" readonly placeholder="kg/m²"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Waist Circumference (cm)</label><input type="text" id="waist" class="exam-input" placeholder="cm"></div>
+                    <div class="exam-field" style="grid-column:span 6;"><label>First Day of Last Menstrual Period (LMP) — For females only</label><input type="date" id="lmp" class="exam-input"></div>
+                </div>
+
+                <div class="exam-grid" style="margin-top:24px;">
+                    <div class="exam-field" style="grid-column:span 6;"><label>Examining Physician / LIC. No.</label><input type="text" id="physician" class="exam-input" placeholder="Full name and license number"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Examination Date</label><input type="date" id="examDate" class="exam-input" value="${new Date().toISOString().split('T')[0]}"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Nurse on Duty</label><input type="text" id="nurseOnDuty" class="exam-input" placeholder="Nurse name"></div>
+                </div>
+
+                <div class="nav-buttons">
+                    <button class="btn-nav btn-prev" onclick="showExamPhase(1)">← Previous</button>
+                    <button class="btn-nav btn-next" onclick="openSummaryModal()">Review & Submit →</button>
+                </div>
+            </div>`;
+
+            renderSurgicalHistory();
+            renderVitalSigns();
+            document.getElementById('height')?.addEventListener('input', calculateBMI);
+            document.getElementById('weight')?.addEventListener('input', calculateBMI);
+        }
+
+        function calculateBMI() {
+            const h = parseFloat(document.getElementById('height')?.value);
+            const w = parseFloat(document.getElementById('weight')?.value);
+            if (h && w && h > 0) { document.getElementById('bmi').value = (w / ((h / 100) ** 2)).toFixed(1); }
+        }
+
+        function previewPhoto(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => { document.getElementById('photoImg').src = e.target.result; document.getElementById('photoPreview').style.display = 'block'; };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function showExamPhase(phase) { currentExamPhase = phase; loadMedicalForm(); }
+
+        function openSummaryModal() {
+            const lastName = document.getElementById('lastName')?.value;
+            if (!lastName) { alert("Please fill in patient's last name before submitting."); showExamPhase(1); return; }
+            const selMed = [...document.querySelectorAll('#medicalHistoryGrid input:checked')].map(cb => cb.value).join(', ');
+            const selFam = [...document.querySelectorAll('#familyHistoryGrid input:checked')].map(cb => cb.value).join(', ');
+            document.getElementById('summaryContent').innerHTML = `
+                <div class="summary-section"><h4>Patient</h4>
+                <div class="summary-grid">
+                    <div class="summary-item"><div class="s-label">Name</div><div class="s-value">${escapeHtml(lastName)}, ${escapeHtml(document.getElementById('firstName')?.value||'')}</div></div>
+                    <div class="summary-item"><div class="s-label">Student No.</div><div class="s-value">${escapeHtml(document.getElementById('studentId')?.value||'')}</div></div>
+                    <div class="summary-item"><div class="s-label">Course / Year</div><div class="s-value">${escapeHtml(document.getElementById('course')?.value||'')} ${escapeHtml(document.getElementById('yearSection')?.value||'')}</div></div>
+                </div></div>
+                <div class="summary-section"><h4>COVID-19 Vaccine</h4><div style="font-size:12px;">1st Dose: ${escapeHtml(document.getElementById('vax1')?.value||'—')} | Booster 1: ${escapeHtml(document.getElementById('booster1')?.value||'—')} | Booster 2: ${escapeHtml(document.getElementById('booster2')?.value||'—')}</div></div>
+                <div class="summary-section"><h4>Past Medical History</h4><div style="font-size:12px;">${selMed || 'None checked'}</div></div>
+                <div class="summary-section"><h4>Past Surgical History</h4><div style="font-size:12px;">${surgicalHistoryItems.length} procedure(s) recorded</div></div>
+                <div class="summary-section"><h4>Family History</h4><div style="font-size:12px;">${selFam || 'None checked'}</div></div>
+                <div class="summary-section"><h4>Vital Signs</h4><div style="font-size:12px;">${vitalRecords.length} record(s) documented</div></div>`;
+            document.getElementById('summaryModal').style.display = 'flex';
+        }
+
+        // ==================== DENTAL FORM ====================
+        function loadDentalForm() {
+            const p = currentSelectedPerson;
+            const container = document.getElementById('dentalContent');
+            container.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h2 style="font-size:1.2rem;font-weight:800;color:var(--meditrack-teal);margin:0;"><i class="fa-solid fa-tooth mr-2"></i>Student Dental Record</h2>
+                <button class="btn-add" onclick="submitDentalForm()" style="font-size:12px;padding:10px 20px;">💾 Save Dental Record</button>
+            </div>
+
+            <div class="section-title">📋 Patient Information</div>
+            <div class="exam-grid">
+                <div class="exam-field" style="grid-column:span 3;"><label>Last Name</label><input type="text" id="d-lastName" class="exam-input" value="${p.name.split(',')[0]?.trim()||''}"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>First Name</label><input type="text" id="d-firstName" class="exam-input" value="${p.name.split(',')[1]?.trim()||''}"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Middle Name</label><input type="text" id="d-middle" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Sex</label>
+                    <div class="radio-group" style="padding:10px 0;">
+                        <label><input type="radio" name="d-sex" value="Male" ${p.gender==='Male'?'checked':''}> Male</label>
+                        <label><input type="radio" name="d-sex" value="Female" ${p.gender==='Female'?'checked':''}> Female</label>
+                    </div>
+                </div>
+                <div class="exam-field" style="grid-column:span 2;"><label>Age</label><input type="number" id="d-age" class="exam-input" value="${p.age}"></div>
+                <div class="exam-field" style="grid-column:span 2;"><label>Birthday</label><input type="date" id="d-birthday" class="exam-input" value="${p.birthdate}"></div>
+                <div class="exam-field" style="grid-column:span 4;"><label>Address</label><input type="text" id="d-address" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 4;"><label>Cellphone No.</label><input type="text" id="d-cellphone" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Course / Year / Section</label><input type="text" id="d-courseYear" class="exam-input" value="${p.prog} ${p.year}"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Office Address</label><input type="text" id="d-officeAddress" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Tel. No.</label><input type="text" id="d-telNo" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Nationality</label><input type="text" id="d-nationality" class="exam-input" placeholder="Filipino"></div>
+            </div>
+
+            <div class="section-title">🦷 Dental History</div>
+            <div class="exam-grid">
+                <div class="exam-field" style="grid-column:span 4;"><label>Last Dental Visit</label><input type="date" id="d-lastVisit" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 4;"><label>Previous Dentist: Dr.</label><input type="text" id="d-prevDentist" class="exam-input"></div>
+            </div>
+            <p style="font-size:11px;font-weight:700;color:#374151;margin:8px 0 10px;">Dental History — Check if applicable (Yes/No):</p>
+            <table class="exam-table" style="font-size:11px;">
+                <thead><tr><th>Dental Procedure</th><th>Yes</th><th>No</th></tr></thead>
+                <tbody>
+                    ${['Oral Prophylaxis','Filling / Restoration','Extraction','Drug Sensitivity / Allergy','Pulp Therapy','Periodontal Therapy','Orthodontic Therapy','TMJ Treatment','Prosthodontic Therapy'].map(proc => `
+                    <tr>
+                        <td>${proc}</td>
+                        <td style="text-align:center;"><input type="radio" name="dh_${proc.replace(/\W/g,'')}" value="Yes"></td>
+                        <td style="text-align:center;"><input type="radio" name="dh_${proc.replace(/\W/g,'')}" value="No" checked></td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+
+            <div class="section-title">📋 Medical History (Dental)</div>
+            <div class="exam-field" style="margin-bottom:12px;"><label>Name of Physician: Dr.</label><input type="text" id="d-physician" class="exam-input"></div>
+
+            <div class="section-title">🔍 Intraoral Findings</div>
+            <div class="intraoral-grid">
+                <div class="intraoral-card">
+                    <div class="intraoral-card-title">Consistency of Gingiva</div>
+                    <div class="intraoral-options">
+                        ${['Firm','Good','Pink','Palpable','Class (Molar)','Pain'].map(opt => `<label class="intraoral-option"><input type="radio" name="gingiva" value="${opt}"> ${opt}</label>`).join('')}
+                    </div>
+                </div>
+                <div class="intraoral-card">
+                    <div class="intraoral-card-title">Oral Hygiene</div>
+                    <div class="intraoral-options">
+                        ${['Good','Fair','Poor'].map(opt => `<label class="intraoral-option"><input type="radio" name="oralHygiene" value="${opt}"> ${opt}</label>`).join('')}
+                    </div>
+                    <div style="margin-top:10px;"><div class="intraoral-card-title">Gingival Color</div>
+                    ${['Bright red','Pale'].map(opt => `<label class="intraoral-option"><input type="radio" name="gingivalColor" value="${opt}"> ${opt}</label>`).join('')}</div>
+                </div>
+                <div class="intraoral-card">
+                    <div class="intraoral-card-title">Occlusion</div>
+                    <div class="intraoral-options">
+                        ${['Smooth','Overjet','Overbite','Clicking'].map(opt => `<label class="intraoral-option"><input type="radio" name="occlusion" value="${opt}"> ${opt}</label>`).join('')}
+                    </div>
+                </div>
+                <div class="intraoral-card">
+                    <div class="intraoral-card-title">Lymph Nodes</div>
+                    <div class="intraoral-options">
+                        ${['Palpable','Not Palpable'].map(opt => `<label class="intraoral-option"><input type="radio" name="lymph" value="${opt}"> ${opt}</label>`).join('')}
+                    </div>
+                </div>
+                <div class="intraoral-card">
+                    <div class="intraoral-card-title">Status</div>
+                    <div class="intraoral-options">
+                        ${['Hyperplastic','Normal'].map(opt => `<label class="intraoral-option"><input type="radio" name="status" value="${opt}"> ${opt}</label>`).join('')}
+                    </div>
+                </div>
+                <div class="intraoral-card">
+                    <div class="intraoral-card-title">Other Findings</div>
+                    <div class="intraoral-options">
+                        ${['Midline Deviation','Tooth Wear','Trismus'].map(opt => `<label class="intraoral-option"><input type="radio" name="otherFindings" value="${opt}"> ${opt}</label>`).join('')}
+                    </div>
+                    <div style="margin-top:8px;"><label class="intraoral-option"><input type="checkbox" name="tmjExam"> TMJ Examination</label></div>
+                </div>
+            </div>
+
+            <div class="exam-grid" style="margin-bottom:16px;">
+                <div class="exam-field" style="grid-column:span 4;">
+                    <label>Number of Teeth Present</label>
+                    <div style="display:flex;gap:12px;">
+                        <div><label style="font-size:10px;display:block;margin-bottom:4px;">Upper</label><input type="number" id="d-teethUpper" class="exam-input" style="width:80px;" min="0" max="16"></div>
+                        <div><label style="font-size:10px;display:block;margin-bottom:4px;">Lower</label><input type="number" id="d-teethLower" class="exam-input" style="width:80px;" min="0" max="16"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-title">COVID-19 Vaccine (Dental Record)</div>
+            <div class="exam-grid">
+                <div class="exam-field" style="grid-column:span 3;"><label>First Dose Date</label><input type="date" id="d-vax1Date" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Second Dose Date</label><input type="date" id="d-vax2Date" class="exam-input"></div>
+                <div class="exam-field" style="grid-column:span 3;"><label>Booster Dose Date</label><input type="date" id="d-boosterDate" class="exam-input"></div>
+            </div>
+
+            <div class="section-title">🦷 Patient Dental Chart</div>
+            <p style="font-size:11px;color:#64748b;margin-bottom:12px;">Click on any tooth to set its condition and operation. All 32 permanent + 20 deciduous teeth are shown.</p>
+            <div id="dental-chart-render">${renderDentalChart()}</div>
+
+            <div class="dental-legend-wrap">
+                <div class="dental-legend-title">📋 LEGEND — Condition</div>
+                <div class="dental-legend">
+                    <div class="legend-item"><div class="legend-box" style="background:white;border-color:#86efac;"></div> ( / ) Free from Caries</div>
+                    <div class="legend-item"><div class="legend-box" style="background:#fee2e2;border-color:#f87171;"></div> (C) Caries</div>
+                    <div class="legend-item"><div class="legend-box" style="background:#fef9c3;border-color:#f59e0b;"></div> (●) Filled</div>
+                    <div class="legend-item"><div class="legend-box" style="background:#fce7f3;border-color:#f472b6;"></div> ( / ) Indicated for Extraction</div>
+                    <div class="legend-item"><div class="legend-box" style="background:#fef3c7;border-color:#fbbf24;"></div> (RF) Root Fragment</div>
+                    <div class="legend-item"><div class="legend-box" style="background:#dbeafe;border-color:#60a5fa;"></div> (IM) Improved</div>
+                    <div class="legend-item"><div class="legend-box" style="background:#ecfdf5;border-color:#34d399;"></div> (UN) Unerupted</div>
+                </div>
+                <div class="dental-legend-title" style="border-top:1px solid #d1e7e5;">🔧 LEGEND — Operation</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;font-size:10px;">
+                    <div style="padding:12px 14px;border-right:1px solid #e2e8f0;">
+                        <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94a3b8;margin-bottom:8px;letter-spacing:0.05em;">Condition</div>
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                            <div class="legend-item"><div class="legend-symbol">IM</div> Improved</div>
+                            <div class="legend-item"><div class="legend-symbol">X</div> Extracted</div>
+                            <div class="legend-item"><div class="legend-symbol">RF</div> Root Fragment</div>
+                            <div class="legend-item"><div class="legend-symbol">R</div> Restorable</div>
+                        </div>
+                        <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94a3b8;margin:10px 0 8px;letter-spacing:0.05em;">Restoration</div>
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                            <div class="legend-item"><div class="legend-symbol">SNT</div> Supernumerary Tooth</div>
+                            <div class="legend-item"><div class="legend-symbol">PP</div> Periodontal Pocket</div>
+                            <div class="legend-item"><div class="legend-symbol">M</div> Missing</div>
+                            <div class="legend-item"><div class="legend-symbol">CA</div> Cervical Abrasion</div>
+                        </div>
+                    </div>
+                    <div style="padding:12px 14px;">
+                        <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94a3b8;margin-bottom:8px;letter-spacing:0.05em;">Crowns & Inlays</div>
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                            <div class="legend-item"><div class="legend-symbol">LC</div> Light Cure</div>
+                            <div class="legend-item"><div class="legend-symbol">GI</div> Gold Inlay</div>
+                            <div class="legend-item"><div class="legend-symbol">GC</div> Gold Crown</div>
+                            <div class="legend-item"><div class="legend-symbol">SSC</div> Stainless Steel Crown</div>
+                            <div class="legend-item"><div class="legend-symbol">RCT</div> Root Canal Treatment</div>
+                        </div>
+                        <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94a3b8;margin:10px 0 8px;letter-spacing:0.05em;">Fillings & Prosthetics</div>
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                            <div class="legend-item"><div class="legend-symbol">TF</div> Temporary Filling</div>
+                            <div class="legend-item"><div class="legend-symbol">PJC</div> Porcelain Jacket Crown</div>
+                            <div class="legend-item"><div class="legend-symbol">PRC</div> Porcelain Crown</div>
+                            <div class="legend-item"><div class="legend-symbol">DC</div> Dowel Crown</div>
+                            <div class="legend-item"><div class="legend-symbol">P</div> Pontic</div>
+                            <div class="legend-item"><div class="legend-symbol">AB</div> Abutment</div>
+                            <div class="legend-item"><div class="legend-symbol">SI</div> Silicate Cement</div>
+                            <div class="legend-item"><div class="legend-symbol">AM</div> Amalgam</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:24px;">
+                <div class="section-title">✍️ Signature & Examiner</div>
+                <div class="exam-grid">
+                    <div class="exam-field" style="grid-column:span 6;"><label>Patient Signature / Date</label><input type="text" id="d-patientSig" class="exam-input" placeholder="Type full name as signature"></div>
+                    <div class="exam-field" style="grid-column:span 3;"><label>Date</label><input type="date" id="d-sigDate" class="exam-input" value="${new Date().toISOString().split('T')[0]}"></div>
+                    <div class="exam-field" style="grid-column:span 6;"><label>Examined By</label><input type="text" id="d-examinedBy" class="exam-input" placeholder="Dentist name and license number"></div>
+                </div>
+            </div>`;
+        }
+
+        function submitDentalForm() { showSnackbar('Dental record saved successfully!'); }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
+        }
+
+        function init() { loadMedicalForm(); loadDentalForm(); }
+        window.onload = init;
+
+        Object.assign(window, {
+            switchExamTab, openProfileDrawer, closeProfileDrawer, showExamPhase,
+            openSummaryModal, closeSummaryModal, finalSubmitExam, saveToothStatus, closeToothModal,
+            submitDentalForm, addSurgicalHistory, removeSurgicalHistory, updateSurgicalHistory,
+            addVitalRecord, removeVitalRecord, updateVitalRecord, openToothModal, previewPhoto
+        });
+    </script>
+</body>
+</html>

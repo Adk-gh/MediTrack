@@ -69,3 +69,80 @@ body {
 .animate-in { 
   animation: fadeInSlide 0.4s ease-out forwards; 
 }
+
+
+/* --- Modern Datepicker Overrides --- */
+.react-datepicker-wrapper {
+  width: 100%;
+}
+
+/* Ensure it sits on top of all modals */
+.react-datepicker-popper {
+  z-index: 9999 !important;
+}
+
+/* Hide the little triangle arrow for a cleaner floating card look */
+.react-datepicker__triangle {
+  display: none !important;
+}
+
+.react-datepicker {
+  font-family: inherit !important;
+  border: 1px solid #e2f0ea !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05) !important;
+  overflow: hidden; /* Keeps header corners perfectly rounded */
+}
+
+.react-datepicker__header {
+  background-color: #f4f7f5 !important;
+  border-bottom: 1px solid #e2f0ea !important;
+  padding-top: 16px !important;
+  padding-bottom: 12px !important;
+}
+
+/* Hide the redundant "July 2005" text since we already have the dropdowns */
+.react-datepicker__current-month {
+  display: none !important;
+}
+
+/* Modernize the Month/Year dropdowns */
+.react-datepicker__month-select, 
+.react-datepicker__year-select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1.5px solid #cbd5d1;
+  outline: none;
+  background-color: white;
+  color: #1a2e22;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 0 4px;
+  transition: border-color 0.2s ease;
+}
+
+.react-datepicker__month-select:focus, 
+.react-datepicker__year-select:focus {
+  border-color: #2d7a52;
+}
+
+/* Style the selected day with your specific green */
+.react-datepicker__day--selected, 
+.react-datepicker__day--keyboard-selected {
+  background-color: #2d7a52 !important;
+  color: white !important;
+  border-radius: 50% !important;
+  font-weight: bold;
+}
+
+/* Hover effect for days */
+.react-datepicker__day:hover {
+  background-color: #e2f0ea !important;
+  color: #1a5c3a !important;
+  border-radius: 50% !important;
+}
+
+.react-datepicker__day {
+  margin: 0.2rem !important;
+}

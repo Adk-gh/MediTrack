@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import authService from '../../services/auth.service.js';
-import ProfileSetup from '../../components/ProfileSetup.jsx'; // 👈 IMPORT YOUR MODAL HERE
+import ProfileSetup from '../../components/ProfileSetup.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -49,12 +48,11 @@ const auditLogs = [
 
 export const Dashboard = () => {
   const [filter, setFilter] = useState('all');
-  const [showOnboarding, setShowOnboarding] = useState(false); // 👈 ADDED MODAL STATE
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const session = authService.getCurrentUser();
   const currentUser = session;
 
-  // 👈 ADDED EFFECT TO TRIGGER MODAL - Check from API instead of localStorage
   useEffect(() => {
     const checkProfileSetup = async () => {
       if (!currentUser) return;
@@ -97,7 +95,6 @@ export const Dashboard = () => {
 
     const sortedLabels = Object.keys(combined).sort((a, b) => combined[b] - combined[a]).slice(0, 6);
     const sortedData = sortedLabels.map(label => combined[label]);
-
     const total = Object.values(combined).reduce((a, b) => a + b, 0);
     const topDisease = sortedLabels[0] || '-';
 
@@ -127,18 +124,6 @@ export const Dashboard = () => {
     }]
   };
 
-  const getDiseaseDataFromPatients = () => {
-    const counts = {};
-    samplePatients.forEach(p => {
-      if (p.diseases) {
-        p.diseases.forEach(d => {
-          counts[d] = (counts[d] || 0) + 1;
-        });
-      }
-    });
-    return counts;
-  };
-
   const getAlerts = () => {
     const alerts = [];
     if (pendingCount > 0) {
@@ -153,136 +138,133 @@ export const Dashboard = () => {
 
   return (
     <>
-      {/* 👈 RENDER THE ONBOARDING MODAL OVER THE DASHBOARD */}
       {showOnboarding && (
-        <ProfileSetup 
-          user={currentUser} 
-          onComplete={() => setShowOnboarding(false)} 
+        <ProfileSetup
+          user={currentUser}
+          onComplete={() => setShowOnboarding(false)}
         />
       )}
 
-      <DashboardLayout>
-        <div className="animate-[fadeInSlide_0.4s_ease-out_forwards] p-6 max-w-7xl mx-auto">
-          {/* Top Stat Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
-            <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
-              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Total Patients</p>
-              <h4 className="text-xl font-bold text-slate-800">{samplePatients.length}</h4>
-              <p className="text-[9px] text-emerald-500 mt-1">Active records</p>
-            </div>
-            <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
-              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Today's Appointments</p>
-              <h4 className="text-xl font-bold text-slate-800">{todayAppts.length}</h4>
-              <p className="text-[9px] text-amber-500 mt-1">{pendingCount} pending</p>
-            </div>
-            <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
-              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Upcoming This Week</p>
-              <h4 className="text-xl font-bold text-slate-800">{weekAppts.length}</h4>
-              <p className="text-[9px] text-emerald-500 mt-1">scheduled</p>
-            </div>
-            <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
-              <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Clearances Issued</p>
-              <h4 className="text-xl font-bold text-slate-800">486</h4>
-              <p className="text-[9px] text-emerald-500 mt-1">This month</p>
+      <div className="animate-[fadeInSlide_0.4s_ease-out_forwards] p-6 max-w-7xl mx-auto">
+        {/* Top Stat Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+          <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Total Patients</p>
+            <h4 className="text-xl font-bold text-slate-800">{samplePatients.length}</h4>
+            <p className="text-[9px] text-emerald-500 mt-1">Active records</p>
+          </div>
+          <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Today's Appointments</p>
+            <h4 className="text-xl font-bold text-slate-800">{todayAppts.length}</h4>
+            <p className="text-[9px] text-amber-500 mt-1">{pendingCount} pending</p>
+          </div>
+          <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Upcoming This Week</p>
+            <h4 className="text-xl font-bold text-slate-800">{weekAppts.length}</h4>
+            <p className="text-[9px] text-emerald-500 mt-1">scheduled</p>
+          </div>
+          <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Clearances Issued</p>
+            <h4 className="text-xl font-bold text-slate-800">486</h4>
+            <p className="text-[9px] text-emerald-500 mt-1">This month</p>
+          </div>
+        </div>
+
+        {/* Analytics Section */}
+        <div className="glass-card p-4 mb-5 bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-bold text-sm text-[#466460]">Health Analytics</h3>
+            <div className="flex gap-1">
+              {['all', 'student', 'instructor', 'staff'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`filter-pill ${filter === f ? 'active' : ''}`}
+                >
+                  {f === 'all' ? 'All' : f === 'student' ? 'Students' : f === 'instructor' ? 'Faculty' : 'Staff'}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Analytics Section */}
-          <div className="glass-card p-4 mb-5 bg-white rounded-xl shadow-sm border border-slate-200">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-bold text-sm text-[#466460]">Health Analytics</h3>
-              <div className="flex gap-1">
-                {['all', 'student', 'instructor', 'staff'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`filter-pill ${filter === f ? 'active' : ''}`}
-                  >
-                    {f === 'all' ? 'All' : f === 'student' ? 'Students' : f === 'instructor' ? 'Faculty' : 'Staff'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="h-[160px] flex justify-center">
-                <Bar data={barChartData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
-              </div>
-              <div className="h-[160px] flex justify-center">
-                <Doughnut data={doughnutData} options={{ maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-center mt-4">
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">Total Visits</p>
-                <p className="text-lg font-bold text-[#466460]">{totalVisits}</p>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">Most Common</p>
-                <p className="text-xs font-bold text-[#466460]">{chartData.topDisease}</p>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">Recovery Rate</p>
-                <p className="text-lg font-bold text-[#466460]">94%</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Visit Trends Section */}
-          <div className="glass-card p-4 mb-5 bg-white rounded-xl shadow-sm border border-slate-200">
-            <h3 className="font-bold text-xs text-[#466460] mb-3"><i className="fa-solid fa-clock-rotate-left mr-1"></i>Visit Trends</h3>
-            <div className="grid grid-cols-4 gap-3 text-center">
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">Today</p>
-                <p className="text-sm font-bold text-[#466460]">{todayAppts.length}</p>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">This Week</p>
-                <p className="text-sm font-bold text-[#466460]">{weekAppts.length}</p>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">This Month</p>
-                <p className="text-sm font-bold text-[#466460]">{sampleAppointments.length}</p>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-lg">
-                <p className="text-[8px] font-black text-slate-400">Avg/Day</p>
-                <p className="text-sm font-bold text-[#466460]">{Math.round(sampleAppointments.length / 30)}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Activity & Alerts */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
-              <h3 className="font-bold text-xs text-[#466460] mb-3"><i className="fa-solid fa-clock-rotate-left mr-1"></i>Recent Activity</h3>
-              <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                {auditLogs.slice(0, 5).map(log => (
-                  <div key={log.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
-                    <div className="flex-1">
-                      <p className="text-[10px] font-bold text-slate-700">{log.action}</p>
-                      <p className="text-[9px] text-slate-500">{log.target}</p>
-                    </div>
-                    <p className="text-[8px] text-slate-400">{log.timestamp}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="h-[160px] flex justify-center">
+              <Bar data={barChartData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
             </div>
-            <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
-              <h3 className="font-bold text-xs text-[#466460] mb-3"><i className="fa-solid fa-bell mr-1"></i>Alerts & Notifications</h3>
-              <div className="space-y-2">
-                {getAlerts().map((alert, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
-                    <i className={`fa-solid ${alert.icon} text-xs ${alert.type === 'warning' ? 'text-amber-500' : 'text-blue-500'}`}></i>
-                    <p className="text-[10px] text-slate-600">{alert.text}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="h-[160px] flex justify-center">
+              <Doughnut data={doughnutData} options={{ maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 9 } } } } }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center mt-4">
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">Total Visits</p>
+              <p className="text-lg font-bold text-[#466460]">{totalVisits}</p>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">Most Common</p>
+              <p className="text-xs font-bold text-[#466460]">{chartData.topDisease}</p>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">Recovery Rate</p>
+              <p className="text-lg font-bold text-[#466460]">94%</p>
             </div>
           </div>
         </div>
-      </DashboardLayout>
+
+        {/* Visit Trends Section */}
+        <div className="glass-card p-4 mb-5 bg-white rounded-xl shadow-sm border border-slate-200">
+          <h3 className="font-bold text-xs text-[#466460] mb-3"><i className="fa-solid fa-clock-rotate-left mr-1"></i>Visit Trends</h3>
+          <div className="grid grid-cols-4 gap-3 text-center">
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">Today</p>
+              <p className="text-sm font-bold text-[#466460]">{todayAppts.length}</p>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">This Week</p>
+              <p className="text-sm font-bold text-[#466460]">{weekAppts.length}</p>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">This Month</p>
+              <p className="text-sm font-bold text-[#466460]">{sampleAppointments.length}</p>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <p className="text-[8px] font-black text-slate-400">Avg/Day</p>
+              <p className="text-sm font-bold text-[#466460]">{Math.round(sampleAppointments.length / 30)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity & Alerts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <h3 className="font-bold text-xs text-[#466460] mb-3"><i className="fa-solid fa-clock-rotate-left mr-1"></i>Recent Activity</h3>
+            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+              {auditLogs.slice(0, 5).map(log => (
+                <div key={log.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold text-slate-700">{log.action}</p>
+                    <p className="text-[9px] text-slate-500">{log.target}</p>
+                  </div>
+                  <p className="text-[8px] text-slate-400">{log.timestamp}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="glass-card p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+            <h3 className="font-bold text-xs text-[#466460] mb-3"><i className="fa-solid fa-bell mr-1"></i>Alerts & Notifications</h3>
+            <div className="space-y-2">
+              {getAlerts().map((alert, idx) => (
+                <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                  <i className={`fa-solid ${alert.icon} text-xs ${alert.type === 'warning' ? 'text-amber-500' : 'text-blue-500'}`}></i>
+                  <p className="text-[10px] text-slate-600">{alert.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </>
   );
 };

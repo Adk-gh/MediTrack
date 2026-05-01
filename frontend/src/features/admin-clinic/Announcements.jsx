@@ -1,6 +1,5 @@
 // frontend/src/features/admin-clinic/Announcements.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { DashboardLayout } from '../../layouts/DashboardLayout.jsx';
 import * as announcementsService from '../../services/announcements.service';
 
 // ============================================================
@@ -19,7 +18,6 @@ const initialAnnouncements = [
 // ============================================================
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
-  // Already a formatted string (e.g. "April 20, 2026") — return as-is
   if (isNaN(Date.parse(dateStr))) return dateStr;
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 };
@@ -127,7 +125,6 @@ export const Announcements = () => {
         showSnackbar('Announcement posted');
       }
     } catch (_) {
-      // Fallback to local state
       if (currentEditId) {
         setAnnouncements(prev => prev.map(a => a.id === currentEditId ? { ...a, ...payload } : a));
         showSnackbar('Announcement updated');
@@ -161,70 +158,68 @@ export const Announcements = () => {
   // RENDER
   // ============================================================
   return (
-    <DashboardLayout>
-      <div className="bg-white min-h-[calc(100vh-120px)] animate-[fadeInSlide_0.4s_ease-out_forwards]">
+    <div className="bg-white min-h-[calc(100vh-120px)] animate-[fadeInSlide_0.4s_ease-out_forwards]">
 
-        {/* ── Header Bar ── */}
-        <div className="flex justify-between items-center px-5 pt-4 pb-3 border-b-2 border-[#e0eceb]">
-          <h3 className="font-bold text-base text-[#466460]">Announcements</h3>
-          <button
-            onClick={() => handleOpenForm()}
-            className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-3.5 py-1.5 rounded-full font-semibold text-[11px] cursor-pointer hover:opacity-90 transition-opacity"
-          >
-            + New Post
-          </button>
-        </div>
+      {/* ── Header Bar ── */}
+      <div className="flex justify-between items-center px-5 pt-4 pb-3 border-b-2 border-[#e0eceb]">
+        <h3 className="font-bold text-base text-[#466460]">Announcements</h3>
+        <button
+          onClick={() => handleOpenForm()}
+          className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-3.5 py-1.5 rounded-full font-semibold text-[11px] cursor-pointer hover:opacity-90 transition-opacity"
+        >
+          + New Post
+        </button>
+      </div>
 
-        {/* ── Announcement List ── */}
-        <div className="px-5 py-4 space-y-3">
-          {announcements.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-sm">No announcements yet.</div>
-          ) : (
-            announcements.map(item => (
-              <div
-                key={item.id}
-                onClick={() => handleView(item)}
-                className="bg-white p-4 rounded-xl border border-[#e2e8f0] relative cursor-pointer hover:shadow-md hover:border-[#8aacaa] transition-all"
-              >
-                {/* Left accent border */}
-                <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#e07a5f] to-[#e9c46a] rounded-l-xl pointer-events-none"></div>
+      {/* ── Announcement List ── */}
+      <div className="px-5 py-4 space-y-3">
+        {announcements.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-sm">No announcements yet.</div>
+        ) : (
+          announcements.map(item => (
+            <div
+              key={item.id}
+              onClick={() => handleView(item)}
+              className="bg-white p-4 rounded-xl border border-[#e2e8f0] relative cursor-pointer hover:shadow-md hover:border-[#8aacaa] transition-all"
+            >
+              {/* Left accent border */}
+              <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#e07a5f] to-[#e9c46a] rounded-l-xl pointer-events-none"></div>
 
-                {/* 3-dot menu */}
-                <div className="absolute top-2.5 right-3" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)}
-                    className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm"
-                  >
-                    <i className="fa-solid fa-ellipsis"></i>
-                  </button>
-                  {activeMenuId === item.id && (
-                    <div className="absolute right-0 top-9 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-28 py-1">
-                      <button
-                        onClick={() => handleOpenForm(item.id)}
-                        className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <h3 className="text-[#466460] font-bold text-[14px] mb-1 pr-10">{item.title}</h3>
-                <div className="text-[10px] text-slate-400 mb-1">{formatDate(item.date)}</div>
-                <span className="inline-block bg-[#e0eceb] text-[#466460] text-[9px] font-semibold px-2 py-0.5 rounded-full mb-1.5">
-                  {item.dept}
-                </span>
-                <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.content}</p>
+              {/* 3-dot menu */}
+              <div className="absolute top-2.5 right-3" onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)}
+                  className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm"
+                >
+                  <i className="fa-solid fa-ellipsis"></i>
+                </button>
+                {activeMenuId === item.id && (
+                  <div className="absolute right-0 top-9 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-28 py-1">
+                    <button
+                      onClick={() => handleOpenForm(item.id)}
+                      className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
-            ))
-          )}
-        </div>
+
+              <h3 className="text-[#466460] font-bold text-[14px] mb-1 pr-10">{item.title}</h3>
+              <div className="text-[10px] text-slate-400 mb-1">{formatDate(item.date)}</div>
+              <span className="inline-block bg-[#e0eceb] text-[#466460] text-[9px] font-semibold px-2 py-0.5 rounded-full mb-1.5">
+                {item.dept}
+              </span>
+              <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.content}</p>
+            </div>
+          ))
+        )}
       </div>
 
       {/* ── Create / Edit Modal ── */}
@@ -313,7 +308,7 @@ export const Announcements = () => {
       )}
 
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
-    </DashboardLayout>
+    </div>
   );
 };
 
