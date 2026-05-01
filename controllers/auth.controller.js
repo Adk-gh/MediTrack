@@ -1,7 +1,6 @@
 // C:\Users\HP\MediTrack\controllers\auth.controller.js
 const axios = require('axios');
 const FormData = require('form-data');
-const jwt = require('jsonwebtoken');
 const { db, auth } = require('../configs/firebase-admin');
 
 /**
@@ -66,7 +65,7 @@ exports.register = async (req, res) => {
         }
 
         // 2. DYNAMIC ROLE ASSIGNMENT
-        const specificRoles = ['lecturer', 'nurse', 'doctor', 'administrator', 'librarian', 'professor', 'instructor', 'faculty', 'staff', 'technician', 'guard', 'janitor'];
+        const specificRoles = ['lecturer', 'nurse', 'doctor', 'administrator', 'admin', 'librarian', 'professor', 'instructor', 'faculty', 'staff', 'technician', 'guard', 'janitor'];
         let role = 'student'; 
 
         const findSpecificRole = (text) => {
@@ -97,6 +96,7 @@ exports.register = async (req, res) => {
         });
 
         const userData = {
+            uid: userRecord.uid,
             firstName,
             lastName,
             middleInitial: middleInitial || '',
@@ -105,29 +105,16 @@ exports.register = async (req, res) => {
             universityId: ocrId,
             isVerified: true,
             role: role,
-            profileComplete: false, // Initial state
+            isProfileSetup: false, // Updated to match your choice
             createdAt: new Date().toISOString()
         };
 
         await db.collection('users').doc(userRecord.uid).set(userData);
 
-        // 5. GENERATE CUSTOM JWT (Using jsonwebtoken)
-        const userPayload = {
-    uid: user.uid, // or localId
-    email: user.email,
-    role: user.role
-};
-
-        const token = jwt.sign(
-    userPayload,
-    process.env.JWT_SECRET,
-    { expiresIn: '1d' } // Token lasts 24 hours
-);
-
         return res.status(201).json({
             success: true,
             message: "Registration successful! ID Verified.",
-            data: { uid: userRecord.uid, token, ...userData }
+            data: { ...userData } // Frontend will handle login to get token
         });
 
     } catch (error) {
@@ -138,7 +125,7 @@ exports.register = async (req, res) => {
 };
 
 /**
- * LOGIN: Verifies credentials and returns user profile with JWT
+ * LOGIN: Verifies credentials and returns user profile with Firebase ID Token
  */
 exports.login = async (req, res) => {
     try {
@@ -152,7 +139,8 @@ exports.login = async (req, res) => {
         const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${process.env.FIREBASE_API_KEY}`;
         const signInResponse = await axios.post(signInUrl, { email, password, returnSecureToken: true });
 
-        const { localId } = signInResponse.data;
+        // idToken is the valid Firebase JWT we need
+        const { localId, idToken } = signInResponse.data;
 
         // 2. Fetch User Profile from Firestore
         const userDoc = await db.collection('users').doc(localId).get();
@@ -162,31 +150,25 @@ exports.login = async (req, res) => {
 
         const userData = userDoc.data();
 
-        // 3. GENERATE CUSTOM JWT (To avoid "kid" claim errors in middleware)
-        const token = jwt.sign(
-            { uid: localId, email: userData.email, role: userData.role },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-        );
-
+        // 3. Return the Firebase idToken
         return res.status(200).json({
             success: true,
             message: "Login successful!",
             data: {
-                token,
+                token: idToken, // This is now a real Firebase Token
                 uid: localId,
                 firstName: userData.firstName,
                 lastName: userData.lastName,
                 email: userData.email,
                 role: userData.role,
-                profileComplete: userData.profileComplete || false
+                isProfileSetup: userData.isProfileSetup || false
             }
         });
 
     } catch (error) {
         console.error("Login Error:", error.response?.data?.error?.message || error.message);
         const errorCode = error.response?.data?.error?.message;
-        let message = (errorCode === 'EMAIL_NOT_FOUND' || errorCode === 'INVALID_PASSWORD') 
+        let message = (errorCode === 'EMAIL_NOT_FOUND' || errorCode === 'INVALID_PASSWORD' || errorCode === 'INVALID_LOGIN_CREDENTIALS') 
             ? "Invalid credentials." 
             : "Login failed.";
         return res.status(401).json({ success: false, message });

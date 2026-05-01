@@ -3,8 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
-import authService from '../services/auth.service.js';
 import { loginSchema, getFieldErrors } from '../validation/schemas.js';
+
+// Firebase Imports
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore"; // Use doc and getDoc for direct ID lookup
+import { auth, db } from '../firebase'; 
 
 const LoginForm = () => {
   const navigate = useNavigate();
@@ -50,41 +54,63 @@ const LoginForm = () => {
     setLoading(true);
 
     try {
-      const response = await authService.login({ email, password });
-      
-      // Backend returns { success: true, data: { ...user, token } }
-      const user = response.data;
+      // 1. Log the user into Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
 
-      if (user && user.token) {
-        // 1. Store individual items for quick access
-        localStorage.setItem('token', user.token);
-        localStorage.setItem('role', user.role || '');
-        localStorage.setItem('uid', user.id || '');
-        localStorage.setItem('name', `${user.firstName || ''} ${user.lastName || ''}`.trim());
+      // 🔍 Log the current session UID
+      console.log("🔍 [Login] Authenticated UID:", firebaseUser.uid);
 
-        // 2. Store the whole user object (required by ProfileSetup.jsx)
-        // This includes the "profileComplete" boolean from your DB
-        localStorage.setItem('user', JSON.stringify(user));
+      // 2. Fetch profile directly using the UID as the Document ID
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userSnap = await getDoc(userDocRef);
 
-        const role = user.role?.toLowerCase().trim() || '';
+      let userData = { email: firebaseUser.email, uid: firebaseUser.uid };
 
-        // 3. Conditional Redirect
-        if (['nurse', 'doctor', 'dentist', 'admin'].includes(role)) {
-          navigate('/dashboard');
-        } else {
-          navigate('/student/meditrack');
-        }
+      if (userSnap.exists()) {
+        userData = { ...userData, ...userSnap.data() };
+        console.log("🔍 [Login] Document data found:", userData);
       } else {
-        setError('Login failed. Please try again.');
+        // Fallback: This handles cases where user is in Auth but not Firestore
+        console.warn("🔍 [Login] No matching document in Firestore collection 'users'!");
+        setError("User profile not found. Please contact the administrator.");
+        setLoading(false);
+        return;
       }
+
+      // 3. Set LocalStorage for app persistence
+      // We use the accessToken for API calls and the user object for UI states
+      localStorage.setItem('token', firebaseUser.accessToken);
+      localStorage.setItem('role', userData.role || 'student'); 
+      localStorage.setItem('uid', firebaseUser.uid);
+      localStorage.setItem('name', `${userData.firstName || ''} ${userData.lastName || ''}`.trim());
+      localStorage.setItem('user', JSON.stringify(userData));
+
+      const role = userData.role?.toLowerCase().trim() || 'student';
+      console.log("🔍 [Login] Parsed Role:", role);
+
+      // 4. Conditional Redirect Logic
+      if (['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role)) {
+        navigate('/dashboard');
+      } else {
+        navigate('/student/meditrack');
+      }
+
     } catch (err) {
-      setError(err.message || 'Invalid email or password');
+      console.error("🔍 [Login] Firebase Auth Error:", err.code, err.message);
+      
+      // User-friendly error mapping
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Network error. Check your internet connection.');
+      } else {
+        setError('An error occurred during login. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
-
-  // ... (Rest of your component styles and return remain the same)
 
   return (
     <>

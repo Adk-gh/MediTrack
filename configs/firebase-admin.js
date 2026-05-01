@@ -1,16 +1,24 @@
-const admin = require("firebase-admin");
-const serviceAccount = require("./serviceAccountKey.json");
+// C:\Users\HP\MediTrack\configs\firebase-admin.js
+const admin = require('firebase-admin');
 
-// Check if the app is already initialized to prevent errors
+// Require your local service account key file directly
+const serviceAccount = require('./serviceAccountkey.json');
+
+// Prevent re-initialization if this file is imported multiple times
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      // databaseURL: "https://<YOUR-PROJECT-ID>.firebaseio.com" // Uncomment if using Realtime DB
+    });
+    console.log('Firebase Admin SDK initialized successfully.');
+  } catch (error) {
+    console.error('Firebase Admin initialization error:', error.stack);
+  }
 }
 
-// 1. Create the instances
+// Export the services you need for your backend routes
 const db = admin.firestore();
-const auth = admin.auth(); // <--- MAKE SURE THIS LINE EXISTS
+const auth = admin.auth();
 
-// 2. Export BOTH db and auth
-module.exports = { db, auth}; // <--- BOTH MUST BE IN THIS OBJECT
+module.exports = { admin, db, auth };

@@ -26,14 +26,19 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
 
   if (!token || !user) return <Navigate to="/login" replace />;
 
-  if (user.profileComplete === false) {
+  if (user.isProfileSetup === false) {
     return <Navigate to="/onboarding" replace />;
   }
 
   if (adminOnly) {
-    const role = user.role?.toLowerCase() || '';
+    // ✅ ADDED .trim() HERE to fix the bouncing issue
+    const role = user.role?.toLowerCase().trim() || '';
     const isAdminRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
-    if (!isAdminRole) return <Navigate to="/student/meditrack" replace />;
+    
+    if (!isAdminRole) {
+      console.log(`Access Denied to Dashboard. Role parsed as: "${role}"`);
+      return <Navigate to="/student/meditrack" replace />;
+    }
   }
 
   return children;
@@ -47,9 +52,10 @@ const OnboardingPage = () => {
   if (!user) return <Navigate to="/login" replace />;
 
   const handleComplete = () => {
-    const updatedUser = { ...user, profileComplete: true };
+    const updatedUser = { ...user, isProfileSetup: true };
     localStorage.setItem('user', JSON.stringify(updatedUser));
 
+    // ✅ Ensures .trim() is here too just in case
     const role = user.role?.toLowerCase().trim() || '';
     if (['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role)) {
       navigate('/dashboard');

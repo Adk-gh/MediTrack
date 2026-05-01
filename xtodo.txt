@@ -1,8 +1,8 @@
 the profile setup is not saving the data to the database and its not autifilling from the users data.
 
 todo:
-    - make the profile-users.jsx work
-    - as well as the profile drawer in the header.
     - forgot password
     - make the records.jsx display the users information based on the profile setup.
-    - 
+    - fix the profile setup to upload all the content into the database some contents are not uploading properly
+    - fix the dashboard.jsx to fill the whole screen.
+    - add aditional information in the profile setup. : Dose,	Name of Vaccine,	Date; emergency contact: relationship and address; for users: Home address, Religion, Nationality, Civil status

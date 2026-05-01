@@ -1,21 +1,15 @@
 // frontend/src/features/admin-clinic/User-Management.jsx
 import React, { useState, useEffect } from 'react';
+// Import Firestore client methods
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
-// Initial user data
-const initialUsers = [
-  { id: 1, name: "Admin User", email: "admin@plsp.edu.ph", userId: "ADM-001", role: "admin", status: "active", department: "IT Administration", phone: "+63 912 345 6789", lastLogin: "2026-04-28 09:30 AM" },
-  { id: 2, name: "Dr. Maria Santos", email: "maria.santos@plsp.edu.ph", userId: "DOC-101", role: "doctor", status: "active", department: "Clinic Department", phone: "+63 917 123 4567", lastLogin: "2026-04-27 03:15 PM" },
-  { id: 3, name: "Nurse John Cruz", email: "john.cruz@plsp.edu.ph", userId: "NUR-202", role: "nurse", status: "active", department: "Clinic Department", phone: "+63 920 987 6543", lastLogin: "2026-04-28 08:45 AM" },
-  { id: 4, name: "Staff Mark Garcia", email: "mark.garcia@plsp.edu.ph", userId: "STF-303", role: "staff", status: "inactive", department: "Registrar's Office", phone: "+63 915 555 1234", lastLogin: "2026-04-20 11:00 AM" },
-  { id: 5, name: "Dr. James Rivera", email: "james.rivera@plsp.edu.ph", userId: "DOC-102", role: "doctor", status: "active", department: "Medical Department", phone: "+63 918 777 8888", lastLogin: "2026-04-26 02:30 PM" },
-  { id: 6, name: "Nurse Anna Reyes", email: "anna.reyes@plsp.edu.ph", userId: "NUR-203", role: "nurse", status: "active", department: "Clinic Department", phone: "+63 922 333 4444", lastLogin: "2026-04-28 10:15 AM" },
-  { id: 7, name: "Staff Leah Fernandez", email: "leah.fernandez@plsp.edu.ph", userId: "STF-304", role: "staff", status: "active", department: "Accounting Office", phone: "+63 916 222 3333", lastLogin: "2026-04-27 01:45 PM" },
-  { id: 8, name: "Dr. Paolo Villanueva", email: "paolo.villanueva@plsp.edu.ph", userId: "DOC-103", role: "doctor", status: "inactive", department: "Pediatrics", phone: "+63 923 444 5555", lastLogin: "2026-04-19 09:00 AM" },
-  { id: 9, name: "Nurse Sarah Lopez", email: "sarah.lopez@plsp.edu.ph", userId: "NUR-204", role: "nurse", status: "active", department: "Emergency Room", phone: "+63 925 666 7777", lastLogin: "2026-04-27 11:20 AM" }
-];
+// ✅ CORRECT IMPORT: Pointing to your frontend firebase client config
+import { db } from '../../firebase'; 
 
 export const UserManagement = () => {
-  const [users, setUsers] = useState(initialUsers);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
   const [currentFilter, setCurrentFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
   const [message, setMessage] = useState(null);
@@ -34,7 +28,32 @@ export const UserManagement = () => {
     phone: ''
   });
 
-  const getInitials = (name) => name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+  // Fetch data from Firebase when component mounts
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const querySnapshot = await getDocs(collection(db, "users"));
+      const usersData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUsers(usersData);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      showSnackbar("Failed to load users from database", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+  };
 
   const getRoleLabel = (role) => ({ admin: 'Admin', doctor: 'Doctor', nurse: 'Nurse', staff: 'Staff' }[role] || role);
 
@@ -42,7 +61,9 @@ export const UserManagement = () => {
     if (currentFilter !== 'all' && user.role !== currentFilter) return false;
     if (searchInput) {
       const search = searchInput.toLowerCase();
-      return user.name.toLowerCase().includes(search) || user.email.toLowerCase().includes(search) || user.userId.toLowerCase().includes(search);
+      return (user.name?.toLowerCase().includes(search) || 
+              user.email?.toLowerCase().includes(search) || 
+              user.userId?.toLowerCase().includes(search));
     }
     return true;
   });
@@ -74,21 +95,23 @@ export const UserManagement = () => {
     if (!user) return;
     setEditId(user.id);
     setFormData({
-      fullName: user.name,
-      email: user.email,
-      userId: user.userId,
-      role: user.role,
-      status: user.status,
+      fullName: user.name || '',
+      email: user.email || '',
+      userId: user.userId || '',
+      role: user.role || 'admin',
+      status: user.status || 'active',
       department: user.department || '',
       phone: user.phone || ''
     });
     setShowModal(true);
   };
 
-  const saveUser = (e) => {
+  // Push to Firebase Firestore
+  const saveUser = async (e) => {
     e.preventDefault();
     const now = new Date();
     const lastLogin = now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
     const userData = {
       name: formData.fullName.trim(),
       email: formData.email.trim(),
@@ -100,15 +123,22 @@ export const UserManagement = () => {
       lastLogin: lastLogin
     };
 
-    if (editId) {
-      setUsers(users.map(u => u.id === editId ? { ...u, ...userData } : u));
-      showSnackbar('User updated successfully', 'success');
-    } else {
-      const newId = Math.max(...users.map(u => u.id), 0) + 1;
-      setUsers([...users, { id: newId, ...userData }]);
-      showSnackbar('User added successfully', 'success');
+    try {
+      if (editId) {
+        const userRef = doc(db, "users", editId);
+        await updateDoc(userRef, userData);
+        setUsers(users.map(u => u.id === editId ? { ...u, ...userData } : u));
+        showSnackbar('User updated successfully', 'success');
+      } else {
+        const docRef = await addDoc(collection(db, "users"), userData);
+        setUsers([...users, { id: docRef.id, ...userData }]);
+        showSnackbar('User added successfully', 'success');
+      }
+      closeModal();
+    } catch (error) {
+      console.error("Error saving user: ", error);
+      showSnackbar("Error saving user to database", "error");
     }
-    closeModal();
   };
 
   const openDeleteModal = (id) => {
@@ -117,10 +147,17 @@ export const UserManagement = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
+  // Remove from Firebase Firestore
+  const confirmDelete = async () => {
     if (deleteTargetId) {
-      setUsers(users.filter(u => u.id !== deleteTargetId.id));
-      showSnackbar('User deleted successfully', 'success');
+      try {
+        await deleteDoc(doc(db, "users", deleteTargetId.id));
+        setUsers(users.filter(u => u.id !== deleteTargetId.id));
+        showSnackbar('User deleted successfully', 'success');
+      } catch (error) {
+        console.error("Error deleting user: ", error);
+        showSnackbar('Error deleting user from database', 'error');
+      }
     }
     closeDeleteModal();
   };
@@ -221,7 +258,13 @@ export const UserManagement = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="text-center py-10 text-slate-400">
+                  <i className="fa-solid fa-spinner fa-spin mr-2"></i> Loading users...
+                </td>
+              </tr>
+            ) : filteredUsers.length === 0 ? (
               <tr>
                 <td colSpan={7} className="text-center py-10 text-slate-400">No users found</td>
               </tr>
@@ -239,7 +282,7 @@ export const UserManagement = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 text-sm font-mono">{user.userId}</td>
+                  <td className="p-3 text-sm font-mono">{user.universityId}</td>
                   <td className="p-3">
                     <span className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold ${user.role === 'admin' ? 'bg-yellow-100 text-yellow-700' : user.role === 'doctor' ? 'bg-blue-100 text-blue-700' : user.role === 'nurse' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
                       {getRoleLabel(user.role)}
