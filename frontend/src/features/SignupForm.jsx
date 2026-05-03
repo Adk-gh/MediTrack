@@ -353,13 +353,15 @@ if (formData.suffix) data.append('suffix', formData.suffix);
       <div className="lf-mobile-wrapper">
         <div className="lf-hero">
           <div className="lf-brand">
-            <div className="lf-brand-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </div>
-            <span className="lf-brand-name">MediTrack</span>
+            <div className="lf-brand lf-hero-brand">
+            <img 
+              src="/logo1.jpg" 
+              alt="MediTrack Logo" 
+              className="lf-brand-name" 
+              style={{ height: "40px" }} 
+            />
+          </div>
+
           </div>
           <h1 className="lf-hero-title">Create account</h1>
           <p className="lf-hero-sub">Register with your university credentials</p>

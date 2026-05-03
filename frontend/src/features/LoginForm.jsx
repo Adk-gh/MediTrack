@@ -230,9 +230,9 @@ const LoginForm = () => {
           background: #f8fafc;
         }
         .lf-input-desktop:focus {
-          border-color: #4a635d;
+          border-color: #466460;
           background: #fff;
-          box-shadow: 0 4px 12px rgba(74, 99, 93, 0.15);
+          box-shadow: 0 4px 12px rgba(70, 100, 96, 0.15);
           transform: translateY(-1px);
         }
         .lf-input-desktop::placeholder { color: #94a3b8; }
@@ -242,7 +242,7 @@ const LoginForm = () => {
           text-align: right;
           font-size: 13px;
           font-weight: 600;
-          color: #4a635d;
+          color: #466460;
           text-decoration: none;
           margin-top: -5px;
           margin-bottom: 15px;
@@ -265,15 +265,15 @@ const LoginForm = () => {
           font-size: 14px; font-weight: 700;
           cursor: pointer;
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          background: linear-gradient(135deg, #4a635d 0%, #3d5249 100%);
+          background: linear-gradient(135deg, #466460 0%, #38524d 100%);
           color: #fff; border: none;
           font-family: inherit;
-          box-shadow: 0 4px 14px rgba(74, 99, 93, 0.3);
+          box-shadow: 0 4px 14px rgba(70, 100, 96, 0.3);
         }
         .lf-btn-primary-desktop:hover:not(:disabled) {
           opacity: 0.9;
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(74, 99, 93, 0.4);
+          box-shadow: 0 6px 20px rgba(70, 100, 96, 0.4);
         }
         .lf-btn-primary-desktop:active:not(:disabled) {
           transform: translateY(0);
@@ -285,14 +285,14 @@ const LoginForm = () => {
           font-size: 14px; font-weight: 600;
           cursor: pointer;
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          background: transparent; color: #4a635d;
+          background: transparent; color: #466460;
           border: 2px solid #e2e8f0;
           text-align: center; text-decoration: none;
           display: inline-block; box-sizing: border-box;
         }
         .lf-btn-secondary-desktop:hover {
-          border-color: #4a635d;
-          background: rgba(74, 99, 93, 0.05);
+          border-color: #466460;
+          background: rgba(70, 100, 96, 0.05);
           transform: translateY(-2px);
         }
 
@@ -312,7 +312,7 @@ const LoginForm = () => {
           /* Hero */
           .lf-hero {
             position: relative;
-            background: linear-gradient(135deg, #2d5a52 0%, #1e3d35 100%);
+            background: linear-gradient(135deg, #466460 0%, #38524d 100%);
             padding: 56px 28px 52px;
             overflow: hidden;
             flex-shrink: 0;
@@ -394,12 +394,12 @@ const LoginForm = () => {
             overflow: hidden;
           }
           .lf-input-wrap:focus-within {
-            border-color: #2d5a52;
+            border-color: #466460;
             background: #fff;
-            box-shadow: 0 4px 16px rgba(45, 90, 82, 0.15);
+            box-shadow: 0 4px 16px rgba(70, 100, 96, 0.15);
           }
           .lf-input-wrap:has(.lf-input-mobile:focus) .lf-label-mobile {
-            color: #2d5a52;
+            color: #466460;
           }
           .lf-input-icon {
             width: 52px; flex-shrink: 0;
@@ -407,7 +407,7 @@ const LoginForm = () => {
           }
           .lf-input-icon-box {
             width: 32px; height: 32px;
-            background: linear-gradient(135deg, #2d5a52 0%, #1e3d35 100%);
+            background: linear-gradient(135deg, #466460 0%, #38524d 100%);
             border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
             transition: transform 0.3s ease;
@@ -429,7 +429,7 @@ const LoginForm = () => {
             transition: color 0.2s ease, transform 0.2s ease;
           }
           .lf-eye-btn:hover {
-            color: #2d5a52;
+            color: #466460;
             transform: scale(1.1);
           }
 
@@ -437,7 +437,7 @@ const LoginForm = () => {
           .lf-forgot {
             display: block; text-align: right;
             font-size: 13px; font-weight: 600;
-            color: #2d5a52; text-decoration: none;
+            color: #466460; text-decoration: none;
             margin-top: -4px; margin-bottom: 28px;
             transition: opacity 0.2s ease;
           }
@@ -447,18 +447,18 @@ const LoginForm = () => {
           .lf-btn-primary-mobile {
             width: 100%; padding: 16px;
             border-radius: 50px; border: none;
-            background: linear-gradient(135deg, #2d5a52 0%, #1e3d35 100%);
+            background: linear-gradient(135deg, #466460 0%, #38524d 100%);
             color: #fff;
             font-size: 16px; font-weight: 700; font-family: inherit;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             margin-bottom: 16px;
-            box-shadow: 0 4px 16px rgba(45, 90, 82, 0.3);
+            box-shadow: 0 4px 16px rgba(70, 100, 96, 0.3);
           }
           .lf-btn-primary-mobile:hover:not(:disabled) {
             opacity: 0.92;
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(45, 90, 82, 0.4);
+            box-shadow: 0 8px 24px rgba(70, 100, 96, 0.4);
           }
           .lf-btn-primary-mobile:active:not(:disabled) {
             transform: scale(0.98);
@@ -483,13 +483,13 @@ const LoginForm = () => {
             margin-bottom: 28px; box-sizing: border-box;
           }
           .lf-btn-secondary-mobile:hover {
-            border-color: #2d5a52;
+            border-color: #466460;
             background: #f8faf9;
             transform: translateY(-2px);
           }
 
           .lf-footer-text { text-align: center; font-size: 13.5px; color: #64748b; }
-          .lf-footer-link { color: #2d5a52; font-weight: 700; text-decoration: none; transition: opacity 0.2s ease; }
+          .lf-footer-link { color: #466460; font-weight: 700; text-decoration: none; transition: opacity 0.2s ease; }
           .lf-footer-link:hover { opacity: 0.8; }
         }
       `}</style>
@@ -546,8 +546,12 @@ const LoginForm = () => {
         {/* Hero */}
         <div className="lf-hero">
           <div className="lf-brand lf-hero-brand">
-            <div className="lf-brand-icon">＋</div>
-            <span className="lf-brand-name">MediTrack</span>
+            <img 
+              src="/logo1.jpg" 
+              alt="MediTrack Logo" 
+              className="lf-brand-name" 
+              style={{ height: "40px" }} 
+            />
           </div>
           <h1 className="lf-hero-title">Welcome back</h1>
           <p className="lf-hero-sub">Sign in to continue your health journey</p>

@@ -4,8 +4,6 @@ const { db, auth } = require('../../configs/firebase-admin');
 const axios = require('axios');
 const FormData = require('form-data');
 
-// --- REMOVED generateToken helper as we now use Firebase ID Tokens ---
-
 exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, email, password, universityId }, idFile) => {
   if (!firstName || !lastName || !email || !password || !universityId) {
     const error = new Error('Missing required fields.');
@@ -55,7 +53,7 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     throw error;
   }
 
-  // 2. Role Logic (Default to student, or apply your logic)
+  // 2. Role Logic
   let role = 'student';
 
   // 3. Firestore Duplicate Check
@@ -84,7 +82,7 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     throw firebaseErr;
   }
 
-  // 5. Save profile to Firestore (using isProfileSetup)
+  // 5. Save initial profile to Firestore
   const newUser = {
     uid: userRecord.uid,
     firstName,
@@ -95,13 +93,12 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     universityId: ocrId,
     isVerified: true,
     role,
-    isProfileSetup: false, // Updated field name
+    isProfileSetup: false,
     createdAt: new Date().toISOString(),
   };
 
   await usersRef.doc(userRecord.uid).set(newUser);
 
-  // Note: Frontend will handle the first login to get the token
   return newUser;
 };
 
@@ -110,12 +107,11 @@ exports.loginUser = async ({ email, password }) => {
   if (!FIREBASE_API_KEY) throw new Error('Server configuration error: Missing API Key');
 
   try {
-    // We call the Google API to verify password and get a valid Firebase ID Token
     const response = await axios.post(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
       { email, password, returnSecureToken: true }
     );
-    
+
     const { localId, idToken } = response.data;
 
     const userDoc = await db.collection('users').doc(localId).get();
@@ -129,7 +125,7 @@ exports.loginUser = async ({ email, password }) => {
 
     return {
       ...user,
-      token: idToken, // Return the actual Firebase ID Token
+      token: idToken,
     };
   } catch (err) {
     const error = new Error('Invalid email or password.');
@@ -139,7 +135,7 @@ exports.loginUser = async ({ email, password }) => {
 };
 
 exports.setupProfile = async (userId, profileData) => {
-  if (!userId) throw new Error("userId is required for setupProfile");
+  if (!userId) throw new Error('userId is required for setupProfile');
 
   const userRef = db.collection('users').doc(userId);
   const userSnap = await userRef.get();
@@ -150,20 +146,113 @@ exports.setupProfile = async (userId, profileData) => {
     throw error;
   }
 
-  // Update Firestore to mark setup as true
-  await userRef.update({
-    ...profileData,
-    isProfileSetup: true, // Updated field name
+  // --- Destructure every expected field explicitly ---
+  // This prevents the client from overwriting protected fields like uid, role, isVerified.
+  const {
+    firstName, middleInitial, lastName, suffix,
+    birthday, age, sex, bloodType,
+    homeAddress, religion, nationality, civilStatus,
+    universityId, department, program, yearLevel, section,
+    classification, jobTitle,
+    phoneNumber,
+    emergencyContact,
+    vaccinations,
+  } = profileData;
+
+  // --- Build a clean, sanitized object ---
+  const sanitized = {
+    // Personal
+    firstName:     firstName     ?? '',
+    middleInitial: middleInitial ?? '',
+    lastName:      lastName      ?? '',
+    suffix:        suffix        ?? '',
+    birthday:      birthday      ?? '',
+    age:           age           ?? '',
+    sex:           sex           ?? '',
+    bloodType:     bloodType     ?? '',
+    homeAddress:   homeAddress   ?? '',
+    religion:      religion      ?? '',
+    nationality:   nationality   ?? '',
+    civilStatus:   civilStatus   ?? '',
+
+    // Academic / Work
+    universityId:   universityId   ?? '',
+    department:     department     ?? '',
+    program:        program        ?? '',
+    yearLevel:      yearLevel      ?? '',
+    section:        section        ?? '',
+    classification: classification ?? '',
+    jobTitle:       jobTitle       ?? '',
+
+    // Contact
+    phoneNumber: phoneNumber ?? '',
+
+    // ─── Emergency Contact ───────────────────────────────────────────────────
+    // Stored as a FULL nested object — do NOT spread this into root-level fields.
+    // Firestore .update() with dot-notation would strip sub-fields; we use
+    // set+merge below to write the whole object at once.
+    emergencyContact: {
+      name:         emergencyContact?.name         ?? '',
+      relationship: emergencyContact?.relationship ?? '',
+      phone:        emergencyContact?.phone        ?? '',
+      address:      emergencyContact?.address      ?? '',
+    },
+
+    // ─── COVID-19 Vaccinations ───────────────────────────────────────────────
+    // Fixed 5-dose structure. Always write all 5 keys so Firestore never has
+    // partial/missing doses from a previous save.
+    vaccinations: {
+      dose1: {
+        vaccineName: vaccinations?.dose1?.vaccineName ?? '',
+        date:        vaccinations?.dose1?.date        ?? '',
+      },
+      dose2: {
+        vaccineName: vaccinations?.dose2?.vaccineName ?? '',
+        date:        vaccinations?.dose2?.date        ?? '',
+      },
+      booster1: {
+        vaccineName: vaccinations?.booster1?.vaccineName ?? '',
+        date:        vaccinations?.booster1?.date        ?? '',
+      },
+      booster2: {
+        vaccineName: vaccinations?.booster2?.vaccineName ?? '',
+        date:        vaccinations?.booster2?.date        ?? '',
+      },
+    },
+
+    // ─── Status flags ────────────────────────────────────────────────────────
+    // isProfileSetup is the SINGLE source of truth. The frontend also sends
+    // profileComplete — we accept it here as an alias for safety.
+    isProfileSetup: true,
+    profileComplete: true,
     updatedAt: new Date().toISOString(),
-  });
+  };
+
+  console.log(`[setupProfile] Saving profile for uid: ${userId}`);
+  console.log(JSON.stringify(sanitized, null, 2));
+
+  // ─── CRITICAL: Use set() with merge:true, NOT update() ───────────────────
+  //
+  // Why NOT .update()?
+  //   Firestore's .update() writes nested objects using dot-notation internally,
+  //   which means emergencyContact and vaccinations would be written as flat keys
+  //   like "emergencyContact.name", "vaccinations.dose1.vaccineName", etc.
+  //   If ANY of those sub-fields didn't exist before, the update silently drops them.
+  //
+  // Why set() + merge:true?
+  //   It writes the entire nested object as a proper Firestore Map sub-document,
+  //   and merges with existing top-level fields (like uid, role, email) without
+  //   overwriting them.
+  //
+  await userRef.set(sanitized, { merge: true });
 
   const updated = await userRef.get();
   return updated.data();
 };
 
 exports.getProfile = async (userId) => {
-  if (!userId) throw new Error("userId is required for getProfile");
-  
+  if (!userId) throw new Error('userId is required for getProfile');
+
   const userDoc = await db.collection('users').doc(userId).get();
   if (!userDoc.exists) {
     const error = new Error('User not found');
@@ -184,11 +273,12 @@ exports.firebaseLogin = async (idToken) => {
   let userData;
   if (!userDoc.exists) {
     userData = {
-      uid: uid,
+      uid,
       name: name || '',
-      email: email,
+      email,
       role: 'student',
-      isProfileSetup: false, // Updated field name
+      isProfileSetup: false,
+      profileComplete: false,
       createdAt: new Date().toISOString(),
     };
     await usersRef.doc(uid).set(userData);
@@ -198,6 +288,6 @@ exports.firebaseLogin = async (idToken) => {
 
   return {
     ...userData,
-    token: idToken, // Return the same token passed in
+    token: idToken,
   };
 };

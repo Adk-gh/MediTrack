@@ -1,361 +1,328 @@
 import React, { useState, useEffect, useRef } from 'react';
-// ✅ ADDED 'getDoc' to the imports below
-import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../../firebase'; 
+import { auth, db } from '../../firebase';
 
-// Simple SVG Icons
+// ─── Icons ────────────────────────────────────────────────────────────────────
 const DocIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
-    <line x1="16" y1="13" x2="8" y2="13" />
-    <line x1="16" y1="17" x2="8" y2="17" />
-    <line x1="10" y1="9" x2="8" y2="9" />
+    <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" />
   </svg>
 );
 
-const LogoutIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <polyline points="16 17 21 12 16 7" />
-    <line x1="21" y1="12" x2="9" y2="12" />
-  </svg>
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const fmt = (val) => (!val || val === '') ? '—' : val;
+
+const SectionHeader = ({ label }) => (
+  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#2d7a52', marginBottom: 12, borderLeft: '3px solid #34c472', paddingLeft: 8 }}>
+    {label}
+  </div>
 );
 
+const InfoRow = ({ label, value, last }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: last ? 'none' : '1px solid #e2f0ea' }}>
+    <span style={{ fontWeight: 600, fontSize: 12, color: '#6b8577', flexShrink: 0, marginRight: 12 }}>{label}</span>
+    <span style={{ fontWeight: 600, fontSize: 13, color: '#1a2e22', textAlign: 'right' }}>{fmt(value)}</span>
+  </div>
+);
+
+const Card = ({ children, style }) => (
+  <div style={{ background: '#fff', borderRadius: 20, padding: 16, border: '1px solid #ddeee5', ...style }}>
+    {children}
+  </div>
+);
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
-  const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentDocId, setCurrentDocId] = useState(null); 
-  const [dbUserId, setDbUserId] = useState('');
+  const [loading, setLoading]           = useState(true);
+  const [logoutModal, setLogoutModal]   = useState(false);
+  const [toast, setToast]               = useState(null);
 
-  // Main display states
-  const [nameVal, setNameVal] = useState('');
-  const [birthdateVal, setBirthdateVal] = useState('');
-  const [ageVal, setAgeVal] = useState('');
-  const [genderVal, setGenderVal] = useState('');
-  const [emailVal, setEmailVal] = useState('');
-  const [phoneVal, setPhoneVal] = useState('');
-
-  const [xrayDate, setXrayDate] = useState('April 22, 2026');
-  const [xrayFile, setXrayFile] = useState('X-ray_Report_2026.pdf');
+  // Document upload state
+  const [xrayDate, setXrayDate]         = useState('April 22, 2026');
+  const [xrayFile, setXrayFile]         = useState('X-ray_Report_2026.pdf');
   const [drugtestDate, setDrugtestDate] = useState('April 22, 2026');
   const [drugtestFile, setDrugtestFile] = useState('Drug_Test_Result_2026.pdf');
   const [documentsNote, setDocumentsNote] = useState('Valid documents · last updated April 2026');
-
-  const [toast, setToast] = useState(null);
   const [previewModal, setPreviewModal] = useState(false);
-  const [logoutModal, setLogoutModal] = useState(false);
   const [previewFileName, setPreviewFileName] = useState('');
-  const [previewFileSize, setPreviewFileSize] = useState('');
-  const [previewContent, setPreviewContent] = useState(null);
-  const [pendingFile, setPendingFile] = useState(null);
-  const [pendingDocType, setPendingDocType] = useState(null);
-
-  const xrayInputRef = useRef(null);
+  const [previewContent, setPreviewContent]   = useState(null);
+  const [pendingFile, setPendingFile]   = useState(null);
+  const [pendingDocType, setPendingDocType]   = useState(null);
+  const xrayInputRef    = useRef(null);
   const drugtestInputRef = useRef(null);
 
-  const [draftName, setDraftName] = useState('');
-  const [draftBirthdate, setDraftBirthdate] = useState('');
-  const [draftAge, setDraftAge] = useState('');
-  const [draftGender, setDraftGender] = useState('');
-  const [draftEmail, setDraftEmail] = useState('');
-  const [draftPhone, setDraftPhone] = useState('');
+  // All profile data in one object — mirrors Firestore structure exactly
+  const [profile, setProfile] = useState({
+    // Identity
+    firstName: '', middleInitial: '', lastName: '', suffix: '',
+    birthday: '', age: '', gender: '', bloodType: '',
+    homeAddress: '', religion: '', nationality: '', civilStatus: '',
+    universityId: '',
+    role: '',
+    // Academic / Work
+    studentId: '', department: '', program: '', yearLevel: '', section: '',
+    classification: '', jobTitle: '',
+    // Contact
+    email: '', phoneNumber: '',
+    // Emergency Contact
+    emergencyContact: { name: '', relationship: '', phone: '', address: '' },
+    // Vaccinations
+    vaccinations: {
+      dose1:    { vaccineName: '', date: '' },
+      dose2:    { vaccineName: '', date: '' },
+      booster1: { vaccineName: '', date: '' },
+      booster2: { vaccineName: '', date: '' },
+    },
+  });
 
+  // ── Fetch from Firestore on mount ────────────────────────────────────────
   useEffect(() => {
-    console.log("🔍 [Profile] Component mounted. Setting up Auth Listener...");
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          console.log(`🔍 [Profile] Fetching document named: ${user.uid}`);
-          
-          // Direct fetch by Document ID (which matches your UID)
-          const userDocRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userDocRef);
-
-          if (userSnap.exists()) {
-            const data = userSnap.data();
-            setCurrentDocId(userSnap.id); 
-
-            const fName = data.firstName || '';
-            const mInit = data.middleInitial ? `${data.middleInitial}. ` : '';
-            const lName = data.lastName || '';
-            setNameVal(`${fName} ${mInit}${lName}`.trim());
-
-            setBirthdateVal(data.birthdate || 'Not set');
-            setAgeVal(data.age || 'Not set');
-            setGenderVal(data.gender || 'Not set');
-            setEmailVal(data.email || user.email);
-            setPhoneVal(data.phoneNumber || 'Not set');
-            setDbUserId(data.universityId || user.uid.slice(0, 8).toUpperCase());
-            console.log("🔍 [Profile] Data loaded successfully.");
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          if (snap.exists()) {
+            const d = snap.data();
+            setProfile({
+              firstName:      d.firstName      || '',
+              middleInitial:  d.middleInitial  || '',
+              lastName:       d.lastName       || '',
+              suffix:         d.suffix         || '',
+              birthday:       d.birthday       || '',
+              age:            d.age            || '',
+              gender:         d.gender         || '',
+              bloodType:      d.bloodType      || '',
+              homeAddress:    d.homeAddress    || '',
+              religion:       d.religion       || '',
+              nationality:    d.nationality    || '',
+              civilStatus:    d.civilStatus    || '',
+              universityId:   d.universityId   || user.uid.slice(0, 8).toUpperCase(),
+              role:           d.role           || '',
+              studentId:      d.studentId      || '',
+              department:     d.department     || '',
+              program:        d.program        || '',
+              yearLevel:      d.yearLevel      || '',
+              section:        d.section        || '',
+              classification: d.classification || '',
+              jobTitle:       d.jobTitle       || '',
+              email:          d.email          || user.email || '',
+              phoneNumber:    d.phoneNumber    || '',
+              emergencyContact: {
+                name:         d.emergencyContact?.name         || '',
+                relationship: d.emergencyContact?.relationship || '',
+                phone:        d.emergencyContact?.phone        || '',
+                address:      d.emergencyContact?.address      || '',
+              },
+              vaccinations: {
+                dose1:    { vaccineName: d.vaccinations?.dose1?.vaccineName    || '', date: d.vaccinations?.dose1?.date    || '' },
+                dose2:    { vaccineName: d.vaccinations?.dose2?.vaccineName    || '', date: d.vaccinations?.dose2?.date    || '' },
+                booster1: { vaccineName: d.vaccinations?.booster1?.vaccineName || '', date: d.vaccinations?.booster1?.date || '' },
+                booster2: { vaccineName: d.vaccinations?.booster2?.vaccineName || '', date: d.vaccinations?.booster2?.date || '' },
+              },
+            });
           } else {
-            console.warn("🔍 [Profile] No document found with this ID!");
-            setEmailVal(user.email);
+            setProfile(prev => ({ ...prev, email: user.email || '' }));
           }
-        } catch (error) {
-          console.error("🔍 [Profile] Error during data fetch:", error);
+        } catch (err) {
+          console.error('[ProfileUsers] Fetch error:', err);
         }
-      } else {
-        console.log("🔍 [Profile] No user is currently logged in.");
       }
       setLoading(false);
     });
-
-    return () => {
-      console.log("🔍 [Profile] Component unmounting, cleaning up Auth Listener.");
-      unsubscribe(); 
-    };
+    return () => unsubscribe();
   }, []);
 
-  function showToast(message) {
-    setToast(message);
-    setTimeout(() => setToast(null), 2200);
-  }
+  // ── Derived display values ───────────────────────────────────────────────
+  const fullName = [
+    profile.firstName,
+    profile.middleInitial ? `${profile.middleInitial}.` : '',
+    profile.lastName,
+    profile.suffix,
+  ].filter(Boolean).join(' ');
 
-  function formatFileSize(bytes) {
+  const isStudent = profile.role?.toLowerCase() === 'student';
+
+  // ── Toast ────────────────────────────────────────────────────────────────
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  // ── Document upload handlers ─────────────────────────────────────────────
+  const formatFileSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
+  };
 
-  function enterEdit() {
-    setDraftName(nameVal);
-    setDraftBirthdate(birthdateVal === 'Not set' ? '' : birthdateVal);
-    setDraftAge(ageVal === 'Not set' ? '' : ageVal);
-    setDraftGender(genderVal === 'Not set' ? '' : genderVal);
-    setDraftEmail(emailVal);
-    setDraftPhone(phoneVal === 'Not set' ? '' : phoneVal);
-    setIsEditing(true);
-  }
-
-  async function saveEdit() {
-    if (!currentDocId) {
-      showToast("Cannot save: User document ID not found.");
-      return;
-    }
-
-    const nameToParse = (draftName || nameVal).trim();
-    const nameParts = nameToParse.split(/\s+/);
-    let newFirstName = '', newMiddleInitial = '', newLastName = '';
-
-    if (nameParts.length === 1) {
-      newFirstName = nameParts[0];
-    } else if (nameParts.length === 2) {
-      newFirstName = nameParts[0];
-      newLastName = nameParts[1];
-    } else if (nameParts.length > 2) {
-      newLastName = nameParts.pop();
-      const possibleMI = nameParts[nameParts.length - 1];
-      if (possibleMI.length <= 2 && possibleMI.includes('.')) {
-        newMiddleInitial = nameParts.pop().replace('.', '');
-      } else if (possibleMI.length === 1) {
-        newMiddleInitial = nameParts.pop();
-      }
-      newFirstName = nameParts.join(' ');
-    }
-
-    const updatedData = {
-      firstName: newFirstName,
-      lastName: newLastName,
-      middleInitial: newMiddleInitial,
-      birthdate: draftBirthdate || birthdateVal,
-      age: draftAge || ageVal,
-      gender: draftGender || genderVal,
-      email: draftEmail || emailVal,
-      phoneNumber: draftPhone || phoneVal 
-    };
-
-    try {
-      const userRef = doc(db, 'users', currentDocId);
-      await updateDoc(userRef, updatedData);
-      
-      const mInitStr = updatedData.middleInitial ? `${updatedData.middleInitial}. ` : '';
-      setNameVal(`${updatedData.firstName} ${mInitStr}${updatedData.lastName}`.trim());
-      setBirthdateVal(updatedData.birthdate);
-      setAgeVal(updatedData.age);
-      setGenderVal(updatedData.gender);
-      setEmailVal(updatedData.email);
-      setPhoneVal(updatedData.phoneNumber);
-      
-      setIsEditing(false);
-      showToast('Changes saved successfully');
-    } catch (error) {
-      console.error("🔍 [Profile] Error saving changes:", error);
-      showToast('Error saving changes');
-    }
-  }
-
-  function handleFileChange(e, docType) {
+  const handleFileChange = (e, docType) => {
     const file = e.target.files[0];
     if (!file) return;
     setPendingFile(file);
     setPendingDocType(docType);
     setPreviewFileName(file.name);
-    setPreviewFileSize(formatFileSize(file.size));
-
     if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setPreviewContent(<img src={url} alt="Preview" className="max-w-full rounded-xl" />);
+      setPreviewContent(<img src={URL.createObjectURL(file)} alt="Preview" className="max-w-full rounded-xl" />);
     } else if (file.type === 'application/pdf') {
-      const url = URL.createObjectURL(file);
-      setPreviewContent(<iframe src={url} title="PDF Preview" className="w-full border-none rounded-xl" style={{ height: 300 }} />);
+      setPreviewContent(<iframe src={URL.createObjectURL(file)} title="PDF Preview" style={{ width: '100%', height: 300, border: 'none', borderRadius: 12 }} />);
     } else {
       setPreviewContent(
-        <div className="text-center p-10 text-[#9bb5a5]">
-          <div className="flex justify-center mb-2"><DocIcon /></div>
-          <div className="text-xs">{file.name}</div>
-          <div className="text-xs mt-1">Preview not available for this file type.</div>
+        <div style={{ textAlign: 'center', padding: 40, color: '#9bb5a5' }}>
+          <DocIcon /><div style={{ fontSize: 12, marginTop: 8 }}>{file.name}</div>
+          <div style={{ fontSize: 11, marginTop: 4 }}>Preview not available.</div>
         </div>
       );
     }
     setPreviewModal(true);
     e.target.value = '';
-  }
-
-  function closePreview() {
-    setPreviewModal(false);
-    setPendingFile(null);
-    setPendingDocType(null);
-    setPreviewContent(null);
-  }
-
-  function confirmUpdate() {
-    if (!pendingFile || !pendingDocType) { closePreview(); return; }
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    if (!validTypes.includes(pendingFile.type)) {
-      showToast('Invalid file type. Please upload PDF, JPG, or PNG.');
-      closePreview(); return;
-    }
-    if (pendingFile.size > 5 * 1024 * 1024) {
-      showToast('File too large. Maximum size is 5MB.');
-      closePreview(); return;
-    }
-    const today = new Date();
-    const dateStr = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-    if (pendingDocType === 'xray') {
-      setXrayDate(dateStr);
-      setXrayFile(pendingFile.name);
-      showToast('X-RAY updated');
-    } else if (pendingDocType === 'drugtest') {
-      setDrugtestDate(dateStr);
-      setDrugtestFile(pendingFile.name);
-      showToast('Drug Test updated');
-    }
-
-    setDocumentsNote('Documents pending verification...');
-    setTimeout(() => {
-      setDocumentsNote('Valid documents · last updated ' + dateStr);
-      showToast('Documents verified and saved');
-    }, 2000);
-
-    closePreview();
-  }
-
-  const inputBase = {
-    width: '100%',
-    maxWidth: 160,
-    padding: '6px 10px',
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 13,
-    fontWeight: 600,
-    color: '#1a2e22',
-    textAlign: 'right',
-    border: '1.5px solid #ddeee5',
-    borderRadius: 8,
-    background: '#ffffff',
-    outline: 'none',
   };
 
+  const closePreview = () => { setPreviewModal(false); setPendingFile(null); setPendingDocType(null); setPreviewContent(null); };
+
+  const confirmUpdate = () => {
+    if (!pendingFile || !pendingDocType) { closePreview(); return; }
+    if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(pendingFile.type)) {
+      showToast('Invalid file type. PDF, JPG, or PNG only.'); closePreview(); return;
+    }
+    if (pendingFile.size > 5 * 1024 * 1024) {
+      showToast('File too large. Max 5MB.'); closePreview(); return;
+    }
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    if (pendingDocType === 'xray') { setXrayDate(dateStr); setXrayFile(pendingFile.name); showToast('X-RAY updated'); }
+    else { setDrugtestDate(dateStr); setDrugtestFile(pendingFile.name); showToast('Drug Test updated'); }
+    setDocumentsNote('Documents pending verification...');
+    setTimeout(() => { setDocumentsNote('Valid documents · last updated ' + dateStr); showToast('Documents verified and saved'); }, 2000);
+    closePreview();
+  };
+
+  // ─── Vaccination rows ─────────────────────────────────────────────────────
+  const DOSE_LABELS = [
+    { key: 'dose1',    label: 'Dose 1' },
+    { key: 'dose2',    label: 'Dose 2' },
+    { key: 'booster1', label: 'Booster 1' },
+    { key: 'booster2', label: 'Booster 2' },
+  ];
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1a5c3a' }}>
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1a5c3a', fontSize: 13, fontWeight: 600 }}>
         Loading profile...
       </div>
     );
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 12px', display: 'flex', flexDirection: 'column', gap: 16, scrollbarWidth: 'none' }}>
-      
-      {/* Profile Header */}
-      <div style={{ background: '#fff', borderRadius: 24, border: '1.5px solid #ddeee5', padding: '18px 18px 14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
-          {isEditing ? (
-            <input
-              type="text"
-              value={draftName}
-              onChange={e => setDraftName(e.target.value)}
-              autoFocus
-              placeholder="Your Name"
-              style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, fontWeight: 700, color: '#1a2e22', border: '1.5px solid #ddeee5', borderRadius: 8, padding: '6px 12px', outline: 'none', background: '#fff' }}
-            />
-          ) : (
-            <span style={{ fontSize: 18, fontWeight: 700, color: '#1a2e22', fontFamily: "'DM Serif Display', serif" }}>
-              {nameVal || 'No Name Set'}
-            </span>
-          )}
-          <div style={{ display: 'flex', gap: 6 }}>
-            {isEditing ? (
-              <button onClick={saveEdit} style={{ background: '#1a5c3a', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>SAVE</button>
-            ) : (
-              <button onClick={enterEdit} style={{ background: '#fff', border: '1.5px solid #ddeee5', padding: '5px 12px', borderRadius: 40, fontSize: 11, fontWeight: 600, color: '#1a5c3a', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>EDIT INFO</button>
-            )}
+    <div style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none' }}>
+
+      {/* ── Profile Header ── */}
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+          <div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: '#1a2e22', fontFamily: "'DM Serif Display', serif", lineHeight: 1.2 }}>
+              {fullName || 'No Name Set'}
+            </div>
+            <div style={{ fontSize: 11, color: '#6b8577', marginTop: 3, fontWeight: 500 }}>
+              {isStudent ? (profile.program || profile.department || 'Student') : (profile.jobTitle || profile.classification || 'Personnel')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <div style={{ background: '#e8f5ee', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#1a5c3a' }}>
+              {isStudent ? `ID: ${profile.universityId}` : profile.classification}
+            </div>
+            <div style={{ background: '#f4f7f5', padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 600, color: '#6b8577', textTransform: 'capitalize' }}>
+              {profile.role || 'student'}
+            </div>
           </div>
         </div>
-        <div style={{ background: '#e8f5ee', display: 'inline-block', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#1a5c3a' }}>
-          ID: {dbUserId}
-        </div>
-      </div>
+      </Card>
 
-      {/* Identification */}
-      <div style={{ background: '#fff', borderRadius: 20, padding: '16px', border: '1px solid #ddeee5' }}>
-        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#2d7a52', marginBottom: 12, borderLeft: '3px solid #34c472', paddingLeft: 8 }}>
-          IDENTIFICATION
-        </div>
-        {[
-          { label: 'BIRTHDATE', val: birthdateVal, draft: draftBirthdate, setDraft: setDraftBirthdate },
-          { label: 'AGE', val: ageVal, draft: draftAge, setDraft: setDraftAge },
-          { label: 'GENDER', val: genderVal, draft: draftGender, setDraft: setDraftGender },
-        ].map((row, i, arr) => (
-          <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid #e2f0ea' : 'none' }}>
-            <span style={{ fontWeight: 600, fontSize: 12, color: '#6b8577' }}>{row.label}</span>
-            {isEditing ? (
-              <input type="text" value={row.draft} onChange={e => row.setDraft(e.target.value)} style={inputBase} />
-            ) : (
-              <span style={{ fontWeight: 600, fontSize: 13, color: '#1a2e22', textAlign: 'right' }}>{row.val}</span>
-            )}
-          </div>
-        ))}
-      </div>
+      {/* ── Personal Information ── */}
+      <Card>
+        <SectionHeader label="Personal Information" />
+        <InfoRow label="Birthday"     value={profile.birthday} />
+        <InfoRow label="Age"          value={profile.age} />
+        <InfoRow label="Sex"          value={profile.gender} />
+        <InfoRow label="Blood Type"   value={profile.bloodType} />
+        <InfoRow label="Civil Status" value={profile.civilStatus} />
+        <InfoRow label="Religion"     value={profile.religion} />
+        <InfoRow label="Nationality"  value={profile.nationality} />
+        <InfoRow label="Home Address" value={profile.homeAddress} last />
+      </Card>
 
-      {/* Contact Details */}
-      <div style={{ background: '#fff', borderRadius: 20, padding: '16px', border: '1px solid #ddeee5' }}>
-        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#2d7a52', marginBottom: 12, borderLeft: '3px solid #34c472', paddingLeft: 8 }}>
-          CONTACT DETAILS
-        </div>
-        {[
-          { label: 'EMAIL ADDRESS', val: emailVal, draft: draftEmail, setDraft: setDraftEmail, type: 'email' },
-          { label: 'PHONE NUMBER', val: phoneVal, draft: draftPhone, setDraft: setDraftPhone, type: 'tel' },
-        ].map((row, i, arr) => (
-          <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid #e2f0ea' : 'none' }}>
-            <span style={{ fontWeight: 600, fontSize: 12, color: '#6b8577' }}>{row.label}</span>
-            {isEditing ? (
-              <input type={row.type || "text"} value={row.draft} onChange={e => row.setDraft(e.target.value)} style={inputBase} />
-            ) : (
-              <span style={{ fontWeight: 600, fontSize: 13, color: '#1a2e22', textAlign: 'right' }}>{row.val}</span>
-            )}
-          </div>
-        ))}
-      </div>
+      {/* ── Academic / Work Info ── */}
+      <Card>
+        <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} />
+        {isStudent ? (
+          <>
+            <InfoRow label="Student No."  value={profile.studentId} />
+            <InfoRow label="Department"   value={profile.department} />
+            <InfoRow label="Program"      value={profile.program} />
+            <InfoRow label="Year Level"   value={profile.yearLevel} />
+            <InfoRow label="Section"      value={profile.section} last />
+          </>
+        ) : (
+          <>
+            <InfoRow label="Classification" value={profile.classification} />
+            <InfoRow label="Department"     value={profile.department} />
+            <InfoRow label="Job Title"      value={profile.jobTitle} last />
+          </>
+        )}
+      </Card>
 
-      {/* Health Documents */}
-      <div style={{ background: '#fff', borderRadius: 20, padding: '16px', border: '1px solid #ddeee5' }}>
-        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#2d7a52', marginBottom: 12, borderLeft: '3px solid #34c472', paddingLeft: 8 }}>
-          HEALTH DOCUMENTS
+      {/* ── Contact Details ── */}
+      <Card>
+        <SectionHeader label="Contact Details" />
+        <InfoRow label="Email Address" value={profile.email} />
+        <InfoRow label="Phone Number"  value={profile.phoneNumber} last />
+      </Card>
+
+      {/* ── Emergency Contact ── */}
+      <Card>
+        <SectionHeader label="Emergency Contact" />
+        <InfoRow label="Name"         value={profile.emergencyContact.name} />
+        <InfoRow label="Relationship" value={profile.emergencyContact.relationship} />
+        <InfoRow label="Phone"        value={profile.emergencyContact.phone} />
+        <InfoRow label="Address"      value={profile.emergencyContact.address} last />
+      </Card>
+
+      {/* ── COVID-19 Vaccination History ── */}
+      <Card>
+        <SectionHeader label="COVID-19 Vaccination History" />
+        {/* Column headers */}
+        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #e2f0ea' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Dose</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Vaccine Brand</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase', textAlign: 'right' }}>Date Given</span>
         </div>
+        {DOSE_LABELS.map(({ key, label }, i) => {
+          const v = profile.vaccinations[key];
+          const isEmpty = !v.vaccineName && !v.date;
+          return (
+            <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #e2f0ea' : 'none', alignItems: 'center' }}>
+              {/* Dose label pill */}
+              <span style={{ background: '#e8f5ee', color: '#1a5c3a', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, textAlign: 'center', width: 'fit-content' }}>
+                {label}
+              </span>
+              {/* Vaccine name */}
+              <span style={{ fontSize: 12, fontWeight: 600, color: isEmpty ? '#c4d9ce' : '#1a2e22' }}>
+                {isEmpty ? 'Not recorded' : fmt(v.vaccineName)}
+              </span>
+              {/* Date */}
+              <span style={{ fontSize: 11, fontWeight: 600, color: isEmpty ? '#c4d9ce' : '#6b8577', textAlign: 'right' }}>
+                {isEmpty ? '—' : fmt(v.date)}
+              </span>
+            </div>
+          );
+        })}
+      </Card>
+
+      {/* ── Health Documents ── */}
+      <Card>
+        <SectionHeader label="Health Documents" />
         {/* X-RAY */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #e2f0ea' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -382,46 +349,50 @@ export default function ProfileUsers({ onLogout }) {
         </div>
         <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddeee5' }} />
         <div style={{ fontSize: 10, fontWeight: 600, color: '#2d7a52', background: '#e8f5ee', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
-      </div>
+      </Card>
 
-      {/* Sign Out */}
-      <div style={{ marginTop: 8 }}>
-        <button onClick={() => setLogoutModal(true)} style={{ width: '100%', background: '#fff', border: '1px solid #ffdde1', color: '#e53e3e', padding: '14px', borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>SIGN OUT</button>
-      </div>
+      {/* ── Sign Out ── */}
+      <button onClick={() => setLogoutModal(true)} style={{ width: '100%', background: '#fff', border: '1px solid #ffdde1', color: '#e53e3e', padding: 14, borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>
+        SIGN OUT
+      </button>
 
-      {/* Logout Modal */}
+      {/* ── Logout Modal ── */}
       {logoutModal && (
-        <div onClick={e => e.target === e.currentTarget && setLogoutModal(false)} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div onClick={e => e.target === e.currentTarget && setLogoutModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', padding: 24, borderRadius: 24, width: 300, textAlign: 'center' }}>
-             <h3 style={{ margin: '0 0 8px', color: '#1a2e22', fontSize: 18 }}>Confirm Sign Out</h3>
-             <p style={{ margin: '0 0 24px', color: '#6b8577', fontSize: 13 }}>Are you sure you want to log out?</p>
-             <div style={{ display: 'flex', gap: 12 }}>
-               <button onClick={() => setLogoutModal(false)} style={{ flex: 1, padding: 12, borderRadius: 40, border: '1.5px solid #ddeee5', background: 'transparent' }}>Cancel</button>
-               <button onClick={() => { setLogoutModal(false); if (onLogout) onLogout(); }} style={{ flex: 1, padding: 12, borderRadius: 40, border: 'none', background: '#e53e3e', color: '#fff' }}>Sign Out</button>
-             </div>
+            <h3 style={{ margin: '0 0 8px', color: '#1a2e22', fontSize: 18 }}>Confirm Sign Out</h3>
+            <p style={{ margin: '0 0 24px', color: '#6b8577', fontSize: 13 }}>Are you sure you want to log out?</p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => setLogoutModal(false)} style={{ flex: 1, padding: 12, borderRadius: 40, border: '1.5px solid #ddeee5', background: 'transparent', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => { setLogoutModal(false); if (onLogout) onLogout(); }} style={{ flex: 1, padding: 12, borderRadius: 40, border: 'none', background: '#e53e3e', color: '#fff', cursor: 'pointer' }}>Sign Out</button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Preview Modal */}
+      {/* ── File Preview Modal ── */}
       {previewModal && (
-        <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 320, background: '#fff', borderRadius: 28, overflow: 'hidden' }}>
-            <div style={{ background: '#1a5c3a', padding: 16, color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Preview</span>
-              <button onClick={closePreview} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>✕</button>
+            <div style={{ background: '#1a5c3a', padding: 16, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Preview — {previewFileName}</span>
+              <button onClick={closePreview} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
             <div style={{ padding: 16 }}>{previewContent}</div>
             <div style={{ display: 'flex', gap: 12, padding: 16 }}>
-              <button onClick={closePreview} style={{ flex: 1, padding: 10, borderRadius: 40, border: '1.5px solid #ddeee5' }}>Cancel</button>
-              <button onClick={confirmUpdate} style={{ flex: 1, background: '#1a5c3a', color: '#fff', border: 'none', padding: 10, borderRadius: 40 }}>Confirm</button>
+              <button onClick={closePreview} style={{ flex: 1, padding: 10, borderRadius: 40, border: '1.5px solid #ddeee5', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={confirmUpdate} style={{ flex: 1, background: '#1a5c3a', color: '#fff', border: 'none', padding: 10, borderRadius: 40, cursor: 'pointer' }}>Confirm</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Toast */}
-      {toast && <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#1a5c3a', color: '#fff', padding: '10px 20px', borderRadius: 40, fontSize: 12, zIndex: 5000 }}>{toast}</div>}
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#1a5c3a', color: '#fff', padding: '10px 20px', borderRadius: 40, fontSize: 12, zIndex: 5000, whiteSpace: 'nowrap' }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
-//C:\Users\HP\MediTrack\frontend\src\validation\schemas.js
+// C:\Users\HP\MediTrack\frontend\src\validation\schemas.js
 import { z } from "zod";
 
-// User schemas
+// ── User schemas ───────────────────────────────────────────────────────────────
+
 export const registerSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
@@ -21,7 +22,65 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-// Records schemas
+// ── Profile Setup schema ───────────────────────────────────────────────────────
+// Validates the full profile submitted from ProfileSetup.jsx
+
+const vaccinationRecordSchema = z.object({
+  dose: z.enum(['1st Dose', '2nd Dose', '3rd Dose', 'Booster 1', 'Booster 2']).optional().or(z.literal('')),
+  vaccineName: z.string().optional(),
+  date: z.string().optional(),   // ISO date string YYYY-MM-DD
+});
+
+export const profileSetupSchema = z.object({
+  // Personal
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  middleInitial: z.string().max(1).optional(),
+  suffix: z.string().optional(),
+  birthday: z.string().min(1, "Birthday is required"),
+  age: z.union([z.string(), z.number()]).optional(),
+  gender: z.enum(["Male", "Female"], { errorMap: () => ({ message: "Sex is required" }) }),
+  bloodType: z.string().optional(),
+
+  // Identity
+  homeAddress: z.string().optional(),
+  religion: z.string().optional(),
+  nationality: z.string().optional(),
+  civilStatus: z.enum(["Single", "Married", "Widowed", "Divorced", "Separated"]).optional(),
+
+  // Academic (students)
+  studentId: z.string().optional(),
+  department: z.string().optional(),
+  program: z.string().optional(),
+  yearLevel: z.string().optional(),
+  section: z.string().optional(),
+
+  // Work (non-students)
+  classification: z.string().optional(),
+  jobTitle: z.string().optional(),
+
+  // Contact
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  phoneNumber: z.string().regex(/^[0-9]{11}$/, "Phone must be 11 digits").optional().or(z.literal("")),
+
+  // Emergency Contact (nested)
+  emergencyContact: z.object({
+    name: z.string().optional(),
+    relationship: z.string().optional(),
+    phone: z.string().regex(/^[0-9]{11}$/, "Phone must be 11 digits").optional().or(z.literal("")),
+    address: z.string().optional(),
+  }).optional(),
+
+  // Vaccination History
+  vaccinations: z.array(vaccinationRecordSchema).optional(),
+
+  // Meta
+  role: z.string().optional(),
+  profileComplete: z.boolean().optional(),
+});
+
+// ── Records schemas ────────────────────────────────────────────────────────────
+
 export const createRecordSchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
@@ -29,7 +88,8 @@ export const createRecordSchema = z.object({
   department: z.string().min(1, "Department is required"),
 });
 
-// Appointments schemas
+// ── Appointments schemas ───────────────────────────────────────────────────────
+
 export const createAppointmentSchema = z.object({
   name: z.string().min(2, "Name is required"),
   id: z.string().min(1, "ID is required"),
@@ -37,7 +97,8 @@ export const createAppointmentSchema = z.object({
   time: z.string().min(1, "Time is required"),
 });
 
-// Examinations schemas
+// ── Examinations schemas ───────────────────────────────────────────────────────
+
 export const examinationSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   firstName: z.string().min(1, "First name is required"),
@@ -50,10 +111,14 @@ export const examinationSchema = z.object({
   age: z.number().int().optional(),
   contactNo: z.string().optional(),
   email: z.string().email("Invalid email").optional().or(z.literal("")),
-  civilStatus: z.enum(["Single", "Married", "Widowed", "Divorced"]).optional(),
+  civilStatus: z.enum(["Single", "Married", "Widowed", "Divorced", "Separated"]).optional(),
+  religion: z.string().optional(),
+  nationality: z.string().optional(),
+  homeAddress: z.string().optional(),
   emergencyName: z.string().optional(),
   emergencyRelation: z.string().optional(),
   emergencyPhone: z.string().optional(),
+  emergencyAddress: z.string().optional(),
   bp: z.string().optional(),
   pr: z.string().optional(),
   rr: z.string().optional(),
@@ -67,14 +132,16 @@ export const examinationSchema = z.object({
   remarks: z.string().optional(),
 });
 
-// Announcements schemas
+// ── Announcements schemas ──────────────────────────────────────────────────────
+
 export const createAnnouncementSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200),
   content: z.string().min(10, "Content must be at least 10 characters"),
   dept: z.string().optional(),
 });
 
-// Helper function to validate form data
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
 export const validateForm = (schema, data) => {
   const result = schema.safeParse(data);
   if (result.success) {
@@ -88,7 +155,6 @@ export const validateForm = (schema, data) => {
   return { success: false, errors };
 };
 
-// Helper for real-time validation (returns errors object)
 export const getFieldErrors = (schema, data) => {
   const result = schema.safeParse(data);
   if (result.success) return {};

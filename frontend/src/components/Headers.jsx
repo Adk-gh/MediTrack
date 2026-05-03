@@ -8,41 +8,68 @@ import authService from '../services/auth.service.js';
 function ProfileDrawer({ isOpen, onClose, onLogout, userProfile }) {
   if (!isOpen) return null;
 
-  // Safely extract properties with fallbacks
   const {
-    name, firstName, lastName, email, role,
-    phoneNumber, department, classification, jobTitle,
-    birthday, age, gender, bloodType,
-    emergencyName, emergencyPhone,
-    studentId, program, yearLevel, section
+    // Personal
+    firstName, middleInitial, lastName, suffix,
+    email, role,
+    birthday, age, sex, bloodType,
+    civilStatus, religion, nationality, homeAddress,
+    phoneNumber,
+
+    // Academic (student)
+    universityId, department, program, yearLevel, section,
+
+    // Professional (non-student)
+    classification, jobTitle,
+
+    // Emergency Contact (nested object from Firestore)
+    emergencyContact,
+
+    // Vaccination (nested object from Firestore)
+    vaccinations,
   } = userProfile || {};
 
-  const displayName = (firstName && lastName) 
-    ? `${firstName} ${lastName}` 
-    : (name || 'User');
-    
+  const nameParts = [firstName, middleInitial ? `${middleInitial}.` : '', lastName, suffix || ''].filter(Boolean);
+  const displayName = nameParts.length > 0 ? nameParts.join(' ') : 'User';
+
   const userRole = role?.toLowerCase() || 'user';
   const isStudent = userRole === 'student';
 
+  // Helper: count completed vaccine doses
+  const vaccineDoseCount = vaccinations
+    ? Object.values(vaccinations).filter(d => d?.vaccineName).length
+    : 0;
+
+  const VACCINE_DOSE_KEYS = [
+    { key: 'dose1',    label: 'Dose 1'    },
+    { key: 'dose2',    label: 'Dose 2'    },
+    { key: 'booster1', label: 'Booster 1' },
+    { key: 'booster2', label: 'Booster 2' },
+  ];
+
   const InfoRow = ({ icon, label, value }) => (
-    <div className="flex items-center justify-between py-1.5 text-xs">
-      <div className="flex items-center gap-2.5 text-slate-500">
+    <div className="flex items-center justify-between py-1.5 text-xs border-b border-slate-50 last:border-0">
+      <div className="flex items-center gap-2.5 text-slate-500 shrink-0">
         <i className={`fa-solid ${icon} text-[#466460] w-4 text-center opacity-70`}></i>
         <span>{label}</span>
       </div>
-      <span className="font-semibold text-slate-800 text-right">{value || '—'}</span>
+      <span className="font-semibold text-slate-800 text-right ml-4 break-words max-w-[55%]">{value || '—'}</span>
     </div>
+  );
+
+  const SectionHeader = ({ label, color = 'text-slate-400' }) => (
+    <div className={`text-[9px] font-extrabold uppercase tracking-widest ${color} mb-3`}>{label}</div>
   );
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-[2000]" onClick={onClose}></div>
+      <div className="fixed inset-0 bg-black/40 z-[2000]" onClick={onClose} />
       <div
         className="fixed top-0 right-0 w-[380px] h-full bg-white shadow-[-4px_0_30px_rgba(0,0,0,0.15)] z-[2001] overflow-y-auto scrollbar-none"
         style={{ right: isOpen ? '0' : '-420px', transition: 'right 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}
       >
-        {/* Header */}
-        <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-8 text-white relative">
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <div className="bg-gradient-to-br from-[#466460] to-[#38524d] px-6 py-8 text-white relative">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 bg-white/20 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm flex items-center justify-center transition-all hover:bg-white/35"
@@ -55,66 +82,112 @@ function ProfileDrawer({ isOpen, onClose, onLogout, userProfile }) {
               alt="User"
             />
           </div>
-          <h2 className="text-xl font-extrabold mb-1">{displayName}</h2>
+          <h2 className="text-xl font-extrabold mb-0.5">{displayName}</h2>
           <p className="text-xs opacity-75">{email || 'No email provided'}</p>
-          <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-[9px] font-bold mt-2 tracking-wide uppercase">
-            {role || 'USER'}
-          </span>
-        </div>
-
-        {/* Personal Information */}
-        <div className="px-6 py-4 border-b border-slate-100">
-          <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-3">Personal Details</div>
-          <div className="flex flex-col gap-1">
-            <InfoRow icon="fa-cake-candles" label="Birthday" value={birthday} />
-            <InfoRow icon="fa-hashtag" label="Age" value={age} />
-            <InfoRow icon="fa-venus-mars" label="Gender" value={gender} />
-            <InfoRow icon="fa-droplet" label="Blood Type" value={bloodType} />
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide uppercase">
+              {role || 'USER'}
+            </span>
+            {isStudent && universityId && (
+              <span className="inline-block bg-white/10 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide font-mono">
+                {universityId}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Academic or Professional Information */}
+        {/* ── Personal Details ────────────────────────────────────────────── */}
         <div className="px-6 py-4 border-b border-slate-100">
-          <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-3">
-            {isStudent ? 'Academic Information' : 'Professional Information'}
+          <SectionHeader label="Personal Details" />
+          <div className="flex flex-col">
+            <InfoRow icon="fa-cake-candles"  label="Birthday"     value={birthday} />
+            <InfoRow icon="fa-hashtag"       label="Age"          value={age} />
+            <InfoRow icon="fa-venus-mars"    label="Sex"          value={sex} />
+            <InfoRow icon="fa-droplet"       label="Blood Type"   value={bloodType} />
+            <InfoRow icon="fa-ring"          label="Civil Status" value={civilStatus} />
+            <InfoRow icon="fa-church"        label="Religion"     value={religion} />
+            <InfoRow icon="fa-flag"          label="Nationality"  value={nationality} />
+            <InfoRow icon="fa-house"         label="Home Address" value={homeAddress} />
           </div>
-          <div className="flex flex-col gap-1">
+        </div>
+
+        {/* ── Academic / Professional ─────────────────────────────────────── */}
+        <div className="px-6 py-4 border-b border-slate-100">
+          <SectionHeader label={isStudent ? 'Academic Information' : 'Professional Information'} />
+          <div className="flex flex-col">
             {isStudent ? (
               <>
-                <InfoRow icon="fa-id-card" label="Student No." value={studentId} />
-                <InfoRow icon="fa-building" label="Department" value={department} />
-                <InfoRow icon="fa-graduation-cap" label="Program" value={program} />
-                <InfoRow icon="fa-layer-group" label="Yr & Section" value={(yearLevel || section) ? `${yearLevel} - ${section}` : '—'} />
+                <InfoRow icon="fa-id-card"        label="Student No."  value={universityId} />
+                <InfoRow icon="fa-building"       label="Department"   value={department} />
+                <InfoRow icon="fa-graduation-cap" label="Program"      value={program} />
+                <InfoRow icon="fa-layer-group"    label="Year Level"   value={yearLevel} />
+                <InfoRow icon="fa-users"          label="Section"      value={section} />
               </>
             ) : (
               <>
-                <InfoRow icon="fa-user-tie" label="Classification" value={classification} />
-                <InfoRow icon="fa-building" label="Department" value={department} />
-                <InfoRow icon="fa-briefcase" label="Job Title" value={jobTitle} />
+                <InfoRow icon="fa-user-tie"  label="Classification" value={classification} />
+                <InfoRow icon="fa-building"  label="Department"     value={department} />
+                <InfoRow icon="fa-briefcase" label="Job Title"       value={jobTitle} />
               </>
             )}
           </div>
         </div>
 
-        {/* Contact Information */}
+        {/* ── Contact Information ─────────────────────────────────────────── */}
         <div className="px-6 py-4 border-b border-slate-100">
-          <div className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-3">Contact Information</div>
-          <div className="flex flex-col gap-1">
-            <InfoRow icon="fa-phone" label="Phone Number" value={phoneNumber} />
-            <InfoRow icon="fa-envelope" label="Email Address" value={email} />
+          <SectionHeader label="Contact Information" />
+          <div className="flex flex-col">
+            <InfoRow icon="fa-phone"    label="Phone Number"   value={phoneNumber} />
+            <InfoRow icon="fa-envelope" label="Email Address"  value={email} />
           </div>
         </div>
 
-        {/* Emergency Contact */}
+        {/* ── Emergency Contact ────────────────────────────────────────────── */}
         <div className="px-6 py-4 border-b border-slate-100 bg-red-50/30">
-          <div className="text-[9px] font-extrabold uppercase tracking-widest text-red-400 mb-3">Emergency Contact</div>
-          <div className="flex flex-col gap-1">
-            <InfoRow icon="fa-address-book" label="Contact Name" value={emergencyName} />
-            <InfoRow icon="fa-phone-volume" label="Contact Number" value={emergencyPhone} />
+          <SectionHeader label="Emergency Contact" color="text-red-400" />
+          <div className="flex flex-col">
+            <InfoRow icon="fa-address-book"  label="Full Name"     value={emergencyContact?.name} />
+            <InfoRow icon="fa-heart"         label="Relationship"  value={emergencyContact?.relationship} />
+            <InfoRow icon="fa-phone-volume"  label="Phone Number"  value={emergencyContact?.phone} />
+            <InfoRow icon="fa-location-dot" label="Address"       value={emergencyContact?.address} />
           </div>
         </div>
 
-        {/* System & Actions */}
+        {/* ── COVID-19 Vaccination ─────────────────────────────────────────── */}
+        <div className="px-6 py-4 border-b border-slate-100 bg-blue-50/20">
+          <div className="flex items-center justify-between mb-3">
+            <SectionHeader label="COVID-19 Vaccination" color="text-blue-400" />
+            <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full -mt-3">
+              {vaccineDoseCount} / 5 doses
+            </span>
+          </div>
+
+          {vaccinations && vaccineDoseCount > 0 ? (
+            <div className="flex flex-col gap-2">
+              {VACCINE_DOSE_KEYS.map(({ key, label }) => {
+                const dose = vaccinations[key];
+                if (!dose?.vaccineName) return null;
+                return (
+                  <div key={key} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                        {label}
+                      </span>
+                      <span className="text-[11px] text-slate-700 font-medium">{dose.vaccineName}</span>
+                    </div>
+                    {dose.date && (
+                      <span className="text-[10px] text-slate-400 shrink-0 ml-2">{dose.date}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-400 italic">No vaccination records on file.</p>
+          )}
+        </div>
+
+        {/* ── System & Actions ─────────────────────────────────────────────── */}
         <div className="px-6 py-4">
           <div className="flex items-center justify-between text-[10px] text-slate-400 mb-4 px-2">
             <span>MediTrack v2.4.1</span>
@@ -171,54 +244,39 @@ export const DesktopHeader = ({ onOpenQR }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
 
-  // 1. Get the basic auth token data
   const authUser = authService.getCurrentUser();
-  
-  // 2. State to hold the FULL profile from the database
   const [fullProfile, setFullProfile] = useState(authUser || {});
 
-  // 3. Fetch the real database profile on load
   useEffect(() => {
     const fetchFullProfile = async () => {
       try {
-        const token = localStorage.getItem("token");
-        
-        if (!token) {
-          navigate('/login');
-          return;
-        }
+        const token = localStorage.getItem('token');
+        if (!token) { navigate('/login'); return; }
 
         const response = await fetch('http://localhost:5000/api/users/profile', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: { Authorization: `Bearer ${token}` },
         });
 
-        // HANDLE 401 UNAUTHORIZED
         if (response.status === 401) {
-          console.warn("Unauthorized access in Header. Redirecting to login...");
           authService.logout();
           navigate('/login');
           return;
         }
 
         const result = await response.json();
-
         if (result.success && result.data) {
-          // Merge the auth user data with the fresh database data
           setFullProfile({ ...authUser, ...result.data });
         }
       } catch (err) {
-        console.error("Error fetching full profile for header:", err);
+        console.error('Error fetching full profile for header:', err);
       }
     };
 
     fetchFullProfile();
-  }, [navigate]); // Dependencies updated
+  }, [navigate]);
 
-  // Determine display values for the top bar
-  const displayName = (fullProfile.firstName && fullProfile.lastName) 
-    ? `${fullProfile.firstName} ${fullProfile.lastName}` 
+  const displayName = (fullProfile.firstName && fullProfile.lastName)
+    ? `${fullProfile.firstName} ${fullProfile.lastName}`
     : (fullProfile.name || 'Admin User');
   const displayRole = fullProfile.role || 'Administrator';
 
@@ -234,12 +292,12 @@ export const DesktopHeader = ({ onOpenQR }) => {
 
   return (
     <>
-      <header className="bg-gradient-to-br from-[#466460] to-[#3a524f] flex items-center justify-between shadow-lg z-20 border-b border-white/10 px-4">
+      <header className="bg-gradient-to-br from-[#466460] to-[#38524d] flex items-center justify-between shadow-lg z-20 border-b border-white/10 px-4">
         <img
           src="/logo1.jpg"
           alt="MediTrack Logo"
           className="w-[200px] h-[70px] object-contain"
-          onError={(e) => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
+          onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
         />
 
         <div className="flex items-center gap-6">
@@ -258,7 +316,6 @@ export const DesktopHeader = ({ onOpenQR }) => {
               <p className="text-[9px] text-white/60 uppercase">{displayRole}</p>
             </div>
 
-            {/* Avatar — opens profile drawer */}
             <button
               onClick={() => setShowProfileDrawer(true)}
               className="w-10 h-10 rounded-full border-2 border-white/30 overflow-hidden bg-white/10 hover:border-white/50 transition-colors cursor-pointer"
@@ -269,7 +326,6 @@ export const DesktopHeader = ({ onOpenQR }) => {
               />
             </button>
 
-            {/* Quick logout button */}
             <button
               onClick={handleLogoutClick}
               title="Secure Logout"
@@ -281,15 +337,13 @@ export const DesktopHeader = ({ onOpenQR }) => {
         </div>
       </header>
 
-      {/* Profile Drawer */}
       <ProfileDrawer
         isOpen={showProfileDrawer}
         onClose={() => setShowProfileDrawer(false)}
         onLogout={handleLogoutClick}
-        userProfile={fullProfile} 
+        userProfile={fullProfile}
       />
 
-      {/* Logout Confirmation Modal */}
       <LogoutConfirmModal
         isOpen={showLogoutConfirm}
         onConfirm={handleConfirmLogout}
@@ -321,13 +375,12 @@ export const DesktopNav = () => {
   );
 };
 
-// ... (MobileHeader, MobileNav, and MobileLayout)
 // ─── Mobile Header ────────────────────────────────────────────────────────────
 export const MobileHeader = ({ userName = 'User', userId = 'N/A', initials = 'US', onLogout }) => {
   return (
     <header className="absolute top-0 left-0 right-0 z-40 bg-white border-b border-slate-100 px-5 pt-10 pb-3 flex justify-between items-center">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-[#557a5b] flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-[#466460] flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
           {initials}
         </div>
         <div>
@@ -377,7 +430,7 @@ export const MobileNav = ({
           key={n.id}
           onClick={() => onSwitch(n.id)}
           className={`flex flex-col items-center gap-0.5 transition-all ${
-            active === n.id ? 'text-[#557a5b]' : 'text-slate-300'
+            active === n.id ? 'text-[#466460]' : 'text-slate-300'
           }`}
         >
           <span className={`text-xl leading-none transition-transform ${active === n.id ? 'scale-110' : 'scale-100'}`}>
@@ -453,7 +506,6 @@ export const MobileLayout = ({ children, activeTab, onTabChange, userName, userI
         <MobileNav active={activeTab} onSwitch={onTabChange} items={bottomNavItems} />
       </div>
 
-      {/* Logout Confirmation Modal */}
       <LogoutConfirmModal
         isOpen={showLogoutConfirm}
         onConfirm={handleConfirm}
