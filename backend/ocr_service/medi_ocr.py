@@ -11,7 +11,8 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 app = Flask(__name__)
 
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-ocr = PaddleOCR(use_angle_cls=True, lang="en")
+# Tell PaddleOCR to store its models in the writable /tmp folder
+ocr = PaddleOCR(use_angle_cls=True, lang="en", download_path="/tmp/paddle_models")
 print("--- [STARTUP] PADDLEOCR IS READY ---")
 
 
@@ -81,7 +82,7 @@ def perform_ocr():
 
     file = request.files['image']
     filename = file.filename.lower()
-    temp_path = f"scan_{uuid.uuid4().hex}.jpg"
+    temp_path = f"/tmp/scan_{uuid.uuid4().hex}.jpg"
 
     try:
         if filename.endswith('.pdf'):
