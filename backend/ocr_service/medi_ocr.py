@@ -3,47 +3,44 @@ import uuid
 import re
 import fitz  # PyMuPDF
 import tempfile
+import traceback
 from flask import Flask, request, jsonify
 from PIL import Image
 
 # --- 1. THE ULTIMATE WRITABLE SETUP ---
 temp_dir = tempfile.gettempdir()
 
-# This redirects EVERY hidden folder (~/.paddleocr, ~/.paddlex) to /tmp
+# Redirect ALL possible hidden folders to /tmp (Google Cloud's writable area)
 os.environ['HOME'] = temp_dir 
 os.environ['PADDLE_HOME'] = os.path.join(temp_dir, ".paddleocr")
-os.environ['PADDLEX_HOME'] = os.path.join(temp_dir, ".paddlex") # Add this line!
-os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache") # And this one!
+os.environ['PADDLEX_HOME'] = os.path.join(temp_dir, ".paddlex")
+os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache")
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+# Import PaddleOCR AFTER setting the environment variables
 from paddleocr import PaddleOCR
 
 app = Flask(__name__)
 
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-# REMOVED download_path to stop the ValueError crash
-ocr = PaddleOCR(use_angle_cls=True, lang="en")
-print("--- [STARTUP] PADDLEOCR IS READY ---")
-
-print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-# Initializing without download_path to avoid ValueError in certain versions
-ocr = PaddleOCR(use_angle_cls=True, lang="en")
-print("--- [STARTUP] PADDLEOCR IS READY ---")
+try:
+    # Initialize without download_path to stay compatible with recent versions
+    ocr = PaddleOCR(use_angle_cls=True, lang="en")
+    print("--- [STARTUP] PADDLEOCR IS READY ---")
+except Exception as e:
+    print("--- [FATAL ERROR] PADDLEOCR FAILED TO START ---")
+    print(traceback.format_exc())
 
 def parse_id_fields(text_lines: list[str]) -> dict:
-    """
-    Heuristically extract structured fields from raw OCR lines.
-    Optimized for PLSP Student and Employee ID formats.
-    """
     full_text = " ".join(text_lines)
     fields = {}
 
-    # --- 1. ID Number Extraction ---
+    # 1. ID Number
     id_match = re.search(r"\b(\d{2,4}[\s\-]+\d{3,5})\b", full_text)
     if id_match:
         fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
 
-    # --- 2. ID Type & Role Identification ---
+    # 2. ID Type & Role
     specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
     specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
     student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
@@ -55,31 +52,24 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     gen_emp_match = generic_emp_pattern.search(full_text)
 
     if clc_match:
-        fields["id_type"] = "Employee ID"
-        fields["role"] = clc_match.group(1).title()
+        fields["id_type"] = "Employee ID"; fields["role"] = clc_match.group(1).title()
     elif acad_match:
-        fields["id_type"] = "Employee ID"
-        fields["role"] = acad_match.group(1).title()
+        fields["id_type"] = "Employee ID"; fields["role"] = acad_match.group(1).title()
     elif stu_match:
-        fields["id_type"] = "Student ID"
-        fields["role"] = "Student"
+        fields["id_type"] = "Student ID"; fields["role"] = "Student"
     elif gen_emp_match:
-        fields["id_type"] = "Employee ID"
-        fields["role"] = "Employee"
+        fields["id_type"] = "Employee ID"; fields["role"] = "Employee"
     else:
-        fields["id_type"] = "Unknown"
-        fields["role"] = "Unknown"
+        fields["id_type"] = "Unknown"; fields["role"] = "Unknown"
 
-    # --- 3. Name Extraction ---
+    # 3. Name
     name_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)", full_text)
-    if name_match:
-        fields["name"] = name_match.group(1).strip()
+    if name_match: fields["name"] = name_match.group(1).strip()
 
-    # --- 4. Institution ---
+    # 4. Institution
     inst_pattern = re.compile(r"((?:PAMANTASAN|UNIVERSITY|COLLEGE)[^\n,]{3,60})", re.IGNORECASE)
     inst_match = inst_pattern.search(full_text)
-    if inst_match:
-        fields["institution"] = inst_match.group(1).strip()
+    if inst_match: fields["institution"] = inst_match.group(1).strip()
 
     return fields
 
@@ -87,17 +77,16 @@ def parse_id_fields(text_lines: list[str]) -> dict:
 def perform_ocr():
     print(">>> Request Received")
     if 'image' not in request.files:
+        print("[ERROR] No image file in request")
         return jsonify({"error": "Missing 'image' key"}), 400
 
     file = request.files['image']
     filename = file.filename.lower()
-    
-    # Use os.path.join for universal path formatting (Windows backslashes vs Linux slashes)
     temp_path = os.path.join(temp_dir, f"scan_{uuid.uuid4().hex}.jpg")
 
     try:
         if filename.endswith('.pdf'):
-            print("[LOG] Processing PDF...")
+            print("[LOG] Extracting first page of PDF...")
             doc = fitz.open(stream=file.read(), filetype="pdf")
             page = doc.load_page(0)
             pix = page.get_pixmap()
@@ -105,11 +94,13 @@ def perform_ocr():
             img.save(temp_path)
             doc.close()
         else:
-            print("[LOG] Processing Image...")
+            print("[LOG] Processing image file...")
             img = Image.open(file.stream).convert("RGB")
             img.save(temp_path)
 
+        print("[LOG] Starting OCR Scan...")
         result = ocr.ocr(temp_path, cls=True)
+        print("[LOG] Scan Complete.")
 
         text_lines = []
         if result and result[0]:
@@ -127,14 +118,14 @@ def perform_ocr():
         })
 
     except Exception as e:
+        # This will print the EXACT error message to your Google Cloud logs
         print(f"[CRASH] {str(e)}")
+        print(traceback.format_exc()) 
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
 if __name__ == "__main__":
-    # Note: Google Cloud Run provides its own PORT environment variable.
-    # Locally, this defaults to 5001.
     port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
