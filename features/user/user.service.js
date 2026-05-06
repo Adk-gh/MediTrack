@@ -31,7 +31,8 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
 
     ocrResponse = await axios.post(ocrUrl, ocrForm, {
-      headers: { ...ocrForm.getHeaders() }
+      headers: { ...ocrForm.getHeaders() },
+      timeout: 120000
     });
   } catch (ocrErr) {
     console.error("OCR Service Connection Failed:", ocrErr.message);

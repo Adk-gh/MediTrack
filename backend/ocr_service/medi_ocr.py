@@ -12,6 +12,8 @@ temp_dir = tempfile.gettempdir()
 # This redirects EVERY hidden folder (~/.paddleocr, ~/.paddlex) to /tmp
 os.environ['HOME'] = temp_dir 
 os.environ['PADDLE_HOME'] = os.path.join(temp_dir, ".paddleocr")
+os.environ['PADDLEX_HOME'] = os.path.join(temp_dir, ".paddlex") # Add this line!
+os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache") # And this one!
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 from paddleocr import PaddleOCR

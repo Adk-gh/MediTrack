@@ -1,25 +1,22 @@
-# Use the version matching your local environment
+# Use a slim Python image
 FROM python:3.11-slim
 
-# Install system dependencies required for OpenCV and PaddleOCR
-# These replace the deprecated libgl1-mesa-glx found in your logs
+# Install system dependencies for OpenCV and PaddleOCR
 RUN apt-get update && apt-get install -y \
-    libgl1 \
+    libgl1-mesa-glx \
     libglib2.0-0 \
     libgomp1 \
-    libsm6 \
-    libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Set the working directory
 WORKDIR /app
 
-# Copy requirements and install
+# Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your application code
+# Copy the rest of the code
 COPY . .
 
-# Use gunicorn to run your specific entry point script (medi_ocr.py)
-# This assumes your Flask instance inside medi_ocr.py is named 'app'
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 2 --timeout 0 medi_ocr:app
+# Run the app with a timeout to allow for model loading
+CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "120", "medi_ocr:app"]
