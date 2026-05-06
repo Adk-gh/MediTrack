@@ -1,7 +1,7 @@
-# Use a slim Python image
-FROM python:3.11-slim
+# Switch to 3.10 to get pre-built binaries
+FROM python:3.10-slim
 
-# Install system dependencies for OpenCV and PaddleOCR
+# Keep the rest of your current Dockerfile exactly the same
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
@@ -11,15 +11,11 @@ RUN apt-get update && apt-get install -y \
     swig \
     && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
 WORKDIR /app
 
-# Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the code
 COPY . .
 
-# Run the app with a timeout to allow for model loading
 CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "120", "medi_ocr:app"]

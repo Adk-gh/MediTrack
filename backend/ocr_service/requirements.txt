@@ -2,4 +2,5 @@ flask
 pillow
 paddlepaddle==2.6.2
 paddleocr==2.7.0.3
+pymupdf==1.20.2
 gunicorn
