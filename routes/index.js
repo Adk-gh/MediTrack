@@ -8,7 +8,7 @@ router.use('/auth', authRoutes);
 
 // 2. Feature routes
 const userRoutes = require('../features/user/user.route');
-const recordsRoutes = require('../features/records/records.route');
+const recordsRoutes = require('../features/Records/records.route');
 const appointmentsRoutes = require('../features/appointments/appointments.route');
 const examinationsRoutes = require('../features/examinations/examinations.route');
 const announcementsRoutes = require('../features/announcements/announcements.route');
