@@ -6,32 +6,32 @@ MediTrack is a cross-platform student health record management system designed t
 
 This document provides a comprehensive technical overview of how data flows through the entire MediTrack application, from user authentication through frontend forms to backend API processing and database persistence.
 
----
+***
 
 ## System Architecture
 
 ### Technology Stack
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Frontend** | React 18 + Vite | Single Page Application |
-| **Styling** | TailwindCSS | Responsive UI design |
-| **Routing** | React Router DOM | Client-side navigation |
-| **State Management** | React Context API | Cross-component state sharing |
-| **Backend API** | Node.js + Express | RESTful API server |
-| **Authentication** | Firebase Auth | User authentication |
-| **Primary Database** | Firebase Firestore | Real-time NoSQL database |
-| **OCR Service** | Python Flask + PaddleOCR | University ID verification |
+| Layer                | Technology               | Purpose                       |
+| -------------------- | ------------------------ | ----------------------------- |
+| **Frontend**         | React 18 + Vite          | Single Page Application       |
+| **Styling**          | TailwindCSS              | Responsive UI design          |
+| **Routing**          | React Router DOM         | Client-side navigation        |
+| **State Management** | React Context API        | Cross-component state sharing |
+| **Backend API**      | Node.js + Express        | RESTful API server            |
+| **Authentication**   | Firebase Auth            | User authentication           |
+| **Primary Database** | Firebase Firestore       | Real-time NoSQL database      |
+| **OCR Service**      | Python Flask + PaddleOCR | University ID verification    |
 
 ### Service Ports
 
-| Service | Port | Description |
-|---------|------|-------------|
+| Service        | Port | Description              |
+| -------------- | ---- | ------------------------ |
 | Frontend (Dev) | 3000 | React development server |
-| Backend API | 5000 | Node.js Express server |
-| OCR Service | 5001 | Python Flask OCR service |
+| Backend API    | 5000 | Node.js Express server   |
+| OCR Service    | 5001 | Python Flask OCR service |
 
----
+***
 
 ## Authentication Flow
 
@@ -40,6 +40,7 @@ This document provides a comprehensive technical overview of how data flows thro
 **File Location:** `frontend/src/features/SignupForm.jsx`
 
 **Flow:**
+
 ```
 User Input → Client-Side Validation → Backend API → OCR Verification → Firebase Auth → Firestore Storage
 ```
@@ -47,44 +48,46 @@ User Input → Client-Side Validation → Backend API → OCR Verification → F
 **Step-by-Step Process:**
 
 1. **User Input Collection**
-   - First name, middle initial, last name, suffix
-   - Email address
-   - University ID number
-   - Password and confirmation
-   - University ID photo (upload)
+   * First name, middle initial, last name, suffix
+   * Email address
+   * University ID number
+   * Password and confirmation
+   * University ID photo (upload)
 
 2. **Client-Side Validation** (`frontend/src/validation/schemas.js`)
-   - Uses Zod schema validation
-   - Validates email format, password strength, required fields
-   - Real-time field validation with error feedback
+   * Uses Zod schema validation
+   * Validates email format, password strength, required fields
+   * Real-time field validation with error feedback
 
 3. **Form Submission** (`frontend/src/services/auth.service.js`)
-   - Creates FormData object with all fields including image
-   - Sends POST request to `/api/users/register`
+   * Creates FormData object with all fields including image
+   * Sends POST request to `/api/users/register`
 
 4. **Backend Processing** (`routes/auth.routes.js` → `controllers/auth.controller.js`)
-   - Receives FormData with image file
-   - Calls OCR service to verify University ID
-   - On successful OCR verification:
-     - Creates Firebase Auth user
-     - Saves user profile to Firestore `users` collection
+   * Receives FormData with image file
+   * Calls OCR service to verify University ID
+   * On successful OCR verification:
+     * Creates Firebase Auth user
+     * Saves user profile to Firestore `users` collection
 
 **Related Files:**
-- `frontend/src/features/SignupForm.jsx` - Registration form UI
-- `frontend/src/validation/schemas.js` - Zod validation schemas
-- `frontend/src/services/auth.service.js` - Registration API service
-- `frontend/src/layouts/AuthLayout.jsx` - Shared auth layout wrapper
-- `frontend/src/components/LoadingAnimation.jsx` - OCR scanning animation
-- `routes/auth.routes.js` - Registration route definition
-- `controllers/auth.controller.js` - Registration controller logic
 
----
+* `frontend/src/features/SignupForm.jsx` - Registration form UI
+* `frontend/src/validation/schemas.js` - Zod validation schemas
+* `frontend/src/services/auth.service.js` - Registration API service
+* `frontend/src/layouts/AuthLayout.jsx` - Shared auth layout wrapper
+* `frontend/src/components/LoadingAnimation.jsx` - OCR scanning animation
+* `routes/auth.routes.js` - Registration route definition
+* `controllers/auth.controller.js` - Registration controller logic
+
+***
 
 ### 2. User Login (LoginForm.jsx)
 
 **File Location:** `frontend/src/features/LoginForm.jsx`
 
 **Flow:**
+
 ```
 User Credentials → Firebase Auth SDK → Firestore User Profile → LocalStorage → Route Redirect
 ```
@@ -92,36 +95,37 @@ User Credentials → Firebase Auth SDK → Firestore User Profile → LocalStora
 **Step-by-Step Process:**
 
 1. **Credential Submission**
-   - User enters email and password
-   - Client-side Zod validation confirms format validity
+   * User enters email and password
+   * Client-side Zod validation confirms format validity
 
 2. **Firebase Authentication**
-   - Uses Firebase Auth SDK (`signInWithEmailAndPassword`)
-   - Returns user credential with Firebase UID and access token
+   * Uses Firebase Auth SDK (`signInWithEmailAndPassword`)
+   * Returns user credential with Firebase UID and access token
 
 3. **Profile Retrieval**
-   - Queries Firestore `users` collection using Firebase UID as document ID
-   - Retrieves complete user profile including role information
+   * Queries Firestore `users` collection using Firebase UID as document ID
+   * Retrieves complete user profile including role information
 
 4. **Session Persistence**
-   - Stores `token` (Firebase access token) in localStorage
-   - Stores `role` (student/admin) in localStorage
-   - Stores `uid` in localStorage
-   - Stores `name` in localStorage
-   - Stores complete `user` object in localStorage
+   * Stores `token` (Firebase access token) in localStorage
+   * Stores `role` (student/admin) in localStorage
+   * Stores `uid` in localStorage
+   * Stores `name` in localStorage
+   * Stores complete `user` object in localStorage
 
 5. **Route Redirection**
-   - Admin roles (`nurse`, `doctor`, `dentist`, `admin`, `administrator`) → `/dashboard`
-   - Student role → `/student/meditrack`
+   * Admin roles (`nurse`, `doctor`, `dentist`, `admin`, `administrator`) → `/dashboard`
+   * Student role → `/student/meditrack`
 
 **Related Files:**
-- `frontend/src/features/LoginForm.jsx` - Login form UI
-- `frontend/src/firebase.js` - Firebase configuration and exports
-- `frontend/src/services/auth.service.js` - Auth service methods
-- `frontend/src/validation/schemas.js` - Login validation schema
-- `frontend/src/layouts/AuthLayout.jsx` - Auth layout wrapper
 
----
+* `frontend/src/features/LoginForm.jsx` - Login form UI
+* `frontend/src/firebase.js` - Firebase configuration and exports
+* `frontend/src/services/auth.service.js` - Auth service methods
+* `frontend/src/validation/schemas.js` - Login validation schema
+* `frontend/src/layouts/AuthLayout.jsx` - Auth layout wrapper
+
+***
 
 ## Application Routing Flow
 
@@ -130,6 +134,7 @@ User Credentials → Firebase Auth SDK → Firestore User Profile → LocalStora
 **File Location:** `frontend/src/App.jsx`
 
 **Route Structure:**
+
 ```
 /login              → LoginForm (Public)
 /signup             → SignupForm (Public)
@@ -150,15 +155,17 @@ User Credentials → Firebase Auth SDK → Firestore User Profile → LocalStora
 **File Location:** `frontend/src/App.jsx` (lines 26-47)
 
 The `ProtectedRoute` component enforces:
+
 1. **Authentication Check**: Validates presence of `token` and `user` in localStorage
 2. **Profile Setup Check**: Redirects to `/onboarding` if `isProfileSetup` is false
 3. **Role-Based Access**: For admin routes, validates user role contains admin keywords
 
 **Related Files:**
-- `frontend/src/App.jsx` - Main routing configuration
-- `frontend/src/context/AppointmentContext.jsx` - Global appointment state provider
 
----
+* `frontend/src/App.jsx` - Main routing configuration
+* `frontend/src/context/AppointmentContext.jsx` - Global appointment state provider
+
+***
 
 ## Student Portal Flow (Meditrack.jsx)
 
@@ -169,11 +176,13 @@ The `ProtectedRoute` component enforces:
 **Purpose:** Root orchestrator for the student/patient portal
 
 **State Management:**
-- `activeTab` - Current navigation tab
-- `preview` - Selected record preview modal
-- `showOnboarding` - Profile setup overlay visibility
+
+* `activeTab` - Current navigation tab
+* `preview` - Selected record preview modal
+* `showOnboarding` - Profile setup overlay visibility
 
 **Tab Navigation Structure:**
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Tab: home     → HomePageUsers                         │
@@ -186,20 +195,22 @@ The `ProtectedRoute` component enforces:
 ```
 
 **Onboarding Guard:**
-- Checks `/api/users/profile` endpoint on mount
-- If `isProfileSetup` is false, displays `ProfileSetup` overlay
+
+* Checks `/api/users/profile` endpoint on mount
+* If `isProfileSetup` is false, displays `ProfileSetup` overlay
 
 **Related Files:**
-- `frontend/src/features/users/Meditrack.jsx` - Student portal root
-- `frontend/src/features/users/HomePage-users.jsx` - Home dashboard
-- `frontend/src/features/users/Appointment-users.jsx` - Appointment booking
-- `frontend/src/features/users/Consultation-users.jsx` - Consultation requests
-- `frontend/src/features/users/Records-users.jsx` - Medical records view
-- `frontend/src/features/users/Profile-users.jsx` - User profile management
-- `frontend/src/layouts/UserDashboardLayout.jsx` - Student layout wrapper
-- `frontend/src/components/ProfileSetup.jsx` - Profile completion form
 
----
+* `frontend/src/features/users/Meditrack.jsx` - Student portal root
+* `frontend/src/features/users/HomePage-users.jsx` - Home dashboard
+* `frontend/src/features/users/Appointment-users.jsx` - Appointment booking
+* `frontend/src/features/users/Consultation-users.jsx` - Consultation requests
+* `frontend/src/features/users/Records-users.jsx` - Medical records view
+* `frontend/src/features/users/Profile-users.jsx` - User profile management
+* `frontend/src/layouts/UserDashboardLayout.jsx` - Student layout wrapper
+* `frontend/src/components/ProfileSetup.jsx` - Profile completion form
+
+***
 
 ## Appointment System Flow
 
@@ -210,6 +221,7 @@ The `ProtectedRoute` component enforces:
 **Design Pattern:** React Context API with Firestore real-time listener
 
 **Flow:**
+
 ```
 Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patient views
 ```
@@ -218,19 +230,19 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 
 ### Core Functions
 
-| Function | Called By | Operation |
-|----------|-----------|------------|
-| `submitRequest()` | Patient side | Adds new pending appointment to Firestore |
-| `approveAppointment()` | Clinic side | Updates status to approved with schedule |
-| `declineAppointment()` | Clinic side | Deletes rejected appointment |
-| `markDone()` | Clinic side | Marks appointment as completed |
-| `getPatientAppointments()` | Patient side | Filters appointments by patient ID |
+| Function                   | Called By    | Operation                                 |
+| -------------------------- | ------------ | ----------------------------------------- |
+| `submitRequest()`          | Patient side | Adds new pending appointment to Firestore |
+| `approveAppointment()`     | Clinic side  | Updates status to approved with schedule  |
+| `declineAppointment()`     | Clinic side  | Deletes rejected appointment              |
+| `markDone()`               | Clinic side  | Marks appointment as completed            |
+| `getPatientAppointments()` | Patient side | Filters appointments by patient ID        |
 
 ### Data Structure (Firestore)
 
 **Collection:** `appointments`
 
-```javascript
+```JavaScript
 {
   name: string,           // Patient full name
   idno: string,            // University ID number
@@ -249,12 +261,13 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 ```
 
 **Related Files:**
-- `frontend/src/context/AppointmentContext.jsx` - Appointment state management
-- `frontend/src/services/appointments.service.js` - REST API service
-- `frontend/src/features/admin-clinic/Appointments.jsx` - Clinic appointment management
-- `frontend/src/features/users/Appointment-users.jsx` - Patient appointment booking
 
----
+* `frontend/src/context/AppointmentContext.jsx` - Appointment state management
+* `frontend/src/services/appointments.service.js` - REST API service
+* `frontend/src/features/admin-clinic/Appointments.jsx` - Clinic appointment management
+* `frontend/src/features/users/Appointment-users.jsx` - Patient appointment booking
+
+***
 
 ## Admin Dashboard Flow
 
@@ -263,36 +276,38 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 **File Location:** `frontend/src/features/admin-clinic/Dashboard.jsx`
 
 **Features:**
+
 1. **Statistics Cards**
-   - Total patients count
-   - Today's appointments
-   - Upcoming this week
-   - Clearances issued this month
+   * Total patients count
+   * Today's appointments
+   * Upcoming this week
+   * Clearances issued this month
 
 2. **Health Analytics Charts** (using Chart.js)
-   - Line chart: Case records over time (trend analysis)
-   - Doughnut chart: Disease distribution
-   - Bar chart: Patient type breakdown (student/instructor/staff)
+   * Line chart: Case records over time (trend analysis)
+   * Doughnut chart: Disease distribution
+   * Bar chart: Patient type breakdown (student/instructor/staff)
 
 3. **Visit Trends**
-   - Today, this week, this month, average/day statistics
+   * Today, this week, this month, average/day statistics
 
 4. **Activity & Alerts**
-   - Recent activity log
-   - System notifications and alerts
+   * Recent activity log
+   * System notifications and alerts
 
 **Data Source:** Uses mock data with `peopleData`, `appointments`, and `auditLogs` arrays. In production, this would connect to Firestore collections.
 
 **Related Files:**
-- `frontend/src/features/admin-clinic/Dashboard.jsx` - Main dashboard
-- `frontend/src/features/admin-clinic/Records.jsx` - Patient records management
-- `frontend/src/features/admin-clinic/Appointments.jsx` - Appointment management
-- `frontend/src/features/admin-clinic/Examinations.jsx` - Examination forms
-- `frontend/src/features/admin-clinic/Announcements.jsx` - Announcement management
-- `frontend/src/features/admin-clinic/Consultations.jsx` - Consultation records
-- `frontend/src/features/admin-clinic/User-Management.jsx` - User account management
 
----
+* `frontend/src/features/admin-clinic/Dashboard.jsx` - Main dashboard
+* `frontend/src/features/admin-clinic/Records.jsx` - Patient records management
+* `frontend/src/features/admin-clinic/Appointments.jsx` - Appointment management
+* `frontend/src/features/admin-clinic/Examinations.jsx` - Examination forms
+* `frontend/src/features/admin-clinic/Announcements.jsx` - Announcement management
+* `frontend/src/features/admin-clinic/Consultations.jsx` - Consultation records
+* `frontend/src/features/admin-clinic/User-Management.jsx` - User account management
+
+***
 
 ## Layout Architecture
 
@@ -301,6 +316,7 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 **File Location:** `frontend/src/layouts/DashboardLayout.jsx`
 
 **Desktop Structure:**
+
 ```
 ┌────────────────────────────────────────┐
 │  DesktopHeader (gradient topbar)       │
@@ -312,6 +328,7 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 ```
 
 **Mobile Structure:**
+
 ```
 ┌──────────────────────┐
 │  MobileHeader (64px) │ ← sticky topbar
@@ -325,20 +342,22 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 ```
 
 **Navigation Items:**
-| ID | Label | Route |
-|----|-------|-------|
-| dashboard | Home | /dashboard |
-| records | Records | /records |
-| appointments | Schedule | /appointments |
-| consultations | Consult | /consultations |
-| users | Users | /users |
+
+| ID            | Label    | Route          |
+| ------------- | -------- | -------------- |
+| dashboard     | Home     | /dashboard     |
+| records       | Records  | /records       |
+| appointments  | Schedule | /appointments  |
+| consultations | Consult  | /consultations |
+| users         | Users    | /users         |
 
 **Related Files:**
-- `frontend/src/layouts/DashboardLayout.jsx` - Admin layout wrapper
-- `frontend/src/components/Headers.jsx` - Header and navigation components
-- `frontend/src/components/Sidebar.jsx` - Desktop sidebar
 
----
+* `frontend/src/layouts/DashboardLayout.jsx` - Admin layout wrapper
+* `frontend/src/components/Headers.jsx` - Header and navigation components
+* `frontend/src/components/Sidebar.jsx` - Desktop sidebar
+
+***
 
 ## Records Management Flow
 
@@ -347,6 +366,7 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 **File Location:** `frontend/src/features/admin-clinic/Records.jsx`
 
 **Three-Column Layout:**
+
 ```
 ┌────────────┬────────────┬──────────────────┐
 │ Departments│ People    │ Clinical Profile │
@@ -358,37 +378,40 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 ```
 
 **Data Flow:**
+
 1. Fetches all documents from Firestore `users` collection
 2. Normalizes data to standard display format
 3. Groups by department
 4. On person selection, displays complete clinical profile
 
 **Actions:**
-- View patient details
-- Navigate to examination forms (`/examinations?patientId={uid}`)
-- Add new health records
+
+* View patient details
+* Navigate to examination forms (`/examinations?patientId={uid}`)
+* Add new health records
 
 **Related Files:**
-- `frontend/src/features/admin-clinic/Records.jsx` - Records management
-- `frontend/src/features/admin-clinic/Examinations.jsx` - Examination entry point
-- `frontend/src/features/admin-clinic/Examination/Medical.jsx` - Medical exam form
-- `frontend/src/features/admin-clinic/Examination/Dental.jsx` - Dental exam form
-- `frontend/src/services/records.service.js` - Records API service
 
----
+* `frontend/src/features/admin-clinic/Records.jsx` - Records management
+* `frontend/src/features/admin-clinic/Examinations.jsx` - Examination entry point
+* `frontend/src/features/admin-clinic/Examination/Medical.jsx` - Medical exam form
+* `frontend/src/features/admin-clinic/Examination/Dental.jsx` - Dental exam form
+* `frontend/src/services/records.service.js` - Records API service
+
+***
 
 ## Data Service Layers
 
 ### Frontend Services
 
-| Service File | Purpose | Key Methods |
-|--------------|---------|-------------|
-| `auth.service.js` | Authentication | `register()`, `login()`, `getCurrentUser()`, `logout()` |
-| `users.service.js` | User management | CRUD operations for user profiles |
-| `appointments.service.js` | Appointment API | `getAllAppointments()`, `createAppointment()`, etc. |
-| `records.service.js` | Medical records | `getRecords()`, `createRecord()`, etc. |
-| `examinations.service.js` | Examination data | `submitExamination()`, `getExaminations()` |
-| `announcements.service.js` | Announcements | `getAnnouncements()`, `createAnnouncement()` |
+| Service File               | Purpose          | Key Methods                                             |
+| -------------------------- | ---------------- | ------------------------------------------------------- |
+| `auth.service.js`          | Authentication   | `register()`, `login()`, `getCurrentUser()`, `logout()` |
+| `users.service.js`         | User management  | CRUD operations for user profiles                       |
+| `appointments.service.js`  | Appointment API  | `getAllAppointments()`, `createAppointment()`, etc.     |
+| `records.service.js`       | Medical records  | `getRecords()`, `createRecord()`, etc.                  |
+| `examinations.service.js`  | Examination data | `submitExamination()`, `getExaminations()`              |
+| `announcements.service.js` | Announcements    | `getAnnouncements()`, `createAnnouncement()`            |
 
 ### Backend Routes
 
@@ -407,6 +430,7 @@ Firestore onSnapshot → Real-time sync → Shared state → Both clinic & patie
 ### Backend Feature Modules
 
 Each feature follows a consistent structure:
+
 ```
 features/{feature}/
   ├── {feature}.route.js      # Express route definitions
@@ -416,21 +440,21 @@ features/{feature}/
   └── {feature}.validation.js # Input validation
 ```
 
----
+***
 
 ## Database Collections
 
 ### Firestore Schema
 
-| Collection | Document ID | Key Fields |
-|------------|-------------|------------|
-| `users` | Firebase UID | firstName, lastName, email, role, universityId, program, yearLevel, section, department, age, gender, birthdate, phoneNumber, emergencyContact, vaccinations, isProfileSetup |
-| `appointments` | Auto-generated | name, idno, type, dept, prog, section, reason, status, bookedAt, year, month, day, time |
-| `records` | Auto-generated | patientId, examinationDate, diagnosis, treatment, notes, examinerId |
-| `examinations` | Auto-generated | patientId, type, date, findings, prescription, followUp |
-| `announcements` | Auto-generated | title, content, targetAudience, createdAt, expiresAt, authorId |
+| Collection      | Document ID    | Key Fields                                                                                                                                                                   |
+| --------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`         | Firebase UID   | firstName, lastName, email, role, universityId, program, yearLevel, section, department, age, gender, birthdate, phoneNumber, emergencyContact, vaccinations, isProfileSetup |
+| `appointments`  | Auto-generated | name, idno, type, dept, prog, section, reason, status, bookedAt, year, month, day, time                                                                                      |
+| `records`       | Auto-generated | patientId, examinationDate, diagnosis, treatment, notes, examinerId                                                                                                          |
+| `examinations`  | Auto-generated | patientId, type, date, findings, prescription, followUp                                                                                                                      |
+| `announcements` | Auto-generated | title, content, targetAudience, createdAt, expiresAt, authorId                                                                                                               |
 
----
+***
 
 ## Validation Schemas
 
@@ -438,23 +462,24 @@ features/{feature}/
 
 Uses **Zod** for schema-based validation:
 
-| Schema | Fields | Validation Rules |
-|--------|--------|------------------|
-| `loginSchema` | email, password | Email format, min password length |
+| Schema           | Fields                                                              | Validation Rules                           |
+| ---------------- | ------------------------------------------------------------------- | ------------------------------------------ |
+| `loginSchema`    | email, password                                                     | Email format, min password length          |
 | `registerSchema` | firstName, lastName, email, universityId, password, confirmPassword | All required, email format, password match |
-| `profileSchema` | firstName, lastName, age, gender, department | Required fields, valid values |
+| `profileSchema`  | firstName, lastName, age, gender, department                        | Required fields, valid values              |
 
 **Helper Functions:**
-- `getFieldErrors(schema, formData)` - Returns validation errors for display
-- `schema.safeParse(data)` - Validates and returns success/error state
 
----
+* `getFieldErrors(schema, formData)` - Returns validation errors for display
+* `schema.safeParse(data)` - Validates and returns success/error state
+
+***
 
 ## Environment Configuration
 
 ### Environment Variables Required
 
-```bash
+```Shell
 # Backend (.env)
 JWT_SECRET=your_jwt_secret
 JWT_EXPIRES_IN=7d
@@ -468,24 +493,24 @@ VITE_API_URL=http://localhost:5000/api
 VITE_FIREBASE_API_KEY=your_firebase_web_api_key
 ```
 
----
+***
 
 ## Key Entry Points Summary
 
-| Component | File Path | Purpose |
-|-----------|-----------|---------|
-| Frontend Entry | `frontend/src/main.jsx` | React app initialization |
-| Routing | `frontend/src/App.jsx` | Route definitions and guards |
-| Auth Entry | `frontend/src/features/LoginForm.jsx` | User login |
-| Auth Entry | `frontend/src/features/SignupForm.jsx` | User registration |
-| Admin Portal | `frontend/src/features/admin-clinic/Dashboard.jsx` | Clinic dashboard |
-| Student Portal | `frontend/src/features/users/Meditrack.jsx` | Student health portal |
-| Global State | `frontend/src/context/AppointmentContext.jsx` | Appointment state |
-| Backend Entry | `backend/app.js` | Express server initialization |
-| API Routes | `routes/index.js` | Route aggregation |
-| Auth Controller | `controllers/auth.controller.js` | Auth logic |
+| Component       | File Path                                          | Purpose                       |
+| --------------- | -------------------------------------------------- | ----------------------------- |
+| Frontend Entry  | `frontend/src/main.jsx`                            | React app initialization      |
+| Routing         | `frontend/src/App.jsx`                             | Route definitions and guards  |
+| Auth Entry      | `frontend/src/features/LoginForm.jsx`              | User login                    |
+| Auth Entry      | `frontend/src/features/SignupForm.jsx`             | User registration             |
+| Admin Portal    | `frontend/src/features/admin-clinic/Dashboard.jsx` | Clinic dashboard              |
+| Student Portal  | `frontend/src/features/users/Meditrack.jsx`        | Student health portal         |
+| Global State    | `frontend/src/context/AppointmentContext.jsx`      | Appointment state             |
+| Backend Entry   | `backend/app.js`                                   | Express server initialization |
+| API Routes      | `routes/index.js`                                  | Route aggregation             |
+| Auth Controller | `controllers/auth.controller.js`                   | Auth logic                    |
 
----
+***
 
 ## Data Flow Diagram
 
@@ -551,7 +576,7 @@ VITE_FIREBASE_API_KEY=your_firebase_web_api_key
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+***
 
 ## Conclusion
 
