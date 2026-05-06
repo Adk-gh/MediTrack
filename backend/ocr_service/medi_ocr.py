@@ -26,7 +26,7 @@ from paddleocr import PaddleOCR
 app = Flask(__name__)
 
 # --- 2. SINGLE INITIALIZATION ---
-# Only load the AI brain once to save Memory (RAM)
+# We ONLY load this once to save your 4GiB of RAM
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
 try:
     ocr = PaddleOCR(use_angle_cls=True, lang="en")
@@ -36,19 +36,16 @@ except Exception as e:
     print(traceback.format_exc())
 
 def parse_id_fields(text_lines: list[str]) -> dict:
-    """
-    Heuristically extract structured fields from raw OCR lines.
-    Optimized for PLSP Student and Employee ID formats.
-    """
     full_text = " ".join(text_lines)
     fields = {}
 
-    # 1. ID Number Extraction
+    # 1. ID Number
     id_match = re.search(r"\b(\d{2,4}[\s\-]+\d{3,5})\b", full_text)
     if id_match:
         fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
 
-    # 2. ID Type & Role Identification
+    # 2. ID Type & Role
+    # (Your existing regex logic is great!)
     specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
     specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
     student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
@@ -60,31 +57,24 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     gen_emp_match = generic_emp_pattern.search(full_text)
 
     if clc_match:
-        fields["id_type"] = "Employee ID"
-        fields["role"] = clc_match.group(1).title()
+        fields["id_type"] = "Employee ID"; fields["role"] = clc_match.group(1).title()
     elif acad_match:
-        fields["id_type"] = "Employee ID"
-        fields["role"] = acad_match.group(1).title()
+        fields["id_type"] = "Employee ID"; fields["role"] = acad_match.group(1).title()
     elif stu_match:
-        fields["id_type"] = "Student ID"
-        fields["role"] = "Student"
+        fields["id_type"] = "Student ID"; fields["role"] = "Student"
     elif gen_emp_match:
-        fields["id_type"] = "Employee ID"
-        fields["role"] = "Employee"
+        fields["id_type"] = "Employee ID"; fields["role"] = "Employee"
     else:
-        fields["id_type"] = "Unknown"
-        fields["role"] = "Unknown"
+        fields["id_type"] = "Unknown"; fields["role"] = "Unknown"
 
-    # 3. Name Extraction
+    # 3. Name
     name_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)", full_text)
-    if name_match:
-        fields["name"] = name_match.group(1).strip()
+    if name_match: fields["name"] = name_match.group(1).strip()
 
-    # 4. Institution Extraction
+    # 4. Institution
     inst_pattern = re.compile(r"((?:PAMANTASAN|UNIVERSITY|COLLEGE)[^\n,]{3,60})", re.IGNORECASE)
     inst_match = inst_pattern.search(full_text)
-    if inst_match:
-        fields["institution"] = inst_match.group(1).strip()
+    if inst_match: fields["institution"] = inst_match.group(1).strip()
 
     return fields
 
@@ -92,18 +82,15 @@ def parse_id_fields(text_lines: list[str]) -> dict:
 def perform_ocr():
     print(">>> Request Received")
     if 'image' not in request.files:
-        print("[ERROR] Missing image key")
         return jsonify({"error": "Missing 'image' key"}), 400
 
     file = request.files['image']
     filename = file.filename.lower()
-    
-    # Universal path formatting for Windows/Linux
     temp_path = os.path.join(temp_dir, f"scan_{uuid.uuid4().hex}.jpg")
 
     try:
         if filename.endswith('.pdf'):
-            print("[LOG] Processing PDF File...")
+            print("[LOG] Processing PDF...")
             doc = fitz.open(stream=file.read(), filetype="pdf")
             page = doc.load_page(0)
             pix = page.get_pixmap()
@@ -111,13 +98,13 @@ def perform_ocr():
             img.save(temp_path)
             doc.close()
         else:
-            print("[LOG] Processing Image File...")
+            print("[LOG] Processing Image...")
             img = Image.open(file.stream).convert("RGB")
             img.save(temp_path)
 
         print("[LOG] Starting OCR Scan...")
         result = ocr.ocr(temp_path, cls=True)
-        print("[LOG] Scan Finished.")
+        print("[LOG] Scan Complete.")
 
         text_lines = []
         if result and result[0]:
@@ -136,7 +123,6 @@ def perform_ocr():
 
     except Exception as e:
         print(f"[CRASH] {str(e)}")
-        # Print the detailed error to Google Cloud Logs
         print(traceback.format_exc()) 
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
@@ -144,6 +130,5 @@ def perform_ocr():
             os.remove(temp_path)
 
 if __name__ == "__main__":
-    # Cloud Run provides the PORT environment variable automatically
     port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
