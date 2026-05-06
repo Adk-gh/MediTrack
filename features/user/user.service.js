@@ -24,15 +24,17 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     contentType: idFile.mimetype,
   });
 
-  let ocrResponse;
+ let ocrResponse;
   try {
-    // Use the Google Cloud URL from Render environment variables, or fallback to localhost
+    // Use the Google Cloud URL from your Render environment variables
+    // Fallback to localhost only if the variable isn't set (for your PC testing)
     const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
 
     ocrResponse = await axios.post(ocrUrl, ocrForm, {
       headers: { ...ocrForm.getHeaders() }
     });
   } catch (ocrErr) {
+    console.error("OCR Service Connection Failed:", ocrErr.message);
     const error = new Error('ID verification service is unavailable.');
     error.statusCode = 502;
     throw error;
