@@ -25,15 +25,12 @@ from paddleocr import PaddleOCR
 
 app = Flask(__name__)
 
-# --- 2. SINGLE INITIALIZATION ---
-# We ONLY load this once to save your 4GiB of RAM
+# --- 2. THE BOOT TEST (SINGLE INITIALIZATION) ---
+# We ONLY load this once to save your 4GiB of RAM.
+# It is placed OUTSIDE a try block so that if it fails, Google Cloud logs the exact error.
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-try:
-    ocr = PaddleOCR(use_angle_cls=True, lang="en")
-    print("--- [STARTUP] PADDLEOCR IS READY ---")
-except Exception as e:
-    print("--- [FATAL ERROR] PADDLEOCR FAILED TO START ---")
-    print(traceback.format_exc())
+ocr = PaddleOCR(use_angle_cls=True, lang="en")
+print("--- [STARTUP] PADDLEOCR IS READY ---")
 
 def parse_id_fields(text_lines: list[str]) -> dict:
     full_text = " ".join(text_lines)
@@ -45,7 +42,6 @@ def parse_id_fields(text_lines: list[str]) -> dict:
         fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
 
     # 2. ID Type & Role
-    # (Your existing regex logic is great!)
     specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
     specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
     student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
@@ -82,6 +78,7 @@ def parse_id_fields(text_lines: list[str]) -> dict:
 def perform_ocr():
     print(">>> Request Received")
     if 'image' not in request.files:
+        print("[ERROR] No image file in request")
         return jsonify({"error": "Missing 'image' key"}), 400
 
     file = request.files['image']
