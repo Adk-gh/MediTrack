@@ -26,7 +26,10 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
 
   let ocrResponse;
   try {
-    ocrResponse = await axios.post('http://localhost:5001/ocr', ocrForm, {
+    // Use the Google Cloud URL from Render environment variables, or fallback to localhost
+    const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
+
+    ocrResponse = await axios.post(ocrUrl, ocrForm, {
       headers: { ...ocrForm.getHeaders() }
     });
   } catch (ocrErr) {
