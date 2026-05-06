@@ -6,19 +6,22 @@ import tempfile
 from flask import Flask, request, jsonify
 from PIL import Image
 
-# --- 1. CROSS-PLATFORM WRITABLE DIRECTORY SETUP ---
-# This finds /tmp on Linux (Cloud Run) and AppData/Local/Temp on Windows
+# --- 1. THE ULTIMATE WRITABLE SETUP ---
 temp_dir = tempfile.gettempdir()
 
-# Set PADDLE_HOME to a writable subfolder in the temp directory
-# This tells PaddleOCR where to download its AI models
+# This redirects EVERY hidden folder (~/.paddleocr, ~/.paddlex) to /tmp
+os.environ['HOME'] = temp_dir 
 os.environ['PADDLE_HOME'] = os.path.join(temp_dir, ".paddleocr")
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-# Import PaddleOCR AFTER setting the environment variable
 from paddleocr import PaddleOCR
 
 app = Flask(__name__)
+
+print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
+# REMOVED download_path to stop the ValueError crash
+ocr = PaddleOCR(use_angle_cls=True, lang="en")
+print("--- [STARTUP] PADDLEOCR IS READY ---")
 
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
 # Initializing without download_path to avoid ValueError in certain versions
