@@ -2,19 +2,28 @@ import os
 import uuid
 import re
 import fitz  # PyMuPDF
+import tempfile
 from flask import Flask, request, jsonify
-from paddleocr import PaddleOCR
 from PIL import Image
 
+# --- 1. CROSS-PLATFORM WRITABLE DIRECTORY SETUP ---
+# This finds /tmp on Linux (Cloud Run) and AppData/Local/Temp on Windows
+temp_dir = tempfile.gettempdir()
+
+# Set PADDLE_HOME to a writable subfolder in the temp directory
+# This tells PaddleOCR where to download its AI models
+os.environ['PADDLE_HOME'] = os.path.join(temp_dir, ".paddleocr")
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+# Import PaddleOCR AFTER setting the environment variable
+from paddleocr import PaddleOCR
 
 app = Flask(__name__)
 
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-# Tell PaddleOCR to store its models in the writable /tmp folder
-ocr = PaddleOCR(use_angle_cls=True, lang="en", download_path="/tmp/paddle_models")
+# Initializing without download_path to avoid ValueError in certain versions
+ocr = PaddleOCR(use_angle_cls=True, lang="en")
 print("--- [STARTUP] PADDLEOCR IS READY ---")
-
 
 def parse_id_fields(text_lines: list[str]) -> dict:
     """
@@ -30,12 +39,9 @@ def parse_id_fields(text_lines: list[str]) -> dict:
         fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
 
     # --- 2. ID Type & Role Identification ---
-    # SEPARATE specific roles from generic terms
     specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
     specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
     student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
-    
-    # Generic catch-alls (checked LAST)
     generic_emp_pattern = re.compile(r"\b(EMPLOYEE|STAFF|FACULTY)\b", re.IGNORECASE)
 
     clc_match = specific_clinic_pattern.search(full_text)
@@ -43,10 +49,9 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     stu_match = student_pattern.search(full_text)
     gen_emp_match = generic_emp_pattern.search(full_text)
 
-    # PRIORITY CHECKING: Look for specific job titles BEFORE generic words!
     if clc_match:
         fields["id_type"] = "Employee ID"
-        fields["role"] = clc_match.group(1).title() # Will capture "Nurse"
+        fields["role"] = clc_match.group(1).title()
     elif acad_match:
         fields["id_type"] = "Employee ID"
         fields["role"] = acad_match.group(1).title()
@@ -55,7 +60,7 @@ def parse_id_fields(text_lines: list[str]) -> dict:
         fields["role"] = "Student"
     elif gen_emp_match:
         fields["id_type"] = "Employee ID"
-        fields["role"] = "Employee" # Only falls back to this if specific titles aren't found
+        fields["role"] = "Employee"
     else:
         fields["id_type"] = "Unknown"
         fields["role"] = "Unknown"
@@ -73,7 +78,6 @@ def parse_id_fields(text_lines: list[str]) -> dict:
 
     return fields
 
-
 @app.route("/ocr", methods=["POST"])
 def perform_ocr():
     print(">>> Request Received")
@@ -82,7 +86,9 @@ def perform_ocr():
 
     file = request.files['image']
     filename = file.filename.lower()
-    temp_path = f"/tmp/scan_{uuid.uuid4().hex}.jpg"
+    
+    # Use os.path.join for universal path formatting (Windows backslashes vs Linux slashes)
+    temp_path = os.path.join(temp_dir, f"scan_{uuid.uuid4().hex}.jpg")
 
     try:
         if filename.endswith('.pdf'):
@@ -122,6 +128,8 @@ def perform_ocr():
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=False, threaded=False)
+    # Note: Google Cloud Run provides its own PORT environment variable.
+    # Locally, this defaults to 5001.
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
