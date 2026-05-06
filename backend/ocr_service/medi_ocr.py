@@ -11,7 +11,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 app = Flask(__name__)
 
 print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-ocr = PaddleOCR(use_angle_cls=True, lang="en", use_gpu=False, show_log=False)
+ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
 print("--- [STARTUP] PADDLEOCR IS READY ---")
 
 
