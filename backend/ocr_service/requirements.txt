@@ -3,4 +3,4 @@ pillow
 paddlepaddle==2.6.2
 paddleocr==2.7.0.3
 gunicorn
-PyMuPDF
+pymupdf>=1.22.0
