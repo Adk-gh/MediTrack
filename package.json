@@ -1,0 +1,29 @@
+{
+  "name": "meditrack",
+  "version": "1.0.0",
+  "description": "A comprehensive cross-platform student health record management system for educational institutions. MediTrack enables efficient management of student health records, appointments, medical examinations, and announcements through a modern, responsive web interface.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Adk-gh/MediTrack.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Adk-gh/MediTrack/issues"
+  },
+  "homepage": "https://github.com/Adk-gh/MediTrack#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.8.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "zod": "^4.4.3"
+  }
+}

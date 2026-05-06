@@ -3,3 +3,4 @@ pillow
 paddleocr
 paddlepaddle
 gunicorn
+PyMuPDF
