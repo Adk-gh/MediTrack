@@ -97,7 +97,7 @@ def perform_ocr():
             img.save(temp_path)
 
         print("[LOG] Starting OCR Scan...", flush=True)
-        result = ocr_engine.ocr(temp_path, cls=True)
+        result = ocr_engine.ocr(temp_path)
         print("[LOG] Scan Complete.", flush=True)
 
         text_lines = []
