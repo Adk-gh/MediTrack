@@ -1,3 +1,4 @@
+// C:\Users\HP\MediTrack\frontend\src\layouts\UserDashboardLayout.jsx
 import React, { useState, useEffect } from "react";
 
 // ─── Icons (Replacing Emojis) ─────────────────────────────────────────────────
@@ -185,23 +186,12 @@ function DesktopShell({ activeTab, onTabChange, userName, userId, preview, onClo
     <div className="min-h-screen bg-slate-50 flex flex-col">
 
       {/* Top Bar - No Sign Out Button */}
-      <header className="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <img 
-            src="../logo.jpg" 
-            alt="MediTrack Logo" 
-            className="w-30 h-11 object-contain rounded-xl"/>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-[11px] font-bold text-slate-700">{userName}</p>
-            <p className="text-[9px] text-slate-400">{userId}</p>
-          </div>
-          <div className="w-9 h-9 bg-[#557a5b]/10 rounded-xl flex items-center justify-center text-[#557a5b] font-black text-sm">
-            {initials}
-          </div>
-        </div>
+      <header className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-center sticky top-0 z-10 shadow-sm">
+        <img 
+          src="../logo.jpg" 
+          alt="MediTrack Logo" 
+          className="h-10 object-contain rounded-xl"
+        />
       </header>
 
       {/* Body: Widened the layout constraint here for proper desktop view */}
@@ -268,27 +258,19 @@ function DesktopShell({ activeTab, onTabChange, userName, userId, preview, onClo
 // ─── Mobile shell ──────────────────────────────────────────────────────────────
 function MobileShell({ activeTab, onTabChange, userName, userId, preview, onClosePreview, children }) {
   return (
-    <div className="relative flex flex-col min-h-screen bg-slate-50 font-sans">
+    <div className="h-[100dvh] w-full flex flex-col bg-slate-50 font-sans overflow-hidden">
 
       {/* Mobile Top Bar - No Sign Out Button */}
-      <header className="bg-white border-b border-slate-100 px-5 pt-12 pb-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <img 
-            src="/logo.jpg" 
-            alt="MediTrack Logo" 
-            className="w-15 h-11 object-contain rounded-xl"/>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-700 leading-tight">{userName}</p>
-            <p className="text-[8px] text-slate-400 leading-tight">{userId}</p>
-          </div>
-        </div>
+      <header className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
+        <img 
+          src="/logo.jpg" 
+          alt="MediTrack Logo" 
+          className="h-10 object-contain rounded-xl"
+        />
       </header>
 
       {/* Scrollable page content */}
-      <div className="flex-1 overflow-y-auto pb-24 relative">
+      <div className="flex-1 min-h-0 overflow-y-auto relative">
         {children}
 
         {/* Preview modal (mobile full-screen) sits inside scroll container */}
@@ -296,7 +278,7 @@ function MobileShell({ activeTab, onTabChange, userName, userId, preview, onClos
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-2 py-2 z-20 shadow-lg">
+      <nav className="bg-white border-t border-slate-100 px-2 py-2 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] flex-shrink-0">
         <div className="flex justify-around">
           {MOBILE_NAV.map((item) => {
             const IconComponent = item.icon;

@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 
 import authService from "../../services/auth.service.js";
 import ProfileSetup from "../../components/ProfileSetup.jsx";
+import { useLoading } from "../../context/LoadingContext.jsx";
 
 // Layout shell (handles desktop ↔ mobile, nav, topbar, preview modal)
 import UserDashboardLayout from "../../layouts/UserDashboardLayout.jsx";
@@ -119,6 +120,7 @@ function HistoryView({ onPreview }) {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function MediTrack() {
   const navigate = useNavigate();
+  const { showLoading, hideLoading } = useLoading();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [activeTab,      setActiveTab]      = useState("home");
@@ -159,7 +161,9 @@ export default function MediTrack() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogout = () => {
+    showLoading('Signing out', 'light');
     authService.logout();
+    hideLoading();
     navigate("/login");
   };
 

@@ -22,28 +22,15 @@ const PLSP_OFFICES = [
   "Maintenance", "Registrar Office", "Security Services"
 ];
 
-const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
-
-const RELIGIONS = [
-  'Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist',
-  'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'
-];
-
-const NATIONALITIES = [
-  'Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian',
-  'British', 'Australian', 'Canadian', 'Other'
-];
-
-const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
-
-const EMERGENCY_RELATIONSHIPS = [
-  'Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent',
-  'Relative', 'Guardian', 'Friend', 'Other'
-];
+const SUFFIXES            = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
+const RELIGIONS           = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'];
+const NATIONALITIES       = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
+const CIVIL_STATUSES      = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
+const EMERGENCY_RELATIONSHIPS = ['Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent', 'Relative', 'Guardian', 'Friend', 'Other'];
 
 const VACCINE_DOSES = [
-  { key: 'dose1',    label: 'Dose 1' },
-  { key: 'dose2',    label: 'Dose 2' },
+  { key: 'dose1',    label: 'Dose 1'    },
+  { key: 'dose2',    label: 'Dose 2'    },
   { key: 'booster1', label: 'Booster 1' },
   { key: 'booster2', label: 'Booster 2' },
 ];
@@ -60,71 +47,83 @@ const COVID_VACCINES = [
   'Other COVID-19 Vaccine',
 ];
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-const TOTAL_STEPS = 5;
-
+const API_URL     = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const TOTAL_STEPS = 3;
 
 function getDefaultClassification(role) {
   if (role === 'admin' || role === 'administrator') return 'Administrator';
-  if (role === 'nurse') return 'Nurse Personnel';
+  if (role === 'nurse')  return 'Nurse Personnel';
   if (role === 'doctor') return 'Physician / Doctor';
   if (role === 'staff' || role === 'employee') return 'Non-Teaching Personnel';
   return 'Teaching Personnel';
 }
 
 function getDefaultJobTitle(role) {
-  if (role === 'nurse') return 'Nurse';
+  if (role === 'nurse')  return 'Nurse';
   if (role === 'doctor') return 'Physician';
   if (role === 'admin' || role === 'administrator') return 'Administrator';
   return '';
 }
 
+// ── Phone helpers ─────────────────────────────────────────────────────────────
+const sanitizePhone = (value) => value.replace(/\D/g, '').slice(0, 11);
+
+const validatePhone = (value) => {
+  if (!value) return 'Phone number is required.';
+  if (value.length !== 11) return 'Phone number must be exactly 11 digits.';
+  if (!value.startsWith('09')) return 'Phone number must start with 09.';
+  return '';
+};
+
+// ── Generic required-field check ──────────────────────────────────────────────
+const isEmpty = (v) => !v || !String(v).trim();
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 const ProfileSetup = ({ user, onComplete }) => {
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep]           = useState(1);
+  const [loading, setLoading]     = useState(false);
   const [birthdayError, setBirthdayError] = useState('');
   const navigate = useNavigate();
 
-  const rawRole = user?.role || 'student';
+  const rawRole  = user?.role || 'student';
   const userRole = rawRole.toLowerCase();
 
   const [formData, setFormData] = useState({
     // STEP 1 – Personal
-    firstName: user?.firstName || '',
+    firstName:     user?.firstName     || '',
     middleInitial: user?.middleInitial || '',
-    lastName: user?.lastName || '',
-    suffix: user?.suffix || '',
-    birthday: '',
-    age: '',
-    sex: '',
-    bloodType: '',
-    // STEP 1 (extra) – Identity
-    homeAddress: '',
-    religion: '',
-    nationality: 'Filipino',
-    civilStatus: 'Single',
+    lastName:      user?.lastName      || '',
+    suffix:        user?.suffix        || '',
+    birthday:      '',
+    age:           '',
+    sex:           '',
+    bloodType:     '',
+    homeAddress:   '',
+    religion:      '',
+    nationality:   'Filipino',
+    civilStatus:   'Single',
 
     // STEP 2 – Academic / Work
-    universityId: user?.universityId || '',
-    department: '',
-    program: '',
-    yearLevel: '1st Year',
-    section: '',
+    universityId:   user?.universityId || '',
+    department:     '',
+    program:        '',
+    yearLevel:      '1st Year',
+    section:        '',
     classification: getDefaultClassification(userRole),
-    jobTitle: getDefaultJobTitle(userRole),
+    jobTitle:       getDefaultJobTitle(userRole),
 
-    // STEP 3 – Contact
-    email: user?.email || '',
+    // STEP 3 – Contact & Emergency
+    email:       user?.email || '',
     phoneNumber: '',
 
-    // STEP 4 – Emergency Contact
-    emergencyName: '',
+    emergencyName:         '',
     emergencyRelationship: '',
-    emergencyPhone: '',
-    emergencyAddress: '',
+    emergencyPhone:        '',
+    emergencyAddress:      '',
 
-    // STEP 5 – COVID-19 Vaccination (fixed doses, all optional)
+    // Kept in payload for later profile completion
     vaccinations: {
       dose1:    { vaccineName: '', date: '' },
       dose2:    { vaccineName: '', date: '' },
@@ -133,36 +132,67 @@ const ProfileSetup = ({ user, onComplete }) => {
     },
   });
 
-  // --- Auth Guard ---
+  // Per-field error map
+  const [errors, setErrors] = useState({});
+
+  // Auth Guard
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login');
-    }
+    if (!token) navigate('/login');
   }, [navigate]);
 
+  // ── Field change handler ──────────────────────────────────────────────────
   const handleChange = (e) => {
     const { id, value } = e.target;
 
+    // Birthday → auto-compute age
     if (id === 'birthday') {
       const birthDate = new Date(value);
-      const today = new Date();
-      let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+      const today     = new Date();
+      let age         = today.getFullYear() - birthDate.getFullYear();
       const m = today.getMonth() - birthDate.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) calculatedAge--;
-      setFormData(prev => ({ ...prev, birthday: value, age: calculatedAge.toString() }));
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+      setFormData(prev => ({ ...prev, birthday: value, age: age.toString() }));
       setBirthdayError('');
+      clearError('birthday');
+      return;
+    }
+
+    // Phone fields → digits only, max 11
+    if (id === 'phoneNumber' || id === 'emergencyPhone') {
+      const clean = sanitizePhone(value);
+      setFormData(prev => ({ ...prev, [id]: clean }));
+      clearError(id);
       return;
     }
 
     setFormData(prev => ({
       ...prev,
       [id]: value,
-      ...(id === 'department' && userRole === 'student' && { program: '' })
+      // Reset program when department changes
+      ...(id === 'department' && userRole === 'student' && { program: '' }),
     }));
+    clearError(id);
   };
 
-  // Vaccination field handler (fixed doses)
+  // ── Keyboard guard for phone fields ──────────────────────────────────────
+  const handlePhoneKeyDown = (e) => {
+    const allowed = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'];
+    if (e.ctrlKey || e.metaKey) return;
+    if (allowed.includes(e.key)) return;
+    if (!/^\d$/.test(e.key)) e.preventDefault();
+  };
+
+  // Block paste of non-numeric content
+  const handlePhonePaste = (e, field) => {
+    e.preventDefault();
+    const pasted = (e.clipboardData || window.clipboardData).getData('text');
+    const clean  = sanitizePhone(pasted);
+    setFormData(prev => ({ ...prev, [field]: clean }));
+    clearError(field);
+  };
+
+  // ── Vaccination handler ───────────────────────────────────────────────────
   const handleVaccineChange = (doseKey, field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -173,28 +203,137 @@ const ProfileSetup = ({ user, onComplete }) => {
     }));
   };
 
+  // ── Error helpers ─────────────────────────────────────────────────────────
+  const setError   = (field, msg) => setErrors(prev => ({ ...prev, [field]: msg }));
+  const clearError = (field)      => setErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
+
+  const phoneField = (id, label, value, required = true) => (
+    <div>
+      <label className={labelCls}>
+        {label} {required && <span className="text-red-400">*</span>}
+      </label>
+      <div className="relative">
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400 pointer-events-none select-none">
+          PH
+        </span>
+        <input
+          id={id}
+          type="tel"
+          inputMode="numeric"
+          placeholder="09XXXXXXXXX"
+          maxLength={11}
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handlePhoneKeyDown}
+          onPaste={e => handlePhonePaste(e, id)}
+          className={`${inputCls} pl-10 ${errors[id] ? 'border-red-400 focus:border-red-400 bg-red-50' : ''}`}
+        />
+        <span className={`absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold tabular-nums ${
+          value.length === 11 ? 'text-emerald-500' : 'text-slate-300'
+        }`}>
+          {value.length}/11
+        </span>
+      </div>
+      {errors[id] && (
+        <p className="text-red-500 text-[11px] mt-1 ml-1 flex items-center gap-1">
+          <i className="fa-solid fa-circle-exclamation text-[10px]"></i> {errors[id]}
+        </p>
+      )}
+      {!errors[id] && value.length === 11 && (
+        <p className="text-emerald-600 text-[11px] mt-1 ml-1 flex items-center gap-1">
+          <i className="fa-solid fa-circle-check text-[10px]"></i> Looks good!
+        </p>
+      )}
+    </div>
+  );
+
+  // ── Step validation ───────────────────────────────────────────────────────
+  const validateStep = (targetStep) => {
+    const newErrors = {};
+
+    if (targetStep > 1) {
+      if (isEmpty(formData.firstName))  newErrors.firstName  = 'First name is required.';
+      if (isEmpty(formData.lastName))   newErrors.lastName   = 'Last name is required.';
+      if (!formData.birthday)           newErrors.birthday   = 'Birthday is required.';
+      if (!formData.sex)                newErrors.sex        = 'Sex is required.';
+    }
+
+    if (targetStep > 2) {
+      if (userRole === 'student') {
+        if (isEmpty(formData.universityId)) newErrors.universityId = 'Student number is required.';
+        if (isEmpty(formData.department))   newErrors.department   = 'Department is required.';
+        if (isEmpty(formData.program))      newErrors.program      = 'Program is required.';
+        if (isEmpty(formData.section))      newErrors.section      = 'Section is required.';
+      } else {
+        if (isEmpty(formData.department)) newErrors.department = 'Office / Department is required.';
+        if (isEmpty(formData.jobTitle))   newErrors.jobTitle   = 'Job title is required.';
+      }
+    }
+
+    if (targetStep > 3) {
+      const phoneErr = validatePhone(formData.phoneNumber);
+      if (phoneErr) newErrors.phoneNumber = phoneErr;
+      if (isEmpty(formData.emergencyName))         newErrors.emergencyName         = 'Contact name is required.';
+      if (isEmpty(formData.emergencyRelationship)) newErrors.emergencyRelationship = 'Relationship is required.';
+      const ePhoneErr = validatePhone(formData.emergencyPhone);
+      if (ePhoneErr) newErrors.emergencyPhone = ePhoneErr;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const nextStep = () => {
     if (step === 1 && !formData.birthday) {
       setBirthdayError('Birthday is required.');
+      setError('birthday', 'Birthday is required.');
       return;
     }
+    if (!validateStep(step + 1)) return;
     setBirthdayError('');
     setStep(prev => Math.min(prev + 1, TOTAL_STEPS));
   };
 
   const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
 
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.birthday) {
-      setBirthdayError('Birthday is required.');
-      setStep(1);
+    // Final validation pass across all steps
+    const allErrors = {};
+    if (isEmpty(formData.firstName))  allErrors.firstName  = 'First name is required.';
+    if (isEmpty(formData.lastName))   allErrors.lastName   = 'Last name is required.';
+    if (!formData.birthday)           allErrors.birthday   = 'Birthday is required.';
+    if (!formData.sex)                allErrors.sex        = 'Sex is required.';
+
+    if (userRole === 'student') {
+      if (isEmpty(formData.universityId)) allErrors.universityId = 'Student number is required.';
+      if (isEmpty(formData.department))   allErrors.department   = 'Department is required.';
+      if (isEmpty(formData.program))      allErrors.program      = 'Program is required.';
+      if (isEmpty(formData.section))      allErrors.section      = 'Section is required.';
+    } else {
+      if (isEmpty(formData.department)) allErrors.department = 'Office / Department is required.';
+      if (isEmpty(formData.jobTitle))   allErrors.jobTitle   = 'Job title is required.';
+    }
+
+    const phoneErr = validatePhone(formData.phoneNumber);
+    if (phoneErr) allErrors.phoneNumber = phoneErr;
+
+    if (isEmpty(formData.emergencyName))         allErrors.emergencyName         = 'Contact name is required.';
+    if (isEmpty(formData.emergencyRelationship)) allErrors.emergencyRelationship = 'Relationship is required.';
+    const ePhoneErr = validatePhone(formData.emergencyPhone);
+    if (ePhoneErr) allErrors.emergencyPhone = ePhoneErr;
+
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      if (allErrors.firstName || allErrors.lastName || allErrors.birthday || allErrors.sex) { setStep(1); return; }
+      if (allErrors.universityId || allErrors.department || allErrors.program || allErrors.section || allErrors.jobTitle) { setStep(2); return; }
+      if (allErrors.phoneNumber || allErrors.emergencyName || allErrors.emergencyRelationship || allErrors.emergencyPhone) { setStep(3); return; }
       return;
     }
 
     setLoading(true);
-
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -203,61 +342,46 @@ const ProfileSetup = ({ user, onComplete }) => {
         return;
       }
 
-      // Build the payload — all fields go to Firestore
       const payload = {
-        // Personal
-        firstName: formData.firstName,
+        firstName:     formData.firstName,
         middleInitial: formData.middleInitial,
-        lastName: formData.lastName,
-        suffix: formData.suffix,
-        birthday: formData.birthday,
-        age: formData.age,
-        sex: formData.sex,
-        bloodType: formData.bloodType,
-        homeAddress: formData.homeAddress,
-        religion: formData.religion,
-        nationality: formData.nationality,
-        civilStatus: formData.civilStatus,
-
-        // Academic / Work
-       universityId: formData.universityId,
-        department: formData.department,
-        program: formData.program,
-        yearLevel: formData.yearLevel,
-        section: formData.section,
+        lastName:      formData.lastName,
+        suffix:        formData.suffix,
+        birthday:      formData.birthday,
+        age:           formData.age,
+        sex:           formData.sex,
+        bloodType:     formData.bloodType,
+        homeAddress:   formData.homeAddress,
+        religion:      formData.religion,
+        nationality:   formData.nationality,
+        civilStatus:   formData.civilStatus,
+        universityId:  formData.universityId,
+        department:    formData.department,
+        program:       formData.program,
+        yearLevel:     formData.yearLevel,
+        section:       formData.section,
         classification: formData.classification,
-        jobTitle: formData.jobTitle,
-
-        // Contact
-        email: formData.email,
-        phoneNumber: formData.phoneNumber,
-
-        // Emergency Contact
+        jobTitle:      formData.jobTitle,
+        email:         formData.email,
+        phoneNumber:   formData.phoneNumber,
         emergencyContact: {
-          name: formData.emergencyName,
+          name:         formData.emergencyName,
           relationship: formData.emergencyRelationship,
-          phone: formData.emergencyPhone,
-          address: formData.emergencyAddress,
+          phone:        formData.emergencyPhone,
+          address:      formData.emergencyAddress,
         },
-
-        // Vaccination History (COVID-19) — store as object keyed by dose
-        vaccinations: formData.vaccinations,
-
-        role: userRole,
-        // Both flags kept in sync — service treats isProfileSetup as source of truth
-        isProfileSetup: true,
+        vaccinations:    formData.vaccinations,
+        role:            userRole,
+        isProfileSetup:  true,
         profileComplete: true,
       };
 
       console.log('[ProfileSetup] Submitting payload:', JSON.stringify(payload, null, 2));
 
       const response = await fetch(`${API_URL}/user/profile-setup`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
       });
 
       if (response.status === 401) {
@@ -272,11 +396,7 @@ const ProfileSetup = ({ user, onComplete }) => {
 
       if (result.success) {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        localStorage.setItem('user', JSON.stringify({ 
-          ...storedUser, 
-          isProfileSetup: true,
-          profileComplete: true,
-        }));
+        localStorage.setItem('user', JSON.stringify({ ...storedUser, isProfileSetup: true, profileComplete: true }));
         localStorage.setItem('name', `${formData.firstName} ${formData.lastName}`.trim());
         if (onComplete) {
           onComplete();
@@ -294,8 +414,8 @@ const ProfileSetup = ({ user, onComplete }) => {
     }
   };
 
-  // Step labels
-  const STEP_LABELS = ['Personal', userRole === 'student' ? 'Academic' : 'Work', 'Contact', 'Emergency', 'Vaccination'];
+  // ── Shared styles ─────────────────────────────────────────────────────────
+  const STEP_LABELS = ['Personal', userRole === 'student' ? 'Academic' : 'Work', 'Contact & Emergency'];
 
   const tabClass = (tabNum) =>
     `flex-1 text-center text-[10px] font-bold uppercase tracking-wider relative cursor-pointer pb-2 transition-colors duration-200 after:content-[''] after:block after:h-[3px] after:mt-[5px] after:rounded-[10px] ${
@@ -306,11 +426,19 @@ const ProfileSetup = ({ user, onComplete }) => {
         : 'text-[#9bb5a5] hover:text-[#6b8577] after:bg-[#e2f0ea]'
     }`;
 
-  // Shared input / select classes
-  const inputCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] outline-none focus:border-[#4a635d] bg-white";
-  const selectCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] bg-white outline-none focus:border-[#4a635d]";
-  const labelCls = "block text-[11px] font-bold text-[#64748b] uppercase mb-[4px] ml-[2px]";
+  const inputCls  = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] outline-none focus:border-[#4a635d] bg-white transition-colors";
+  const selectCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] bg-white outline-none focus:border-[#4a635d] transition-colors";
+  const labelCls  = "block text-[11px] font-bold text-[#64748b] uppercase mb-[4px] ml-[2px]";
 
+  const fieldError = (field) => errors[field] ? (
+    <p className="text-red-500 text-[11px] mt-1 ml-1 flex items-center gap-1">
+      <i className="fa-solid fa-circle-exclamation text-[10px]"></i> {errors[field]}
+    </p>
+  ) : null;
+
+  const inputErrCls = (field) => errors[field] ? 'border-red-400 focus:border-red-400 bg-red-50' : '';
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[520px] p-8 overflow-hidden">
@@ -329,7 +457,7 @@ const ProfileSetup = ({ user, onComplete }) => {
           />
         </div>
 
-        {/* Tabs */}
+        {/* Step Tabs */}
         <div className="flex justify-between mb-5 px-1 gap-1">
           {STEP_LABELS.map((label, i) => (
             <div key={label} className={tabClass(i + 1)} onClick={() => setStep(i + 1)}>{label}</div>
@@ -338,22 +466,24 @@ const ProfileSetup = ({ user, onComplete }) => {
 
         <form onSubmit={handleSubmit} className="relative flex flex-col">
 
-          {/* ─── STEP 1: PERSONAL + IDENTITY ─── */}
+          {/* ─── STEP 1: PERSONAL ─── */}
           {step === 1 && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-300">
-              {/* Name row */}
+
               <div className="grid grid-cols-12 gap-2">
                 <div className="col-span-5">
-                  <label className={labelCls}>First Name *</label>
-                  <input id="firstName" type="text" required className={inputCls} value={formData.firstName} onChange={handleChange} />
+                  <label className={labelCls}>First Name <span className="text-red-400">*</span></label>
+                  <input id="firstName" type="text" required className={`${inputCls} ${inputErrCls('firstName')}`} value={formData.firstName} onChange={handleChange} />
+                  {fieldError('firstName')}
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>M.I.</label>
                   <input id="middleInitial" type="text" maxLength="1" className={`${inputCls} text-center`} value={formData.middleInitial} onChange={handleChange} />
                 </div>
                 <div className="col-span-5">
-                  <label className={labelCls}>Last Name *</label>
-                  <input id="lastName" type="text" required className={inputCls} value={formData.lastName} onChange={handleChange} />
+                  <label className={labelCls}>Last Name <span className="text-red-400">*</span></label>
+                  <input id="lastName" type="text" required className={`${inputCls} ${inputErrCls('lastName')}`} value={formData.lastName} onChange={handleChange} />
+                  {fieldError('lastName')}
                 </div>
               </div>
 
@@ -375,12 +505,12 @@ const ProfileSetup = ({ user, onComplete }) => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className={labelCls}>Birthday *</label>
+                  <label className={labelCls}>Birthday <span className="text-red-400">*</span></label>
                   <DatePicker
                     selected={formData.birthday ? new Date(formData.birthday) : null}
                     onChange={(date) => {
                       if (date) {
-                        const offset = date.getTimezoneOffset();
+                        const offset    = date.getTimezoneOffset();
                         const localDate = new Date(date.getTime() - offset * 60 * 1000);
                         handleChange({ target: { id: 'birthday', value: localDate.toISOString().split('T')[0] } });
                       } else {
@@ -391,10 +521,15 @@ const ProfileSetup = ({ user, onComplete }) => {
                     showMonthDropdown showYearDropdown dropdownMode="select"
                     maxDate={new Date()}
                     placeholderText="Select birthday"
-                    className={`${inputCls} ${birthdayError ? 'border-red-400' : ''}`}
+                    className={`${inputCls} ${birthdayError || errors.birthday ? 'border-red-400 bg-red-50' : ''}`}
                     portalId="root-portal"
                   />
-                  {birthdayError && <p className="text-red-500 text-[11px] mt-1 ml-1">{birthdayError}</p>}
+                  {(birthdayError || errors.birthday) && (
+                    <p className="text-red-500 text-[11px] mt-1 ml-1 flex items-center gap-1">
+                      <i className="fa-solid fa-circle-exclamation text-[10px]"></i>
+                      {birthdayError || errors.birthday}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className={labelCls}>Age</label>
@@ -404,12 +539,13 @@ const ProfileSetup = ({ user, onComplete }) => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className={labelCls}>Sex *</label>
-                  <select id="sex" required className={selectCls} value={formData.sex} onChange={handleChange}>
+                  <label className={labelCls}>Sex <span className="text-red-400">*</span></label>
+                  <select id="sex" required className={`${selectCls} ${inputErrCls('sex')}`} value={formData.sex} onChange={handleChange}>
                     <option value="" disabled>Select</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                   </select>
+                  {fieldError('sex')}
                 </div>
                 <div>
                   <label className={labelCls}>Blood Type</label>
@@ -449,7 +585,10 @@ const ProfileSetup = ({ user, onComplete }) => {
               </div>
 
               <div className="flex justify-end pt-3 border-t border-slate-100">
-                <button type="button" onClick={nextStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold bg-[#2d7a52] text-white hover:bg-[#1a5c3a] transition-all">Next Step →</button>
+                <button type="button" onClick={nextStep}
+                  className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold bg-[#2d7a52] text-white hover:bg-[#1a5c3a] transition-all">
+                  Next Step →
+                </button>
               </div>
             </div>
           )}
@@ -460,23 +599,32 @@ const ProfileSetup = ({ user, onComplete }) => {
               {userRole === 'student' ? (
                 <>
                   <div>
-                    <label className={labelCls}>Student No. *</label>
-                   <input id="universityId" type="text" placeholder="e.g. 23-11067" required className={inputCls} value={formData.universityId} onChange={handleChange} />
+                    <label className={labelCls}>Student No. <span className="text-red-400">*</span></label>
+                    <input id="universityId" type="text" placeholder="e.g. 23-11067" required
+                      className={`${inputCls} ${inputErrCls('universityId')}`}
+                      value={formData.universityId} onChange={handleChange} />
+                    {fieldError('universityId')}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className={labelCls}>Department *</label>
-                      <select id="department" required className={selectCls} value={formData.department} onChange={handleChange}>
+                      <label className={labelCls}>Department <span className="text-red-400">*</span></label>
+                      <select id="department" required
+                        className={`${selectCls} ${inputErrCls('department')}`}
+                        value={formData.department} onChange={handleChange}>
                         <option value="" disabled>Select Dept</option>
                         {Object.keys(programsData).map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
+                      {fieldError('department')}
                     </div>
                     <div>
-                      <label className={labelCls}>Program *</label>
-                      <select id="program" required disabled={!formData.department} className={`${selectCls} disabled:bg-slate-50`} value={formData.program} onChange={handleChange}>
+                      <label className={labelCls}>Program <span className="text-red-400">*</span></label>
+                      <select id="program" required disabled={!formData.department}
+                        className={`${selectCls} disabled:bg-slate-50 ${inputErrCls('program')}`}
+                        value={formData.program} onChange={handleChange}>
                         <option value="" disabled>Select Program</option>
                         {formData.department && programsData[formData.department].map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
+                      {fieldError('program')}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -487,188 +635,111 @@ const ProfileSetup = ({ user, onComplete }) => {
                       </select>
                     </div>
                     <div>
-                      <label className={labelCls}>Section *</label>
-                      <input id="section" type="text" placeholder="e.g. BSIT-1" required className={inputCls} value={formData.section} onChange={handleChange} />
+                      <label className={labelCls}>Section <span className="text-red-400">*</span></label>
+                      <input id="section" type="text" placeholder="e.g. BSIT-1" required
+                        className={`${inputCls} ${inputErrCls('section')}`}
+                        value={formData.section} onChange={handleChange} />
+                      {fieldError('section')}
                     </div>
                   </div>
                 </>
               ) : (
                 <>
                   <div>
-                    <label className={labelCls}>Classification *</label>
+                    <label className={labelCls}>Classification <span className="text-red-400">*</span></label>
                     <select id="classification" required className={selectCls} value={formData.classification} onChange={handleChange}>
                       {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>Office / Department *</label>
-                    <select id="department" required className={selectCls} value={formData.department} onChange={handleChange}>
+                    <label className={labelCls}>Office / Department <span className="text-red-400">*</span></label>
+                    <select id="department" required
+                      className={`${selectCls} ${inputErrCls('department')}`}
+                      value={formData.department} onChange={handleChange}>
                       <option value="" disabled>Select Office</option>
                       {PLSP_OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
+                    {fieldError('department')}
                   </div>
                   <div>
-                    <label className={labelCls}>Job Title *</label>
-                    <input id="jobTitle" type="text" placeholder="e.g. Associate Professor" required className={inputCls} value={formData.jobTitle} onChange={handleChange} />
+                    <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
+                    <input id="jobTitle" type="text" placeholder="e.g. Associate Professor" required
+                      className={`${inputCls} ${inputErrCls('jobTitle')}`}
+                      value={formData.jobTitle} onChange={handleChange} />
+                    {fieldError('jobTitle')}
                   </div>
                 </>
               )}
               <div className="flex justify-between pt-3 border-t border-slate-100">
-                <button type="button" onClick={prevStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">← Back</button>
-                <button type="button" onClick={nextStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold bg-[#2d7a52] text-white hover:bg-[#1a5c3a]">Next Step →</button>
+                <button type="button" onClick={prevStep}
+                  className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">
+                  ← Back
+                </button>
+                <button type="button" onClick={nextStep}
+                  className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold bg-[#2d7a52] text-white hover:bg-[#1a5c3a]">
+                  Next Step →
+                </button>
               </div>
             </div>
           )}
 
-          {/* ─── STEP 3: CONTACT ─── */}
+          {/* ─── STEP 3: CONTACT & EMERGENCY ─── */}
           {step === 3 && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-300">
+
+              {/* Contact Info */}
               <div>
                 <label className={labelCls}>Email Address</label>
                 <input id="email" type="email" readOnly className={`${inputCls} bg-slate-50 text-slate-500`} value={formData.email} />
               </div>
-              <div>
-                <label className={labelCls}>Phone Number *</label>
-                <input
-                  id="phoneNumber"
-                  type="tel"
-                  placeholder="09XXXXXXXXX"
-                  required
-                  pattern="[0-9]{11}"
-                  className={inputCls}
-                  value={formData.phoneNumber}
-                  onChange={handleChange}
-                />
-              </div>
-              <div className="flex justify-between pt-3 border-t border-slate-100">
-                <button type="button" onClick={prevStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">← Back</button>
-                <button type="button" onClick={nextStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold bg-[#2d7a52] text-white hover:bg-[#1a5c3a]">Next Step →</button>
-              </div>
-            </div>
-          )}
 
-          {/* ─── STEP 4: EMERGENCY CONTACT ─── */}
-          {step === 4 && (
-            <div className="flex flex-col gap-3 animate-in fade-in duration-300">
-              <div className="bg-[#f4f7f5] p-4 rounded-2xl border border-[#e2f0ea]">
-                <h3 className="text-[11px] font-black text-[#1a5c3a] uppercase mb-3 tracking-widest">Emergency Contact Information</h3>
+              {phoneField('phoneNumber', 'Phone Number', formData.phoneNumber, true)}
+
+              {/* Emergency Contact */}
+              <div className="bg-[#f4f7f5] p-4 rounded-2xl border border-[#e2f0ea] mt-1">
+                <h3 className="text-[11px] font-black text-[#1a5c3a] uppercase mb-3 tracking-widest">
+                  Emergency Contact Information
+                </h3>
 
                 <div className="flex flex-col gap-3">
                   <div>
-                    <label className={labelCls}>Full Name *</label>
-                    <input
-                      id="emergencyName"
-                      type="text"
-                      placeholder="Contact person's full name"
-                      required
-                      className={inputCls}
-                      value={formData.emergencyName}
-                      onChange={handleChange}
-                    />
+                    <label className={labelCls}>Full Name <span className="text-red-400">*</span></label>
+                    <input id="emergencyName" type="text" placeholder="Contact person's full name" required
+                      className={`${inputCls} ${inputErrCls('emergencyName')}`}
+                      value={formData.emergencyName} onChange={handleChange} />
+                    {fieldError('emergencyName')}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className={labelCls}>Relationship *</label>
-                      <select id="emergencyRelationship" required className={selectCls} value={formData.emergencyRelationship} onChange={handleChange}>
+                      <label className={labelCls}>Relationship <span className="text-red-400">*</span></label>
+                      <select id="emergencyRelationship" required
+                        className={`${selectCls} ${inputErrCls('emergencyRelationship')}`}
+                        value={formData.emergencyRelationship} onChange={handleChange}>
                         <option value="" disabled>Select</option>
                         {EMERGENCY_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
+                      {fieldError('emergencyRelationship')}
                     </div>
                     <div>
-                      <label className={labelCls}>Phone Number *</label>
-                      <input
-                        id="emergencyPhone"
-                        type="tel"
-                        placeholder="09XXXXXXXXX"
-                        required
-                        pattern="[0-9]{11}"
-                        className={inputCls}
-                        value={formData.emergencyPhone}
-                        onChange={handleChange}
-                      />
+                      {phoneField('emergencyPhone', 'Phone Number', formData.emergencyPhone, true)}
                     </div>
                   </div>
 
                   <div>
                     <label className={labelCls}>Address</label>
-                    <input
-                      id="emergencyAddress"
-                      type="text"
-                      placeholder="Emergency contact's home address"
+                    <input id="emergencyAddress" type="text" placeholder="Emergency contact's home address"
                       className={inputCls}
-                      value={formData.emergencyAddress}
-                      onChange={handleChange}
-                    />
+                      value={formData.emergencyAddress} onChange={handleChange} />
                   </div>
                 </div>
               </div>
 
               <div className="flex justify-between pt-3 border-t border-slate-100">
-                <button type="button" onClick={prevStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">← Back</button>
-                <button type="button" onClick={nextStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold bg-[#2d7a52] text-white hover:bg-[#1a5c3a]">Next Step →</button>
-              </div>
-            </div>
-          )}
-
-          {/* ─── STEP 5: COVID-19 VACCINATION HISTORY ─── */}
-          {step === 5 && (
-            <div className="flex flex-col gap-3 animate-in fade-in duration-300">
-              <div className="bg-[#f4f7f5] p-4 rounded-2xl border border-[#e2f0ea]">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-[11px] font-black text-[#1a5c3a] uppercase tracking-widest">COVID-19 Vaccination History</h3>
-                    <p className="text-[10px] text-[#6b8577] mt-0.5">All fields are optional — leave blank if not applicable.</p>
-                  </div>
-                  <span className="bg-[#d1ead9] text-[#1a5c3a] text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-full">Optional</span>
-                </div>
-
-                {/* Column headers */}
-                <div className="grid grid-cols-12 gap-2 mb-2 px-1">
-                  <div className="col-span-3 text-[10px] font-bold text-[#64748b] uppercase">Dose</div>
-                  <div className="col-span-5 text-[10px] font-bold text-[#64748b] uppercase">Vaccine Brand</div>
-                  <div className="col-span-4 text-[10px] font-bold text-[#64748b] uppercase">Date Given</div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {VACCINE_DOSES.map(({ key, label }) => (
-                    <div key={key} className="grid grid-cols-12 gap-2 items-center">
-                      {/* Dose Label (fixed, not editable) */}
-                      <div className="col-span-3">
-                        <div className="px-[10px] py-[8px] bg-white border border-[#cbd5d1] rounded-[10px] text-[11px] font-semibold text-[#1a5c3a] text-center">
-                          {label}
-                        </div>
-                      </div>
-
-                      {/* COVID Vaccine Dropdown */}
-                      <div className="col-span-5">
-                        <select
-                          className="w-full px-[8px] py-[8px] border border-[#cbd5d1] rounded-[10px] text-[11px] bg-white outline-none focus:border-[#4a635d]"
-                          value={formData.vaccinations[key].vaccineName}
-                          onChange={e => handleVaccineChange(key, 'vaccineName', e.target.value)}
-                        >
-                          <option value="">— not yet —</option>
-                          {COVID_VACCINES.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </div>
-
-                      {/* Date */}
-                      <div className="col-span-4">
-                        <input
-                          type="date"
-                          max={new Date().toISOString().split('T')[0]}
-                          className="w-full px-[8px] py-[8px] border border-[#cbd5d1] rounded-[10px] text-[11px] bg-white outline-none focus:border-[#4a635d]"
-                          value={formData.vaccinations[key].date}
-                          onChange={e => handleVaccineChange(key, 'date', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-between pt-3 border-t border-slate-100">
-                <button type="button" onClick={prevStep} className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">← Back</button>
+                <button type="button" onClick={prevStep}
+                  className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">
+                  ← Back
+                </button>
                 <button
                   type="submit"
                   disabled={loading}
@@ -681,6 +752,7 @@ const ProfileSetup = ({ user, onComplete }) => {
               </div>
             </div>
           )}
+
         </form>
       </div>
     </div>

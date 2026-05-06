@@ -1,283 +1,687 @@
-// frontend/src/features/admin-clinic/Consultations.jsx
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Consultations.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { rtdb } from '../../firebase';
+import {
+  ref, onValue, push, set, serverTimestamp, onDisconnect, off
+} from 'firebase/database';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 
-// Dummy data
-const allPeople = [
-  { id: "S-001", name: "De Vera, Jenny", role: "student", department: "College of Computing", avatarInitial: "JD", program: "BSIT", year: "3rd Year" },
-  { id: "S-002", name: "Santos, Sofia", role: "student", department: "College of Engineering", avatarInitial: "SS", program: "BSCE", year: "2nd Year" },
-  { id: "S-003", name: "Mendoza, Paolo", role: "student", department: "College of Health Sciences", avatarInitial: "PM", program: "BSN", year: "4th Year" },
-  { id: "I-101", name: "Dr. Reyes, Maria", role: "instructor", department: "College of Computing", avatarInitial: "MR", program: "PhD" },
-  { id: "I-102", name: "Prof. Cruz, Andres", role: "instructor", department: "College of Engineering", avatarInitial: "AC", program: "Masters" },
-  { id: "I-103", name: "Prof. Mercado, Liza", role: "instructor", department: "College of Arts & Sciences", avatarInitial: "LM", program: "EdD" },
-  { id: "ST-201", name: "Fernandez, Leah", role: "staff", department: "Registrar's Office", avatarInitial: "LF" },
-  { id: "ST-202", name: "Villanueva, Mark", role: "staff", department: "Maintenance", avatarInitial: "MV" },
-  { id: "ST-203", name: "Garcia, Rosalie", role: "staff", department: "Accounting Office", avatarInitial: "RG" },
-  { id: "S-004", name: "Rivera, Kevin", role: "student", department: "College of Computing", avatarInitial: "KR", program: "BSIT", year: "2nd Year" },
-  { id: "I-104", name: "Dr. Villanueva, Paolo", role: "instructor", department: "College of Health Sciences", avatarInitial: "PV", program: "MD" },
-  { id: "ST-204", name: "Reyes, Teresa", role: "staff", department: "Library", avatarInitial: "TR" }
-];
+const formatTime = (ts) => {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatDate = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getRoleClass = (role) => {
+  if (!role) return 'bg-slate-100 text-slate-600';
+  const r = role.toLowerCase();
+  if (r === 'student') return 'bg-blue-100 text-blue-700';
+  if (r === 'instructor' || r === 'faculty') return 'bg-purple-100 text-purple-700';
+  return 'bg-green-100 text-green-700';
+};
 
 export const Consultations = () => {
-  const [consultationMessagesMap, setConsultationMessagesMap] = useState(new Map());
-  const [currentActivePatientId, setCurrentActivePatientId] = useState(null);
-  const [messageInput, setMessageInput] = useState('');
-  const [message, setMessage] = useState(null);
-  const messagesEndRef = useRef(null);
+  const navigate    = useNavigate();
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  // Initialize messages
+  const [conversations, setConversations]     = useState([]);
+  const [selectedConvId, setSelectedConvId]   = useState(null);
+  const [messages, setMessages]               = useState([]);
+  const [messageInput, setMessageInput]       = useState('');
+  const [onlinePresence, setOnlinePresence]   = useState({});
+  const [patientProfiles, setPatientProfiles] = useState({});
+  const [loadingMsgs, setLoadingMsgs]         = useState(false);
+  const [toast, setToast]                     = useState(null);
+  const [showPatientPanel, setShowPatientPanel] = useState(false);
+  const messagesEndRef                        = useRef(null);
+  const msgListenerRef                        = useRef(null);
+  const resolvedNameRef                       = useRef(currentUser.name || null);
+
+  // ── Set doctor presence ───────────────────────────────────────────────────
   useEffect(() => {
-    const initialMessages = new Map();
-    initialMessages.set("S-001", [
-      { text: "Good morning, doctor! I've been having headaches for 3 days.", sender: "patient", timestamp: new Date(Date.now() - 86400000).toISOString() },
-      { text: "Any other symptoms like fever or nausea?", sender: "doctor", timestamp: new Date(Date.now() - 82800000).toISOString() },
-      { text: "Slight dizziness, but no fever. Could it be stress?", sender: "patient", timestamp: new Date(Date.now() - 80000000).toISOString() }
-    ]);
-    initialMessages.set("S-002", [
-      { text: "Hello doc, my throat has been sore since yesterday.", sender: "patient", timestamp: new Date(Date.now() - 172800000).toISOString() },
-      { text: "I recommend drinking warm fluids and taking a rest. If persists, visit clinic.", sender: "doctor", timestamp: new Date(Date.now() - 170000000).toISOString() }
-    ]);
-    initialMessages.set("I-102", [
-      { text: "Doctor, I need a medical certificate for my sick leave.", sender: "patient", timestamp: new Date(Date.now() - 43200000).toISOString() },
-      { text: "Sure, please drop by the clinic tomorrow. I'll prepare it.", sender: "doctor", timestamp: new Date(Date.now() - 40000000).toISOString() }
-    ]);
-    initialMessages.set("ST-201", [
-      { text: "I have back pain and I need physio recommendation.", sender: "patient", timestamp: new Date(Date.now() - 7200000).toISOString() }
-    ]);
-    initialMessages.set("S-004", [
-      { text: "Doctor, I feel itchy after eating seafood.", sender: "patient", timestamp: new Date(Date.now() - 10800000).toISOString() },
-      { text: "Likely allergic reaction. Take antihistamine and avoid seafood.", sender: "doctor", timestamp: new Date(Date.now() - 9000000).toISOString() }
-    ]);
-    initialMessages.set("I-104", [
-      { text: "Hi doc, need a prescription for maintenance meds.", sender: "patient", timestamp: new Date(Date.now() - 21600000).toISOString() }
-    ]);
-    initialMessages.set("ST-203", [
-      { text: "My blood pressure has been high lately. Should I adjust medication?", sender: "patient", timestamp: new Date(Date.now() - 5400000).toISOString() }
-    ]);
-    setConsultationMessagesMap(initialMessages);
+    if (!currentUser?.uid) return;
+
+    const setPresence = async () => {
+      let resolvedName = currentUser.name || currentUser.displayName || null;
+      if (!resolvedName) {
+        try {
+          const snap = await getDoc(doc(db, 'users', currentUser.uid));
+          if (snap.exists()) {
+            const d = snap.data();
+            resolvedName = [
+              d.firstName,
+              d.middleInitial ? `${d.middleInitial}.` : '',
+              d.lastName,
+            ].filter(Boolean).join(' ').trim() || 'Clinic Staff';
+            const updated = { ...currentUser, name: resolvedName };
+            localStorage.setItem('user', JSON.stringify(updated));
+          }
+        } catch (err) {
+          console.error('Failed to fetch name:', err);
+          resolvedName = 'Clinic Staff';
+        }
+      }
+
+      resolvedNameRef.current = resolvedName || 'Clinic Staff';
+
+      const presenceData = {
+        online:   true,
+        lastSeen: serverTimestamp(),
+        name:     resolvedNameRef.current,
+        role:     currentUser.role || 'staff',
+      };
+      const offlineData = { ...presenceData, online: false };
+
+      const presenceRef = ref(rtdb, `presence/${currentUser.uid}`);
+      set(presenceRef, presenceData);
+      onDisconnect(presenceRef).set(offlineData);
+
+      return () => set(presenceRef, offlineData);
+    };
+
+    setPresence();
+  }, [currentUser?.uid]);
+
+  // ── Load Firestore user profiles for display ──────────────────────────────
+  useEffect(() => {
+    const loadProfiles = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        const map = {};
+        snap.docs.forEach(d => { map[d.id] = { uid: d.id, ...d.data() }; });
+        setPatientProfiles(map);
+      } catch (err) {
+        console.error('Failed to load profiles:', err);
+      }
+    };
+    loadProfiles();
   }, []);
 
-  // Get all patients with messages
-  const getAllPatientsWithMessages = () => {
-    const activeSet = new Set();
-    for (const [patientId] of consultationMessagesMap.entries()) {
-      activeSet.add(patientId);
-    }
-    return allPeople.filter(p => activeSet.has(p.id)).sort((a, b) => {
-      const msgsA = consultationMessagesMap.get(a.id) || [];
-      const msgsB = consultationMessagesMap.get(b.id) || [];
-      const lastA = msgsA.length ? new Date(msgsA[msgsA.length - 1].timestamp) : new Date(0);
-      const lastB = msgsB.length ? new Date(msgsB[msgsB.length - 1].timestamp) : new Date(0);
-      return lastB - lastA;
+  // ── Listen to all conversations ───────────────────────────────────────────
+  useEffect(() => {
+    const convRef = ref(rtdb, 'consultations');
+    const unsub = onValue(convRef, (snap) => {
+      const data = snap.val() || {};
+      const list = Object.entries(data).map(([id, conv]) => ({
+        id,
+        ...conv.metadata,
+        lastMessage:   conv.metadata?.lastMessage   || '',
+        lastTimestamp: conv.metadata?.lastTimestamp || 0,
+        unreadCount:   Object.values(conv.messages || {}).filter(
+          m => m.sender === 'patient' && !m.readByClinic
+        ).length,
+      }));
+      list.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+      setConversations(list);
     });
-  };
+    return () => off(convRef, 'value', unsub);
+  }, []);
 
-  const allPatientsWithMessages = getAllPatientsWithMessages();
+  // ── Listen to presence ────────────────────────────────────────────────────
+  useEffect(() => {
+    const presRef = ref(rtdb, 'presence');
+    const unsub = onValue(presRef, (snap) => {
+      setOnlinePresence(snap.val() || {});
+    });
+    return () => off(presRef, 'value', unsub);
+  }, []);
 
-  const getUnreadCount = (patientId) => {
-    const messages = consultationMessagesMap.get(patientId) || [];
-    let unread = 0;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].sender === 'patient') unread++;
-      else break;
+  // ── Listen to selected conversation messages ──────────────────────────────
+  useEffect(() => {
+    if (msgListenerRef.current) {
+      off(msgListenerRef.current);
+      msgListenerRef.current = null;
     }
-    return unread;
-  };
+    if (!selectedConvId) { setMessages([]); return; }
 
-  const selectPatient = (patientId) => {
-    setCurrentActivePatientId(patientId);
-  };
+    setLoadingMsgs(true);
+    const msgsRef = ref(rtdb, `consultations/${selectedConvId}/messages`);
+    msgListenerRef.current = msgsRef;
 
-  const displayChatConversation = (patientId) => {
-    const messages = consultationMessagesMap.get(patientId) || [];
-    return messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  };
+    const unsub = onValue(msgsRef, (snap) => {
+      const data = snap.val() || {};
+      const list = Object.entries(data)
+        .map(([id, msg]) => ({ id, ...msg }))
+        .sort((a, b) => a.timestamp - b.timestamp);
+      setMessages(list);
+      setLoadingMsgs(false);
 
-  const sendMessage = () => {
-    if (!currentActivePatientId) {
-      showMsg('Select a patient first', 'error');
-      return;
-    }
+      // Mark patient messages as read
+      list.forEach(msg => {
+        if (msg.sender === 'patient' && !msg.readByClinic) {
+          set(ref(rtdb, `consultations/${selectedConvId}/messages/${msg.id}/readByClinic`), true);
+        }
+      });
+    });
+
+    return () => off(msgsRef, 'value', unsub);
+  }, [selectedConvId]);
+
+  // ── Close patient panel when conversation changes ─────────────────────────
+  useEffect(() => {
+    setShowPatientPanel(false);
+  }, [selectedConvId]);
+
+  // ── Auto-scroll ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  const sendMessage = async () => {
+    if (!selectedConvId || !messageInput.trim()) return;
     const text = messageInput.trim();
-    if (!text) return;
-
-    const messages = consultationMessagesMap.get(currentActivePatientId) || [];
-    messages.push({ text, sender: 'doctor', timestamp: new Date().toISOString() });
-    const newMap = new Map(consultationMessagesMap);
-    newMap.set(currentActivePatientId, messages);
-    setConsultationMessagesMap(newMap);
     setMessageInput('');
-    showMsg('Message sent', 'success');
+
+    try {
+      const msgsRef = ref(rtdb, `consultations/${selectedConvId}/messages`);
+      await push(msgsRef, {
+        text,
+        sender:       'clinic',
+        senderUid:    currentUser.uid,
+        senderName:   resolvedNameRef.current || 'Clinic Staff',
+        senderRole:   currentUser.role || 'staff',
+        timestamp:    Date.now(),
+        readByClinic: true,
+      });
+      await set(ref(rtdb, `consultations/${selectedConvId}/metadata/lastMessage`), text);
+      await set(ref(rtdb, `consultations/${selectedConvId}/metadata/lastTimestamp`), Date.now());
+      await set(ref(rtdb, `consultations/${selectedConvId}/metadata/lastSenderRole`), 'clinic');
+    } catch (err) {
+      console.error('Send error:', err);
+      showToast('Failed to send message', 'error');
+    }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') sendMessage();
+  const showToast = (text, type = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const addDemoMessage = () => {
-    const existing = allPeople[Math.floor(Math.random() * allPeople.length)];
-    const msgs = ["Need follow-up consultation", "Medication inquiry", "Headache relief", "Clinic hours?", "Prescription refill", "Feeling unwell"];
-    const randMsg = msgs[Math.floor(Math.random() * msgs.length)];
-    const newMap = new Map(consultationMessagesMap);
-    const patMsgs = newMap.get(existing.id) || [];
-    patMsgs.push({ text: randMsg, sender: 'patient', timestamp: new Date().toISOString() });
-    newMap.set(existing.id, patMsgs);
-    setConsultationMessagesMap(newMap);
-    showMsg(`New message from ${existing.name}`, 'success');
+  // ── Group messages by date ────────────────────────────────────────────────
+  const groupedMessages = () => {
+    const groups = [];
+    let lastDate = null;
+    messages.forEach(msg => {
+      const dateLabel = formatDate(msg.timestamp);
+      if (dateLabel !== lastDate) {
+        groups.push({ type: 'date', label: dateLabel, id: `date-${msg.timestamp}` });
+        lastDate = dateLabel;
+      }
+      groups.push(msg);
+    });
+    return groups;
   };
 
-  const showMsg = (msg, type = 'success') => {
-    setMessage({ text: msg, type });
-    setTimeout(() => setMessage(null), 3000);
+  const selectedConv   = conversations.find(c => c.id === selectedConvId);
+  const patientUid     = selectedConv?.patientUid;
+  const patientProfile = patientProfiles[patientUid] || {};
+  const patientName    = patientProfile.firstName
+    ? `${patientProfile.lastName || ''}, ${patientProfile.firstName || ''}`.trim()
+    : selectedConv?.patientName || 'Unknown';
+  const isPatientOnline = onlinePresence[patientUid]?.online || false;
+
+  const onlineClinicStaff = Object.entries(onlinePresence)
+    .filter(([uid, p]) => p.online && uid !== currentUser.uid &&
+      ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
+    .map(([, p]) => p.name);
+
+  // ── Navigate to full examination ──────────────────────────────────────────
+  const handleOpenExamination = () => {
+    if (!patientUid) return;
+    const person = {
+      uid:        patientUid,
+      name:       patientName,
+      firstName:  patientProfile.firstName  || '',
+      lastName:   patientProfile.lastName   || '',
+      id:         patientProfile.universityId || patientProfile.studentId || patientUid,
+      role:       patientProfile.role       || '',
+      prog:       patientProfile.program    || patientProfile.course || '',
+      year:       patientProfile.yearLevel  || '',
+      section:    patientProfile.section    || '',
+      age:        patientProfile.age        || '',
+      gender:     patientProfile.gender     || patientProfile.sex || '',
+      birthdate:  patientProfile.birthday   || '',
+      email:      patientProfile.email      || '',
+      phoneNumber: patientProfile.phoneNumber || '',
+      department: patientProfile.department || '',
+      _raw:       patientProfile,
+    };
+    localStorage.setItem('selectedPatient', JSON.stringify(person));
+    navigate(`/examinations?patientId=${patientUid}`);
   };
-
-  const getRoleLabel = (role) => role === 'student' ? 'Student' : role === 'instructor' ? 'Faculty' : 'Staff';
-
-  const getRoleClass = (role) => role === 'student' ? '' : role === 'instructor' ? 'instructor' : 'staff';
-
-  const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const selectedPatient = allPeople.find(p => p.id === currentActivePatientId);
-  const chatMessages = currentActivePatientId ? displayChatConversation(currentActivePatientId) : [];
-
-  // Calculate stats
-  const totalConsultCount = allPatientsWithMessages.length;
-  let totalMessagesCount = 0;
-  for (const msgs of consultationMessagesMap.values()) totalMessagesCount += msgs.length;
 
   return (
-    <div className="flex h-[calc(100vh-140px)] bg-white overflow-hidden">
-      {/* Left: Patient List Panel */}
-      <div className="w-[380px] border-r border-slate-200 bg-white flex flex-col flex-shrink-0">
-        <div className="p-4 border-b border-slate-200">
-          <h3 className="font-extrabold text-[#466460] text-base"><i className="fa-regular fa-comment-dots mr-2"></i>Message Requests</h3>
-          <p className="text-[10px] text-slate-400 mt-1">Students · Staff · Instructors</p>
-          <button onClick={addDemoMessage} className="text-[10px] bg-[#e0eceb] px-2 py-1 rounded-full text-teal-700 font-semibold hover:bg-[#cbdcd9] transition ml-2 mt-2">
-            <i className="fa-regular fa-bell mr-1"></i>Demo Message
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {allPatientsWithMessages.length === 0 ? (
-            <div className="text-center text-slate-400 text-sm py-10">No consultation messages yet</div>
-          ) : (
-            allPatientsWithMessages.map(patient => {
-              const activeClass = currentActivePatientId === patient.id ? 'bg-gradient-to-r from-[#e0eceb] to-white border-l-4 border-[#466460]' : '';
-              const unread = getUnreadCount(patient.id);
-              const lastMsg = consultationMessagesMap.get(patient.id)?.slice(-1)[0];
-              const preview = lastMsg ? (lastMsg.text.length > 45 ? lastMsg.text.substring(0, 42) + '...' : lastMsg.text) : 'No messages';
+    // Added 'relative' here to contain the absolute positioned patient panel on mobile
+    <div className="flex h-[calc(100vh-140px)] bg-white overflow-hidden relative">
 
-              return (
-                <div
-                  key={patient.id}
-                  onClick={() => selectPatient(patient.id)}
-                  className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#e0eceb] hover:translate-x-1 ${activeClass}`}
-                >
-                  <div className="w-11 h-11 rounded-full bg-slate-200 flex items-center justify-center font-bold text-[#466460] text-lg flex-shrink-0">
-                    {patient.avatarInitial}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-sm text-slate-800">{patient.name}</div>
-                    <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${getRoleClass(patient.role) === 'instructor' ? 'bg-purple-100 text-purple-700' : getRoleClass(patient.role) === 'staff' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {getRoleLabel(patient.role)}
-                      </span>
-                      <span>{patient.department}</span>
-                      {patient.program && <span>{patient.program}</span>}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 truncate">{preview}</div>
-                  </div>
-                  {unread > 0 && (
-                    <span className="bg-[#e07a5f] text-white rounded-full text-[9px] font-bold px-2 py-0.5 min-w-[22px] text-center">{unread}</span>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Right: Chat Panel */}
-      <div className="flex-1 flex flex-col bg-slate-50">
+      {/* ── Left: Conversation List ── */}
+      <div 
+        className={`w-full md:w-[340px] border-r border-slate-200 flex-col flex-shrink-0 ${
+          selectedConvId ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         <div className="p-4 border-b border-slate-200 bg-white">
           <h3 className="font-extrabold text-[#466460] text-base">
-            {selectedPatient ? <><i className="fa-regular fa-user mr-1"></i>{selectedPatient.name}</> : 'Consultation Thread'}
+            <i className="fa-regular fa-comment-dots mr-2"></i>Consultations
           </h3>
-          {selectedPatient && (
-            <p className="text-[10px] text-slate-400 mt-0.5">{getRoleLabel(selectedPatient.role)} · {selectedPatient.department}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {conversations.length} active thread{conversations.length !== 1 ? 's' : ''}
+          </p>
+          {onlineClinicStaff.length > 0 && (
+            <p className="text-[10px] text-emerald-600 mt-1 font-semibold">
+              <i className="fa-solid fa-circle text-[7px] mr-1"></i>
+              {onlineClinicStaff.join(', ')} also online
+            </p>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4 bg-slate-50">
-          {!currentActivePatientId ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-              <i className="fa-regular fa-message text-5xl text-slate-300"></i>
-              <p className="text-sm">No conversation selected</p>
-              <span className="text-xs text-slate-400">Choose a patient from the list</span>
+        <div className="flex-1 overflow-y-auto">
+          {conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 p-6 text-center">
+              <i className="fa-regular fa-comment-dots text-4xl text-slate-200"></i>
+              <p className="text-sm">No consultations yet</p>
+              <p className="text-xs">Patients will appear here when they send a message</p>
             </div>
-          ) : chatMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-              <i className="fa-regular fa-comment text-5xl text-slate-300"></i>
-              <p>No messages yet</p>
-            </div>
-          ) : (
-            chatMessages.map((msg, idx) => {
-              const isDoctor = msg.sender === 'doctor';
-              const bubbleClass = isDoctor ? 'self-end' : 'self-start';
-              const senderName = isDoctor ? 'Dr. Reyes' : (selectedPatient?.name.split(',')[0] || 'Patient');
+          ) : conversations.map(conv => {
+            const profile     = patientProfiles[conv.patientUid] || {};
+            const displayName = profile.firstName
+              ? `${profile.lastName || ''}, ${profile.firstName || ''}`.trim()
+              : conv.patientName || 'Unknown';
+            const initial  = displayName.charAt(0).toUpperCase();
+            const isOnline = onlinePresence[conv.patientUid]?.online || false;
+            const isActive = selectedConvId === conv.id;
 
-              return (
-                <div key={idx} className={`max-w-[75%] flex flex-col ${bubbleClass}`}>
-                  <div className={`px-4 py-2.5 rounded-[18px] text-sm leading-relaxed break-words ${isDoctor ? 'bg-[#466460] text-white rounded-br-md' : 'bg-white border border-slate-200 rounded-bl-md text-slate-800 shadow-sm'}`}>
-                    {msg.text}
+            return (
+              <div
+                key={conv.id}
+                onClick={() => setSelectedConvId(conv.id)}
+                className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
+                  isActive ? 'md:bg-gradient-to-r md:from-[#e0eceb] md:to-white md:border-l-4 md:border-l-[#466460]' : ''
+                }`}
+              >
+                <div className="relative flex-shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-base">
+                    {initial}
                   </div>
-                  <div className={`flex items-center gap-2 text-[9px] text-slate-400 mt-1 ${isDoctor ? 'justify-end pr-3' : 'pl-3'}`}>
-                    <span>{senderName}</span>
-                    <span>·</span>
-                    <span>{formatTime(msg.timestamp)}</span>
+                  {isOnline && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center">
+                    <p className="font-bold text-sm text-slate-800 truncate">{displayName}</p>
+                    <span className="text-[9px] text-slate-400 flex-shrink-0 ml-2">
+                      {conv.lastTimestamp ? formatTime(conv.lastTimestamp) : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patientRole)}`}>
+                      {conv.patientRole || 'patient'}
+                    </span>
+                    <p className="text-[10px] text-slate-400 truncate">{conv.lastMessage || 'No messages'}</p>
                   </div>
                 </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
 
-        <div className="p-4 bg-white border-t border-slate-200 flex gap-3 items-center">
-          <input
-            type="text"
-            placeholder={currentActivePatientId ? "Type a reply..." : "Select a person to view conversation"}
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={!currentActivePatientId}
-            className="flex-1 border border-slate-200 rounded-full px-5 py-3 text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!currentActivePatientId}
-            className="w-11 h-11 rounded-full bg-[#466460] border-none text-white cursor-pointer transition-all hover:bg-[#5a7a76] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            <i className="fa-regular fa-paper-plane"></i>
-          </button>
+                {conv.unreadCount > 0 && (
+                  <span className="bg-[#e07a5f] text-white text-[9px] font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center flex-shrink-0">
+                    {conv.unreadCount}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Stats Display */}
-      <div className="fixed bottom-4 right-4 bg-white p-3 rounded-xl shadow-lg border border-slate-200 flex gap-4 text-xs">
-        <div className="text-center">
-          <div className="text-lg font-extrabold text-[#466460]">{totalConsultCount}</div>
-          <div className="text-[9px] text-slate-400 uppercase">Active Chats</div>
+      {/* ── Right: Chat + optional Patient Panel ── */}
+      <div 
+        className={`flex-1 min-w-0 overflow-hidden ${
+          !selectedConvId ? 'hidden md:flex' : 'flex'
+        }`}
+      >
+
+        {/* ── Chat Column ── */}
+        <div className="flex-1 flex flex-col min-w-0">
+
+          {/* Chat Header */}
+          <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3">
+            
+            {/* Native Mobile Back Button */}
+            <button
+              onClick={() => {
+                setSelectedConvId(null);
+                setShowPatientPanel(false);
+              }}
+              className="md:hidden w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors flex-shrink-0"
+            >
+              <i className="fa-solid fa-chevron-left"></i>
+            </button>
+
+            {selectedConv ? (
+              <>
+                <div className="relative flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460]">
+                    {patientName.charAt(0).toUpperCase()}
+                  </div>
+                  {isPatientOnline && (
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white"></span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-slate-800 truncate">{patientName}</p>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    {isPatientOnline
+                      ? <span className="text-emerald-500 font-semibold">● Online</span>
+                      : <span>● Offline</span>}
+                    {patientProfile.program    ? ` · ${patientProfile.program}`    : ''}
+                    {patientProfile.department ? ` · ${patientProfile.department}` : ''}
+                  </p>
+                </div>
+
+                {/* ── View Records Toggle Button ── */}
+                <button
+                  onClick={() => setShowPatientPanel(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-full text-[11px] font-semibold transition-all flex-shrink-0 ${
+                    showPatientPanel
+                      ? 'bg-[#466460] text-white shadow-sm'
+                      : 'bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white'
+                  }`}
+                >
+                  <i className="fa-solid fa-address-card text-[10px] md:mr-1"></i>
+                  <span className="hidden md:inline">{showPatientPanel ? 'Hide Records' : 'View Records'}</span>
+                </button>
+              </>
+            ) : (
+              <div className="hidden md:block">
+                <p className="font-bold text-sm text-slate-800">Consultation Thread</p>
+                <p className="text-[10px] text-slate-400">Select a patient to view conversation</p>
+              </div>
+            )}
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col gap-3 bg-slate-50">
+            {!selectedConvId ? (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                <i className="fa-regular fa-message text-5xl text-slate-200"></i>
+                <p className="text-sm">No conversation selected</p>
+                <p className="text-xs">Choose a patient from the list</p>
+              </div>
+            ) : loadingMsgs ? (
+              <div className="flex items-center justify-center h-full">
+                <i className="fa-solid fa-spinner fa-spin text-[#466460] text-xl"></i>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                <i className="fa-regular fa-comment text-4xl text-slate-200"></i>
+                <p className="text-sm">No messages yet</p>
+              </div>
+            ) : (
+              groupedMessages().map((item) => {
+                if (item.type === 'date') {
+                  return (
+                    <div key={item.id} className="flex justify-center my-2">
+                      <span className="bg-slate-200 text-slate-500 px-3 py-1 rounded-full text-[10px] font-semibold">
+                        {item.label}
+                      </span>
+                    </div>
+                  );
+                }
+
+                const isClinic = item.sender === 'clinic';
+                return (
+                  <div key={item.id} className={`flex flex-col ${isClinic ? 'items-end' : 'items-start'}`}>
+                    {isClinic && (
+                      <div className="flex items-center gap-1.5 mb-0.5 mr-2">
+                        <p className="text-[9px] text-slate-400 font-semibold">
+                          {item.senderName || 'Clinic Staff'}
+                        </p>
+                        {item.senderRole && (
+                          <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold capitalize">
+                            {item.senderRole}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm ${
+                      isClinic
+                        ? 'bg-[#466460] text-white rounded-br-sm'
+                        : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
+                    }`}>
+                      {item.text}
+                    </div>
+                    <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
+                      <span>{formatTime(item.timestamp)}</span>
+                      {isClinic && (
+                        <i className={`fa-solid fa-check${item.readByClinic ? '-double' : ''} text-[8px]`}></i>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="px-3 md:px-4 py-3 bg-white border-t border-slate-200 flex gap-2 md:gap-3 items-center">
+            <input
+              type="text"
+              placeholder={selectedConvId ? 'Type a reply…' : 'Select a conversation first'}
+              value={messageInput}
+              onChange={e => setMessageInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendMessage()}
+              disabled={!selectedConvId}
+              className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!selectedConvId || !messageInput.trim()}
+              className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+            >
+              <i className="fa-regular fa-paper-plane"></i>
+            </button>
+          </div>
         </div>
-        <div className="text-center">
-          <div className="text-lg font-extrabold text-[#466460]">{totalMessagesCount}</div>
-          <div className="text-[9px] text-slate-400 uppercase">Messages</div>
-        </div>
+
+        {/* ── Patient Records Side Panel ── */}
+        {showPatientPanel && selectedConv && (
+          <div className="absolute inset-0 z-50 md:relative md:z-auto w-full md:w-[420px] flex-shrink-0 md:border-l border-slate-200 bg-white flex flex-col overflow-hidden">
+
+            {/* Panel Header */}
+            <div className="px-4 py-3 md:py-3.5 border-b border-slate-200 flex items-center justify-between bg-white shadow-sm md:shadow-none">
+              <p className="text-xs font-extrabold text-[#466460] flex items-center gap-1.5">
+                <i className="fa-solid fa-address-card text-[11px]"></i>
+                Patient Records
+              </p>
+              <button
+                onClick={() => setShowPatientPanel(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100"
+              >
+                <i className="fa-solid fa-xmark text-sm"></i>
+              </button>
+            </div>
+
+            {/* Panel Body */}
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+
+              {/* Avatar + Name */}
+              <div className="flex items-center gap-3">
+                <div className="relative flex-shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-lg">
+                    {patientName.charAt(0).toUpperCase()}
+                  </div>
+                  {isPatientOnline && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-sm text-slate-800 leading-tight truncate">{patientName}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {patientProfile.universityId || patientProfile.studentId || '—'}
+                  </p>
+                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patientRole)}`}>
+                    {patientProfile.role || selectedConv?.patientRole || 'patient'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Age',    value: patientProfile.age    || '—' },
+                  { label: 'Gender', value: patientProfile.gender || patientProfile.sex || '—' },
+                  { label: 'Blood',  value: patientProfile.bloodType || '—' },
+                  { label: 'Civil',  value: patientProfile.civilStatus || '—' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-slate-50 rounded-lg p-2 border border-slate-100">
+                    <p className="text-[8px] text-slate-400 uppercase tracking-wide">{label}</p>
+                    <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Birthdate */}
+              {patientProfile.birthday && (
+                <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
+                  <p className="text-[8px] text-slate-400 uppercase tracking-wide">Birthdate</p>
+                  <p className="text-xs font-bold text-slate-700 mt-0.5">{patientProfile.birthday}</p>
+                </div>
+              )}
+
+              {/* Contact */}
+              <div>
+                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Contact</p>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
+                    <i className="fa-solid fa-envelope text-[#466460] w-3"></i>
+                    <span className="truncate">{patientProfile.email || '—'}</span>
+                  </p>
+                  {patientProfile.phoneNumber && (
+                    <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
+                      <i className="fa-solid fa-phone text-[#466460] w-3"></i>
+                      {patientProfile.phoneNumber}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Program / Department */}
+              {(patientProfile.program || patientProfile.course || patientProfile.department) && (
+                <div>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Program</p>
+                  <p className="text-[11px] font-semibold text-slate-700">
+                    {patientProfile.program || patientProfile.course || '—'}
+                    {patientProfile.yearLevel ? ` · ${patientProfile.yearLevel}` : ''}
+                    {patientProfile.section   ? ` · Sec ${patientProfile.section}` : ''}
+                  </p>
+                  {patientProfile.department && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.department}</p>
+                  )}
+                  {patientProfile.jobTitle && (
+                    <p className="text-[10px] text-slate-500 mt-0.5">{patientProfile.jobTitle}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Home Address */}
+              {patientProfile.homeAddress && (
+                <div>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Address</p>
+                  <p className="text-[11px] text-slate-600">{patientProfile.homeAddress}</p>
+                </div>
+              )}
+
+              {/* Emergency Contact */}
+              {patientProfile.emergencyContact?.name && (
+                <div>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Emergency Contact</p>
+                  <p className="text-[11px] font-semibold text-slate-700">
+                    {patientProfile.emergencyContact.name}
+                    {patientProfile.emergencyContact.relationship
+                      ? ` (${patientProfile.emergencyContact.relationship})`
+                      : ''}
+                  </p>
+                  {patientProfile.emergencyContact.phone && (
+                    <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                      <i className="fa-solid fa-phone text-[9px]"></i>
+                      {patientProfile.emergencyContact.phone}
+                    </p>
+                  )}
+                  {patientProfile.emergencyContact.address && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.emergencyContact.address}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Vaccinations */}
+              {patientProfile.vaccinations &&
+                Object.values(patientProfile.vaccinations).some(v => v?.vaccineName) && (
+                <div>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">COVID-19 Vaccination</p>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(patientProfile.vaccinations).map(([key, v]) =>
+                      v?.vaccineName ? (
+                        <div key={key} className="text-[8px] px-2 py-1 rounded-lg bg-green-50 border border-green-100 text-green-700">
+                          <span className="font-semibold">
+                            {key.replace('dose', 'Dose ').replace('booster', 'Booster ')}:
+                          </span>{' '}
+                          {v.vaccineName}
+                          {v.date ? ` · ${v.date}` : ''}
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Divider */}
+              <div className="border-t border-slate-100 pt-1"></div>
+
+              {/* Open Full Examination Button */}
+              <button
+                onClick={handleOpenExamination}
+                className="w-full bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white text-[11px] font-bold py-3 md:py-2.5 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <i className="fa-solid fa-stethoscope text-[10px]"></i>
+                Open Full Examination
+              </button>
+
+              <button
+                onClick={() => navigate(`/records`)}
+                className="w-full bg-[#e0eceb] text-[#466460] text-[11px] font-bold py-3 md:py-2 rounded-xl hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-folder-open text-[10px]"></i>
+                Go to Records
+              </button>
+
+            </div>
+          </div>
+        )}
+
       </div>
 
-      {/* Snackbar */}
-      {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 transition-all ${message.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
-          <i className={`fa-solid ${message.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
-          {message.text}
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-white text-sm font-semibold shadow-lg z-[60] flex items-center gap-2 ${
+          toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-600'
+        }`}>
+          <i className={`fa-solid ${toast.type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'}`}></i>
+          {toast.text}
         </div>
       )}
     </div>

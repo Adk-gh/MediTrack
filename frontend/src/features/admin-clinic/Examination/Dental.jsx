@@ -1,3 +1,5 @@
+//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Dental.jsx
+
 import React, { useState, useEffect } from 'react';
 
 // ── Static data ────────────────────────────────────────────────────────────────
@@ -189,10 +191,12 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     .filter(([, d]) => d?.condition)
     .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
 
-  const handleFinalSubmit = () => {
-    setShowSummary(false);
-    showMessage('Dental record submitted successfully!');
-  };
+  
+const handleFinalSubmit = () => {
+  setShowSummary(false);
+  
+  showMessage('Dental record submitted successfully!');
+};
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

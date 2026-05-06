@@ -4,14 +4,16 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
 import { loginSchema, getFieldErrors } from '../validation/schemas.js';
+import { useLoading } from '../context/LoadingContext.jsx';
 
 // Firebase Imports
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore"; // Use doc and getDoc for direct ID lookup
-import { auth, db } from '../firebase'; 
+import { auth, db } from '../firebase';
 
 const LoginForm = () => {
   const navigate = useNavigate();
+  const { showLoading, hideLoading } = useLoading();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -52,6 +54,7 @@ const LoginForm = () => {
 
     setError('');
     setLoading(true);
+    showLoading('Signing in', 'light');
 
     try {
       // 1. Log the user into Firebase Authentication
@@ -90,6 +93,7 @@ const LoginForm = () => {
       console.log("🔍 [Login] Parsed Role:", role);
 
       // 4. Conditional Redirect Logic
+      hideLoading();
       if (['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role)) {
         navigate('/dashboard');
       } else {
@@ -98,7 +102,8 @@ const LoginForm = () => {
 
     } catch (err) {
       console.error("🔍 [Login] Firebase Auth Error:", err.code, err.message);
-      
+      hideLoading();
+
       // User-friendly error mapping
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('Invalid email or password');

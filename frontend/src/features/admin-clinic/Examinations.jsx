@@ -6,67 +6,41 @@ import { db } from '../../firebase';
 import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
 
-// ── Normalize a Firestore user doc into the shape Medical/Dental expect ───────
 const normalizePatient = (uid, d) => {
   const firstName     = d.firstName    || '';
   const lastName      = d.lastName     || '';
   const middleInitial = d.middleInitial || '';
   const suffix        = d.suffix       || '';
-
-  // "Surname, Firstname MI." — matches what Medical/Dental split on ", "
   const name = lastName
     ? `${lastName}, ${firstName}${middleInitial ? ` ${middleInitial}.` : ''}${suffix ? ` ${suffix}` : ''}`.trim()
     : firstName || '—';
-
   return {
-    uid,
-    name,
-    firstName,
-    lastName,
-    middleInitial,
-    suffix,
-
-    // University / student ID shown on the form
-    id:           d.universityId   || d.studentId || uid,
-    universityId: d.universityId   || d.studentId || uid,
-    studentId:    d.studentId      || d.universityId || '',
-
-    role:         d.role           || '',
-    prog:         d.program        || d.course    || '',
-    program:      d.program        || d.course    || '',
-    year:         d.yearLevel      || '',
-    yearLevel:    d.yearLevel      || '',
-    section:      d.section        || '',
-
-    // Demographics
-    age:          d.age            || '',
-    gender:       d.gender         || d.sex       || '',
-    sex:          d.gender         || d.sex       || '',
-    birthdate:    d.birthday       || '',
-    birthday:     d.birthday       || '',
-
-    // Contact
-    email:        d.email          || '',
-    phoneNumber:  d.phoneNumber    || '',
-
-    // Academic / Work
-    department:   d.department     || '',
-    jobTitle:     d.jobTitle       || '',
-    classification: d.classification || '',
-
-    // Address / personal
-    homeAddress:  d.homeAddress    || '',
-    religion:     d.religion       || '',
-    nationality:  d.nationality    || '',
-    civilStatus:  d.civilStatus    || '',
-    bloodType:    d.bloodType      || '',
-
-    // Emergency contact — passed straight to the Medical form
-    emergencyContact: d.emergencyContact || {
-      name: '', relationship: '', phone: '', address: '',
-    },
-
-    // Vaccinations — passed straight to the Medical form
+    uid, name, firstName, lastName, middleInitial, suffix,
+    id:             d.universityId     || d.studentId || uid,
+    universityId:   d.universityId     || d.studentId || uid,
+    studentId:      d.studentId        || d.universityId || '',
+    role:           d.role             || '',
+    prog:           d.program          || d.course    || '',
+    program:        d.program          || d.course    || '',
+    year:           d.yearLevel        || '',
+    yearLevel:      d.yearLevel        || '',
+    section:        d.section          || '',
+    age:            d.age              || '',
+    gender:         d.gender           || d.sex       || '',
+    sex:            d.gender           || d.sex       || '',
+    birthdate:      d.birthday         || '',
+    birthday:       d.birthday         || '',
+    email:          d.email            || '',
+    phoneNumber:    d.phoneNumber      || '',
+    department:     d.department       || '',
+    jobTitle:       d.jobTitle         || '',
+    classification: d.classification   || '',
+    homeAddress:    d.homeAddress      || '',
+    religion:       d.religion         || '',
+    nationality:    d.nationality      || '',
+    civilStatus:    d.civilStatus      || '',
+    bloodType:      d.bloodType        || '',
+    emergencyContact: d.emergencyContact || { name: '', relationship: '', phone: '', address: '' },
     vaccinations: d.vaccinations || {
       dose1:    { vaccineName: '', date: '' },
       dose2:    { vaccineName: '', date: '' },
@@ -76,60 +50,79 @@ const normalizePatient = (uid, d) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 export const Examinations = () => {
-  const [searchParams]  = useSearchParams();
-  const navigate        = useNavigate();
-  const patientId       = searchParams.get('patientId'); // Firestore UID
+  const [searchParams] = useSearchParams();
+  const navigate       = useNavigate();
+  const patientId      = searchParams.get('patientId');
 
-  const [examTab, setExamTab]             = useState('medical');
-  const [message, setMessage]             = useState(null);
+  const [examTab, setExamTab]                 = useState('medical');
+  const [message, setMessage]                 = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [loading, setLoading]             = useState(true);
+  const [loading, setLoading]                 = useState(true);
+  const [examStarted, setExamStarted]         = useState(false);
+  const [resetKey, setResetKey]               = useState(0);
 
-  // ── Fetch patient from Firestore (or fall back to localStorage cache) ─────
-  useEffect(() => {
-    const fetchPatient = async () => {
-      setLoading(true);
+useEffect(() => {
+  const fetchPatient = async () => {
+    setLoading(true);
+    setExamStarted(false);
+    setResetKey(k => k + 1);
 
-      // 1. Try Firestore first (authoritative)
-      if (patientId) {
-        try {
-          const snap = await getDoc(doc(db, 'users', patientId));
-          if (snap.exists()) {
-            setSelectedPatient(normalizePatient(patientId, snap.data()));
-            setLoading(false);
-            return;
-          }
-        } catch (err) {
-          console.error('[Examinations] Firestore fetch error:', err);
+    if (patientId) {
+      try {
+        const snap = await getDoc(doc(db, 'users', patientId));
+        if (snap.exists()) {
+          setSelectedPatient(normalizePatient(patientId, snap.data()));
+          setExamStarted(true);
+          setLoading(false);
+          return;
         }
+      } catch (err) {
+        console.error('[Examinations] Firestore fetch error:', err);
       }
 
-      // 2. Fall back to localStorage cache set by Records.jsx
+      // Only fall back to localStorage if we had a patientId but Firestore failed
       const cached = localStorage.getItem('selectedPatient');
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          // Re-normalize in case the cached shape differs
           setSelectedPatient(normalizePatient(parsed.uid || patientId || '', parsed._raw || parsed));
-        } catch {
-          // cache is corrupted — ignore
-        }
+          setExamStarted(true);
+        } catch { /* corrupted — ignore */ }
       }
+    }
 
-      setLoading(false);
-    };
+    // No patientId → stay blank, clear any stale patient
+    setSelectedPatient(null);
+    setLoading(false);
+  };
 
-    fetchPatient();
-  }, [patientId]);
+  fetchPatient();
+}, [patientId]);
 
   const showMessage = (msg) => {
     setMessage(msg);
     setTimeout(() => setMessage(null), 3000);
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const handleExamSubmitted = (msg) => {
+    showMessage(msg);
+    setExamStarted(false);
+    setResetKey(k => k + 1);
+  };
+
+const handleTabChange = (key) => {
+  setExamTab(key);
+};
+
+ const handleBack = () => {
+  setExamStarted(false);
+  setResetKey(k => k + 1);
+  localStorage.removeItem('selectedPatient'); // ← clear cache so tab nav stays blank
+  navigate('/records');
+};
+
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-140px)] bg-white">
@@ -141,13 +134,14 @@ export const Examinations = () => {
     );
   }
 
+  // ── No patient selected at all ────────────────────────────────────────────
   if (!selectedPatient) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-140px)] bg-white gap-4">
         <i className="fa-regular fa-user-circle text-slate-200 text-6xl"></i>
         <p className="text-slate-400 text-sm">No patient selected.</p>
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/records')}
           className="bg-[#466460] text-white px-5 py-2 rounded-full text-xs font-bold hover:opacity-90 transition"
         >
           ← Back to Records
@@ -156,18 +150,70 @@ export const Examinations = () => {
     );
   }
 
+  // ── No exam started yet — blank prompt (NO patient banner) ────────────────
+  if (!examStarted) {
+    return (
+      <div className="bg-white min-h-[calc(100vh-140px)] p-6 md:p-8">
+
+        {/* Tabs (visible but inactive) */}
+        <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
+          {[
+            { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
+            { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Record'       },
+          ].map(({ key, icon, label }) => (
+            <button
+              key={key}
+              onClick={() => setExamTab(key)}
+              className={`px-5 py-2.5 text-sm font-semibold relative ${examTab === key ? 'text-[#466460]' : 'text-slate-500'}`}
+            >
+              <i className={`fa-solid ${icon} mr-2`}></i>{label}
+              {examTab === key && (
+                <div className="absolute bottom-[-2px] left-0 w-full h-0.5 bg-[#466460]"></div>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Blank prompt */}
+        <div className="flex flex-col items-center justify-center py-24 gap-5">
+          <div className="w-20 h-20 rounded-full bg-[#e0eceb] flex items-center justify-center">
+            <i className={`fa-solid ${examTab === 'medical' ? 'fa-stethoscope' : 'fa-tooth'} text-3xl text-[#466460]`}></i>
+          </div>
+          <div className="text-center">
+            <p className="font-bold text-slate-700 text-base">
+              {examTab === 'medical' ? 'Medical Examination' : 'Dental Record'}
+            </p>
+            <p className="text-slate-400 text-sm mt-1 max-w-xs">
+              Select a patient from Records to begin a new examination.
+            </p>
+          </div>
+          {/* Redirects to Records tab instead of opening the form */}
+          <button
+            onClick={() => navigate('/records')}
+            className="flex items-center gap-2 bg-[#466460] text-white px-7 py-3 rounded-xl font-bold text-sm hover:bg-[#3a524f] transition shadow-sm"
+          >
+            <i className="fa-solid fa-arrow-left"></i>
+            Go to Records
+          </button>
+        </div>
+
+      </div>
+    );
+  }
+
+  // ── Exam in progress — show banner + form ─────────────────────────────────
   return (
     <div className="bg-white min-h-[calc(100vh-140px)] p-6 md:p-8">
 
       {/* Back button */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={handleBack}
         className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-[#466460] mb-5 transition-colors"
       >
         <i className="fa-solid fa-arrow-left"></i> Back to Records
       </button>
 
-      {/* Patient banner */}
+      {/* Patient banner — only shown when exam is active */}
       <div className="bg-gradient-to-r from-[#e0eceb] to-white rounded-xl px-5 py-4 mb-6 border border-[#d1e7e5] flex items-center gap-4">
         <div className="w-11 h-11 rounded-full bg-[#466460] flex items-center justify-center shrink-0">
           <i className="fa-solid fa-user text-white text-base"></i>
@@ -191,37 +237,42 @@ export const Examinations = () => {
         </div>
       </div>
 
-      {/* Exam Subtabs */}
+      {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
-        <button
-          onClick={() => setExamTab('medical')}
-          className={`px-5 py-2.5 text-sm font-semibold relative ${examTab === 'medical' ? 'text-[#466460]' : 'text-slate-500'}`}
-        >
-          <i className="fa-solid fa-stethoscope mr-2"></i>Medical Examination
-          {examTab === 'medical' && (
-            <div className="absolute bottom-[-2px] left-0 w-full h-0.5 bg-[#466460]"></div>
-          )}
-        </button>
-        <button
-          onClick={() => setExamTab('dental')}
-          className={`px-5 py-2.5 text-sm font-semibold relative ${examTab === 'dental' ? 'text-[#466460]' : 'text-slate-500'}`}
-        >
-          <i className="fa-solid fa-tooth mr-2"></i>Dental Record
-          {examTab === 'dental' && (
-            <div className="absolute bottom-[-2px] left-0 w-full h-0.5 bg-[#466460]"></div>
-          )}
-        </button>
+        {[
+          { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
+          { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Record'       },
+        ].map(({ key, icon, label }) => (
+          <button
+            key={key}
+            onClick={() => handleTabChange(key)}
+            className={`px-5 py-2.5 text-sm font-semibold relative ${examTab === key ? 'text-[#466460]' : 'text-slate-500'}`}
+          >
+            <i className={`fa-solid ${icon} mr-2`}></i>{label}
+            {examTab === key && (
+              <div className="absolute bottom-[-2px] left-0 w-full h-0.5 bg-[#466460]"></div>
+            )}
+          </button>
+        ))}
       </div>
 
-      {/* Tab Content */}
+      {/* Form */}
       {examTab === 'medical' && (
-        <Medical selectedPatient={selectedPatient} showMessage={showMessage} />
+        <Medical
+          key={`medical-${resetKey}`}
+          selectedPatient={selectedPatient}
+          showMessage={handleExamSubmitted}
+        />
       )}
       {examTab === 'dental' && (
-        <Dental selectedPatient={selectedPatient} showMessage={showMessage} />
+        <Dental
+          key={`dental-${resetKey}`}
+          selectedPatient={selectedPatient}
+          showMessage={handleExamSubmitted}
+        />
       )}
 
-      {/* Success Toast */}
+      {/* Toast */}
       {message && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-xl shadow-lg font-bold animate-[fadeIn_0.3s_ease-out] z-50">
           <i className="fa-solid fa-circle-check mr-2"></i>{message}

@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Medical.jsx
 import React, { useState, useEffect } from 'react';
 
 // ── Static data ────────────────────────────────────────────────────────────────

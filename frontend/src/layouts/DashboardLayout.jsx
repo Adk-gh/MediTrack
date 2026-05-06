@@ -14,22 +14,33 @@
 //   userId          – ID string shown under the name in MobileHeader
 //   onLogout        – logout handler wired into MobileHeader's sign-out button
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   DesktopHeader,
   DesktopNav,
   MobileHeader,
   MobileNav,
+  HomeIcon,
+  CalendarIcon,
+  ConsultIcon,
+  RecordsIcon,
+  AccountIcon,
+  ExamIcon,
+  AnnouncementIcon,
+  UsersIcon,
+  ProfileDrawer,
 } from '../components/Headers.jsx';
 
 // ─── Default mobile nav items ─────────────────────────────────────────────────
 // Mirrors the links in DesktopNav. Override via the `mobileNavItems` prop.
 const DEFAULT_MOBILE_NAV = [
-  { id: 'dashboard',     label: 'Home',     emoji: '🏠' },
-  { id: 'records',       label: 'Records',  emoji: '📋' },
-  { id: 'appointments',  label: 'Schedule', emoji: '📅' },
-  { id: 'consultations', label: 'Consult',  emoji: '💬' },
-  { id: 'users',         label: 'Users',    emoji: '👥' },
+  { id: 'dashboard', label: 'Home', icon: HomeIcon },
+  { id: 'records', label: 'Records', icon: RecordsIcon },
+  { id: 'appointments', label: 'Schedule', icon: CalendarIcon },
+  { id: 'examinations', label: 'Exam', icon: ExamIcon },
+  { id: 'consultations', label: 'Consult', icon: ConsultIcon },
+  { id: 'announcements', label: 'Announce', icon: AnnouncementIcon },
+  { id: 'users', label: 'Users', icon: UsersIcon },
 ];
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -42,6 +53,7 @@ export const DashboardLayout = ({
   userName = 'Admin User',
   userId   = '',
   onLogout,
+  userProfile,
 }) => {
   // Derive two-letter initials from userName
   const getInitials = (name = '') => {
@@ -49,6 +61,16 @@ export const DashboardLayout = ({
     return parts.length >= 2
       ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
       : name.substring(0, 2).toUpperCase() || 'AU';
+  };
+
+  // Profile drawer state
+  const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+
+  const handleProfileClick = () => setShowProfileDrawer(true);
+  const handleCloseProfile = () => setShowProfileDrawer(false);
+  const handleProfileLogout = () => {
+    setShowProfileDrawer(false);
+    onLogout?.();
   };
 
   return (
@@ -98,12 +120,14 @@ export const DashboardLayout = ({
       ════════════════════════════════════════════════════════════════════ */}
       <div className="md:hidden relative flex flex-col h-screen bg-slate-50 overflow-hidden">
 
-        {/* Sticky topbar — avatar, name, bell, logout */}
+        {/* Sticky topbar — green with avatar (opens profile drawer) */}
         <MobileHeader
           userName={userName}
           userId={userId}
           initials={getInitials(userName)}
           onLogout={onLogout}
+          onProfileClick={handleProfileClick}
+          simple={false}
         />
 
         {/* Scrollable content area */}
@@ -116,6 +140,15 @@ export const DashboardLayout = ({
           active={activeTab}
           onSwitch={onTabChange}
           items={mobileNavItems}
+        />
+
+        {/* Profile Drawer - bottom sheet on mobile */}
+        <ProfileDrawer
+          isOpen={showProfileDrawer}
+          onClose={handleCloseProfile}
+          onLogout={handleProfileLogout}
+          userProfile={userProfile}
+          forceBottomSheet={true}
         />
 
       </div>
