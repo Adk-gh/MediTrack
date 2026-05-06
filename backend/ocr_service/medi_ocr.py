@@ -29,8 +29,11 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     full_text = " ".join(text_lines)
     fields = {}
 
-    id_match = re.search(r"\b(\d{2,4}[\s\-]+\d{3,5})\b", full_text)
-    if id_match: fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
+    # --- BULLETPROOF ID REGEX ---
+    # Handles "23-09472" and "2026-0000", ignoring weird OCR borders like | or [
+    id_match = re.search(r"(\d{2,4})[\s\-\.\_]*(\d{4,5})", full_text)
+    if id_match: 
+        fields["id_number"] = f"{id_match.group(1)}-{id_match.group(2)}"
 
     specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
     specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
@@ -72,7 +75,8 @@ def perform_ocr():
             from paddleocr import PaddleOCR
             
             print(">>> Initializing AI Models (This may take 40s)...", flush=True)
-            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", enable_mkldnn=False)
+            # use_mkldnn=False bypasses the broken Intel C++ compiler bug
+            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", use_mkldnn=False)
             
             print(">>> AI Engine Ready!", flush=True)
 
