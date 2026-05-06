@@ -7,41 +7,31 @@ import traceback
 from flask import Flask, request, jsonify
 from PIL import Image
 
-# --- 1. THE ULTIMATE WRITABLE & SPEED SETUP ---
+# --- 1. ENVIRONMENT SETUP ---
 temp_dir = tempfile.gettempdir()
 
-# Redirect ALL AI hidden folders to /tmp (Google Cloud's writable area)
+# Redirect ALL AI hidden folders to /tmp
 os.environ['HOME'] = temp_dir 
 os.environ['PADDLE_HOME'] = os.path.join(temp_dir, ".paddleocr")
 os.environ['PADDLEX_HOME'] = os.path.join(temp_dir, ".paddlex")
 os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache")
 
-# Speed up startup by disabling the model source connectivity check
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-# Import PaddleOCR AFTER setting the environment variables
-from paddleocr import PaddleOCR
-
 app = Flask(__name__)
 
-# --- 2. THE BOOT TEST (SINGLE INITIALIZATION) ---
-# We ONLY load this once to save your 4GiB of RAM.
-# It is placed OUTSIDE a try block so that if it fails, Google Cloud logs the exact error.
-print("--- [STARTUP] INITIALIZING PADDLEOCR ---")
-ocr = PaddleOCR(use_angle_cls=True, lang="en")
-print("--- [STARTUP] PADDLEOCR IS READY ---")
+# --- 2. THE SAFETY NET ---
+# We start with the engine OFF. This guarantees the server boots perfectly instantly.
+ocr_engine = None
 
 def parse_id_fields(text_lines: list[str]) -> dict:
     full_text = " ".join(text_lines)
     fields = {}
 
-    # 1. ID Number
     id_match = re.search(r"\b(\d{2,4}[\s\-]+\d{3,5})\b", full_text)
-    if id_match:
-        fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
+    if id_match: fields["id_number"] = id_match.group(1).replace(" ", "-").strip()
 
-    # 2. ID Type & Role
     specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
     specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
     student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
@@ -52,42 +42,49 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     stu_match = student_pattern.search(full_text)
     gen_emp_match = generic_emp_pattern.search(full_text)
 
-    if clc_match:
-        fields["id_type"] = "Employee ID"; fields["role"] = clc_match.group(1).title()
-    elif acad_match:
-        fields["id_type"] = "Employee ID"; fields["role"] = acad_match.group(1).title()
-    elif stu_match:
-        fields["id_type"] = "Student ID"; fields["role"] = "Student"
-    elif gen_emp_match:
-        fields["id_type"] = "Employee ID"; fields["role"] = "Employee"
-    else:
-        fields["id_type"] = "Unknown"; fields["role"] = "Unknown"
+    if clc_match: fields["id_type"] = "Employee ID"; fields["role"] = clc_match.group(1).title()
+    elif acad_match: fields["id_type"] = "Employee ID"; fields["role"] = acad_match.group(1).title()
+    elif stu_match: fields["id_type"] = "Student ID"; fields["role"] = "Student"
+    elif gen_emp_match: fields["id_type"] = "Employee ID"; fields["role"] = "Employee"
+    else: fields["id_type"] = "Unknown"; fields["role"] = "Unknown"
 
-    # 3. Name
     name_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)", full_text)
     if name_match: fields["name"] = name_match.group(1).strip()
 
-    # 4. Institution
     inst_pattern = re.compile(r"((?:PAMANTASAN|UNIVERSITY|COLLEGE)[^\n,]{3,60})", re.IGNORECASE)
     inst_match = inst_pattern.search(full_text)
     if inst_match: fields["institution"] = inst_match.group(1).strip()
 
     return fields
 
+
 @app.route("/ocr", methods=["POST"])
 def perform_ocr():
-    print(">>> Request Received")
-    if 'image' not in request.files:
-        print("[ERROR] No image file in request")
-        return jsonify({"error": "Missing 'image' key"}), 400
-
-    file = request.files['image']
-    filename = file.filename.lower()
-    temp_path = os.path.join(temp_dir, f"scan_{uuid.uuid4().hex}.jpg")
+    global ocr_engine
+    # flush=True forces the log to appear in Google Cloud instantly
+    print(">>> Request Received", flush=True)
 
     try:
+        # --- THE LAZY LOAD ---
+        # We only turn the AI on when you actually click the Register button
+        if ocr_engine is None:
+            print(">>> Importing Paddle Libraries...", flush=True)
+            from paddleocr import PaddleOCR
+            
+            print(">>> Initializing AI Models (This may take 40s)...", flush=True)
+            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en")
+            
+            print(">>> AI Engine Ready!", flush=True)
+
+        if 'image' not in request.files:
+            return jsonify({"error": "Missing 'image' key"}), 400
+
+        file = request.files['image']
+        filename = file.filename.lower()
+        temp_path = os.path.join(temp_dir, f"scan_{uuid.uuid4().hex}.jpg")
+
         if filename.endswith('.pdf'):
-            print("[LOG] Processing PDF...")
+            print("[LOG] Processing PDF...", flush=True)
             doc = fitz.open(stream=file.read(), filetype="pdf")
             page = doc.load_page(0)
             pix = page.get_pixmap()
@@ -95,13 +92,13 @@ def perform_ocr():
             img.save(temp_path)
             doc.close()
         else:
-            print("[LOG] Processing Image...")
+            print("[LOG] Processing Image...", flush=True)
             img = Image.open(file.stream).convert("RGB")
             img.save(temp_path)
 
-        print("[LOG] Starting OCR Scan...")
-        result = ocr.ocr(temp_path, cls=True)
-        print("[LOG] Scan Complete.")
+        print("[LOG] Starting OCR Scan...", flush=True)
+        result = ocr_engine.ocr(temp_path, cls=True)
+        print("[LOG] Scan Complete.", flush=True)
 
         text_lines = []
         if result and result[0]:
@@ -111,6 +108,9 @@ def perform_ocr():
 
         structured = parse_id_fields(text_lines)
 
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
         return jsonify({
             "success": True,
             "file_type": "pdf" if filename.endswith('.pdf') else "image",
@@ -119,12 +119,11 @@ def perform_ocr():
         })
 
     except Exception as e:
-        print(f"[CRASH] {str(e)}")
-        print(traceback.format_exc()) 
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        error_msg = traceback.format_exc()
+        print(f"[FATAL CRASH] {error_msg}", flush=True)
+        # This sends the error back to your frontend/Node.js so you can see it!
+        return jsonify({"success": False, "error": str(e), "trace": error_msg}), 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
