@@ -72,7 +72,7 @@ def perform_ocr():
             from paddleocr import PaddleOCR
             
             print(">>> Initializing AI Models (This may take 40s)...", flush=True)
-            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en")
+            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", enable_mkldnn=False)
             
             print(">>> AI Engine Ready!", flush=True)
 
@@ -97,7 +97,7 @@ def perform_ocr():
             img.save(temp_path)
 
         print("[LOG] Starting OCR Scan...", flush=True)
-        result = ocr_engine.ocr(temp_path)
+        result = ocr_engine.ocr(temp_path) 
         print("[LOG] Scan Complete.", flush=True)
 
         text_lines = []
