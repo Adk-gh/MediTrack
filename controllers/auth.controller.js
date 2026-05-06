@@ -29,7 +29,10 @@ exports.register = async (req, res) => {
 
         let ocrResponse;
         try {
-            ocrResponse = await axios.post('http://localhost:5001/ocr', ocrForm, {
+            // Use the Google Cloud URL from Render env, or fallback to localhost for PC testing
+            const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
+            
+            ocrResponse = await axios.post(ocrUrl, ocrForm, {
                 headers: { ...ocrForm.getHeaders() }
             });
         } catch (ocrErr) {
