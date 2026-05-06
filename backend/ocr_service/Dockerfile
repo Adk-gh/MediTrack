@@ -22,4 +22,4 @@ COPY . .
 
 # Use gunicorn to run your specific entry point script (medi_ocr.py)
 # This assumes your Flask instance inside medi_ocr.py is named 'app'
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5001", "medi_ocr:app"]
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 2 --timeout 0 medi_ocr:app

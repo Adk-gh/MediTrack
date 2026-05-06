@@ -29,7 +29,8 @@ app.use(globalErr);
 const PORT = process.env.PORT || 5000;
 
 database().then(() => {
-  app.listen(PORT, () => {
+  app.listen(PORT, "0.0.0.0", () => { // <-- Add "0.0.0.0" right here
+    // ... console logs
     console.log(`
 =========================================
   MediTrack Node Server Running
