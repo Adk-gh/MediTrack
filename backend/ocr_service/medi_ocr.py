@@ -19,10 +19,15 @@ os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache")
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+# --- THE MKLDNN GLOBAL KILLSWITCH ---
+# This disables the broken Intel C++ accelerator at the system level 
+# so we don't have to worry about PaddleOCR version mismatches!
+os.environ['FLAGS_use_mkldnn'] = '0'
+os.environ['FLAGS_enable_mkldnn'] = '0'
+
 app = Flask(__name__)
 
 # --- 2. THE SAFETY NET ---
-# We start with the engine OFF. This guarantees the server boots perfectly instantly.
 ocr_engine = None
 
 def parse_id_fields(text_lines: list[str]) -> dict:
@@ -30,7 +35,6 @@ def parse_id_fields(text_lines: list[str]) -> dict:
     fields = {}
 
     # --- BULLETPROOF ID REGEX ---
-    # Handles "23-09472" and "2026-0000", ignoring weird OCR borders like | or [
     id_match = re.search(r"(\d{2,4})[\s\-\.\_]*(\d{4,5})", full_text)
     if id_match: 
         fields["id_number"] = f"{id_match.group(1)}-{id_match.group(2)}"
@@ -64,19 +68,16 @@ def parse_id_fields(text_lines: list[str]) -> dict:
 @app.route("/ocr", methods=["POST"])
 def perform_ocr():
     global ocr_engine
-    # flush=True forces the log to appear in Google Cloud instantly
     print(">>> Request Received", flush=True)
 
     try:
-        # --- THE LAZY LOAD ---
-        # We only turn the AI on when you actually click the Register button
         if ocr_engine is None:
             print(">>> Importing Paddle Libraries...", flush=True)
             from paddleocr import PaddleOCR
             
             print(">>> Initializing AI Models (This may take 40s)...", flush=True)
-            # use_mkldnn=False bypasses the broken Intel C++ compiler bug
-            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", use_mkldnn=False)
+            # Reverted to the basic, safe arguments!
+            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en")
             
             print(">>> AI Engine Ready!", flush=True)
 
@@ -125,7 +126,6 @@ def perform_ocr():
     except Exception as e:
         error_msg = traceback.format_exc()
         print(f"[FATAL CRASH] {error_msg}", flush=True)
-        # This sends the error back to your frontend/Node.js so you can see it!
         return jsonify({"success": False, "error": str(e), "trace": error_msg}), 500
 
 
