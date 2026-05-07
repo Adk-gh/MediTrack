@@ -8,7 +8,6 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: #f9f9f9;
 }
-/* Add this to the bottom of your index.css */
 
 @keyframes fadeInSlideUp {
   from { 
@@ -25,8 +24,6 @@ body {
   animation: fadeInSlideUp 0.3s ease-in-out forwards;
 }
 
-/* Add to frontend/src/index.css */
-
 :root {
   --meditrack-teal: #466460;
   --meditrack-teal-light: #5a7a76;
@@ -37,7 +34,6 @@ body {
   --accent-sage: #81b29a;
 }
 
-/* Base custom classes from your design */
 .glass-card { 
   background: white; 
   border-radius: 12px; 
@@ -61,7 +57,6 @@ body {
   color: white; 
 }
 
-/* Page transition animation */
 @keyframes fadeInSlide {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -71,64 +66,104 @@ body {
 }
 
 
-/* --- Modern Datepicker Overrides --- */
+/* ─── Datepicker Overrides ────────────────────────────────────────────────── */
+
 .react-datepicker-wrapper {
   width: 100%;
 }
 
-/* Ensure it sits on top of all modals */
+/* Sit on top of all modals */
 .react-datepicker-popper {
   z-index: 9999 !important;
 }
 
-/* Hide the little triangle arrow for a cleaner floating card look */
+/* Keep the popper inside the viewport */
+.react-datepicker-popper[data-placement^="bottom"] {
+  margin-top: 4px !important;
+}
+.react-datepicker-popper[data-placement^="top"] {
+  margin-bottom: 4px !important;
+}
+
+/* Hide triangle arrow */
 .react-datepicker__triangle {
   display: none !important;
 }
 
 .react-datepicker {
   font-family: inherit !important;
+  font-size: 12px !important;
   border: 1px solid #e2f0ea !important;
   border-radius: 16px !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05) !important;
-  overflow: hidden; /* Keeps header corners perfectly rounded */
+  overflow: hidden;
+  max-width: 280px !important; /* Prevent calendar from being too wide */
 }
 
 .react-datepicker__header {
   background-color: #f4f7f5 !important;
   border-bottom: 1px solid #e2f0ea !important;
-  padding-top: 16px !important;
-  padding-bottom: 12px !important;
+  padding-top: 12px !important;
+  padding-bottom: 10px !important;
 }
 
-/* Hide the redundant "July 2005" text since we already have the dropdowns */
+/* Hide redundant "July 2005" text since dropdowns are shown */
 .react-datepicker__current-month {
   display: none !important;
 }
 
-/* Modernize the Month/Year dropdowns */
-.react-datepicker__month-select, 
+/* Dropdown row — keep both selects on one line without overflow */
+.react-datepicker__header__dropdown {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+.react-datepicker__month-dropdown-container,
+.react-datepicker__year-dropdown-container {
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+
+/* Month and Year <select> elements */
+.react-datepicker__month-select,
 .react-datepicker__year-select {
-  padding: 6px 10px;
+  padding: 5px 6px;
   border-radius: 8px;
   border: 1.5px solid #cbd5d1;
   outline: none;
   background-color: white;
   color: #1a2e22;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  margin: 0 4px;
   transition: border-color 0.2s ease;
+
+  /* Prevent the dropdowns from growing too tall and overflowing */
+  max-height: 180px;
+  overflow-y: auto;
 }
 
-.react-datepicker__month-select:focus, 
+/* Month select — fixed width so it never wraps */
+.react-datepicker__month-select {
+  width: 108px;
+}
+
+/* Year select — fixed width */
+.react-datepicker__year-select {
+  width: 72px;
+}
+
+.react-datepicker__month-select:focus,
 .react-datepicker__year-select:focus {
   border-color: #2d7a52;
 }
 
-/* Style the selected day with your specific green */
-.react-datepicker__day--selected, 
+/* Selected day */
+.react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
   background-color: #2d7a52 !important;
   color: white !important;
@@ -136,7 +171,7 @@ body {
   font-weight: bold;
 }
 
-/* Hover effect for days */
+/* Day hover */
 .react-datepicker__day:hover {
   background-color: #e2f0ea !important;
   color: #1a5c3a !important;
@@ -144,5 +179,28 @@ body {
 }
 
 .react-datepicker__day {
-  margin: 0.2rem !important;
+  margin: 0.15rem !important;
+  width: 1.7rem !important;
+  line-height: 1.7rem !important;
+}
+
+/* Day names row */
+.react-datepicker__day-name {
+  width: 1.7rem !important;
+  margin: 0.15rem !important;
+  font-size: 10px !important;
+  color: #6b8577 !important;
+  font-weight: 600 !important;
+}
+
+/* Navigation arrows */
+.react-datepicker__navigation {
+  top: 14px !important;
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: #2d7a52 !important;
+  border-width: 2px 2px 0 0 !important;
+  width: 7px !important;
+  height: 7px !important;
 }

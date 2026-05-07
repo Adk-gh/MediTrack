@@ -36,13 +36,34 @@ function useCurrentPatient() {
       const user = raw ? JSON.parse(raw) : null;
       if (!user) return null;
 
+      const buildFullName = (u) => {
+        // Already combined
+        if (u.name && u.name !== '—')         return u.name;
+        if (u.fullName && u.fullName !== '—') return u.fullName;
+
+        const first  = u.firstName ?? '';
+        const middle = u.middleName ?? u.middleInitial ?? '';
+        const last   = u.lastName ?? '';
+
+        const mi   = middle ? `${middle.charAt(0).toUpperCase()}.` : '';
+        const full = [first, mi, last].filter(Boolean).join(' ').trim();
+        return full || '—';
+      };
+
+      const role = user.role ?? user.type ?? 'student';
+
       return {
-        name:    user.name    ?? user.fullName    ?? '—',
-        idno:    user.idno    ?? user.idNumber    ?? user.studentId ?? '—',
-        type:    user.type    ?? user.role        ?? 'student',
-        dept:    user.dept    ?? user.department  ?? '—',
-        prog:    user.prog    ?? user.program     ?? '—',
-        section: user.section                     ?? '—',
+        name:          buildFullName(user),
+        // Add these three lines so the database receives the separated fields:
+        firstName:     user.firstName ?? '',
+        lastName:      user.lastName ?? '',
+        middleInitial: user.middleInitial ?? user.middleName ?? '',
+        // -------------------------------------------------------------------
+        idno:          user.universityId ?? user.idno ?? user.idNumber ?? '—',
+        type:          role,
+        dept:          user.department ?? user.dept ?? user.college ?? '—',
+        prog:          user.classification ?? user.program ?? user.course ?? user.prog ?? '—',
+        section:       user.section ?? user.yearSection ?? (role === 'lecturer' ? 'N/A' : '—'),
       };
     } catch {
       return null;

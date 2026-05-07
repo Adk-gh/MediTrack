@@ -19,48 +19,85 @@ os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache")
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-# --- THE MKLDNN GLOBAL KILLSWITCH ---
-# This disables the broken Intel C++ accelerator at the system level 
-# so we don't have to worry about PaddleOCR version mismatches!
 os.environ['FLAGS_use_mkldnn'] = '0'
 os.environ['FLAGS_enable_mkldnn'] = '0'
 
 app = Flask(__name__)
 
-# --- 2. THE SAFETY NET ---
 ocr_engine = None
 
+
 def parse_id_fields(text_lines: list[str]) -> dict:
+    # Join with space AND newline so multi-line patterns still match
     full_text = " ".join(text_lines)
+    
+    # ── DEBUG: always print what OCR actually saw ──────────────────────────
+    print(f"[DEBUG] raw text_lines: {text_lines}", flush=True)
+    print(f"[DEBUG] full_text: {full_text}", flush=True)
+    # ──────────────────────────────────────────────────────────────────────
+
     fields = {}
 
-    # --- BULLETPROOF ID REGEX ---
-    id_match = re.search(r"(\d{2,4})[\s\-\.\_]*(\d{4,5})", full_text)
-    if id_match: 
+    # --- ID Number ---
+    # Matches: 2023-0149, 23-0149, 2023.0149, 20230149, etc.
+    id_match = re.search(r"(\d{2,4})\s*[\-\.\s\_]\s*(\d{4,6})", full_text)
+    if id_match:
         fields["id_number"] = f"{id_match.group(1)}-{id_match.group(2)}"
+        print(f"[DEBUG] id_number matched: {fields['id_number']}", flush=True)
+    else:
+        print("[DEBUG] id_number NOT matched", flush=True)
 
-    specific_clinic_pattern = re.compile(r"\b(NURSE|DOCTOR|PHYSICIAN)\b", re.IGNORECASE)
-    specific_acad_pattern = re.compile(r"\b(LECTURER|PROFESSOR|INSTRUCTOR|ADMINISTRATOR|LIBRARIAN)\b", re.IGNORECASE)
-    student_pattern = re.compile(r"\b(STUDENT|BSIT|BSIS|BSBA|BSED|BSCS|COURSE|ENROLLMENT)\b", re.IGNORECASE)
-    generic_emp_pattern = re.compile(r"\b(EMPLOYEE|STAFF|FACULTY)\b", re.IGNORECASE)
+    # --- Role Detection (ordered by priority, most specific first) ---
+    # Each entry: (regex_pattern, role_label, id_type)
+    role_patterns = [
+        # Medical
+        (re.compile(r"\b(DOCTOR|PHYSICIAN|MEDICAL\s*DOCTOR|MD)\b", re.IGNORECASE), "Doctor", "Employee ID"),
+        (re.compile(r"\b(DENTIST|DENTAL)\b", re.IGNORECASE), "Dentist", "Employee ID"),
+        (re.compile(r"\b(NURSE|NURSING)\b", re.IGNORECASE), "Nurse", "Employee ID"),
+        # Academic
+        (re.compile(r"\b(LECTURER)\b", re.IGNORECASE), "Lecturer", "Employee ID"),
+        (re.compile(r"\b(PROFESSOR|PROF\.?)\b", re.IGNORECASE), "Professor", "Employee ID"),
+        (re.compile(r"\b(INSTRUCTOR)\b", re.IGNORECASE), "Instructor", "Employee ID"),
+        (re.compile(r"\b(ADMINISTRATOR|ADMIN)\b", re.IGNORECASE), "Administrator", "Employee ID"),
+        (re.compile(r"\b(LIBRARIAN)\b", re.IGNORECASE), "Librarian", "Employee ID"),
+        # Staff
+        (re.compile(r"\b(TECHNICIAN|TECH)\b", re.IGNORECASE), "Technician", "Employee ID"),
+        (re.compile(r"\b(GUARD|SECURITY)\b", re.IGNORECASE), "Guard", "Employee ID"),
+        (re.compile(r"\b(JANITOR|CLEANER|MAINTENANCE)\b", re.IGNORECASE), "Staff", "Employee ID"),
+        (re.compile(r"\b(STAFF|EMPLOYEE|FACULTY)\b", re.IGNORECASE), "Staff", "Employee ID"),
+        # Student
+        (re.compile(r"\b(BSIT|BSIS|BSBA|BSED|BSCS|BSCRIM|BSHM|BSENT|BSOA)\b", re.IGNORECASE), "Student", "Student ID"),
+        (re.compile(r"\b(COURSE|ENROLLMENT|YEAR\s*LEVEL)\b", re.IGNORECASE), "Student", "Student ID"),
+        (re.compile(r"\b(STUDENT)\b", re.IGNORECASE), "Student", "Student ID"),
+    ]
 
-    clc_match = specific_clinic_pattern.search(full_text)
-    acad_match = specific_acad_pattern.search(full_text)
-    stu_match = student_pattern.search(full_text)
-    gen_emp_match = generic_emp_pattern.search(full_text)
+    matched = False
+    for pattern, role_name, id_type in role_patterns:
+        m = pattern.search(full_text)
+        if m:
+            fields["role"] = role_name
+            fields["id_type"] = id_type
+            print(f"[DEBUG] role matched: '{role_name}' via pattern '{pattern.pattern}' (matched token: '{m.group(0)}')", flush=True)
+            matched = True
+            break
 
-    if clc_match: fields["id_type"] = "Employee ID"; fields["role"] = clc_match.group(1).title()
-    elif acad_match: fields["id_type"] = "Employee ID"; fields["role"] = acad_match.group(1).title()
-    elif stu_match: fields["id_type"] = "Student ID"; fields["role"] = "Student"
-    elif gen_emp_match: fields["id_type"] = "Employee ID"; fields["role"] = "Employee"
-    else: fields["id_type"] = "Unknown"; fields["role"] = "Unknown"
+    if not matched:
+        fields["role"] = "Unknown"
+        fields["id_type"] = "Unknown"
+        print("[DEBUG] No role pattern matched — defaulting to Unknown", flush=True)
 
+    # --- Name (LASTNAME, FIRSTNAME format) ---
     name_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)", full_text)
-    if name_match: fields["name"] = name_match.group(1).strip()
+    if name_match:
+        fields["name"] = name_match.group(1).strip()
+        print(f"[DEBUG] name matched: {fields['name']}", flush=True)
 
+    # --- Institution ---
     inst_pattern = re.compile(r"((?:PAMANTASAN|UNIVERSITY|COLLEGE)[^\n,]{3,60})", re.IGNORECASE)
     inst_match = inst_pattern.search(full_text)
-    if inst_match: fields["institution"] = inst_match.group(1).strip()
+    if inst_match:
+        fields["institution"] = inst_match.group(1).strip()
+        print(f"[DEBUG] institution matched: {fields['institution']}", flush=True)
 
     return fields
 
@@ -76,7 +113,6 @@ def perform_ocr():
             from paddleocr import PaddleOCR
             
             print(">>> Initializing AI Models (This may take 40s)...", flush=True)
-            # Reverted to the basic, safe arguments!
             ocr_engine = PaddleOCR(use_angle_cls=True, lang="en")
             
             print(">>> AI Engine Ready!", flush=True)
@@ -115,6 +151,8 @@ def perform_ocr():
 
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+        print(f"[DEBUG] Final parsed result: {structured}", flush=True)
 
         return jsonify({
             "success": True,

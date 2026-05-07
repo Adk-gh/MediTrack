@@ -1,6 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Consultations.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { rtdb } from '../../firebase';
 import {
   ref, onValue, push, set, serverTimestamp, onDisconnect, off
@@ -34,20 +34,31 @@ const getRoleClass = (role) => {
 
 export const Consultations = () => {
   const navigate    = useNavigate();
+  const location    = useLocation();
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const [conversations, setConversations]     = useState([]);
-  const [selectedConvId, setSelectedConvId]   = useState(null);
-  const [messages, setMessages]               = useState([]);
-  const [messageInput, setMessageInput]       = useState('');
-  const [onlinePresence, setOnlinePresence]   = useState({});
-  const [patientProfiles, setPatientProfiles] = useState({});
-  const [loadingMsgs, setLoadingMsgs]         = useState(false);
-  const [toast, setToast]                     = useState(null);
+  const [conversations, setConversations]       = useState([]);
+  const [selectedConvId, setSelectedConvId]     = useState(null);
+  const [messages, setMessages]                 = useState([]);
+  const [messageInput, setMessageInput]         = useState('');
+  const [onlinePresence, setOnlinePresence]     = useState({});
+  const [patientProfiles, setPatientProfiles]   = useState({});
+  const [loadingMsgs, setLoadingMsgs]           = useState(false);
+  const [toast, setToast]                       = useState(null);
   const [showPatientPanel, setShowPatientPanel] = useState(false);
-  const messagesEndRef                        = useRef(null);
-  const msgListenerRef                        = useRef(null);
-  const resolvedNameRef                       = useRef(currentUser.name || null);
+  
+  const messagesEndRef      = useRef(null);
+  const msgListenerRef      = useRef(null);
+  const resolvedNameRef     = useRef(currentUser.name || null);
+
+  // ── Auto-select conversation from URL (Triggered from Records.jsx) ────────
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const convIdToOpen = params.get('convId');
+    if (convIdToOpen) {
+      setSelectedConvId(convIdToOpen);
+    }
+  }, [location.search]);
 
   // ── Set doctor presence ───────────────────────────────────────────────────
   useEffect(() => {
@@ -114,15 +125,23 @@ export const Consultations = () => {
     const convRef = ref(rtdb, 'consultations');
     const unsub = onValue(convRef, (snap) => {
       const data = snap.val() || {};
-      const list = Object.entries(data).map(([id, conv]) => ({
-        id,
-        ...conv.metadata,
-        lastMessage:   conv.metadata?.lastMessage   || '',
-        lastTimestamp: conv.metadata?.lastTimestamp || 0,
-        unreadCount:   Object.values(conv.messages || {}).filter(
-          m => m.sender === 'patient' && !m.readByClinic
-        ).length,
-      }));
+      
+      // Map ALL conversations to state so we don't lose data
+      const list = Object.entries(data).map(([id, conv]) => {
+        const hasMessages = conv.messages && Object.keys(conv.messages).length > 0;
+        
+        return {
+          id,
+          ...conv.metadata,
+          hasMessages,
+          lastMessage:   conv.metadata?.lastMessage   || '',
+          lastTimestamp: conv.metadata?.lastTimestamp || 0,
+          unreadCount:   Object.values(conv.messages || {}).filter(
+            m => m.sender === 'patient' && !m.readByClinic
+          ).length,
+        };
+      });
+      
       list.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
       setConversations(list);
     });
@@ -238,6 +257,12 @@ export const Consultations = () => {
       ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
     .map(([, p]) => p.name);
 
+  // ── Sidebar Filter (The Fix) ──────────────────────────────────────────────
+  // We filter visually here instead of in the Firebase listener
+  const visibleConversations = conversations.filter(
+    conv => conv.hasMessages || conv.id === selectedConvId
+  );
+
   // ── Navigate to full examination ──────────────────────────────────────────
   const handleOpenExamination = () => {
     if (!patientUid) return;
@@ -264,7 +289,6 @@ export const Consultations = () => {
   };
 
   return (
-    // Added 'relative' here to contain the absolute positioned patient panel on mobile
     <div className="flex h-[calc(100vh-140px)] bg-white overflow-hidden relative">
 
       {/* ── Left: Conversation List ── */}
@@ -278,7 +302,7 @@ export const Consultations = () => {
             <i className="fa-regular fa-comment-dots mr-2"></i>Consultations
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
-            {conversations.length} active thread{conversations.length !== 1 ? 's' : ''}
+            {visibleConversations.length} active thread{visibleConversations.length !== 1 ? 's' : ''}
           </p>
           {onlineClinicStaff.length > 0 && (
             <p className="text-[10px] text-emerald-600 mt-1 font-semibold">
@@ -289,13 +313,13 @@ export const Consultations = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {conversations.length === 0 ? (
+          {visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 p-6 text-center">
               <i className="fa-regular fa-comment-dots text-4xl text-slate-200"></i>
               <p className="text-sm">No consultations yet</p>
               <p className="text-xs">Patients will appear here when they send a message</p>
             </div>
-          ) : conversations.map(conv => {
+          ) : visibleConversations.map(conv => {
             const profile     = patientProfiles[conv.patientUid] || {};
             const displayName = profile.firstName
               ? `${profile.lastName || ''}, ${profile.firstName || ''}`.trim()

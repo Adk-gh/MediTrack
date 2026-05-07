@@ -4,6 +4,65 @@ const FormData = require('form-data');
 const { db, auth } = require('../configs/firebase-admin');
 
 /**
+ * Resolves role by scanning raw OCR text directly.
+ * This is the primary detection method — never rely solely on parsed.role
+ * because the Python parser may split tokens unexpectedly.
+ *
+ * Keywords are ordered by priority (most specific first).
+ * Returns a lowercase role string for Firestore.
+ */
+function resolveRole(parsedRole, rawText) {
+    const combined = `${parsedRole || ''} ${rawText || ''}`.toLowerCase();
+
+    console.log(`>>> [Role] Combined text for detection:\n"${combined.substring(0, 300)}"\n`);
+
+    // ── Ordered keyword map (first match wins) ────────────────────────────
+    const keywordMap = [
+        // Medical
+        ['physician',     'doctor'],
+        ['medical doctor','doctor'],
+        ['doctor',        'doctor'],
+        [' md ',          'doctor'],   // space-padded to avoid "cmd"
+        ['dentist',       'dentist'],
+        ['dental',        'dentist'],
+        ['nurse',         'nurse'],
+        // Academic
+        ['lecturer',      'lecturer'],
+        ['professor',     'professor'],
+        ['prof.',         'professor'],
+        ['instructor',    'instructor'],
+        ['administrator', 'administrator'],
+        [' admin ',       'administrator'],
+        ['librarian',     'librarian'],
+        // Staff
+        ['technician',    'technician'],
+        ['security',      'guard'],
+        ['guard',         'guard'],
+        ['maintenance',   'staff'],
+        ['janitor',       'staff'],
+        ['cleaner',       'staff'],
+        ['employee',      'staff'],
+        ['faculty',       'staff'],
+        ['staff',         'staff'],
+        // Student (lowest priority)
+        ['bsit',   'student'], ['bsis',  'student'], ['bsba', 'student'],
+        ['bsed',   'student'], ['bscs',  'student'], ['bscrim','student'],
+        ['bshm',   'student'], ['bsent', 'student'], ['bsoa', 'student'],
+        ['student','student'],
+    ];
+
+    for (const [keyword, role] of keywordMap) {
+        if (combined.includes(keyword)) {
+            console.log(`>>> [Role] Matched keyword "${keyword}" → role: "${role}"`);
+            return role;
+        }
+    }
+
+    console.log('>>> [Role] No keyword matched — defaulting to "student"');
+    return 'student';
+}
+
+/**
  * REGISTER: Handles University ID OCR verification and account creation
  */
 exports.register = async (req, res) => {
@@ -20,7 +79,7 @@ exports.register = async (req, res) => {
 
         console.log(`>>> Processing registration for: ${email}`);
 
-        // 1. OCR VERIFICATION
+        // ── 1. SEND IMAGE TO OCR SERVICE ──────────────────────────────────────
         const ocrForm = new FormData();
         ocrForm.append('image', idFile.buffer, {
             filename: idFile.originalname,
@@ -29,9 +88,7 @@ exports.register = async (req, res) => {
 
         let ocrResponse;
         try {
-            // Use the Google Cloud URL from Render env, or fallback to localhost for PC testing
             const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
-            
             ocrResponse = await axios.post(ocrUrl, ocrForm, {
                 headers: { ...ocrForm.getHeaders() }
             });
@@ -41,11 +98,19 @@ exports.register = async (req, res) => {
         }
 
         const ocrData = ocrResponse.data;
+
+        // ── FULL OCR DEBUG LOG ────────────────────────────────────────────────
+        console.log('>>> [OCR] Full response:');
+        console.log(JSON.stringify(ocrData, null, 2));
+        // ─────────────────────────────────────────────────────────────────────
+
         if (!ocrData.success) {
-            return res.status(400).json({ success: false, message: ocrData.error || "OCR Failed to process the image." });
+            return res.status(400).json({ success: false, message: ocrData.error || "OCR Failed." });
         }
 
         const { parsed, raw_text } = ocrData;
+
+        // ── 2. ID NUMBER MATCHING ─────────────────────────────────────────────
         let ocrId = parsed?.id_number || null;
         const normalize = (id) => (id || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
         const normalizedInputId = normalize(universityId);
@@ -53,48 +118,37 @@ exports.register = async (req, res) => {
         if (!ocrId && raw_text) {
             const normalizedRawText = normalize(raw_text);
             if (normalizedRawText.includes(normalizedInputId)) {
-                ocrId = universityId; 
+                ocrId = universityId;
             } else {
                 const match = raw_text.match(/\b([A-Z0-9]{2,}[\s\-]?[0-9]{2,})\b/i);
                 if (match) ocrId = match[1];
             }
         }
 
+        console.log(`>>> [ID] Input: "${universityId}" | OCR detected: "${ocrId}"`);
+        console.log(`>>> [ID] Normalized input: "${normalizedInputId}" | Normalized OCR: "${normalize(ocrId)}"`);
+
         if (!ocrId || normalizedInputId !== normalize(ocrId)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.` 
+            return res.status(400).json({
+                success: false,
+                message: `Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.`
             });
         }
 
-        // 2. DYNAMIC ROLE ASSIGNMENT
-        const specificRoles = ['lecturer', 'nurse', 'doctor', 'administrator', 'admin', 'librarian', 'professor', 'instructor', 'faculty', 'staff', 'technician', 'guard', 'janitor'];
-        let role = 'student'; 
+        // ── 3. ROLE RESOLUTION (scans both parsed.role AND raw_text) ─────────
+        const role = resolveRole(parsed?.role, raw_text);
+        console.log(`>>> [Role] Final role saved to DB: "${role}"`);
 
-        const findSpecificRole = (text) => {
-            if (!text) return null;
-            const lowerText = text.toLowerCase();
-            return specificRoles.find(r => lowerText.includes(r));
-        };
-
-        let foundRole = findSpecificRole(parsed?.designation) || findSpecificRole(parsed?.role) || (raw_text ? findSpecificRole(raw_text) : null);
-
-        if (foundRole) {
-            role = foundRole;
-        } else if (parsed?.id_type === 'Employee ID' || (raw_text && raw_text.toLowerCase().includes('employee'))) {
-            role = 'employee'; 
-        }
-
-        // 3. DUPLICATE CHECK
+        // ── 4. DUPLICATE CHECK ────────────────────────────────────────────────
         const duplicateCheck = await db.collection('users').where('universityId', '==', ocrId).get();
         if (!duplicateCheck.empty) {
             return res.status(400).json({ success: false, message: "This University ID is already registered." });
         }
 
-        // 4. FIREBASE AUTH & FIRESTORE
+        // ── 5. CREATE FIREBASE AUTH + FIRESTORE USER ──────────────────────────
         const userRecord = await auth.createUser({
-            email: email,
-            password: password,
+            email,
+            password,
             displayName: `${firstName} ${lastName}`.trim(),
         });
 
@@ -107,22 +161,25 @@ exports.register = async (req, res) => {
             email: email.toLowerCase(),
             universityId: ocrId,
             isVerified: true,
-            role: role,
-            isProfileSetup: false, // Updated to match your choice
+            role,                   // ← dynamically resolved from OCR
+            isProfileSetup: false,
             createdAt: new Date().toISOString()
         };
 
         await db.collection('users').doc(userRecord.uid).set(userData);
+        console.log(`>>> [DB] User saved with role: "${role}"`);
 
         return res.status(201).json({
             success: true,
             message: "Registration successful! ID Verified.",
-            data: { ...userData } // Frontend will handle login to get token
+            data: { ...userData }
         });
 
     } catch (error) {
         console.error("Registration Error:", error.message);
-        const msg = error.code === 'auth/email-already-exists' ? "Email already in use." : "Internal server error.";
+        const msg = error.code === 'auth/email-already-exists'
+            ? "Email already in use."
+            : "Internal server error.";
         return res.status(500).json({ success: false, message: msg });
     }
 };
@@ -138,14 +195,10 @@ exports.login = async (req, res) => {
             return res.status(400).json({ success: false, message: "Email and password are required." });
         }
 
-        // 1. Verify credentials with Firebase Auth REST API
         const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${process.env.FIREBASE_API_KEY}`;
         const signInResponse = await axios.post(signInUrl, { email, password, returnSecureToken: true });
-
-        // idToken is the valid Firebase JWT we need
         const { localId, idToken } = signInResponse.data;
 
-        // 2. Fetch User Profile from Firestore
         const userDoc = await db.collection('users').doc(localId).get();
         if (!userDoc.exists) {
             return res.status(404).json({ success: false, message: "User profile not found." });
@@ -153,12 +206,11 @@ exports.login = async (req, res) => {
 
         const userData = userDoc.data();
 
-        // 3. Return the Firebase idToken
         return res.status(200).json({
             success: true,
             message: "Login successful!",
             data: {
-                token: idToken, // This is now a real Firebase Token
+                token: idToken,
                 uid: localId,
                 firstName: userData.firstName,
                 lastName: userData.lastName,
@@ -171,9 +223,11 @@ exports.login = async (req, res) => {
     } catch (error) {
         console.error("Login Error:", error.response?.data?.error?.message || error.message);
         const errorCode = error.response?.data?.error?.message;
-        let message = (errorCode === 'EMAIL_NOT_FOUND' || errorCode === 'INVALID_PASSWORD' || errorCode === 'INVALID_LOGIN_CREDENTIALS') 
-            ? "Invalid credentials." 
-            : "Login failed.";
+        const message = (
+            errorCode === 'EMAIL_NOT_FOUND' ||
+            errorCode === 'INVALID_PASSWORD' ||
+            errorCode === 'INVALID_LOGIN_CREDENTIALS'
+        ) ? "Invalid credentials." : "Login failed.";
         return res.status(401).json({ success: false, message });
     }
 };

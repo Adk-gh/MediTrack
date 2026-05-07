@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Approval | MediTrack PLSP Health Services</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        :root {
+            --meditrack-teal: #466460;
+            --meditrack-teal-light: #5a7a76;
+            --meditrack-teal-lighter: #8aacaa;
+            --meditrack-teal-soft: #e0eceb;
+            --accent-sunset: #e07a5f;
+            --accent-gold: #e9c46a;
+            --accent-sage: #81b29a;
+            --bg-gray: #f4f7f6;
+            --border-color: #eef2f6;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body { font-family: 'Inter', sans-serif; background: #f4f7f6; color: #2d3748; overflow-x: hidden; }
+        .ui-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); color: white; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .nav-link { position: relative; color: var(--meditrack-teal); font-weight: 700; font-size: 14px; letter-spacing: 0.025em; opacity: 0.7; transition: all 0.2s; padding-bottom: 4px; background: none; border: none; cursor: pointer; }
+        .nav-link:hover { opacity: 1; color: var(--accent-sunset); }
+        .nav-link.active { opacity: 1; color: var(--meditrack-teal); }
+        .nav-link.active::after { content: ''; position: absolute; bottom: -8px; left: 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--meditrack-teal), var(--accent-sage)); border-radius: 99px; }
+        .glass-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-lighter)); border-radius: 10px; }
+        .tab-content.hidden { display: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
+        .logo-image { width: 200px; height: 70px; object-fit: contain; display: block; background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
+
+        /* Two column layout */
+        .two-col-layout { display: flex; gap: 0; min-height: calc(100vh - 160px); background: #ffffff; overflow: hidden; }
+        .col-list { flex: 1.2; border-right: 1px solid var(--border-color); background: #ffffff; display: flex; flex-direction: column; min-height: 0; }
+        .col-detail { flex: 2; background: #ffffff; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+        .col-header { background: linear-gradient(135deg, #fafbfc 0%, #ffffff 100%); border-bottom: 1px solid var(--border-color); padding: 1.25rem 1rem; flex-shrink: 0; }
+        .col-header h3 { color: var(--meditrack-teal); font-weight: 700; margin: 0; }
+        .exam-item { transition: all 0.2s ease; cursor: pointer; border-radius: 8px; margin: 4px 0; border-left: 3px solid transparent; padding: 12px; background: #f8fafc; }
+        .exam-item:hover { background: linear-gradient(90deg, #f0f7f6, #ffffff); transform: translateX(2px); }
+        .exam-item.active-exam { background: linear-gradient(90deg, var(--meditrack-teal-soft), #ffffff); border-left: 3px solid var(--meditrack-teal); }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-approved { background: #d1fae5; color: #065f46; }
+        .status-rejected { background: #fee2e2; color: #991b1b; }
+
+        /* Profile Drawer */
+        .profile-drawer-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2000; }
+        .profile-drawer { position: fixed; top: 0; right: -420px; width: 380px; height: 100%; background: white; box-shadow: -4px 0 30px rgba(0,0,0,0.15); z-index: 2001; transition: right 0.35s cubic-bezier(0.4,0,0.2,1); overflow-y: auto; }
+        .profile-drawer.open { right: 0; }
+        .drawer-header { background: linear-gradient(135deg, var(--meditrack-teal) 0%, #3a524f 100%); padding: 30px 24px 24px; color: white; }
+        .drawer-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .drawer-close:hover { background: rgba(255,255,255,0.35); }
+        .drawer-avatar { width: 70px; height: 70px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); overflow: hidden; margin-bottom: 12px; }
+        .drawer-section { padding: 16px 24px; border-bottom: 1px solid #f1f5f9; }
+        .drawer-section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; }
+        .drawer-info-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; color: #475569; }
+        .drawer-info-row i { color: var(--meditrack-teal); width: 16px; text-align: center; }
+        .drawer-logout-btn { width: calc(100% - 48px); margin: 16px 24px; padding: 10px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+
+        /* Snackbar */
+        .snackbar { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e293b; color: white; padding: 14px 24px; border-radius: 12px; font-size: 13px; font-weight: 600; z-index: 9999; transition: transform 0.4s cubic-bezier(0.4,0,0.2,1); display: flex; align-items: center; gap: 10px; }
+        .snackbar.show { transform: translateX(-50%) translateY(0); }
+        .snackbar.success { background: linear-gradient(135deg, #166534, #15803d); }
+        .snackbar.error { background: linear-gradient(135deg, #991b1b, #dc2626); }
+
+        /* Search */
+        .records-search { position: relative; }
+        .records-search input { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px 8px 34px; font-size: 12px; width: 100%; outline: none; transition: all 0.2s; }
+        .records-search input:focus { border-color: var(--meditrack-teal); background: white; }
+        .records-search i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 12px; }
+
+        /* Detail panel */
+        .detail-scroll { flex: 1; overflow-y: auto; custom-scrollbar; padding: 20px; }
+        .empty-state { flex: 1; display: flex; flex-col items-center justify-center; text-center; py-16; }
+
+        /* Action buttons */
+        .btn-approve { background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-light)); color: white; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: all 0.2s; }
+        .btn-approve:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(70,100,96,0.35); }
+        .btn-edit { background: #f1f5f9; color: #64748b; border: none; padding: 10px 20px; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; transition: background 0.2s; }
+        .btn-edit:hover { background: #e2e8f0; }
+        .btn-submit { background: linear-gradient(135deg, var(--accent-sunset), #c96a4f); color: white; border: none; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s; }
+        .btn-submit:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(224,122,95,0.35); }
+
+        /* Certificate styles */
+        .certificate-container { background: white; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; margin-top: 20px; position: relative; }
+        .certificate-container::before { content: "\f471"; font-family: "Font Awesome 6 Free"; font-weight: 900; position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 200px; color: rgba(70, 100, 96, 0.03); z-index: 0; pointer-events: none; }
+        .field-underline { border-bottom: 1px solid #cbd5e1; display: inline-block; padding: 0 8px; font-weight: 600; color: #1e293b; min-height: 24px; }
+        .remark-box { border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 8px; min-height: 80px; padding: 12px; margin: 12px 0; }
+        .custom-checkbox { width: 18px; height: 18px; border: 2px solid var(--meditrack-teal); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; vertical-align: middle; }
+        .custom-checkbox.checked::after { content: "\f00c"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px; color: var(--meditrack-teal); }
+        .footer-metadata { width: 100%; margin-top: 30px; font-size: 9px; color: #94a3b8; border-collapse: collapse; }
+        .footer-metadata td { border: 1px solid #e2e8f0; padding: 6px; text-align: center; }
+
+        #view-approval { min-height: calc(100vh - 120px); background: white; }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <header class="ui-header px-8 py-2 flex items-center justify-between shadow-lg z-10">
+            <img src="image copy.png" alt="MediTrack Logo" class="logo-image" onerror="this.src='https://placehold.co/200x70/466460/white?text=MediTrack'">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3 border-l border-white/20 pl-6">
+                    <div class="text-right"><p class="text-xs font-bold">Admin Portal</p><p class="text-[9px] text-white/60 uppercase">University Clinic</p></div>
+                    <div class="w-10 h-10 rounded-full border-2 border-white/30 overflow-hidden bg-white/10 cursor-pointer hover:border-white/60 transition-all" onclick="openProfileDrawer()">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=ffffff&color=466460" alt="User">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navbar -->
+        <nav class="bg-white px-8 py-4 border-b border-slate-200 flex gap-12 sticky top-0 z-10 shadow-md">
+            <button onclick="switchTab('dashboard')" class="nav-link">Dashboard</button>
+            <button onclick="switchTab('records')" class="nav-link">Records</button>
+            <button onclick="switchTab('appointments')" class="nav-link">Appointments</button>
+            <button onclick="switchTab('examination')" class="nav-link">Examination</button>
+            <button onclick="switchTab('approval')" class="nav-link active">Approval</button>
+            <button onclick="switchTab('announcements')" class="nav-link">Announcements</button>
+            <button onclick="switchTab('consultation')" class="nav-link">Consultation</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1" style="padding:0;">
+            <div id="view-approval" class="tab-content animate-in" style="padding:0;">
+                <div class="two-col-layout">
+                    <!-- Left Column: List of Medical Examinations -->
+                    <div class="col-list">
+                        <div class="col-header">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="font-bold text-[11px] uppercase">Submitted Examinations</h3>
+                                <span id="exam-count-badge" class="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">0</span>
+                            </div>
+                            <div class="records-search">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="examSearch" onkeyup="filterExamList()" placeholder="Search name or ID...">
+                            </div>
+                        </div>
+                        <div class="flex-1 overflow-y-auto custom-scrollbar p-3">
+                            <div id="exam-list" class="space-y-2"></div>
+                            <div id="no-exam-message" class="text-center text-slate-400 text-sm py-12 hidden">No examinations found</div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Selected Examination Detail -->
+                    <div class="col-detail">
+                        <div class="col-header">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-[11px] uppercase">Examination Details</h3>
+                                <div id="action-buttons" class="flex gap-2 hidden">
+                                    <button class="btn-edit" onclick="editExamination()"><i class="fa-solid fa-pen-to-square mr-1"></i> Edit</button>
+                                    <button class="btn-approve" onclick="approveExamination()"><i class="fa-solid fa-check-circle mr-1"></i> Approve</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="detail-panel" class="detail-scroll">
+                            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center py-16">
+                                <i class="fa-regular fa-clipboard text-slate-200 text-5xl mb-3"></i>
+                                <p class="text-slate-400 text-sm">Select an examination from the list</p>
+                            </div>
+                            <div id="exam-detail-content" class="hidden animate-in"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Profile Drawer Overlay -->
+    <div class="profile-drawer-overlay" id="profileDrawerOverlay" onclick="closeProfileDrawer()"></div>
+    <div class="profile-drawer" id="profileDrawer">
+        <div class="drawer-header" style="position:relative;">
+            <button class="drawer-close" onclick="closeProfileDrawer()"><i class="fa-solid fa-xmark"></i></button>
+            <div class="drawer-avatar"><img src="https://ui-avatars.com/api/?name=Admin+User&background=ffffff&color=466460&size=70" alt="Admin"></div>
+            <h2 style="margin:0 0 4px; font-size:1.2rem; font-weight:800;">Admin User</h2>
+            <p style="margin:0; font-size:11px; opacity:0.75;">University Clinic Administrator</p>
+        </div>
+        <div class="drawer-section">
+            <div class="drawer-section-title">Contact Information</div>
+            <div class="drawer-info-row"><i class="fa-solid fa-envelope"></i><span>admin@plsp.edu.ph</span></div>
+            <div class="drawer-info-row"><i class="fa-solid fa-phone"></i><span>+63 912 345 6789</span></div>
+        </div>
+        <button class="drawer-logout-btn"><i class="fa-solid fa-right-from-bracket mr-2"></i>Sign Out</button>
+    </div>
+
+    <!-- Snackbar -->
+    <div class="snackbar" id="snackbar"></div>
+
+    <script>
+        // Sample examination data - in production this would come from a database
+        let examinations = [
+            {
+                id: 1, patientName: "De Vera, Jenny", patientId: "23-00142", type: "student", program: "BSIT", year: "3rd Year", department: "College of Computing", examDate: "2026-05-05", nurseName: "Nurse Maria Santos", status: "pending", reason: "Annual Physical Exam",
+                vitals: { bp: "110/70", pr: "68", rr: "16", temp: "36.4", weight: "52" },
+                anthropometrics: { height: "155", weight: "52", bmi: "21.6", waist: "68" },
+                medicalHistory: ["Allergy (Dust)", "Asthma (mild, controlled)"],
+                surgicalHistory: ["Appendectomy (2020)"],
+                familyHistory: ["Hypertension (Father)"],
+                vaccine: { dose1: "Pfizer", dose1Date: "2023-03-15", dose2: "Pfizer", dose2Date: "2023-04-15", booster: "Pfizer", boosterDate: "2023-10-01" },
+                labResults: { cbc: "WBC: 6.8, RBC: 4.5, Hgb: 13.8, Hct: 40%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Straw, pH: 6.0, SG: 1.015", uaFacility: "PLSP Clinic Lab", xray: "Clear lungs, normal heart silhouette", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "No", alcohol: "No", drugs: "No" }
+            },
+            {
+                id: 2, patientName: "Santos, Sofia", patientId: "23-23406", type: "student", program: "BSCE", year: "2nd Year", department: "College of Engineering", examDate: "2026-05-04", nurseName: "Nurse Maria Santos", status: "pending", reason: "Medical Clearance",
+                vitals: { bp: "120/80", pr: "72", rr: "18", temp: "36.5", weight: "58" },
+                anthropometrics: { height: "162", weight: "58", bmi: "22.1", waist: "70" },
+                medicalHistory: ["No significant medical history"],
+                surgicalHistory: ["No surgical history"],
+                familyHistory: ["Diabetes (Mother)"],
+                vaccine: { dose1: "AstraZeneca", dose1Date: "2023-02-20", dose2: "AstraZeneca", dose2Date: "2023-04-20", booster: "Moderna", boosterDate: "2023-11-15" },
+                labResults: { cbc: "WBC: 7.0, RBC: 4.6, Hgb: 14.0, Hct: 41%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 5.8, SG: 1.018", uaFacility: "PLSP Clinic Lab", xray: "Normal chest findings", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "No", alcohol: "No", drugs: "No" }
+            },
+            {
+                id: 3, patientName: "Mendoza, Paolo", patientId: "22-09123", type: "student", program: "BSN", year: "4th Year", department: "College of Health Sciences", examDate: "2026-05-03", nurseName: "Nurse Ana Reyes", status: "approved", reason: "RLE Clearance",
+                vitals: { bp: "115/75", pr: "70", rr: "17", temp: "36.3", weight: "65" },
+                anthropometrics: { height: "170", weight: "65", bmi: "22.5", waist: "76" },
+                medicalHistory: ["Allergic Rhinitis"],
+                surgicalHistory: ["Tonsillectomy (2015)"],
+                familyHistory: ["Asthma (Mother)", "Heart Disease (Father)"],
+                vaccine: { dose1: "Sinovac", dose1Date: "2022-08-10", dose2: "Sinovac", dose2Date: "2022-09-10", booster: "Pfizer", boosterDate: "2023-06-20" },
+                labResults: { cbc: "WBC: 6.5, RBC: 5.0, Hgb: 15.2, Hct: 45%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Pale Yellow, pH: 6.2, SG: 1.012", uaFacility: "PLSP Clinic Lab", xray: "No active disease", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "No", alcohol: "Occasionally", drugs: "No" }
+            },
+            {
+                id: 4, patientName: "Garcia, Rico", patientId: "24-11002", type: "student", program: "BS PSY", year: "1st Year", department: "College of Arts & Sciences", examDate: "2026-05-02", nurseName: "Nurse Maria Santos", status: "pending", reason: "New Student Medical",
+                vitals: { bp: "118/78", pr: "74", rr: "18", temp: "36.6", weight: "60" },
+                anthropometrics: { height: "165", weight: "60", bmi: "22.0", waist: "72" },
+                medicalHistory: ["No significant medical history"],
+                surgicalHistory: ["No surgical history"],
+                familyHistory: ["No significant family history"],
+                vaccine: { dose1: "Pfizer", dose1Date: "2024-01-15", dose2: "Pfizer", dose2Date: "2024-02-15", booster: "Pfizer", boosterDate: "2024-08-20" },
+                labResults: { cbc: "WBC: 6.2, RBC: 4.4, Hgb: 13.5, Hct: 39%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 6.0, SG: 1.020", uaFacility: "PLSP Clinic Lab", xray: "Normal", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "No", alcohol: "No", drugs: "No" }
+            },
+            {
+                id: 5, patientName: "Reyes, Clara", patientId: "23-55678", type: "student", program: "BS ARCH", year: "2nd Year", department: "College of Engineering", examDate: "2026-05-01", nurseName: "Nurse Ana Reyes", status: "approved", reason: "Eye Examination",
+                vitals: { bp: "112/72", pr: "66", rr: "16", temp: "36.4", weight: "50" },
+                anthropometrics: { height: "158", weight: "50", bmi: "20.0", waist: "65" },
+                medicalHistory: ["Myopia (wearing glasses)"],
+                surgicalHistory: ["No surgical history"],
+                familyHistory: ["Diabetes (Grandmother)"],
+                vaccine: { dose1: "Moderna", dose1Date: "2023-04-01", dose2: "Moderna", dose2Date: "2023-05-01", booster: "Moderna", boosterDate: "2023-12-01" },
+                labResults: { cbc: "WBC: 6.0, RBC: 4.2, Hgb: 13.0, Hct: 38%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 5.8, SG: 1.018", uaFacility: "PLSP Clinic Lab", xray: "Clear", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "No", alcohol: "No", drugs: "No" }
+            },
+            {
+                id: 6, patientName: "Dr. Reyes, Maria", patientId: "FAC-001", type: "instructor", program: "PhD", department: "College of Computing", examDate: "2026-04-30", nurseName: "Nurse Maria Santos", status: "pending", reason: "Annual Check-up",
+                vitals: { bp: "130/85", pr: "80", rr: "18", temp: "36.7", weight: "70" },
+                anthropometrics: { height: "160", weight: "70", bmi: "27.3", waist: "82" },
+                medicalHistory: ["Hypertension", "Hyperlipidemia"],
+                surgicalHistory: ["Cholecystectomy (2019)"],
+                familyHistory: ["Hypertension (Father)", "Diabetes (Mother)"],
+                vaccine: { dose1: "Pfizer", dose1Date: "2022-03-10", dose2: "Pfizer", dose2Date: "2022-04-10", booster: "Pfizer", boosterDate: "2023-01-20" },
+                labResults: { cbc: "WBC: 7.5, RBC: 4.8, Hgb: 14.0, Hct: 42%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 5.5, SG: 1.022", uaFacility: "PLSP Clinic Lab", xray: "Mild cardiomegaly", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "No", alcohol: "Occasionally", drugs: "No" }
+            },
+            {
+                id: 7, patientName: "Ms. Fernandez, Leah", patientId: "STAFF-012", type: "staff", program: "N/A", department: "Registrar's Office", examDate: "2026-04-29", nurseName: "Nurse Ana Reyes", status: "rejected", reason: "Pre-employment Medical",
+                vitals: { bp: "140/90", pr: "88", rr: "20", temp: "37.0", weight: "75" },
+                anthropometrics: { height: "155", weight: "75", bmi: "31.2", waist: "90" },
+                medicalHistory: ["Hypertension", "Obesity", "GERD"],
+                surgicalHistory: ["C-section (2018)"],
+                familyHistory: ["Hypertension (both parents)", "Heart Disease (Father)"],
+                vaccine: { dose1: "Sinovac", dose1Date: "2022-06-15", dose2: "Sinovac", dose2Date: "2022-07-15", booster: "AstraZeneca", boosterDate: "2023-03-01" },
+                labResults: { cbc: "WBC: 8.2, RBC: 4.6, Hgb: 12.5, Hct: 37%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Dark Yellow, pH: 5.2, SG: 1.030", uaFacility: "PLSP Clinic Lab", xray: "Findings suggestive of COPD", xrayFacility: "San Pablo Medical Center" },
+                social: { smoking: "Yes (10 sticks/day)", alcohol: "Yes (2-3x/week)", drugs: "No" }
+            }
+        ];
+
+        let selectedExamId = null;
+
+        // Switch tab navigation
+        function switchTab(tabId) {
+            window.location.href = tabId + '.html';
+        }
+
+        // Profile drawer functions
+        function openProfileDrawer() {
+            document.getElementById('profileDrawer').classList.add('open');
+            document.getElementById('profileDrawerOverlay').style.display = 'block';
+        }
+        function closeProfileDrawer() {
+            document.getElementById('profileDrawer').classList.remove('open');
+            document.getElementById('profileDrawerOverlay').style.display = 'none';
+        }
+
+        // Snackbar
+        function showSnackbar(msg, type = 'success') {
+            const sb = document.getElementById('snackbar');
+            sb.className = `snackbar ${type}`;
+            sb.innerHTML = `<i class="fa-solid ${type==='success'?'fa-circle-check':'fa-circle-exclamation'}"></i> ${msg}`;
+            sb.classList.add('show');
+            setTimeout(() => sb.classList.remove('show'), 3500);
+        }
+
+        // Render examination list
+        function renderExamList(filter = '') {
+            const container = document.getElementById('exam-list');
+            const filtered = examinations.filter(exam =>
+                exam.patientName.toLowerCase().includes(filter.toLowerCase()) ||
+                exam.patientId.toLowerCase().includes(filter.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                document.getElementById('no-exam-message').classList.remove('hidden');
+                container.innerHTML = '';
+                return;
+            }
+
+            document.getElementById('no-exam-message').classList.add('hidden');
+            container.innerHTML = filtered.map(exam => `
+                <div class="exam-item ${selectedExamId === exam.id ? 'active-exam' : ''}" onclick="selectExamination(${exam.id})">
+                    <div class="flex justify-between items-start mb-1">
+                        <p class="text-sm font-bold text-slate-700">${exam.patientName}</p>
+                        <span class="status-badge status-${exam.status}">${exam.status}</span>
+                    </div>
+                    <p class="text-xs text-slate-500">${exam.patientId} • ${exam.program} ${exam.year}</p>
+                    <div class="flex justify-between items-center mt-2">
+                        <p class="text-xs text-slate-400"><i class="fa-solid fa-calendar mr-1"></i>${exam.examDate}</p>
+                        <p class="text-xs text-slate-400">${exam.reason}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('exam-count-badge').innerText = filtered.length;
+        }
+
+        // Filter examination list
+        function filterExamList() {
+            const searchTerm = document.getElementById('examSearch').value;
+            renderExamList(searchTerm);
+        }
+
+        // Select examination
+        function selectExamination(id) {
+            selectedExamId = id;
+            const exam = examinations.find(e => e.id === id);
+            if (!exam) return;
+
+            renderExamList(document.getElementById('examSearch').value);
+
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('exam-detail-content').classList.remove('hidden');
+            document.getElementById('action-buttons').classList.remove('hidden');
+
+            document.getElementById('exam-detail-content').innerHTML = `
+                <div class="glass-card p-5 mb-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-[#466460]">${exam.patientName}</h3>
+                            <p class="text-sm text-slate-500">${exam.patientId} • ${exam.type === 'student' ? 'Student' : exam.type === 'instructor' ? 'Faculty' : 'Staff'}</p>
+                        </div>
+                        <span class="status-badge status-${exam.status}">${exam.status}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><p class="text-xs text-slate-400 uppercase">Program/Department</p><p class="text-sm font-semibold">${exam.program} ${exam.year}</p><p class="text-xs text-slate-500">${exam.department}</p></div>
+                        <div><p class="text-xs text-slate-400 uppercase">Examination Date</p><p class="text-sm font-semibold">${exam.examDate}</p></div>
+                        <div><p class="text-xs text-slate-400 uppercase">Reason</p><p class="text-sm font-semibold">${exam.reason}</p></div>
+                        <div><p class="text-xs text-slate-400 uppercase">Nurse on Duty</p><p class="text-sm font-semibold">${exam.nurseName}</p></div>
+                    </div>
+                </div>
+
+                <!-- Medical Examination Summary -->
+                <div class="glass-card p-5 mb-4">
+                    <h4 class="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-slate-200 pb-2">
+                        <i class="fa-solid fa-clipboard-list mr-2"></i>Medical Examination Summary
+                    </h4>
+
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p class="text-xs text-slate-400 uppercase mb-1">Date of Examination</p>
+                            <p class="text-sm font-semibold">${exam.examDate}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-400 uppercase mb-1">Examination Type</p>
+                            <p class="text-sm font-semibold">${exam.reason}</p>
+                        </div>
+                    </div>
+
+                    <!-- Vital Signs -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Vital Signs</p>
+                        <div class="grid grid-cols-5 gap-2">
+                            <div class="bg-slate-50 rounded-lg p-2 text-center">
+                                <p class="text-[9px] text-slate-400 uppercase">BP</p>
+                                <p class="text-sm font-bold text-[#466460]">${exam.vitals?.bp || '120/80'}</p>
+                                <p class="text-[8px] text-slate-400">mmHg</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2 text-center">
+                                <p class="text-[9px] text-slate-400 uppercase">PR</p>
+                                <p class="text-sm font-bold text-[#466460]">${exam.vitals?.pr || '72'}</p>
+                                <p class="text-[8px] text-slate-400">bpm</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2 text-center">
+                                <p class="text-[9px] text-slate-400 uppercase">RR</p>
+                                <p class="text-sm font-bold text-[#466460]">${exam.vitals?.rr || '18'}</p>
+                                <p class="text-[8px] text-slate-400">cpm</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2 text-center">
+                                <p class="text-[9px] text-slate-400 uppercase">Temp</p>
+                                <p class="text-sm font-bold text-[#466460]">${exam.vitals?.temp || '36.5'}</p>
+                                <p class="text-[8px] text-slate-400">°C</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2 text-center">
+                                <p class="text-[9px] text-slate-400 uppercase">Weight</p>
+                                <p class="text-sm font-bold text-[#466460]">${exam.vitals?.weight || '55'}</p>
+                                <p class="text-[8px] text-slate-400">kg</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Anthropometrics -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Anthropometrics</p>
+                        <div class="grid grid-cols-4 gap-2">
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">Height</p>
+                                <p class="text-sm font-semibold">${exam.anthropometrics?.height || '160'} cm</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">Weight</p>
+                                <p class="text-sm font-semibold">${exam.anthropometrics?.weight || '55'} kg</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">BMI</p>
+                                <p class="text-sm font-semibold">${exam.anthropometrics?.bmi || '21.5'}</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">Waist</p>
+                                <p class="text-sm font-semibold">${exam.anthropometrics?.waist || '72'} cm</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Medical History -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Past Medical History</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${(exam.medicalHistory || ['No significant medical history']).map(h => `<span class="bg-amber-50 text-amber-700 px-2 py-1 rounded-full text-[10px] font-semibold">${h}</span>`).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Surgical History -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Surgical History</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${(exam.surgicalHistory || ['No surgical history']).map(h => `<span class="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-[10px] font-semibold">${h}</span>`).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Family History -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Family History</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${(exam.familyHistory || ['No significant family history']).map(h => `<span class="bg-purple-50 text-purple-700 px-2 py-1 rounded-full text-[10px] font-semibold">${h}</span>`).join('')}
+                        </div>
+                    </div>
+
+                    <!-- COVID-19 Vaccine -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">COVID-19 Vaccine</p>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">1st Dose</p>
+                                <p class="text-xs font-semibold">${exam.vaccine?.dose1 || 'Pfizer'}</p>
+                                <p class="text-[9px] text-slate-400">${exam.vaccine?.dose1Date || '2023-03-15'}</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">2nd Dose</p>
+                                <p class="text-xs font-semibold">${exam.vaccine?.dose2 || 'Pfizer'}</p>
+                                <p class="text-[9px] text-slate-400">${exam.vaccine?.dose2Date || '2023-04-15'}</p>
+                            </div>
+                            <div class="bg-slate-50 rounded-lg p-2">
+                                <p class="text-[9px] text-slate-400 uppercase">Booster</p>
+                                <p class="text-xs font-semibold">${exam.vaccine?.booster || 'Moderna'}</p>
+                                <p class="text-[9px] text-slate-400">${exam.vaccine?.boosterDate || '2023-10-01'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Laboratory Results -->
+                    <div class="mb-4">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Laboratory Results</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs border border-slate-200 rounded-lg">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="text-left p-2 border-b font-semibold text-slate-600">Test</th>
+                                        <th class="text-left p-2 border-b font-semibold text-slate-600">Results</th>
+                                        <th class="text-left p-2 border-b font-semibold text-slate-600">Facility</th>
+                                        <th class="text-left p-2 border-b font-semibold text-slate-600">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="p-2 border-b">CBC</td>
+                                        <td class="p-2 border-b font-semibold">${exam.labResults?.cbc || 'WBC: 7.2, RBC: 4.8, Hgb: 14.2, Hct: 42%'}</td>
+                                        <td class="p-2 border-b">${exam.labResults?.cbcFacility || 'PLSP Clinic Lab'}</td>
+                                        <td class="p-2 border-b">${exam.examDate}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-2 border-b">Urinalysis</td>
+                                        <td class="p-2 border-b font-semibold">${exam.labResults?.ua || 'Color: Yellow, pH: 6.0, Specific Gravity: 1.020'}</td>
+                                        <td class="p-2 border-b">${exam.labResults?.uaFacility || 'PLSP Clinic Lab'}</td>
+                                        <td class="p-2 border-b">${exam.examDate}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-2">Chest X-Ray</td>
+                                        <td class="p-2 font-semibold">${exam.labResults?.xray || 'No active cardiopulmonary disease'}</td>
+                                        <td class="p-2">${exam.labResults?.xrayFacility || 'San Pablo Medical Center'}</td>
+                                        <td class="p-2">${exam.examDate}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Personal/Social History -->
+                    <div class="mb-2">
+                        <p class="text-xs font-bold text-[#466460] uppercase mb-2">Personal/Social History</p>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-slate-500">Smoking:</span>
+                                <span class="text-xs font-semibold ${exam.social?.smoking === 'Yes' ? 'text-red-600' : 'text-green-600'}">${exam.social?.smoking || 'No'}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-slate-500">Alcohol:</span>
+                                <span class="text-xs font-semibold ${exam.social?.alcohol === 'Yes' ? 'text-red-600' : 'text-green-600'}">${exam.social?.alcohol || 'No'}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-slate-500">Illicit Drugs:</span>
+                                <span class="text-xs font-semibold ${exam.social?.drugs === 'Yes' ? 'text-red-600' : 'text-green-600'}">${exam.social?.drugs || 'No'}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Medical Certificate Section -->
+                <div class="certificate-container">
+                    <div class="flex justify-between items-start mb-8 relative z-10">
+                        <div>
+                            <div class="header-logo mb-2" style="color: var(--meditrack-teal); font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-house-medical"></i> MediTrack
+                            </div>
+                            <div class="text-[9px] text-slate-500 uppercase font-bold tracking-widest leading-tight">
+                                Pamantasan ng Lungsod ng San Pablo<br>
+                                Health Services Office<br>
+                                Brgy. San Jose, San Pablo City
+                            </div>
+                        </div>
+                        <div class="text-right text-[9px] text-slate-400">
+                            <p>Tel: (049) 536-7830</p>
+                            <p>plspofficial@plsp.edu.ph</p>
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-8">
+                        <h1 class="text-2xl font-black text-slate-800 tracking-tight m-0">MEDICAL CERTIFICATE</h1>
+                        <div class="h-1 w-16 bg-[#e07a5f] mx-auto mt-2 rounded-full"></div>
+                    </div>
+
+                    <div class="text-slate-700 leading-relaxed relative z-10 text-xs md:text-sm">
+                        <p class="font-extrabold text-slate-900 mb-4 uppercase tracking-wider text-xs">To whom it may concern:</p>
+
+                        <p class="mb-6">
+                            This is to certify that Mr./Ms. <span class="field-underline" style="width: 180px;">${exam.patientName.split(',')[1] || ''} ${exam.patientName.split(',')[0] || ''}</span>,
+                            <span class="field-underline" style="width: 30px;">21</span> years old,
+                            <span class="field-underline" style="width: 60px;">Male/Female</span> (Gender),
+                            residing at <span class="field-underline" style="width: 200px;"></span>
+                            and currently enrolled as <span class="field-underline" style="width: 160px;">${exam.program} ${exam.year}</span>
+                            (Course/Year/Section) was seen and examined by the undersigned health officer on this date
+                            <span class="field-underline" style="width: 90px;">${exam.examDate}</span>.
+                        </p>
+
+                        <div class="mb-6">
+                            <p class="font-bold text-slate-900 mb-2 uppercase text-xs tracking-wider">Pertinent Findings:</p>
+                            <div class="flex items-center mb-2">
+                                <div class="custom-checkbox checked"></div>
+                                <span class="text-xs font-medium">Essentially normal findings at date and time of examination.</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-6">
+                            <p class="font-bold text-slate-900 mb-2 uppercase text-xs tracking-wider">Remarks & Recommendations:</p>
+                            <div class="remark-box text-slate-600 text-xs">
+                                <textarea id="cert-remarks" class="w-full border-none bg-transparent text-xs resize-none focus:outline-none" rows="3" placeholder="Enter remarks and recommendations..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center mb-8">
+                            <div class="custom-checkbox checked"></div>
+                            <span class="text-xs font-black text-slate-900">PHYSICALLY FIT / FIT TO JOIN OFF-CAMPUS ACTIVITY</span>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end mt-12 relative z-10">
+                        <div class="text-center w-56">
+                            <div class="mb-2 font-black text-slate-900 border-b-2 border-slate-900 pb-1 uppercase text-xs">
+                                Caren Navata Jose, M.D.
+                            </div>
+                            <p class="text-xs font-bold text-teal-800 uppercase m-0">Medical Officer III</p>
+                            <div class="text-[9px] text-slate-500 mt-1">
+                                <p>License No. 0114665</p>
+                                <p>PTR No. 9978569</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-12 text-center italic text-slate-400 text-xs font-medium">
+                        "Primed to Lead and Serve for Progress"
+                    </div>
+
+                    <table class="footer-metadata">
+                        <tr>
+                            <td class="font-bold bg-slate-50">PLSP-OSDS-HSO</td>
+                            <td>Rev. No: 2</td>
+                            <td class="font-bold bg-slate-50">Effective Date</td>
+                            <td>February 2023</td>
+                            <td>Page 1 of 1</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="mt-6 flex justify-end gap-3 pb-8">
+                    <button class="btn-edit" onclick="editExamination()"><i class="fa-solid fa-pen-to-square mr-1"></i> Edit Certificate</button>
+                    <button class="btn-submit" onclick="submitExamination()"><i class="fa-solid fa-paper-plane mr-1"></i> Submit Approval</button>
+                </div>
+            `;
+        }
+
+        // Approve examination
+        function approveExamination() {
+            const exam = examinations.find(e => e.id === selectedExamId);
+            if (exam) {
+                exam.status = 'approved';
+                showSnackbar(`Examination for ${exam.patientName} has been approved!`, 'success');
+                renderExamList(document.getElementById('examSearch').value);
+                selectExamination(selectedExamId);
+            }
+        }
+
+        // Edit examination
+        function editExamination() {
+            showSnackbar('Editing examination details...', 'success');
+        }
+
+        // Submit examination
+        function submitExamination() {
+            const exam = examinations.find(e => e.id === selectedExamId);
+            const remarks = document.getElementById('cert-remarks')?.value || '';
+            if (exam && remarks.trim()) {
+                exam.status = 'approved';
+                exam.remarks = remarks;
+                showSnackbar(`Examination for ${exam.patientName} submitted successfully!`, 'success');
+                renderExamList(document.getElementById('examSearch').value);
+            } else if (!remarks.trim()) {
+                showSnackbar('Please add remarks before submitting', 'error');
+            }
+        }
+
+        // Initialize
+        function init() {
+            renderExamList();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

@@ -87,7 +87,7 @@ export default function ProfileUsers({ onLogout }) {
   // All profile data
   const [profile, setProfile] = useState({
     firstName: '', middleInitial: '', lastName: '', suffix: '',
-    birthday: '', age: '', gender: '', bloodType: '',
+    birthday: '', age: '', sex: '', bloodType: '',
     homeAddress: '', religion: '', nationality: '', civilStatus: '',
     universityId: '', role: '',
     studentId: '', department: '', program: '', yearLevel: '', section: '',
@@ -117,7 +117,7 @@ export default function ProfileUsers({ onLogout }) {
               suffix:         d.suffix         || '',
               birthday:       d.birthday       || '',
               age:            d.age            || '',
-              gender:         d.gender         || '',
+              sex:            d.sex            || '',
               bloodType:      d.bloodType      || '',
               homeAddress:    d.homeAddress    || '',
               religion:       d.religion       || '',
@@ -296,7 +296,7 @@ export default function ProfileUsers({ onLogout }) {
         <SectionHeader label="Personal Information" onEdit={() => openEdit('personal')} />
         <InfoRow label="Birthday"     value={profile.birthday} />
         <InfoRow label="Age"          value={profile.age} />
-        <InfoRow label="Sex"          value={profile.gender} />
+        <InfoRow label="Sex"          value={profile.sex} />
         <InfoRow label="Blood Type"   value={profile.bloodType} />
         <InfoRow label="Civil Status" value={profile.civilStatus} />
         <InfoRow label="Religion"     value={profile.religion} />
@@ -431,7 +431,7 @@ export default function ProfileUsers({ onLogout }) {
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <FormGroup label="Sex">
-                      <select style={inputStyle} value={editData.gender} onChange={e => handleChange('gender', e.target.value)}>
+                      <select style={inputStyle} value={editData.sex} onChange={e => handleChange('sex', e.target.value)}>
                         <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option>
                       </select>
                     </FormGroup>

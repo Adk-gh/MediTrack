@@ -18,6 +18,7 @@ import Records from './features/admin-clinic/Records.jsx';
 import Appointments from './features/admin-clinic/Appointments.jsx';
 import { Dashboard } from './features/admin-clinic/Dashboard.jsx';
 import Examination from './features/admin-clinic/Examinations.jsx';
+import Approvals from './features/admin-clinic/Approvals.jsx';
 import Announcements from './features/admin-clinic/Announcements.jsx';
 import Consultations from './features/admin-clinic/Consultations.jsx';
 import UserManagement from './features/admin-clinic/User-Management.jsx';
@@ -38,9 +39,10 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   }
 
   if (adminOnly) {
-    const role        = user.role?.toLowerCase().trim() || '';
-    const isAdminRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
-    if (!isAdminRole) {
+    const role = user.role?.toLowerCase().trim() || '';
+    // Staff roles that can access Dashboard (clinic/admin functions)
+    const isStaffRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
+    if (!isStaffRole) {
       console.log(`Access Denied to Dashboard. Role parsed as: "${role}"`);
       return <Navigate to="/student/meditrack" replace />;
     }
@@ -55,6 +57,7 @@ const ROUTE_TO_TAB = {
   '/records':       'records',
   '/appointments':  'appointments',
   '/examinations':  'examinations',
+  '/approvals':     'approvals',
   '/consultations': 'consultations',
   '/announcements': 'announcements',
   '/users':         'users',
@@ -65,6 +68,7 @@ const TAB_TO_ROUTE = {
   'records':       '/records',
   'appointments':  '/appointments',
   'examinations':  '/examinations',
+  'approvals':     '/approvals',
   'consultations': '/consultations',
   'announcements': '/announcements',
   'users':         '/users',
@@ -159,7 +163,9 @@ const OnboardingPage = () => {
     localStorage.setItem('user', JSON.stringify(updatedUser));
 
     const role = user.role?.toLowerCase().trim() || '';
-    if (['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role)) {
+    // Staff roles that can access Dashboard (clinic/admin functions)
+    const isStaffRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
+    if (isStaffRole) {
       navigate('/dashboard');
     } else {
       navigate('/student/meditrack');
@@ -238,6 +244,12 @@ function App() {
           <Route path="/examinations" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/approvals" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
 

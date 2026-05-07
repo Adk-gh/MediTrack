@@ -4,6 +4,62 @@ const { db, auth } = require('../../configs/firebase-admin');
 const axios = require('axios');
 const FormData = require('form-data');
 
+/**
+ * Resolves role by scanning raw OCR text directly.
+ * Keywords are ordered by priority (most specific first).
+ * Returns a lowercase role string for Firestore.
+ */
+function resolveRole(parsedRole, rawText) {
+  const combined = `${parsedRole || ''} ${rawText || ''}`.toLowerCase();
+
+  console.log(`>>> [Role] Combined text for detection:\n"${combined.substring(0, 300)}"\n`);
+
+  // Ordered keyword map (first match wins)
+  const keywordMap = [
+    // Medical
+    ['physician',      'doctor'],
+    ['medical doctor', 'doctor'],
+    ['doctor',         'doctor'],
+    [' md ',           'doctor'],   // space-padded to avoid matching "cmd"
+    ['dentist',        'dentist'],
+    ['dental',         'dentist'],
+    ['nurse',          'nurse'],
+    // Academic
+    ['lecturer',       'lecturer'],
+    ['professor',      'professor'],
+    ['prof.',          'professor'],
+    ['instructor',     'instructor'],
+    ['administrator',  'administrator'],
+    [' admin ',        'administrator'],
+    ['librarian',      'librarian'],
+    // Staff
+    ['technician',     'technician'],
+    ['security',       'guard'],
+    ['guard',          'guard'],
+    ['maintenance',    'staff'],
+    ['janitor',        'staff'],
+    ['cleaner',        'staff'],
+    ['employee',       'staff'],
+    ['faculty',        'staff'],
+    ['staff',          'staff'],
+    // Student (lowest priority)
+    ['bsit',    'student'], ['bsis',   'student'], ['bsba',  'student'],
+    ['bsed',    'student'], ['bscs',   'student'], ['bscrim','student'],
+    ['bshm',    'student'], ['bsent',  'student'], ['bsoa',  'student'],
+    ['student', 'student'],
+  ];
+
+  for (const [keyword, role] of keywordMap) {
+    if (combined.includes(keyword)) {
+      console.log(`>>> [Role] Matched keyword "${keyword}" → role: "${role}"`);
+      return role;
+    }
+  }
+
+  console.log('>>> [Role] No keyword matched — defaulting to "student"');
+  return 'student';
+}
+
 exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, email, password, universityId }, idFile) => {
   if (!firstName || !lastName || !email || !password || !universityId) {
     const error = new Error('Missing required fields.');
@@ -17,52 +73,74 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     throw error;
   }
 
-  // 1. OCR VERIFICATION
+  // ── 1. SEND IMAGE TO OCR SERVICE ────────────────────────────────────────
   const ocrForm = new FormData();
   ocrForm.append('image', idFile.buffer, {
     filename: idFile.originalname,
     contentType: idFile.mimetype,
   });
 
- let ocrResponse;
+  let ocrResponse;
   try {
-    // Use the Google Cloud URL from your Render environment variables
-    // Fallback to localhost only if the variable isn't set (for your PC testing)
     const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
-
     ocrResponse = await axios.post(ocrUrl, ocrForm, {
       headers: { ...ocrForm.getHeaders() },
-      timeout: 120000
+      timeout: 120000,
     });
   } catch (ocrErr) {
-    console.error("OCR Service Connection Failed:", ocrErr.message);
+    console.error('OCR Service Connection Failed:', ocrErr.message);
     const error = new Error('ID verification service is unavailable.');
     error.statusCode = 502;
     throw error;
   }
 
   const ocrData = ocrResponse.data;
+
+  // Full OCR debug log
+  console.log('>>> [OCR] Full response:');
+  console.log(JSON.stringify(ocrData, null, 2));
+
   if (!ocrData.success) {
     const error = new Error(ocrData.error || 'OCR Failed to process the image.');
     error.statusCode = 400;
     throw error;
   }
 
-  const { parsed } = ocrData;
+  // ── 2. ID NUMBER MATCHING ────────────────────────────────────────────────
+  const { parsed, raw_text } = ocrData;   // ← raw_text is now pulled here
+
   const normalize = (id) => (id || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
   const normalizedInputId = normalize(universityId);
   let ocrId = parsed?.id_number || null;
 
+  // Fallback: scan raw_text directly if parsed id_number is missing
+  if (!ocrId && raw_text) {
+    const normalizedRawText = normalize(raw_text);
+    if (normalizedRawText.includes(normalizedInputId)) {
+      ocrId = universityId;
+    } else {
+      const match = raw_text.match(/\b([A-Z0-9]{2,}[\s\-]?[0-9]{2,})\b/i);
+      if (match) ocrId = match[1];
+    }
+  }
+
+  console.log(`>>> [ID] Input: "${universityId}" | OCR detected: "${ocrId}"`);
+  console.log(`>>> [ID] Normalized input: "${normalizedInputId}" | Normalized OCR: "${normalize(ocrId)}"`);
+
   if (!ocrId || normalizedInputId !== normalize(ocrId)) {
-    const error = new Error(`Verification Failed: Typed ID (${universityId}) does not match ID on card.`);
+    const error = new Error(
+      `Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.`
+    );
     error.statusCode = 400;
     throw error;
   }
 
-  // 2. Role Logic
-  let role = 'student';
+  // ── 3. ROLE RESOLUTION ───────────────────────────────────────────────────
+  // Scans BOTH parsed.role AND raw_text — fixes the hardcoded 'student' bug.
+  const role = resolveRole(parsed?.role, raw_text);
+  console.log(`>>> [Role] Final role saved to DB: "${role}"`);
 
-  // 3. Firestore Duplicate Check
+  // ── 4. FIRESTORE DUPLICATE CHECK ─────────────────────────────────────────
   const usersRef = db.collection('users');
   const duplicateIdCheck = await usersRef.where('universityId', '==', ocrId).get();
   if (!duplicateIdCheck.empty) {
@@ -71,12 +149,12 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     throw error;
   }
 
-  // 4. Create Firebase Auth account
+  // ── 5. CREATE FIREBASE AUTH ACCOUNT ─────────────────────────────────────
   let userRecord;
   try {
     userRecord = await auth.createUser({
-      email: email,
-      password: password,
+      email,
+      password,
       displayName: `${firstName} ${lastName}`.trim(),
     });
   } catch (firebaseErr) {
@@ -88,7 +166,7 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     throw firebaseErr;
   }
 
-  // 5. Save initial profile to Firestore
+  // ── 6. SAVE USER TO FIRESTORE ────────────────────────────────────────────
   const newUser = {
     uid: userRecord.uid,
     firstName,
@@ -98,12 +176,13 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     email: email.toLowerCase(),
     universityId: ocrId,
     isVerified: true,
-    role,
+    role,               // ← dynamically resolved from OCR (no longer hardcoded)
     isProfileSetup: false,
     createdAt: new Date().toISOString(),
   };
 
   await usersRef.doc(userRecord.uid).set(newUser);
+  console.log(`>>> [DB] User saved with role: "${role}"`);
 
   return newUser;
 };
@@ -152,8 +231,6 @@ exports.setupProfile = async (userId, profileData) => {
     throw error;
   }
 
-  // --- Destructure every expected field explicitly ---
-  // This prevents the client from overwriting protected fields like uid, role, isVerified.
   const {
     firstName, middleInitial, lastName, suffix,
     birthday, age, sex, bloodType,
@@ -165,7 +242,6 @@ exports.setupProfile = async (userId, profileData) => {
     vaccinations,
   } = profileData;
 
-  // --- Build a clean, sanitized object ---
   const sanitized = {
     // Personal
     firstName:     firstName     ?? '',
@@ -193,10 +269,7 @@ exports.setupProfile = async (userId, profileData) => {
     // Contact
     phoneNumber: phoneNumber ?? '',
 
-    // ─── Emergency Contact ───────────────────────────────────────────────────
-    // Stored as a FULL nested object — do NOT spread this into root-level fields.
-    // Firestore .update() with dot-notation would strip sub-fields; we use
-    // set+merge below to write the whole object at once.
+    // Emergency Contact (stored as full nested object)
     emergencyContact: {
       name:         emergencyContact?.name         ?? '',
       relationship: emergencyContact?.relationship ?? '',
@@ -204,9 +277,7 @@ exports.setupProfile = async (userId, profileData) => {
       address:      emergencyContact?.address      ?? '',
     },
 
-    // ─── COVID-19 Vaccinations ───────────────────────────────────────────────
-    // Fixed 5-dose structure. Always write all 5 keys so Firestore never has
-    // partial/missing doses from a previous save.
+    // COVID-19 Vaccinations (fixed 5-dose structure)
     vaccinations: {
       dose1: {
         vaccineName: vaccinations?.dose1?.vaccineName ?? '',
@@ -226,9 +297,7 @@ exports.setupProfile = async (userId, profileData) => {
       },
     },
 
-    // ─── Status flags ────────────────────────────────────────────────────────
-    // isProfileSetup is the SINGLE source of truth. The frontend also sends
-    // profileComplete — we accept it here as an alias for safety.
+    // Status flags
     isProfileSetup: true,
     profileComplete: true,
     updatedAt: new Date().toISOString(),
@@ -237,19 +306,7 @@ exports.setupProfile = async (userId, profileData) => {
   console.log(`[setupProfile] Saving profile for uid: ${userId}`);
   console.log(JSON.stringify(sanitized, null, 2));
 
-  // ─── CRITICAL: Use set() with merge:true, NOT update() ───────────────────
-  //
-  // Why NOT .update()?
-  //   Firestore's .update() writes nested objects using dot-notation internally,
-  //   which means emergencyContact and vaccinations would be written as flat keys
-  //   like "emergencyContact.name", "vaccinations.dose1.vaccineName", etc.
-  //   If ANY of those sub-fields didn't exist before, the update silently drops them.
-  //
-  // Why set() + merge:true?
-  //   It writes the entire nested object as a proper Firestore Map sub-document,
-  //   and merges with existing top-level fields (like uid, role, email) without
-  //   overwriting them.
-  //
+  // Use set() with merge:true (NOT update()) to safely write nested objects
   await userRef.set(sanitized, { merge: true });
 
   const updated = await userRef.get();

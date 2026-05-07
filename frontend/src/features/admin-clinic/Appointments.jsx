@@ -1,5 +1,5 @@
 // frontend/src/features/admin-clinic/Appointments.jsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppointments } from '../../context/AppointmentContext';
 
@@ -10,11 +10,35 @@ const MONTHS = [
 ];
 const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
+/**
+ * Predefined 1-hour clinic slots, 7 AM – 5 PM.
+ */
+const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
+  const startH = 7 + i;          // 07 … 16
+  const endH   = startH + 1;     // 08 … 17
+  const fmt = (h) => {
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hr     = h % 12 || 12;
+    return `${hr}:00 ${period}`;
+  };
+  return {
+    value: `${String(startH).padStart(2, '0')}:00`,
+    label: `${fmt(startH)} – ${fmt(endH)}`,
+  };
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const getInitials = (name) => {
   const clean = name.replace(/^(Dr\.|Prof\.|Ms\.|Mr\.)\s*/i, '');
   const parts  = clean.split(/[\s,]+/).filter(Boolean);
   return ((parts[0]||'')[0] + (parts[1]||'')[0]).toUpperCase();
+};
+
+const fmtTime = (t) => {
+  const [h, m] = t.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hr     = h % 12 || 12;
+  return `${hr}:${String(m).padStart(2,'0')} ${period}`;
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -49,33 +73,36 @@ export const Appointments = () => {
   const { appointments, approveAppointment, declineAppointment, markDone: ctxMarkDone } = useAppointments();
 
   // ── Calendar state ──
-  const [calYear,      setCalYear]      = useState(2026);
-  const [calMonth,     setCalMonth]     = useState(5);
-  const [selectedDay,  setSelectedDay]  = useState(null);
+  const [calYear,     setCalYear]     = useState(today.getFullYear());
+  const [calMonth,    setCalMonth]    = useState(today.getMonth() + 1);
+  const [selectedDay, setSelectedDay] = useState(null);
 
-  // ── Mobile view state: 'pending' | 'calendar' ──
+  // ── Accordion state for Time Slots ──
+  // Array of time strings (e.g., ["08:00", "09:00"]) that the user has manually closed.
+  // Empty array = Everything is Expanded/Open.
+  const [closedSlots, setClosedSlots] = useState([]);
+
+  // Force all accordions to expand when switching days
+  useEffect(() => {
+    setClosedSlots([]);
+  }, [selectedDay]);
+
+  // ── Mobile view state ──
   const [mobileView, setMobileView] = useState('pending');
 
-  // ── Pending selection ──
-  const [selectedPendingId, setSelectedPendingId] = useState(null);
-  const [searchTerm,        setSearchTerm]        = useState('');
+  // ── Multi-select pending ──
+  const [selectedIds,   setSelectedIds]   = useState(new Set());
+  const [searchTerm,    setSearchTerm]    = useState('');
 
-  // ── Booking form ──
-  const [bfDate, setBfDate] = useState('');
-  const [bfTime, setBfTime] = useState('');
+  // ── Batch scheduling modal ──
+  const [batchModal, setBatchModal] = useState(false);
+  const [batchDate,  setBatchDate]  = useState('');
+  const [batchSlot,  setBatchSlot]  = useState('08:00');
 
-  // ── Modals & snackbar ──
-  const [detailModal,   setDetailModal]   = useState(null);
-  const [bookingSheet,  setBookingSheet]  = useState(false); // mobile bottom sheet
-  const [snackbar,      setSnackbar]      = useState({ visible: false, message: '', type: 'success' });
+  // ── Detail / snackbar ──
+  const [detailModal, setDetailModal] = useState(null);
+  const [snackbar,    setSnackbar]    = useState({ visible: false, message: '', type: 'success' });
   const snackbarTimer = useRef(null);
-
-  React.useEffect(() => {
-    if (selectedDay && selectedPendingId) {
-      const pad = n => String(n).padStart(2, '0');
-      setBfDate(`${calYear}-${pad(calMonth)}-${pad(selectedDay)}`);
-    }
-  }, [selectedDay, calYear, calMonth, selectedPendingId]);
 
   const showSnackbar = (message, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -93,12 +120,6 @@ export const Appointments = () => {
     setCalMonth(m); setCalYear(y); setSelectedDay(null);
   };
 
-  const clearSelection = () => {
-    setSelectedPendingId(null);
-    setBfDate(''); setBfTime('');
-    setBookingSheet(false);
-  };
-
   // ── Derived data ──
   const pendingRequests = appointments
     .filter(a => a.status === 'pending')
@@ -106,12 +127,12 @@ export const Appointments = () => {
 
   const filteredPending = pendingRequests.filter(r =>
     !searchTerm ||
-    r.name.toLowerCase().includes(searchTerm)    ||
-    r.idno.toLowerCase().includes(searchTerm)    ||
-    r.dept.toLowerCase().includes(searchTerm)    ||
-    r.prog.toLowerCase().includes(searchTerm)    ||
+    r.name.toLowerCase().includes(searchTerm)         ||
+    (r.idno || '').toLowerCase().includes(searchTerm) ||
+    (r.dept || '').toLowerCase().includes(searchTerm) ||
+    (r.prog || '').toLowerCase().includes(searchTerm) ||
     (r.section || '').toLowerCase().includes(searchTerm) ||
-    r.reason.toLowerCase().includes(searchTerm)
+    (r.reason || '').toLowerCase().includes(searchTerm)
   );
 
   const scheduledAppts = appointments.filter(
@@ -129,42 +150,76 @@ export const Appointments = () => {
       return a.time.localeCompare(b.time);
     });
 
+  // Group appointments by time slot for the accordion UI
+  const groupedAppts = useMemo(() => {
+    const groups = {};
+    selectedDayAppts.forEach(a => {
+      if (!groups[a.time]) groups[a.time] = [];
+      groups[a.time].push(a);
+    });
+    return Object.keys(groups).sort().map(time => ({
+      time,
+      appts: groups[time]
+    }));
+  }, [selectedDayAppts]);
+
   const activeByTime = scheduledAppts
     .filter(a => a.year === calYear && a.month === calMonth && a.day === selectedDay && a.status !== 'done')
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  const selectedPendingItem = appointments.find(a => a.id === selectedPendingId);
+  const selectedItems = pendingRequests.filter(r => selectedIds.has(r.id));
+  const chosenSlotLabel = HOUR_SLOTS.find(s => s.value === batchSlot)?.label ?? '';
 
-  // ── Actions ──
-  const handleSelectPending = (id) => {
-    setSelectedPendingId(id);
-    if (selectedDay) {
-      const pad = n => String(n).padStart(2, '0');
-      setBfDate(`${calYear}-${pad(calMonth)}-${pad(selectedDay)}`);
-    } else {
-      setBfDate('');
-    }
-    setBfTime('');
-    setBookingSheet(true); // open bottom sheet on mobile
+  // ── Toggle single selection ──
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   };
 
-  const handleApprove = () => {
-    if (!bfDate || !bfTime) {
-      showSnackbar('Please select both a date and time', 'error');
+  const selectAll = () =>
+    setSelectedIds(new Set(filteredPending.map(r => r.id)));
+
+  const clearAll = () => setSelectedIds(new Set());
+
+  // ── Batch approve ──
+  const handleBatchApprove = async () => {
+    if (!batchDate) {
+      showSnackbar('Please select a date', 'error');
       return;
     }
-    const [y, m, d] = bfDate.split('-').map(Number);
-    approveAppointment(selectedPendingId, { year: y, month: m, day: d, time: bfTime });
-    showSnackbar(`Appointment approved for ${selectedPendingItem.name}`);
-    clearSelection();
-    setCalYear(y); setCalMonth(m); setSelectedDay(d);
+
+    const [y, m, d] = batchDate.split('-').map(Number);
+
+    const promises = selectedItems.map((item) =>
+      approveAppointment(item.id, { year: y, month: m, day: d, time: batchSlot })
+    );
+
+    try {
+      await Promise.all(promises);
+      showSnackbar(`${selectedIds.size} appointment${selectedIds.size > 1 ? 's' : ''} approved`);
+      setBatchModal(false);
+      setSelectedIds(new Set());
+      setCalYear(y); setCalMonth(m); setSelectedDay(d);
+      setClosedSlots([]); // Ensure new approvals are fully expanded
+    } catch {
+      showSnackbar('Failed to approve some appointments', 'error');
+    }
   };
 
-  const handleDecline = () => {
-    if (!window.confirm(`Decline the request from ${selectedPendingItem.name}?`)) return;
-    declineAppointment(selectedPendingId);
-    showSnackbar(`Request from ${selectedPendingItem.name} declined`, 'error');
-    clearSelection();
+  // ── Decline selected ──
+  const handleDeclineSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Decline ${selectedIds.size} selected request${selectedIds.size > 1 ? 's' : ''}?`)) return;
+    try {
+      await Promise.all([...selectedIds].map(id => declineAppointment(id)));
+      showSnackbar(`${selectedIds.size} request${selectedIds.size > 1 ? 's' : ''} declined`, 'error');
+      setSelectedIds(new Set());
+    } catch {
+      showSnackbar('Failed to decline some requests', 'error');
+    }
   };
 
   const handleMarkDone = (e, id) => {
@@ -178,19 +233,17 @@ export const Appointments = () => {
   // ── Shared: Pending list ──────────────────────────────────────────────────
   const PendingList = ({ compact = false }) => (
     <div className={`flex flex-col overflow-hidden ${compact ? 'h-full' : 'flex-1'}`}>
-      {/* Header */}
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
           <div className="text-[13px] font-semibold text-[#1e293b]">Pending Requests</div>
-          <div className="text-[10px] text-[#64748b] mt-[1px]">Select a patient to assign a schedule</div>
+          <div className="text-[10px] text-[#64748b] mt-[1px]">Select patients to schedule in batch</div>
         </div>
         <span className="text-[10px] font-semibold text-[#854F0B] bg-[#FAEEDA] px-[9px] py-[2px] rounded-[20px]">
           {pendingRequests.length} pending
         </span>
       </div>
 
-      {/* Search */}
-      <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0">
+      <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0 flex flex-col gap-1.5">
         <input
           type="text"
           placeholder="Search name, ID, dept..."
@@ -199,9 +252,31 @@ export const Appointments = () => {
           className="w-full px-[11px] py-[6px] border border-[#e2e8f0] rounded-lg text-[12px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
+        {filteredPending.length > 0 && (
+          <div className="flex items-center justify-between px-[2px]">
+            <span className="text-[10px] text-[#64748b]">
+              {selectedIds.size > 0
+                ? `${selectedIds.size} of ${filteredPending.length} selected`
+                : `${filteredPending.length} shown`}
+            </span>
+            <div className="flex gap-2">
+              {selectedIds.size < filteredPending.length && (
+                <button onClick={selectAll}
+                  className="text-[10px] font-semibold text-[#466460] hover:underline bg-transparent border-none cursor-pointer p-0">
+                  Select all
+                </button>
+              )}
+              {selectedIds.size > 0 && (
+                <button onClick={clearAll}
+                  className="text-[10px] font-semibold text-[#94a3b8] hover:underline bg-transparent border-none cursor-pointer p-0">
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0
         [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
         {filteredPending.length === 0 ? (
@@ -212,26 +287,39 @@ export const Appointments = () => {
           </div>
         ) : filteredPending.map(r => {
           const rank      = pendingRequests.findIndex(x => x.id === r.id) + 1;
-          const isSelected = selectedPendingId === r.id;
+          const isChecked = selectedIds.has(r.id);
           const bTime = new Date(r.bookedAt).toLocaleString('en-PH', {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
           });
           return (
             <div
               key={r.id}
-              onClick={() => handleSelectPending(r.id)}
+              onClick={() => toggleSelect(r.id)}
               className={`flex items-start gap-[9px] px-[11px] py-[10px] border rounded-[10px] mb-[5px]
                 cursor-pointer transition-all relative overflow-hidden group
-                ${isSelected
+                ${isChecked
                   ? 'border-[#466460] bg-[#E1F5EE]'
                   : 'border-[#eef2f6] hover:border-[#f0a030] hover:bg-[#fffdf7]'}`}
             >
               <div className={`absolute left-0 top-0 bottom-0 w-[3px] transition-opacity duration-150
-                ${isSelected ? 'bg-[#466460] opacity-100' : 'bg-[#EF9F27] opacity-0 group-hover:opacity-100'}`} />
+                ${isChecked ? 'bg-[#466460] opacity-100' : 'bg-[#EF9F27] opacity-0 group-hover:opacity-100'}`} />
+
+              <div className={`w-[17px] h-[17px] rounded-[4px] border-2 flex items-center justify-center
+                shrink-0 mt-[1px] transition-all
+                ${isChecked
+                  ? 'bg-[#466460] border-[#466460]'
+                  : 'bg-white border-[#cbd5e1] group-hover:border-[#466460]'}`}>
+                {isChecked && (
+                  <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                    <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.8"
+                      strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
 
               <div className={`font-['DM_Mono',monospace] text-[10px] font-medium rounded-[5px] px-[6px]
                 py-[2px] min-w-[26px] text-center shrink-0 mt-[1px]
-                ${isSelected ? 'text-[#0F6E56] bg-[#E1F5EE] border border-[#9FE1CB]' : 'text-[#854F0B] bg-[#FAEEDA]'}`}>
+                ${isChecked ? 'text-[#0F6E56] bg-[#E1F5EE] border border-[#9FE1CB]' : 'text-[#854F0B] bg-[#FAEEDA]'}`}>
                 #{rank}
               </div>
 
@@ -251,13 +339,49 @@ export const Appointments = () => {
           );
         })}
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="shrink-0 border-t-2 border-[#e0eceb] bg-[#f8fdfc] px-3 py-3 flex flex-col gap-2.5">
+          {!selectedDay && (
+             <div className="text-[10.5px] text-[#854F0B] bg-[#FAEEDA] px-2 py-[6px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[5px]">
+               <i className="fa-solid fa-circle-info"></i>
+               Select a date on the calendar to schedule
+             </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                if (!selectedDay) return;
+                const formattedDate = `${calYear}-${String(calMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+                setBatchDate(formattedDate);
+                setBatchModal(true);
+              }}
+              disabled={!selectedDay}
+              className={`flex-1 py-[8px] border-none rounded-[8px] text-[12px] font-semibold flex items-center justify-center gap-[5px] transition-all
+                ${selectedDay
+                  ? 'bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white cursor-pointer hover:opacity-90'
+                  : 'bg-[#e2e8f0] text-[#94a3b8] cursor-not-allowed'}`}
+            >
+              <i className="fa-solid fa-calendar-check"></i>
+              Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
+            </button>
+            <button
+              onClick={handleDeclineSelected}
+              title="Decline selected"
+              className="px-[13px] py-[8px] bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]
+                rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]"
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
-  // ── Shared: Calendar panel ────────────────────────────────────────────────
+  // ── Calendar panel ────────────────────────────────────────────────────────
   const CalendarPanel = () => (
     <div className="flex flex-col h-full bg-[#fafbfc]">
-      {/* Month nav */}
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <button onClick={() => changeMonth(-1)}
           className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
@@ -274,7 +398,6 @@ export const Appointments = () => {
         </button>
       </div>
 
-      {/* Legend */}
       <div className="flex gap-[14px] px-4 py-[7px] border-b border-[#eef2f6] bg-white shrink-0">
         {[['#1D9E75','Approved'],['#94a3b8','Done']].map(([color, label]) => (
           <div key={label} className="flex items-center gap-[5px] text-[10px] text-[#64748b]">
@@ -284,7 +407,6 @@ export const Appointments = () => {
         ))}
       </div>
 
-      {/* Calendar grid */}
       <div className="px-3 pt-2 pb-2 shrink-0 bg-white border-b border-[#eef2f6]">
         <div className="grid grid-cols-7 mb-1">
           {WEEKDAYS.map(d => (
@@ -297,7 +419,7 @@ export const Appointments = () => {
             const isToday = today.getFullYear() === calYear
               && (today.getMonth() + 1) === calMonth
               && today.getDate() === day;
-            const isSel   = selectedDay === day;
+            const isSel    = selectedDay === day;
             const dayAppts = scheduledAppts.filter(
               a => a.year === calYear && a.month === calMonth && a.day === day
             );
@@ -328,7 +450,6 @@ export const Appointments = () => {
         </div>
       </div>
 
-      {/* Day detail */}
       <div className="flex-1 overflow-y-auto px-3 py-3
         [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
         {!selectedDay ? (
@@ -349,55 +470,89 @@ export const Appointments = () => {
           </>
         ) : (
           <>
-            <div className="text-[12px] font-semibold text-[#1e293b] mb-2 flex justify-between items-center">
+            <div className="text-[12px] font-semibold text-[#1e293b] mb-3 flex justify-between items-center">
               <span>{MONTHS[calMonth - 1]} {selectedDay}, {calYear}</span>
               <span className="text-[10px] text-[#64748b] font-normal">
                 {selectedDayAppts.length} appt{selectedDayAppts.length !== 1 ? 's' : ''}&nbsp;&middot;&nbsp;
                 {selectedDayAppts.filter(a => a.status === 'done').length} done
               </span>
             </div>
-            {selectedDayAppts.map(a => {
-              const isDone   = a.status === 'done';
-              const queueIdx = activeByTime.findIndex(x => x.id === a.id);
+            
+            {/* ── Grouped Time Slot Render ── */}
+            {groupedAppts.map(({ time, appts }) => {
+              // Now checking against the Array of closed slots
+              const isCollapsed = closedSlots.includes(time);
+              const slotInfo = HOUR_SLOTS.find(s => s.value === time);
+              const slotLabel = slotInfo ? slotInfo.label : time;
+
               return (
-                <div
-                  key={a.id}
-                  onClick={() => setDetailModal(a)}
-                  className={`flex items-center gap-2 px-[10px] py-[8px] border rounded-[8px]
-                    text-[12px] mb-[4px] bg-white transition-all cursor-pointer
-                    ${isDone
-                      ? 'bg-[#f8fafc] opacity-[0.72] border-[#eef2f6] hover:border-[#cbd5e1]'
-                      : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
-                >
-                  <span className={`font-['DM_Mono',monospace] text-[10px] font-bold text-white
-                    rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0 leading-[1.6]
-                    ${isDone ? 'bg-[#94a3b8]' : 'bg-[#466460]'}`}>
-                    {isDone ? <i className="fa-solid fa-check"></i> : `#${queueIdx + 1}`}
-                  </span>
-                  <span className="font-['DM_Mono',monospace] text-[10px] text-[#64748b] min-w-[38px] shrink-0">
-                    {a.time}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className={`font-semibold text-[12px] truncate
-                      ${isDone ? 'line-through text-[#94a3b8]' : 'text-[#1e293b]'}`}>{a.name}</div>
-                    <div className="text-[10px] text-[#64748b] mt-[1px] truncate">
-                      {a.reason} &middot; {a.prog}
+                <div key={time} className="mb-3 last:mb-0">
+                  {/* Time Slot Header */}
+                  <div
+                    onClick={() => setClosedSlots(prev => 
+                      prev.includes(time) 
+                        ? prev.filter(t => t !== time) // Remove from closed array (opens it)
+                        : [...prev, time]              // Add to closed array (closes it)
+                    )}
+                    className="flex items-center justify-between px-3 py-2.5 bg-[#f8fafc] border border-[#eef2f6] rounded-[8px] cursor-pointer hover:bg-[#f1f5f9] transition-colors mb-2"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <i className="fa-regular fa-clock text-[#466460]"></i>
+                      <span className="text-[12px] font-bold text-[#1e293b]">{slotLabel}</span>
+                      <span className="text-[10px] text-[#64748b] bg-white border border-[#e2e8f0] px-2 py-[2px] rounded-full font-medium shadow-sm">
+                        {appts.length} appt{appts.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
+                    <i className={`fa-solid fa-chevron-${isCollapsed ? 'down' : 'up'} text-[#94a3b8] text-[11px] transition-transform`}></i>
                   </div>
-                  <span className={`text-[9px] font-semibold px-[8px] py-[2px] rounded-[20px]
-                    shrink-0 uppercase tracking-[0.03em] hidden sm:inline
-                    ${isDone ? 'bg-[#f1f5f9] text-[#64748b]' : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
-                    {isDone ? 'done' : 'approved'}
-                  </span>
-                  {!isDone && (
-                    <button
-                      onClick={(e) => handleMarkDone(e, a.id)}
-                      className="ml-1 px-[8px] py-[3px] text-[9px] font-bold rounded-[6px]
-                        border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer
-                        transition-colors shrink-0 whitespace-nowrap hover:bg-[#EAF3DE]"
-                    >
-                      <i className="fa-solid fa-check mr-[3px]"></i>Done
-                    </button>
+
+                  {/* Appointments Array for this Time Slot */}
+                  {!isCollapsed && (
+                    <div className="flex flex-col gap-1 pl-[6px] border-l-2 border-[#eef2f6] ml-[10px]">
+                      {appts.map(a => {
+                        const isDone   = a.status === 'done';
+                        const queueIdx = activeByTime.findIndex(x => x.id === a.id);
+                        return (
+                          <div
+                            key={a.id}
+                            onClick={() => setDetailModal(a)}
+                            className={`flex items-center gap-2 px-[10px] py-[8px] border rounded-[8px]
+                              text-[12px] bg-white transition-all cursor-pointer
+                              ${isDone
+                                ? 'bg-[#f8fafc] opacity-[0.72] border-[#eef2f6] hover:border-[#cbd5e1]'
+                                : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
+                          >
+                            <span className={`font-['DM_Mono',monospace] text-[10px] font-bold text-white
+                              rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0 leading-[1.6]
+                              ${isDone ? 'bg-[#94a3b8]' : 'bg-[#466460]'}`}>
+                              {isDone ? <i className="fa-solid fa-check"></i> : `#${queueIdx + 1}`}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className={`font-semibold text-[12px] truncate
+                                ${isDone ? 'line-through text-[#94a3b8]' : 'text-[#1e293b]'}`}>{a.name}</div>
+                              <div className="text-[10px] text-[#64748b] mt-[1px] truncate">
+                                {a.reason} &middot; {a.prog}
+                              </div>
+                            </div>
+                            <span className={`text-[9px] font-semibold px-[8px] py-[2px] rounded-[20px]
+                              shrink-0 uppercase tracking-[0.03em] hidden sm:inline
+                              ${isDone ? 'bg-[#f1f5f9] text-[#64748b]' : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
+                              {isDone ? 'done' : 'approved'}
+                            </span>
+                            {!isDone && (
+                              <button
+                                onClick={(e) => handleMarkDone(e, a.id)}
+                                className="ml-1 px-[8px] py-[3px] text-[9px] font-bold rounded-[6px]
+                                  border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer
+                                  transition-colors shrink-0 whitespace-nowrap hover:bg-[#EAF3DE]"
+                              >
+                                <i className="fa-solid fa-check mr-[3px]"></i>Done
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               );
@@ -408,89 +563,19 @@ export const Appointments = () => {
     </div>
   );
 
-  // ── Booking form (shared, used in sidebar + bottom sheet) ─────────────────
-  const BookingForm = ({ onClose }) => (
-    <div className="px-4 py-4">
-      <div className="text-[10px] font-bold text-[#0F6E56] uppercase tracking-[0.07em] mb-3 flex items-center gap-[5px]">
-        <i className="fa-solid fa-calendar-check"></i> Assign Schedule
-      </div>
-
-      {selectedPendingItem && (
-        <div className="flex items-center gap-[10px] px-[11px] py-[9px] bg-white border
-          border-[#e2e8f0] rounded-[10px] mb-3">
-          <div className="w-[34px] h-[34px] rounded-full bg-[#e0eceb] flex items-center justify-center
-            text-[12px] font-bold text-[#0F6E56] shrink-0">
-            {getInitials(selectedPendingItem.name)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-semibold text-[#1e293b] leading-[1.3]">
-              {selectedPendingItem.name}
-            </div>
-            <div className="text-[10px] text-[#64748b] mt-[1px] leading-[1.4] truncate">
-              {selectedPendingItem.idno} &middot; {selectedPendingItem.prog} &middot; {selectedPendingItem.dept}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <div>
-          <label className="block text-[9px] font-bold text-[#475569] uppercase tracking-[0.05em] mb-1">Date *</label>
-          <input type="date" value={bfDate} onChange={e => setBfDate(e.target.value)}
-            className="w-full px-[9px] py-[7px] border border-[#e2e8f0] rounded-[7px] text-[12px]
-              font-['DM_Sans',sans-serif] bg-white text-[#1e293b] outline-none
-              focus:border-[#466460] transition-colors" />
-        </div>
-        <div>
-          <label className="block text-[9px] font-bold text-[#475569] uppercase tracking-[0.05em] mb-1">Time *</label>
-          <input type="time" value={bfTime} onChange={e => setBfTime(e.target.value)}
-            className="w-full px-[9px] py-[7px] border border-[#e2e8f0] rounded-[7px] text-[12px]
-              font-['DM_Sans',sans-serif] bg-white text-[#1e293b] outline-none
-              focus:border-[#466460] transition-colors" />
-        </div>
-      </div>
-
-      <div className="flex gap-2 mt-3">
-        <button onClick={handleApprove}
-          className="flex-1 p-[8px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
-            border-none rounded-[8px] text-[12px] font-semibold cursor-pointer
-            transition-opacity hover:opacity-90">
-          <i className="fa-solid fa-check mr-[5px]"></i>Approve
-        </button>
-        <button onClick={handleDecline} title="Decline request"
-          className="px-[13px] py-[8px] bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]
-            rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]">
-          <i className="fa-solid fa-xmark"></i>
-        </button>
-        <button onClick={onClose} title="Cancel"
-          className="px-[11px] py-[8px] bg-[#f1f5f9] text-[#64748b] border-none
-            rounded-[8px] text-[12px] cursor-pointer transition-colors hover:bg-[#e2e8f0]">
-          <i className="fa-solid fa-arrow-left"></i>
-        </button>
-      </div>
-    </div>
-  );
-
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white">
 
-      {/* ══════════════════════════════════════════════════════
-          MOBILE  (< md)
-          Two tabs: Pending | Calendar, stacked full-screen
-      ══════════════════════════════════════════════════════ */}
+      {/* ── MOBILE ── */}
       <div className="flex flex-col md:hidden" style={{ height: 'calc(100vh - 134px)' }}>
-
-        {/* Tab switcher */}
         <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
           <button
             onClick={() => setMobileView('pending')}
             className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors
-              ${mobileView === 'pending'
-                ? 'text-[#466460] border-b-2 border-[#466460]'
-                : 'text-[#94a3b8]'}`}
+              ${mobileView === 'pending' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <i className="fa-regular fa-clock"></i> Pending
             {pendingRequests.length > 0 && (
@@ -502,124 +587,186 @@ export const Appointments = () => {
           <button
             onClick={() => setMobileView('calendar')}
             className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors
-              ${mobileView === 'calendar'
-                ? 'text-[#466460] border-b-2 border-[#466460]'
-                : 'text-[#94a3b8]'}`}
+              ${mobileView === 'calendar' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <i className="fa-regular fa-calendar"></i> Calendar
           </button>
         </div>
-
-        {/* Panel content */}
         <div className="flex-1 overflow-hidden">
-          {mobileView === 'pending'
-            ? <PendingList compact />
-            : <CalendarPanel />
-          }
+          {mobileView === 'pending' ? <PendingList compact /> : <CalendarPanel />}
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════
-          TABLET  (md → lg)  — vertical split, narrower panels
-      ══════════════════════════════════════════════════════ */}
+      {/* ── TABLET ── */}
       <div className="hidden md:flex lg:hidden" style={{ height: 'calc(100vh - 116px)' }}>
-        {/* Left: pending list (collapsible when booking form open) */}
-        <div className="flex flex-col border-r border-[#eef2f6] overflow-hidden"
-          style={{ width: selectedPendingId ? '280px' : '320px', transition: 'width 0.3s ease' }}>
-
-          <div className={`flex flex-col overflow-hidden transition-[flex] duration-350 ease-in-out min-h-0
-            ${selectedPendingId ? 'flex-[0_0_180px]' : 'flex-1'}`}>
-            <PendingList />
-          </div>
-
-          {/* Booking form */}
-          <div className={`border-t-2 border-[#e0eceb] bg-[#f8fdfc] shrink-0 overflow-hidden
-            transition-[max-height] duration-400 ease-in-out
-            ${selectedPendingId ? 'max-h-[320px]' : 'max-h-0'}`}>
-            <BookingForm onClose={clearSelection} />
-          </div>
+        <div className="flex flex-col border-r border-[#eef2f6] overflow-hidden w-[320px]">
+          <PendingList />
         </div>
-
-        {/* Right: calendar */}
         <div className="flex-1 overflow-hidden">
           <CalendarPanel />
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════
-          DESKTOP  (lg+)  — original side-by-side layout
-      ══════════════════════════════════════════════════════ */}
+      {/* ── DESKTOP ── */}
       <div className="hidden lg:flex" style={{ height: 'calc(100vh - 116px)', overflow: 'hidden' }}>
-
-        {/* LEFT PANEL */}
-        <div className="w-[400px] shrink-0 flex flex-col border-r border-[#eef2f6] overflow-hidden">
-          <div className={`flex flex-col overflow-hidden transition-[flex] duration-350 ease-in-out min-h-0
-            ${selectedPendingId ? 'flex-[0_0_210px]' : 'flex-1'}`}>
-            <PendingList />
-          </div>
-
-          {/* Booking form */}
-          <div className={`border-t-2 border-[#e0eceb] bg-[#f8fdfc] shrink-0 overflow-hidden
-            transition-[max-height] duration-400 ease-in-out
-            ${selectedPendingId ? 'max-h-[320px]' : 'max-h-0'}`}>
-            <BookingForm onClose={clearSelection} />
-          </div>
+        <div className="w-[420px] shrink-0 flex flex-col border-r border-[#eef2f6] overflow-hidden">
+          <PendingList />
         </div>
-
-        {/* RIGHT PANEL */}
         <div className="flex-1 overflow-hidden">
           <CalendarPanel />
         </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════
-          MOBILE: Booking bottom sheet
+          BATCH SCHEDULING MODAL
       ══════════════════════════════════════════════════════ */}
-      {bookingSheet && selectedPendingId && (
-        <div className="md:hidden fixed inset-0 bg-black/40 z-[900]"
-          onClick={() => setBookingSheet(false)}>
-          <div
-            className="absolute bottom-0 left-0 right-0 bg-[#f8fdfc] rounded-t-[20px]
-              border-t-2 border-[#e0eceb] shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1">
+      {batchModal && (
+        <ModalOverlay onClose={() => setBatchModal(false)}>
+          <div className="bg-white w-full sm:max-w-[460px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
+            max-h-[92vh] overflow-y-auto animate-[fadeIn_0.25s_ease-out]
+            [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
-            <BookingForm onClose={() => setBookingSheet(false)} />
-            <div className="pb-6" />
+
+            <div className="px-5 pt-4 pb-3 border-b border-[#eef2f6]">
+              <div className="text-[15px] font-semibold text-[#1e293b] flex items-center gap-2">
+                <i className="fa-solid fa-calendar-check text-[#0F6E56]"></i>
+                Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
+              </div>
+              <div className="text-[11px] text-[#64748b] mt-[2px]">
+                All selected patients will be assigned the same date and time slot.
+              </div>
+            </div>
+
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-1">
+                  Appointment Date *
+                </label>
+                <input
+                  type="date"
+                  value={batchDate}
+                  onChange={e => setBatchDate(e.target.value)}
+                  className="w-full px-[10px] py-[8px] border border-[#e2e8f0] rounded-[8px] text-[13px]
+                    bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+                  Time Slot (1-hour window)
+                </label>
+                <div className="relative">
+                  <select
+                    value={batchSlot}
+                    onChange={e => setBatchSlot(e.target.value)}
+                    className="w-full appearance-none px-[10px] py-[8px] border border-[#e2e8f0] rounded-[8px] text-[13px]
+                      bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
+                  >
+                    {HOUR_SLOTS.map(slot => (
+                      <option key={slot.value} value={slot.value}>
+                        {slot.label}
+                      </option>
+                    ))}
+                  </select>
+                  <i className="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-[#94a3b8] text-[10px] pointer-events-none"></i>
+                </div>
+              </div>
+
+              {batchDate && (
+                <div className="flex items-start gap-3 px-3 py-3 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
+                  <i className="fa-solid fa-circle-info text-[#3B6D11] mt-[1px] shrink-0"></i>
+                  <div className="text-[11px] text-[#3B6D11] leading-[1.6]">
+                    <span className="font-bold">{selectedIds.size} patient{selectedIds.size > 1 ? 's' : ''}</span>
+                    {' '}will be scheduled on{' '}
+                    <span className="font-bold">
+                      {new Date(batchDate + 'T00:00:00').toLocaleDateString('en-PH', {
+                        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+                      })}
+                    </span>
+                    {' '}during the{' '}
+                    <span className="font-bold">{chosenSlotLabel}</span>
+                    {' '}slot. Their queue numbers (#1–#{selectedIds.size}) will reflect walk-in order.
+                  </div>
+                </div>
+              )}
+
+              {selectedItems.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+                    Patients in This Batch
+                  </div>
+                  <div className="border border-[#e2e8f0] rounded-[10px] overflow-hidden">
+                    {selectedItems.map((item, i) => (
+                      <div key={item.id}
+                        className={`flex items-center gap-3 px-3 py-[8px] text-[12px]
+                          ${i < selectedItems.length - 1 ? 'border-b border-[#f1f5f9]' : ''}
+                          ${i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}`}>
+                        <span className="font-['DM_Mono',monospace] text-[10px] font-bold text-white
+                          bg-[#466460] rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0">
+                          #{pendingRequests.findIndex(x => x.id === item.id) + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-[#1e293b] truncate">{item.name}</div>
+                          <div className="text-[10px] text-[#64748b] truncate">{item.reason} &middot; {item.prog}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 px-5 py-4 border-t border-[#eef2f6] bg-white sticky bottom-0">
+              <button
+                onClick={handleBatchApprove}
+                disabled={!batchDate}
+                className="flex-1 py-[10px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
+                  border-none rounded-[10px] text-[13px] font-semibold cursor-pointer
+                  transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
+                  flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-circle-check"></i>
+                Confirm &amp; Approve All
+              </button>
+              <button
+                onClick={() => setBatchModal(false)}
+                className="px-5 py-[10px] bg-[#f1f5f9] text-[#475569] border-none
+                  rounded-[10px] text-[13px] font-semibold cursor-pointer
+                  transition-colors hover:bg-[#e2e8f0]"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
-      {/* ══════════════════════════════════════════════════════
-          Detail modal — bottom sheet on mobile, centered on desktop
-      ══════════════════════════════════════════════════════ */}
+      {/* ── Detail modal ── */}
       {detailModal && (
         <ModalOverlay onClose={() => setDetailModal(null)}>
           <div className="bg-white w-full sm:max-w-[420px] sm:mx-4 sm:rounded-[14px] rounded-t-[20px]
             max-h-[85vh] overflow-y-auto p-[22px] animate-[fadeIn_0.3s_ease-out]">
-            {/* Drag handle mobile */}
             <div className="flex justify-center -mt-1 mb-3 sm:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
-
             <h3 className="m-0 mb-[14px] text-[#466460] text-[1rem] font-semibold">
               <i className="fa-solid fa-user-clock mr-[8px]"></i>Appointment Details
             </h3>
             <div className="divide-y divide-[#f1f5f9]">
               {[
                 { icon: 'fa-user',             label: 'Full Name',  value: detailModal.name },
-                { icon: 'fa-id-card',           label: 'ID Number',  value: detailModal.idno },
-                { icon: 'fa-tag',               label: 'Type',       value: detailModal.type?.charAt(0).toUpperCase() + detailModal.type?.slice(1) },
-                { icon: 'fa-building-columns',  label: 'Department', value: detailModal.dept },
-                { icon: 'fa-graduation-cap',    label: 'Program',    value: detailModal.prog },
-                { icon: 'fa-users',             label: 'Section',    value: detailModal.section },
-                { icon: 'fa-stethoscope',       label: 'Purpose',    value: detailModal.reason },
-                { icon: 'fa-calendar',          label: 'Date',       value: `${MONTHS[detailModal.month - 1]} ${detailModal.day}, ${detailModal.year}` },
-                { icon: 'fa-clock',             label: 'Time',       value: detailModal.time },
-                { icon: 'fa-circle-check',      label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
+                { icon: 'fa-id-card',          label: 'ID Number',  value: detailModal.idno },
+                { icon: 'fa-tag',              label: 'Type',       value: detailModal.type?.charAt(0).toUpperCase() + detailModal.type?.slice(1) },
+                { icon: 'fa-building-columns', label: 'Department', value: detailModal.dept },
+                { icon: 'fa-graduation-cap',   label: 'Program',    value: detailModal.prog },
+                { icon: 'fa-users',            label: 'Section',    value: detailModal.section },
+                { icon: 'fa-stethoscope',      label: 'Purpose',    value: detailModal.reason },
+                { icon: 'fa-calendar',         label: 'Date',       value: `${MONTHS[detailModal.month - 1]} ${detailModal.day}, ${detailModal.year}` },
+                { icon: 'fa-clock',            label: 'Time',       value: detailModal.time },
+                { icon: 'fa-circle-check',     label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
               ].map(({ icon, label, value }) => (
                 <div key={label} className="flex items-center gap-[10px] py-[6px] text-[12px]">
                   <i className={`fa-solid ${icon} text-[#0F6E56] w-[16px] text-center shrink-0`}></i>

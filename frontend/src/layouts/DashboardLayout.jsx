@@ -28,6 +28,7 @@ import {
   ExamIcon,
   AnnouncementIcon,
   UsersIcon,
+  ApprovalsIcon,
   ProfileDrawer,
 } from '../components/Headers.jsx';
 
@@ -38,6 +39,7 @@ const DEFAULT_MOBILE_NAV = [
   { id: 'records', label: 'Records', icon: RecordsIcon },
   { id: 'appointments', label: 'Schedule', icon: CalendarIcon },
   { id: 'examinations', label: 'Exam', icon: ExamIcon },
+  { id: 'approvals', label: 'Approval', icon: ApprovalsIcon },
   { id: 'consultations', label: 'Consult', icon: ConsultIcon },
   { id: 'announcements', label: 'Announce', icon: AnnouncementIcon },
   { id: 'users', label: 'Users', icon: UsersIcon },

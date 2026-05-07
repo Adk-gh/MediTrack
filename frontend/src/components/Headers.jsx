@@ -70,6 +70,13 @@ export const UsersIcon = () => (
   </svg>
 );
 
+export const ApprovalsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <path d="M9 11l3 3L22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </svg>
+);
+
 const DefaultIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
     <circle cx="12" cy="12" r="10" />
@@ -621,6 +628,7 @@ export const DesktopNav = () => {
       <NavLink to="/records"       className={navLinkClass}>Records</NavLink>
       <NavLink to="/appointments"  className={navLinkClass}>Appointments</NavLink>
       <NavLink to="/examinations"  className={navLinkClass}>Examination</NavLink>
+      <NavLink to="/approvals"     className={navLinkClass}>Approvals</NavLink>
       <NavLink to="/announcements" className={navLinkClass}>Announcements</NavLink>
       <NavLink to="/consultations" className={navLinkClass}>Consultation</NavLink>
       <NavLink to="/users"         className={navLinkClass}>User Management</NavLink>
@@ -715,6 +723,7 @@ export const MobileNav = ({
     { id: 'records', label: 'Records', icon: RecordsIcon },
     { id: 'appointments', label: 'Schedule', icon: CalendarIcon },
     { id: 'examinations', label: 'Exam', icon: ExamIcon },
+    { id: 'approvals', label: 'Approval', icon: ApprovalsIcon },
     { id: 'consultations', label: 'Consult', icon: ConsultIcon },
     { id: 'announcements', label: 'Announce', icon: AnnouncementIcon },
     { id: 'users', label: 'Users', icon: UsersIcon },

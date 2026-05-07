@@ -5,21 +5,111 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
 // --- PLSP Department Data ---
-const programsData = {
-  'CCSE': ['BS Computer Engineering', 'BS Information Technology', 'BS Industrial Engineering', 'BS Information Systems'],
-  'CTED': ['Elem. Education', 'Secondary Education'],
-  'CTHM': ['Hospitality Mgmt.', 'Tourism Mgmt.'],
-  'CAS': ['BS Psychology', 'BA Communication'],
-  'CBA': ['Business Admin', 'Accountancy'],
-  'CHK': ['Physical Education', 'Sports Science'],
-  'COA': ['BS Agriculture'],
-  'CNAS': ['BS Nursing', 'BS Biology']
-};
+// Each department has: abbr (UI label), full (DB value), programs (full names for both UI and DB)
+const departmentsData = [
+  {
+    abbr: 'CCSE',
+    full: 'College of Computing Science and Engineering',
+    programs: [
+      'Bachelor of Science in Information Technology',
+      'Bachelor of Science in Information System',
+      'Bachelor of Science in Computer Engineering',
+      'Bachelor of Science in Industrial Engineering',
+    ],
+  },
+  {
+    abbr: 'CBAM',
+    full: 'College of Business Administration and Management',
+    programs: [
+      'Bachelor of Science in Entrepreneurship',
+      'Bachelor of Science in Public Administration',
+      'Bachelor of Science in Office Administration',
+      'Bachelor of Science in Business Administration Major in Human Resource Development Management',
+      'Bachelor of Science in Business Administration Major in Financial Management',
+      'Bachelor of Science in Business Administration Major in Marketing Management',
+    ],
+  },
+  {
+    abbr: 'CAS',
+    full: 'College of Art and Sciences',
+    programs: [
+      'Bachelor of Science in Economics',
+      'Bachelor of Arts in Communication',
+      'Bachelor of Science in Psychology',
+      'Bachelor of Arts in Political Science',
+    ],
+  },
+  {
+    abbr: 'CTHM',
+    full: 'College of Tourism and Hospitality Management',
+    programs: [
+      'Bachelor of Science in Tourism Management',
+      'Bachelor of Science in Hospitality Management',
+    ],
+  },
+  {
+    abbr: 'COA',
+    full: 'College of Accountancy',
+    programs: [
+      'Bachelor of Science in Accountancy',
+      'Bachelor of Science in Accountancy Information System',
+      'Bachelor of Science in Management Accounting',
+    ],
+  },
+  {
+    abbr: 'CTE',
+    full: 'College of Teacher Education',
+    programs: [
+      'Bachelor of Secondary Education Major in English',
+      'Bachelor of Secondary Education Major in Filipino',
+      'Bachelor of Secondary Education Major in Math',
+      'Bachelor of Secondary Education Major in Science',
+      'Bachelor of Secondary Education Major in Social Studies',
+      'Bachelor of Elementary Education',
+      'Bachelor of Technical-Vocational Teacher Education',
+      'Bachelor of Special Needs Education',
+    ],
+  },
+  {
+    abbr: 'CHK',
+    full: 'College of Human Kinetics',
+    programs: [
+      'Bachelor of Science in Physical Education',
+      'Bachelor of Science in Sports Science',
+    ],
+  },
+  {
+    abbr: 'CNAHS',
+    full: 'College of Nursing and Allied Health Sciences',
+    programs: [
+      'Bachelor of Science in Nursing',
+    ],
+  },
+];
 
-const PLSP_OFFICES = [
-  ...Object.keys(programsData),
-  "Accounting Office", "Human Resources", "Library",
-  "Maintenance", "Registrar Office", "Security Services"
+// Build lookup maps for easy access
+// abbr → full department name (for DB)
+const deptAbbrToFull = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
+// abbr → programs array
+const programsByDeptAbbr = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
+// All dept abbreviations (for select options)
+const DEPT_ABBRS = departmentsData.map(d => d.abbr);
+
+// Non-academic offices (stored and displayed as-is)
+const NON_ACADEMIC_OFFICES = [
+  'Accounting Office',
+  'Human Resources',
+  'Library',
+  'Maintenance',
+  'Registrar Office',
+  'Security Services',
+];
+
+// All offices for staff/faculty dropdowns (abbr shown in UI, full saved to DB)
+// We'll handle the display/save distinction in the onChange handler
+const PLSP_OFFICES_FOR_STAFF = [
+  ...departmentsData.map(d => ({ label: d.abbr, value: d.full })),
+  ...NON_ACADEMIC_OFFICES.map(o => ({ label: o, value: o })),
 ];
 
 const SUFFIXES            = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
@@ -51,18 +141,38 @@ const API_URL     = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const TOTAL_STEPS = 3;
 
 function getDefaultClassification(role) {
-  if (role === 'admin' || role === 'administrator') return 'Administrator';
-  if (role === 'nurse')  return 'Nurse Personnel';
-  if (role === 'doctor') return 'Physician / Doctor';
-  if (role === 'staff' || role === 'employee') return 'Non-Teaching Personnel';
-  return 'Teaching Personnel';
+  const classMap = {
+    'administrator': 'Administrator',
+    'admin':         'Administrator',
+    'nurse':         'Nurse Personnel',
+    'doctor':        'Physician / Doctor',
+    'staff':         'Non-Teaching Personnel',
+    'employee':      'Non-Teaching Personnel',
+    'guard':         'Security Personnel',
+    'technician':    'Non-Teaching Personnel',
+    'librarian':     'Non-Teaching Personnel',
+    'lecturer':      'Teaching Personnel',
+    'professor':     'Teaching Personnel',
+    'instructor':    'Teaching Personnel',
+  };
+  return classMap[role] || 'Teaching Personnel';
 }
 
 function getDefaultJobTitle(role) {
-  if (role === 'nurse')  return 'Nurse';
-  if (role === 'doctor') return 'Physician';
-  if (role === 'admin' || role === 'administrator') return 'Administrator';
-  return '';
+  const titleMap = {
+    'nurse':         'Nurse',
+    'doctor':        'Physician',
+    'admin':         'Administrator',
+    'administrator': 'Administrator',
+    'lecturer':      'Lecturer',
+    'professor':     'Professor',
+    'instructor':    'Instructor',
+    'librarian':     'Librarian',
+    'technician':    'Technician',
+    'guard':         'Security Guard',
+    'staff':         'Staff',
+  };
+  return titleMap[role] || '';
 }
 
 // ── Phone helpers ─────────────────────────────────────────────────────────────
@@ -106,13 +216,16 @@ const ProfileSetup = ({ user, onComplete }) => {
     civilStatus:   'Single',
 
     // STEP 2 – Academic / Work
-    universityId:   user?.universityId || '',
-    department:     '',
-    program:        '',
-    yearLevel:      '1st Year',
-    section:        '',
-    classification: getDefaultClassification(userRole),
-    jobTitle:       getDefaultJobTitle(userRole),
+    universityId:    user?.universityId || '',
+    // For students: stores the dept ABBREVIATION (UI) — converted to full name on submit
+    // For staff: stores the full department name directly (since PLSP_OFFICES_FOR_STAFF already maps)
+    departmentAbbr:  '',   // student: selected abbr (UI only)
+    department:      '',   // what gets sent to DB (full name)
+    program:         '',   // full program name (both UI and DB)
+    yearLevel:       '1st Year',
+    section:         '',
+    classification:  getDefaultClassification(userRole),
+    jobTitle:        getDefaultJobTitle(userRole),
 
     // STEP 3 – Contact & Emergency
     email:       user?.email || '',
@@ -123,7 +236,6 @@ const ProfileSetup = ({ user, onComplete }) => {
     emergencyPhone:        '',
     emergencyAddress:      '',
 
-    // Kept in payload for later profile completion
     vaccinations: {
       dose1:    { vaccineName: '', date: '' },
       dose2:    { vaccineName: '', date: '' },
@@ -166,12 +278,28 @@ const ProfileSetup = ({ user, onComplete }) => {
       return;
     }
 
-    setFormData(prev => ({
-      ...prev,
-      [id]: value,
-      // Reset program when department changes
-      ...(id === 'department' && userRole === 'student' && { program: '' }),
-    }));
+    // Student department: store abbr for UI, resolve full name for DB
+    if (id === 'departmentAbbr' && userRole === 'student') {
+      const fullName = deptAbbrToFull[value] || value;
+      setFormData(prev => ({
+        ...prev,
+        departmentAbbr: value,
+        department: fullName,
+        program: '', // reset program when dept changes
+      }));
+      clearError('departmentAbbr');
+      clearError('department');
+      return;
+    }
+
+    // Staff department: value is already the full name (from PLSP_OFFICES_FOR_STAFF)
+    if (id === 'department' && userRole !== 'student') {
+      setFormData(prev => ({ ...prev, department: value }));
+      clearError('department');
+      return;
+    }
+
+    setFormData(prev => ({ ...prev, [id]: value }));
     clearError(id);
   };
 
@@ -183,7 +311,6 @@ const ProfileSetup = ({ user, onComplete }) => {
     if (!/^\d$/.test(e.key)) e.preventDefault();
   };
 
-  // Block paste of non-numeric content
   const handlePhonePaste = (e, field) => {
     e.preventDefault();
     const pasted = (e.clipboardData || window.clipboardData).getData('text');
@@ -260,10 +387,10 @@ const ProfileSetup = ({ user, onComplete }) => {
 
     if (targetStep > 2) {
       if (userRole === 'student') {
-        if (isEmpty(formData.universityId)) newErrors.universityId = 'Student number is required.';
-        if (isEmpty(formData.department))   newErrors.department   = 'Department is required.';
-        if (isEmpty(formData.program))      newErrors.program      = 'Program is required.';
-        if (isEmpty(formData.section))      newErrors.section      = 'Section is required.';
+        if (isEmpty(formData.universityId))   newErrors.universityId   = 'Student number is required.';
+        if (isEmpty(formData.departmentAbbr)) newErrors.departmentAbbr = 'Department is required.';
+        if (isEmpty(formData.program))        newErrors.program        = 'Program is required.';
+        if (isEmpty(formData.section))        newErrors.section        = 'Section is required.';
       } else {
         if (isEmpty(formData.department)) newErrors.department = 'Office / Department is required.';
         if (isEmpty(formData.jobTitle))   newErrors.jobTitle   = 'Job title is required.';
@@ -300,7 +427,6 @@ const ProfileSetup = ({ user, onComplete }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Final validation pass across all steps
     const allErrors = {};
     if (isEmpty(formData.firstName))  allErrors.firstName  = 'First name is required.';
     if (isEmpty(formData.lastName))   allErrors.lastName   = 'Last name is required.';
@@ -308,10 +434,10 @@ const ProfileSetup = ({ user, onComplete }) => {
     if (!formData.sex)                allErrors.sex        = 'Sex is required.';
 
     if (userRole === 'student') {
-      if (isEmpty(formData.universityId)) allErrors.universityId = 'Student number is required.';
-      if (isEmpty(formData.department))   allErrors.department   = 'Department is required.';
-      if (isEmpty(formData.program))      allErrors.program      = 'Program is required.';
-      if (isEmpty(formData.section))      allErrors.section      = 'Section is required.';
+      if (isEmpty(formData.universityId))   allErrors.universityId   = 'Student number is required.';
+      if (isEmpty(formData.departmentAbbr)) allErrors.departmentAbbr = 'Department is required.';
+      if (isEmpty(formData.program))        allErrors.program        = 'Program is required.';
+      if (isEmpty(formData.section))        allErrors.section        = 'Section is required.';
     } else {
       if (isEmpty(formData.department)) allErrors.department = 'Office / Department is required.';
       if (isEmpty(formData.jobTitle))   allErrors.jobTitle   = 'Job title is required.';
@@ -319,7 +445,6 @@ const ProfileSetup = ({ user, onComplete }) => {
 
     const phoneErr = validatePhone(formData.phoneNumber);
     if (phoneErr) allErrors.phoneNumber = phoneErr;
-
     if (isEmpty(formData.emergencyName))         allErrors.emergencyName         = 'Contact name is required.';
     if (isEmpty(formData.emergencyRelationship)) allErrors.emergencyRelationship = 'Relationship is required.';
     const ePhoneErr = validatePhone(formData.emergencyPhone);
@@ -328,7 +453,7 @@ const ProfileSetup = ({ user, onComplete }) => {
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors);
       if (allErrors.firstName || allErrors.lastName || allErrors.birthday || allErrors.sex) { setStep(1); return; }
-      if (allErrors.universityId || allErrors.department || allErrors.program || allErrors.section || allErrors.jobTitle) { setStep(2); return; }
+      if (allErrors.universityId || allErrors.departmentAbbr || allErrors.department || allErrors.program || allErrors.section || allErrors.jobTitle) { setStep(2); return; }
       if (allErrors.phoneNumber || allErrors.emergencyName || allErrors.emergencyRelationship || allErrors.emergencyPhone) { setStep(3); return; }
       return;
     }
@@ -342,6 +467,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         return;
       }
 
+      // department is already resolved to full name via handleChange
       const payload = {
         firstName:     formData.firstName,
         middleInitial: formData.middleInitial,
@@ -356,8 +482,8 @@ const ProfileSetup = ({ user, onComplete }) => {
         nationality:   formData.nationality,
         civilStatus:   formData.civilStatus,
         universityId:  formData.universityId,
-        department:    formData.department,
-        program:       formData.program,
+        department:    formData.department,   // ← full name saved to DB
+        program:       formData.program,      // ← full program name saved to DB
         yearLevel:     formData.yearLevel,
         section:       formData.section,
         classification: formData.classification,
@@ -437,6 +563,11 @@ const ProfileSetup = ({ user, onComplete }) => {
   ) : null;
 
   const inputErrCls = (field) => errors[field] ? 'border-red-400 focus:border-red-400 bg-red-50' : '';
+
+  // Programs available for the currently selected dept (student only)
+  const availablePrograms = formData.departmentAbbr
+    ? (programsByDeptAbbr[formData.departmentAbbr] || [])
+    : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -518,11 +649,30 @@ const ProfileSetup = ({ user, onComplete }) => {
                       }
                     }}
                     dateFormat="MMMM d, yyyy"
-                    showMonthDropdown showYearDropdown dropdownMode="select"
+                    showMonthDropdown
+                    showYearDropdown
+                    dropdownMode="select"
                     maxDate={new Date()}
+                    minDate={new Date(1900, 0, 1)}
                     placeholderText="Select birthday"
+                    popperPlacement="bottom-start"
+                    popperModifiers={[
+                      {
+                        name: 'preventOverflow',
+                        options: {
+                          boundary: 'viewport',
+                          padding: 16,
+                        },
+                      },
+                      {
+                        name: 'flip',
+                        options: {
+                          fallbackPlacements: ['top-start', 'bottom-end', 'top-end'],
+                        },
+                      },
+                    ]}
                     className={`${inputCls} ${birthdayError || errors.birthday ? 'border-red-400 bg-red-50' : ''}`}
-                    portalId="root-portal"
+                    
                   />
                   {(birthdayError || errors.birthday) && (
                     <p className="text-red-500 text-[11px] mt-1 ml-1 flex items-center gap-1">
@@ -605,33 +755,59 @@ const ProfileSetup = ({ user, onComplete }) => {
                       value={formData.universityId} onChange={handleChange} />
                     {fieldError('universityId')}
                   </div>
+
                   <div className="grid grid-cols-2 gap-2">
+                    {/* Department: shows abbr in UI, saves full name to DB via handleChange */}
                     <div>
                       <label className={labelCls}>Department <span className="text-red-400">*</span></label>
-                      <select id="department" required
-                        className={`${selectCls} ${inputErrCls('department')}`}
-                        value={formData.department} onChange={handleChange}>
+                      <select
+                        id="departmentAbbr"
+                        required
+                        className={`${selectCls} ${inputErrCls('departmentAbbr')}`}
+                        value={formData.departmentAbbr}
+                        onChange={handleChange}
+                      >
                         <option value="" disabled>Select Dept</option>
-                        {Object.keys(programsData).map(d => <option key={d} value={d}>{d}</option>)}
+                        {departmentsData.map(d => (
+                          <option key={d.abbr} value={d.abbr}>{d.abbr}</option>
+                        ))}
                       </select>
-                      {fieldError('department')}
+                      {/* Show the full name as a hint below the select */}
+                      {formData.departmentAbbr && (
+                        <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">
+                          {deptAbbrToFull[formData.departmentAbbr]}
+                        </p>
+                      )}
+                      {fieldError('departmentAbbr')}
                     </div>
+
+                    {/* Program: full name shown in UI and saved to DB */}
                     <div>
                       <label className={labelCls}>Program <span className="text-red-400">*</span></label>
-                      <select id="program" required disabled={!formData.department}
+                      <select
+                        id="program"
+                        required
+                        disabled={!formData.departmentAbbr}
                         className={`${selectCls} disabled:bg-slate-50 ${inputErrCls('program')}`}
-                        value={formData.program} onChange={handleChange}>
+                        value={formData.program}
+                        onChange={handleChange}
+                      >
                         <option value="" disabled>Select Program</option>
-                        {formData.department && programsData[formData.department].map(p => <option key={p} value={p}>{p}</option>)}
+                        {availablePrograms.map(p => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
                       </select>
                       {fieldError('program')}
                     </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className={labelCls}>Year Level</label>
                       <select id="yearLevel" className={selectCls} value={formData.yearLevel} onChange={handleChange}>
-                        {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map(yr => <option key={yr} value={yr}>{yr}</option>)}
+                        {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map(yr => (
+                          <option key={yr} value={yr}>{yr}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -648,19 +824,36 @@ const ProfileSetup = ({ user, onComplete }) => {
                   <div>
                     <label className={labelCls}>Classification <span className="text-red-400">*</span></label>
                     <select id="classification" required className={selectCls} value={formData.classification} onChange={handleChange}>
-                      {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
+                      {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
                     </select>
                   </div>
+
+                  {/* Staff department: label shows abbr for colleges, full name for offices; value is always full name */}
                   <div>
                     <label className={labelCls}>Office / Department <span className="text-red-400">*</span></label>
-                    <select id="department" required
+                    <select
+                      id="department"
+                      required
                       className={`${selectCls} ${inputErrCls('department')}`}
-                      value={formData.department} onChange={handleChange}>
+                      value={formData.department}
+                      onChange={handleChange}
+                    >
                       <option value="" disabled>Select Office</option>
-                      {PLSP_OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
+                      {PLSP_OFFICES_FOR_STAFF.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
                     </select>
+                    {/* Show full college name as hint */}
+                    {formData.department && departmentsData.find(d => d.full === formData.department) && (
+                      <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">
+                        {formData.department}
+                      </p>
+                    )}
                     {fieldError('department')}
                   </div>
+
                   <div>
                     <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
                     <input id="jobTitle" type="text" placeholder="e.g. Associate Professor" required
@@ -670,6 +863,7 @@ const ProfileSetup = ({ user, onComplete }) => {
                   </div>
                 </>
               )}
+
               <div className="flex justify-between pt-3 border-t border-slate-100">
                 <button type="button" onClick={prevStep}
                   className="w-[48%] py-[11px] rounded-[50px] text-[13px] font-bold border-[1.5px] border-[#cbd5d1] text-[#6b8577]">
@@ -687,7 +881,6 @@ const ProfileSetup = ({ user, onComplete }) => {
           {step === 3 && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-300">
 
-              {/* Contact Info */}
               <div>
                 <label className={labelCls}>Email Address</label>
                 <input id="email" type="email" readOnly className={`${inputCls} bg-slate-50 text-slate-500`} value={formData.email} />
@@ -695,7 +888,6 @@ const ProfileSetup = ({ user, onComplete }) => {
 
               {phoneField('phoneNumber', 'Phone Number', formData.phoneNumber, true)}
 
-              {/* Emergency Contact */}
               <div className="bg-[#f4f7f5] p-4 rounded-2xl border border-[#e2f0ea] mt-1">
                 <h3 className="text-[11px] font-black text-[#1a5c3a] uppercase mb-3 tracking-widest">
                   Emergency Contact Information
