@@ -187,11 +187,11 @@ function DesktopShell({ activeTab, onTabChange, userName, userId, preview, onClo
 
       {/* Top Bar - No Sign Out Button */}
       <header className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-center sticky top-0 z-10 shadow-sm">
-        <img 
-          src="../logo.jpg" 
-          alt="MediTrack Logo" 
+        <img
+          src="../logo.jpg"
+          alt="MediTrack Logo"
           className="h-10 object-contain rounded-xl"
-        />
+        />  
       </header>
 
       {/* Body: Widened the layout constraint here for proper desktop view */}
@@ -235,8 +235,8 @@ function DesktopShell({ activeTab, onTabChange, userName, userId, preview, onClo
 
         {/* Main Content: Allowed to fill out to max-w-4xl (approx 896px) */}
         <main className="flex-1 w-full max-w-4xl">
-          <div 
-            className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col" 
+          <div
+            className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col"
             style={{ height: "calc(100vh - 140px)", minHeight: "600px" }}
           >
             <div className="overflow-y-auto flex-1">
@@ -262,9 +262,9 @@ function MobileShell({ activeTab, onTabChange, userName, userId, preview, onClos
 
       {/* Mobile Top Bar - No Sign Out Button */}
       <header className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-center z-10 shadow-sm flex-shrink-0">
-        <img 
-          src="/logo.jpg" 
-          alt="MediTrack Logo" 
+        <img
+          src="/logo.jpg"
+          alt="MediTrack Logo"
           className="h-10 object-contain rounded-xl"
         />
       </header>
@@ -295,11 +295,11 @@ function MobileShell({ activeTab, onTabChange, userName, userId, preview, onClos
                 <div className={`transition-transform flex items-center justify-center mb-0.5 w-6 h-6 ${isActive ? "scale-110" : ""}`}>
                   {IconComponent && <IconComponent active={isActive} />}
                 </div>
-                
+
                 <span className={`text-[8px] font-black uppercase tracking-wide ${isActive ? "text-[#557a5b]" : "text-slate-400"}`}>
                   {item.label}
                 </span>
-                
+
                 {isActive && (
                   <span className="w-1 h-1 bg-[#557a5b] rounded-full" />
                 )}
