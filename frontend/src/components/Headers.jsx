@@ -196,12 +196,12 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       },
     }));
   };
-
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
   const handleSaveProfile = async () => {
     showLoading('Saving profile...', 'light');
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/users/profile', {
+       const response = await fetch(`${API_URL}/api/users/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -627,7 +627,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         const token = localStorage.getItem('token');
         if (!token) { navigate('/login'); return; }
 
-        const response = await fetch('http://localhost:5000/api/users/profile', {
+         const response = await fetch(`${API_URL}/api/users/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

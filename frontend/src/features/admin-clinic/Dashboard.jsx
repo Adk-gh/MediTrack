@@ -359,6 +359,7 @@ function renderTab(activeTab) {
   }
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 // ============================================================
 // MAIN EXPORT — wraps everything in a single DashboardLayout
 // ============================================================
@@ -372,7 +373,7 @@ export const Dashboard = () => {
       if (!currentUser) return;
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch('http://localhost:5000/api/users/profile', {
+        const response = await fetch(`${API_URL}/api/users/profile`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const result = await response.json();

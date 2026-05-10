@@ -26,6 +26,7 @@ import UserManagement from './features/admin-clinic/User-Management.jsx';
 // Features - Students
 import Meditrack from './features/users/Meditrack.jsx';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 // ── Protected route guard ─────────────────────────────────────────────────────
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const token   = localStorage.getItem('token');
@@ -99,7 +100,7 @@ const AdminLayoutWrapper = ({ children }) => {
           return;
         }
 
-        const response = await fetch('http://localhost:5000/api/users/profile', {
+        const response = await fetch(`${API_URL}/api/users/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

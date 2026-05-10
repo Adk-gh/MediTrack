@@ -4,61 +4,65 @@ A comprehensive cross-platform student health record management system for educa
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Technology Stack](#technology-stack)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Features](#features)
-- [API Endpoints](#api-endpoints)
-- [Getting Started](#getting-started)
-- [Environment Variables](#environment-variables)
-- [Validation](#validation)
-- [Frontend Services](#frontend-services)
-- [Database Schema](#database-schema)
-- [Contributing](#contributing)
+* [Overview](#overview)
+* [Technology Stack](#technology-stack)
+* [Architecture](#architecture)
+* [Project Structure](#project-structure)
+* [Features](#features)
+* [API Endpoints](#api-endpoints)
+* [Getting Started](#getting-started)
+* [Environment Variables](#environment-variables)
+* [Validation](#validation)
+* [Frontend Services](#frontend-services)
+* [Database Schema](#database-schema)
+* [Contributing](#contributing)
 
----
+***
 
 ## Overview
 
 MediTrack is designed to streamline the management of student health records in educational institutions. It provides:
 
-- **Student Health Portal**: Students can view their medical history, clinic status, and health profiles
-- **Admin Dashboard**: Staff can manage records, appointments, examinations, and announcements
-- **OCR Integration**: Automated student ID verification through OCR technology
-- **Multi-platform Support**: Web, Desktop (Electron), and Mobile (Capacitor) deployments
+* **Student Health Portal**: Students can view their medical history, clinic status, and health profiles
+* **Admin Dashboard**: Staff can manage records, appointments, examinations, and announcements
+* **OCR Integration**: Automated student ID verification through OCR technology
+* **Multi-platform Support**: Web, Desktop (Electron), and Mobile (Capacitor) deployments
 
----
+***
 
 ## Technology Stack
 
 ### Backend
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: Firebase Firestore (primary), SQLite (offline mode)
-- **Authentication**: Firebase Auth + JWT
-- **Validation**: Zod
+
+* **Runtime**: Node.js
+* **Framework**: Express.js
+* **Database**: Firebase Firestore (primary), SQLite (offline mode)
+* **Authentication**: Firebase Auth + JWT
+* **Validation**: Zod
 
 ### OCR Service
-- **Runtime**: Python
-- **Framework**: Flask
-- **OCR Engine**: PaddleOCR
+
+* **Runtime**: Python
+* **Framework**: Flask
+* **OCR Engine**: PaddleOCR
 
 ### Frontend
-- **Framework**: React 19 + Vite
-- **Routing**: React Router v7
-- **Styling**: TailwindCSS
-- **Charts**: Chart.js
-- **Validation**: Zod
-- **Build Tools**: Electron (desktop), Capacitor (mobile)
+
+* **Framework**: React 19 + Vite
+* **Routing**: React Router v7
+* **Styling**: TailwindCSS
+* **Charts**: Chart.js
+* **Validation**: Zod
+* **Build Tools**: Electron (desktop), Capacitor (mobile)
 
 ### Development Tools
-- **Testing**: Jest (JS), PyTest (Python)
-- **Packaging**: Electron Builder, Capacitor CLI
-- **Version Control**: Git + GitHub
-- **CI/CD**: GitHub Actions, Firebase CI
 
----
+* **Testing**: Jest (JS), PyTest (Python)
+* **Packaging**: Electron Builder, Capacitor CLI
+* **Version Control**: Git + GitHub
+* **CI/CD**: GitHub Actions, Firebase CI
+
+***
 
 ## Architecture
 
@@ -97,7 +101,7 @@ MediTrack is designed to streamline the management of student health records in 
 2. **Login**: Firebase Auth REST API → JWT token returned
 3. **Protected Routes**: Use `authorized` middleware for JWT verification
 
----
+***
 
 ## Project Structure
 
@@ -186,104 +190,113 @@ MediTrack/
     └── tailwind.config.js
 ```
 
----
+***
 
 ## Features
 
 ### User Features
-- **Registration**: Email/password with student ID OCR verification
-- **Login**: Email/password or Firebase OAuth (Google/Facebook)
-- **Profile Management**: View and update health profiles
-- **Medical History**: View personal medical records and logs
+
+* **Registration**: Email/password with student ID OCR verification
+* **Login**: Email/password or Firebase OAuth (Google/Facebook)
+* **Profile Management**: View and update health profiles
+* **Medical History**: View personal medical records and logs
 
 ### Admin Features (Dashboard)
-- **Dashboard Overview**: Statistics, charts, recent activities
-- **Records Management**: CRUD operations for health records
-- **Appointment Scheduling**: Calendar-based appointment management
-- **Medical Examinations**: Multi-phase examination forms (History → Clinical)
-- **Announcements**: Create, edit, delete system announcements
+
+* **Dashboard Overview**: Statistics, charts, recent activities
+* **Records Management**: CRUD operations for health records
+* **Appointment Scheduling**: Calendar-based appointment management
+* **Medical Examinations**: Multi-phase examination forms (History → Clinical)
+* **Announcements**: Create, edit, delete system announcements
 
 ### Mobile Features (Meditrack)
-- **Home View**: Clinic status, visit count, blood type, recent activity
-- **History View**: Medical logs with document preview
-- **Profile View**: Health profile registration form
 
----
+* **Home View**: Clinic status, visit count, blood type, recent activity
+* **History View**: Medical logs with document preview
+* **Profile View**: Health profile registration form
+
+***
 
 ## API Endpoints
 
 ### Authentication
-| Method | Route | Description | Auth |
-|--------|-------|-------------|------|
-| POST | `/api/auth/signup` | Register with OCR-verified student ID | No |
-| POST | `/api/auth/login` | Login with email/password | No |
-| POST | `/api/users/register` | Register with email/password | No |
-| POST | `/api/users/login` | Login with email/password | No |
-| POST | `/api/users/firebase-auth` | Firebase OAuth login | No |
-| GET | `/api/users/profile` | Get user profile | Required |
+
+| Method | Route                      | Description                           | Auth     |
+| ------ | -------------------------- | ------------------------------------- | -------- |
+| POST   | `/api/auth/signup`         | Register with OCR-verified student ID | No       |
+| POST   | `/api/auth/login`          | Login with email/password             | No       |
+| POST   | `/api/users/register`      | Register with email/password          | No       |
+| POST   | `/api/users/login`         | Login with email/password             | No       |
+| POST   | `/api/users/firebase-auth` | Firebase OAuth login                  | No       |
+| GET    | `/api/users/profile`       | Get user profile                      | Required |
 
 ### Health Records
-| Method | Route | Description | Auth |
-|--------|-------|-------------|------|
-| GET | `/api/records` | Get all records | Required |
-| GET | `/api/records/:id` | Get record by ID | Required |
-| POST | `/api/records` | Create new record | No |
-| PUT | `/api/records/:id` | Update record | No |
-| DELETE | `/api/records/:id` | Delete record | Required |
+
+| Method | Route              | Description       | Auth     |
+| ------ | ------------------ | ----------------- | -------- |
+| GET    | `/api/records`     | Get all records   | Required |
+| GET    | `/api/records/:id` | Get record by ID  | Required |
+| POST   | `/api/records`     | Create new record | No       |
+| PUT    | `/api/records/:id` | Update record     | No       |
+| DELETE | `/api/records/:id` | Delete record     | Required |
 
 ### Appointments
-| Method | Route | Description | Auth |
-|--------|-------|-------------|------|
-| GET | `/api/appointments` | Get all appointments | Required |
-| GET | `/api/appointments/date/:date` | Get appointments by date | Required |
-| POST | `/api/appointments` | Create appointment | No |
-| PUT | `/api/appointments/:id` | Update appointment | No |
-| DELETE | `/api/appointments/:id` | Delete appointment | Required |
+
+| Method | Route                          | Description              | Auth     |
+| ------ | ------------------------------ | ------------------------ | -------- |
+| GET    | `/api/appointments`            | Get all appointments     | Required |
+| GET    | `/api/appointments/date/:date` | Get appointments by date | Required |
+| POST   | `/api/appointments`            | Create appointment       | No       |
+| PUT    | `/api/appointments/:id`        | Update appointment       | No       |
+| DELETE | `/api/appointments/:id`        | Delete appointment       | Required |
 
 ### Examinations
-| Method | Route | Description | Auth |
-|--------|-------|-------------|------|
-| GET | `/api/examinations` | Get all examinations | Required |
-| GET | `/api/examinations/:id` | Get examination by ID | Required |
-| POST | `/api/examinations` | Create examination | No |
-| PUT | `/api/examinations/:id` | Update examination | No |
-| DELETE | `/api/examinations/:id` | Delete examination | Required |
+
+| Method | Route                   | Description           | Auth     |
+| ------ | ----------------------- | --------------------- | -------- |
+| GET    | `/api/examinations`     | Get all examinations  | Required |
+| GET    | `/api/examinations/:id` | Get examination by ID | Required |
+| POST   | `/api/examinations`     | Create examination    | No       |
+| PUT    | `/api/examinations/:id` | Update examination    | No       |
+| DELETE | `/api/examinations/:id` | Delete examination    | Required |
 
 ### Announcements
-| Method | Route | Description | Auth |
-|--------|-------|-------------|------|
-| GET | `/api/announcements` | Get all announcements | No |
-| GET | `/api/announcements/:id` | Get announcement by ID | - |
-| POST | `/api/announcements` | Create announcement | No |
-| PUT | `/api/announcements/:id` | Update announcement | No |
-| DELETE | `/api/announcements/:id` | Delete announcement | Required |
+
+| Method | Route                    | Description            | Auth     |
+| ------ | ------------------------ | ---------------------- | -------- |
+| GET    | `/api/announcements`     | Get all announcements  | No       |
+| GET    | `/api/announcements/:id` | Get announcement by ID | -        |
+| POST   | `/api/announcements`     | Create announcement    | No       |
+| PUT    | `/api/announcements/:id` | Update announcement    | No       |
+| DELETE | `/api/announcements/:id` | Delete announcement    | Required |
 
 ### OCR Service
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `http://localhost:5001/ocr` | Process image for OCR |
 
----
+| Method | Route                       | Description           |
+| ------ | --------------------------- | --------------------- |
+| POST   | `http://localhost:5001/ocr` | Process image for OCR |
+
+***
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- Python 3.8+
-- MongoDB (optional, using Firebase)
-- Firebase Project
+* Node.js 18+
+* Python 3.8+
+* MongoDB (optional, using Firebase)
+* Firebase Project
 
 ### 1. Clone the Repository
 
-```bash
+```Shell
 git clone <repository-url>
 cd MediTrack
 ```
 
 ### 2. Backend Setup
 
-```bash
+```Shell
 # Install Node.js dependencies
 npm install
 
@@ -295,7 +308,7 @@ The backend runs on `http://localhost:5000`
 
 ### 3. OCR Service Setup (Windows)
 
-```bash
+```Shell
 cd backend/ocr_service
 .\venv_ocr\Scripts\Activate.ps1
 python ocr_service.py
@@ -304,13 +317,14 @@ python ocr_service.py
 The OCR service runs on `http://localhost:5001`
 
 For production:
-```bash
+
+```Shell
 gunicorn -w 2 -b 0.0.0.0:5001 ocr_service:app
 ```
 
 ### 4. Frontend Setup
 
-```bash
+```Shell
 cd frontend
 npm install
 npm start
@@ -319,24 +333,25 @@ npm start
 The frontend runs on `http://localhost:3000`
 
 For development with hot reload:
-```bash
+
+```Shell
 npm run dev
 ```
 
 ### 5. Build for Desktop (Electron)
 
-```bash
+```Shell
 npm run electron:build
 ```
 
 ### 6. Build for Mobile (Capacitor)
 
-```bash
+```Shell
 npm run capacitor:add
 npm run capacitor:build
 ```
 
----
+***
 
 ## Environment Variables
 
@@ -368,7 +383,7 @@ VITE_FIREBASE_API_KEY=your_firebase_web_api_key
 VITE_FIREBASE_PROJECT_ID=your_project_id
 ```
 
----
+***
 
 ## Validation
 
@@ -377,51 +392,55 @@ The project uses **Zod** for validation in both backend and frontend.
 ### Backend Validation Schemas
 
 Located in `features/*/validation.js`:
-- `user.validation.js` - Register, login, firebase auth
-- `records.validation.js` - Create, update records
-- `appointments.validation.js` - Create, update appointments
-- `examinations.validation.js` - Create, update examinations
-- `announcements.validation.js` - Create, update announcements
+
+* `user.validation.js` - Register, login, firebase auth
+* `records.validation.js` - Create, update records
+* `appointments.validation.js` - Create, update appointments
+* `examinations.validation.js` - Create, update examinations
+* `announcements.validation.js` - Create, update announcements
 
 ### Frontend Validation Schemas
 
 Located in `frontend/src/validation/schemas.js`:
-- `registerSchema` - User registration
-- `loginSchema` - User login
-- `createRecordSchema` - Health records
-- `createAppointmentSchema` - Appointments
-- `examinationSchema` - Medical examinations
-- `createAnnouncementSchema` - Announcements
 
----
+* `registerSchema` - User registration
+* `loginSchema` - User login
+* `createRecordSchema` - Health records
+* `createAppointmentSchema` - Appointments
+* `examinationSchema` - Medical examinations
+* `createAnnouncementSchema` - Announcements
+
+***
 
 ## Frontend Services
 
 The frontend uses service modules to communicate with the backend API:
 
-| Service | Description |
-|---------|-------------|
-| `auth.service.js` | Authentication (register, login, logout) |
-| `users.service.js` | User profile management |
-| `records.service.js` | Health records CRUD |
-| `appointments.service.js` | Appointments CRUD |
-| `examinations.service.js` | Examinations CRUD |
-| `announcements.service.js` | Announcements CRUD |
+| Service                    | Description                              |
+| -------------------------- | ---------------------------------------- |
+| `auth.service.js`          | Authentication (register, login, logout) |
+| `users.service.js`         | User profile management                  |
+| `records.service.js`       | Health records CRUD                      |
+| `appointments.service.js`  | Appointments CRUD                        |
+| `examinations.service.js`  | Examinations CRUD                        |
+| `announcements.service.js` | Announcements CRUD                       |
 
 Each service includes:
-- API calls with proper headers
-- Token-based authentication
-- Error handling
-- Fallback data for offline scenarios
 
----
+* API calls with proper headers
+* Token-based authentication
+* Error handling
+* Fallback data for offline scenarios
+
+***
 
 ## Database Schema
 
 ### Firestore Collections
 
 #### users
-```javascript
+
+```JavaScript
 {
   id: string,           // Firestore document ID
   uid: string,          // Firebase Auth UID
@@ -437,7 +456,8 @@ Each service includes:
 ```
 
 #### records
-```javascript
+
+```JavaScript
 {
   id: string,
   patientId: string,
@@ -451,7 +471,8 @@ Each service includes:
 ```
 
 #### appointments
-```javascript
+
+```JavaScript
 {
   id: string,
   patientId: string,
@@ -465,7 +486,8 @@ Each service includes:
 ```
 
 #### examinations
-```javascript
+
+```JavaScript
 {
   id: string,
   patientId: string,
@@ -482,7 +504,8 @@ Each service includes:
 ```
 
 #### announcements
-```javascript
+
+```JavaScript
 {
   id: string,
   title: string,
@@ -493,20 +516,20 @@ Each service includes:
 }
 ```
 
----
+***
 
 ## UI/UX Guidelines
 
-- **Design System**: Modern, clean aesthetics with responsive layouts
-- **Color Palette**:
-  - Primary: `#466460` (Deep teal)
-  - Secondary: `#81b29a` (Sage green)
-  - Accent: `#e07a5f` (Terracotta)
-- **Typography**: Inter (desktop), DM Sans (mobile)
-- **Animations**: Smooth transitions using CSS animations and Tailwind
-- **Mobile-first**: Optimized for both desktop and mobile views
+* **Design System**: Modern, clean aesthetics with responsive layouts
+* **Color Palette**:
+  * Primary: `#466460` (Deep teal)
+  * Secondary: `#81b29a` (Sage green)
+  * Accent: `#e07a5f` (Terracotta)
+* **Typography**: Inter (desktop), DM Sans (mobile)
+* **Animations**: Smooth transitions using CSS animations and Tailwind
+* **Mobile-first**: Optimized for both desktop and mobile views
 
----
+***
 
 ## Contributing
 
@@ -516,17 +539,19 @@ Each service includes:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
----
+***
 
 ## License
 
 This project is proprietary software for educational institution use.
 
----
+***
 
 ## Support
 
 For issues or questions:
-- Check the [CLAUDE.md](./CLAUDE.md) for detailed project guidelines
-- Review API documentation in this README
-- Contact the development team
+
+* Check the [CLAUDE.md](./CLAUDE.md) for detailed project guidelines
+* Review API documentation in this README
+* Contact the development team
+

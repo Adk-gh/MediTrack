@@ -134,17 +134,17 @@ export default function MediTrack() {
   const userName    = currentUser?.name         || "Student";
   const userId      = currentUser?.universityId || "—";
 
-  
+
   // ── Onboarding guard ───────────────────────────────────────────────────────
   useEffect(() => {
     const checkProfileSetup = async () => {
       if (!currentUser) return;
-      
+
       const token = localStorage.getItem("token");
       if (!token) return;
 
       try {
-        const response = await fetch("http://localhost:5000/api/users/profile", {
+        const response = await fetch(`${API_URL}/user/profile-setup`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
