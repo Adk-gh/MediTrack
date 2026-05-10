@@ -1,3 +1,4 @@
+// /C:\Users\HP\MediTrack\features\announcements\announcements.service.js
 const { db } = require('../../configs/firebase-admin');
 
 exports.getAllAnnouncements = async () => {
