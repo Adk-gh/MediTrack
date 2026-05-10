@@ -7,7 +7,7 @@ import { useLoading } from '../context/LoadingContext.jsx';
 import DatePicker from './Datepicker.jsx';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
-
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -196,7 +196,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       },
     }));
   };
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
   const handleSaveProfile = async () => {
     showLoading('Saving profile...', 'light');
     try {
