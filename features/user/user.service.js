@@ -178,6 +178,8 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     isVerified: true,
     role,               // ← dynamically resolved from OCR (no longer hardcoded)
     isProfileSetup: false,
+    // New students default to Regular; updated during profile setup
+    studentClassification: role === 'student' ? 'Regular' : '',
     createdAt: new Date().toISOString(),
   };
 
@@ -236,11 +238,17 @@ exports.setupProfile = async (userId, profileData) => {
     birthday, age, sex, bloodType,
     homeAddress, religion, nationality, civilStatus,
     universityId, department, program, yearLevel, section,
+    studentClassification,  // ← NEW
     classification, jobTitle,
     phoneNumber,
     emergencyContact,
     vaccinations,
+    role,
   } = profileData;
+
+  // Determine if this user is a student (use submitted role or fall back to stored role)
+  const resolvedRole = (role || userSnap.data()?.role || 'student').toLowerCase();
+  const isStudent = resolvedRole === 'student';
 
   const sanitized = {
     // Personal
@@ -263,6 +271,12 @@ exports.setupProfile = async (userId, profileData) => {
     program:        program        ?? '',
     yearLevel:      yearLevel      ?? '',
     section:        section        ?? '',
+
+    // Student classification — only meaningful for students; empty string for staff
+    studentClassification: isStudent
+      ? (studentClassification ?? 'Regular')
+      : '',
+
     classification: classification ?? '',
     jobTitle:       jobTitle       ?? '',
 
@@ -277,7 +291,7 @@ exports.setupProfile = async (userId, profileData) => {
       address:      emergencyContact?.address      ?? '',
     },
 
-    // COVID-19 Vaccinations (fixed 5-dose structure)
+    // COVID-19 Vaccinations (fixed 4-dose structure)
     vaccinations: {
       dose1: {
         vaccineName: vaccinations?.dose1?.vaccineName ?? '',
@@ -342,6 +356,7 @@ exports.firebaseLogin = async (idToken) => {
       role: 'student',
       isProfileSetup: false,
       profileComplete: false,
+      studentClassification: 'Regular', // ← default for new Google sign-in users
       createdAt: new Date().toISOString(),
     };
     await usersRef.doc(uid).set(userData);

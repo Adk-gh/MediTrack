@@ -1,6 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Approvals.jsx
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collectionGroup, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
 
@@ -10,7 +10,7 @@ import { MedicalCertificate } from '../../components/MedicalCertificate';
 const Snackbar = ({ message, type, visible }) => (
   <div
     className={`fixed bottom-8 left-1/2 z-[9999] flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
-      ${visible ? '-translate-x-1/2 translate-y-0' : '-translate-x-1/2 translate-y-20'}
+      ${visible ? '-translate-x-1/2 translate-y-0 opacity-100' : '-translate-x-1/2 translate-y-32 opacity-0 pointer-events-none'}
       ${type === 'success' ? 'bg-gradient-to-r from-[#166534] to-[#15803d]' : 'bg-gradient-to-r from-[#991b1b] to-[#dc2626]'}`}
   >
     <i className={`fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
@@ -35,154 +35,84 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-// ============================================================
-// SAMPLE DATA (replace with Firestore in production)
-// ============================================================
-const sampleExaminations = [
-  {
-    id: 1,
-    patientName: "De Vera, Jenny",
-    patientId: "23-00142",
-    type: "student",
-    program: "BSIT",
-    year: "3rd Year",
-    department: "College of Computing",
-    examDate: "2026-05-05",
-    nurseName: "Nurse Maria Santos",
-    status: "pending",
-    reason: "Annual Physical Exam",
-    age: 21,
-    gender: "Female",
-    vitals: { bp: "110/70", pr: "68", rr: "16", temp: "36.4", weight: "52" },
-    anthropometrics: { height: "155", weight: "52", bmi: "21.6", waist: "68" },
-    medicalHistory: ["Allergy (Dust)", "Asthma (mild, controlled)"],
-    surgicalHistory: ["Appendectomy (2020)"],
-    familyHistory: ["Hypertension (Father)"],
-    vaccine: { dose1: "Pfizer", dose1Date: "2023-03-15", dose2: "Pfizer", dose2Date: "2023-04-15", booster: "Pfizer", boosterDate: "2023-10-01" },
-    labResults: { cbc: "WBC: 6.8, RBC: 4.5, Hgb: 13.8, Hct: 40%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Straw, pH: 6.0, SG: 1.015", uaFacility: "PLSP Clinic Lab", xray: "Clear lungs, normal heart silhouette", xrayFacility: "San Pablo Medical Center" },
-    social: { smoking: "No", alcohol: "No", drugs: "No" }
-  },
-  {
-    id: 2,
-    patientName: "Santos, Sofia",
-    patientId: "23-23406",
-    type: "student",
-    program: "BSCE",
-    year: "2nd Year",
-    department: "College of Engineering",
-    examDate: "2026-05-04",
-    nurseName: "Nurse Maria Santos",
-    status: "pending",
-    reason: "Medical Clearance",
-    age: 20,
-    gender: "Female",
-    vitals: { bp: "120/80", pr: "72", rr: "18", temp: "36.5", weight: "58" },
-    anthropometrics: { height: "162", weight: "58", bmi: "22.1", waist: "70" },
-    medicalHistory: ["No significant medical history"],
-    surgicalHistory: ["No surgical history"],
-    familyHistory: ["Diabetes (Mother)"],
-    vaccine: { dose1: "AstraZeneca", dose1Date: "2023-02-20", dose2: "AstraZeneca", dose2Date: "2023-04-20", booster: "Moderna", boosterDate: "2023-11-15" },
-    labResults: { cbc: "WBC: 7.0, RBC: 4.6, Hgb: 14.0, Hct: 41%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 5.8, SG: 1.018", uaFacility: "PLSP Clinic Lab", xray: "Normal chest findings", xrayFacility: "San Pablo Medical Center" },
-    social: { smoking: "No", alcohol: "No", drugs: "No" }
-  },
-  {
-    id: 3,
-    patientName: "Mendoza, Paolo",
-    patientId: "22-09123",
-    type: "student",
-    program: "BSN",
-    year: "4th Year",
-    department: "College of Health Sciences",
-    examDate: "2026-05-03",
-    nurseName: "Nurse Ana Reyes",
-    status: "approved",
-    reason: "RLE Clearance",
-    age: 22,
-    gender: "Male",
-    vitals: { bp: "115/75", pr: "70", rr: "17", temp: "36.3", weight: "65" },
-    anthropometrics: { height: "170", weight: "65", bmi: "22.5", waist: "76" },
-    medicalHistory: ["Allergic Rhinitis"],
-    surgicalHistory: ["Tonsillectomy (2015)"],
-    familyHistory: ["Asthma (Mother)", "Heart Disease (Father)"],
-    vaccine: { dose1: "Sinovac", dose1Date: "2022-08-10", dose2: "Sinovac", dose2Date: "2022-09-10", booster: "Pfizer", boosterDate: "2023-06-20" },
-    labResults: { cbc: "WBC: 6.5, RBC: 5.0, Hgb: 15.2, Hct: 45%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Pale Yellow, pH: 6.2, SG: 1.012", uaFacility: "PLSP Clinic Lab", xray: "No active disease", xrayFacility: "San Pablo Medical Center" },
-    social: { smoking: "No", alcohol: "Occasionally", drugs: "No" }
-  },
-  {
-    id: 4,
-    patientName: "Garcia, Rico",
-    patientId: "24-11002",
-    type: "student",
-    program: "BS PSY",
-    year: "1st Year",
-    department: "College of Arts & Sciences",
-    examDate: "2026-05-02",
-    nurseName: "Nurse Maria Santos",
-    status: "pending",
-    reason: "New Student Medical",
-    age: 18,
-    gender: "Male",
-    vitals: { bp: "118/78", pr: "74", rr: "18", temp: "36.6", weight: "60" },
-    anthropometrics: { height: "165", weight: "60", bmi: "22.0", waist: "72" },
-    medicalHistory: ["No significant medical history"],
-    surgicalHistory: ["No surgical history"],
-    familyHistory: ["No significant family history"],
-    vaccine: { dose1: "Pfizer", dose1Date: "2024-01-15", dose2: "Pfizer", dose2Date: "2024-02-15", booster: "Pfizer", boosterDate: "2024-08-20" },
-    labResults: { cbc: "WBC: 6.2, RBC: 4.4, Hgb: 13.5, Hct: 39%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 6.0, SG: 1.020", uaFacility: "PLSP Clinic Lab", xray: "Normal", xrayFacility: "San Pablo Medical Center" },
-    social: { smoking: "No", alcohol: "No", drugs: "No" }
-  },
-  {
-    id: 5,
-    patientName: "Dr. Reyes, Maria",
-    patientId: "FAC-001",
-    type: "instructor",
-    program: "PhD",
-    department: "College of Computing",
-    examDate: "2026-04-30",
-    nurseName: "Nurse Maria Santos",
-    status: "pending",
-    reason: "Annual Check-up",
-    age: 45,
-    gender: "Female",
-    vitals: { bp: "130/85", pr: "80", rr: "18", temp: "36.7", weight: "70" },
-    anthropometrics: { height: "160", weight: "70", bmi: "27.3", waist: "82" },
-    medicalHistory: ["Hypertension", "Hyperlipidemia"],
-    surgicalHistory: ["Cholecystectomy (2019)"],
-    familyHistory: ["Hypertension (Father)", "Diabetes (Mother)"],
-    vaccine: { dose1: "Pfizer", dose1Date: "2022-03-10", dose2: "Pfizer", dose2Date: "2022-04-10", booster: "Pfizer", boosterDate: "2023-01-20" },
-    labResults: { cbc: "WBC: 7.5, RBC: 4.8, Hgb: 14.0, Hct: 42%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Yellow, pH: 5.5, SG: 1.022", uaFacility: "PLSP Clinic Lab", xray: "Mild cardiomegaly", xrayFacility: "San Pablo Medical Center" },
-    social: { smoking: "No", alcohol: "Occasionally", drugs: "No" }
-  },
-  {
-    id: 6,
-    patientName: "Ms. Fernandez, Leah",
-    patientId: "STAFF-012",
-    type: "staff",
-    program: "N/A",
-    department: "Registrar's Office",
-    examDate: "2026-04-29",
-    nurseName: "Nurse Ana Reyes",
-    status: "rejected",
-    reason: "Pre-employment Medical",
-    age: 32,
-    gender: "Female",
-    vitals: { bp: "140/90", pr: "88", rr: "20", temp: "37.0", weight: "75" },
-    anthropometrics: { height: "155", weight: "75", bmi: "31.2", waist: "90" },
-    medicalHistory: ["Hypertension", "Obesity", "GERD"],
-    surgicalHistory: ["C-section (2018)"],
-    familyHistory: ["Hypertension (both parents)", "Heart Disease (Father)"],
-    vaccine: { dose1: "Sinovac", dose1Date: "2022-06-15", dose2: "Sinovac", dose2Date: "2022-07-15", booster: "AstraZeneca", boosterDate: "2023-03-01" },
-    labResults: { cbc: "WBC: 8.2, RBC: 4.6, Hgb: 12.5, Hct: 37%", cbcFacility: "PLSP Clinic Lab", ua: "Color: Dark Yellow, pH: 5.2, SG: 1.030", uaFacility: "PLSP Clinic Lab", xray: "Findings suggestive of COPD", xrayFacility: "San Pablo Medical Center" },
-    social: { smoking: "Yes (10 sticks/day)", alcohol: "Yes (2-3x/week)", drugs: "No" }
-  }
-];
-
 export const Approvals = () => {
-  const [examinations, setExaminations] = useState(sampleExaminations);
+  const [examinations, setExaminations] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [snackbar, setSnackbar] = useState({ message: '', type: 'success', visible: false });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch pending records from ALL users' subcollections
+  useEffect(() => {
+    const fetchPendingExaminations = async () => {
+      setLoading(true);
+      try {
+        const q = query(collectionGroup(db, 'medical_records'), where('status', '==', 'pending'));
+        const snapshot = await getDocs(q);
+
+        const fetchedExams = snapshot.docs.map(doc => {
+          const data = doc.data();
+
+          // yearSection: Medical.jsx saves as `yearSection` (e.g. "3rd Year - E")
+          // older records may have saved it as `yearLevel` only
+          const yearSection =
+            data.yearSection ||
+            [data.yearLevel || data.year || '', data.section || ''].filter(Boolean).join(' - ') ||
+            '';
+
+          return {
+            id: doc.id,
+            docRef: doc.ref,
+            patientName: `${data.lastName || ''}, ${data.firstName || ''}`,
+            patientId:   data.studentId || data.universityId || 'N/A',
+            type:        data.role      || 'student',
+
+            // ── Fields read by MedicalCertificate ──────────────────────────
+            // Keep the SAME key names that Medical.jsx / MedicalCertificate expect
+            course:      data.course    || data.program || 'N/A',   // cert reads: examination.course
+            yearSection,                                             // cert reads: examination.yearSection
+            address:     data.address   || data.homeAddress || '',   // cert reads: examination.address  ← THE FIX
+            age:         data.age       || '',                       // cert reads: examination.age
+            sex:         data.sex       || data.gender || '',        // cert reads: examination.sex
+            examDate:    data.examDate  || (data.createdAt ? data.createdAt.toDate().toISOString().split('T')[0] : ''),
+
+            // ── UI-only fields ─────────────────────────────────────────────
+            program:     data.course    || data.program || 'N/A',   // used in list/detail UI
+            year:        yearSection,                                // used in list/detail UI
+            department:  data.department || 'N/A',
+            nurseName:   data.nurseOnDuty || 'Unknown',
+            status:      data.status    || 'pending',
+            reason:      'Medical Examination',
+
+            vitals:          data.vitalRecords?.[0] || {},
+            anthropometrics: { height: data.height, weight: data.weight, bmi: data.bmi, waist: data.waist },
+            medicalHistory:  data.checkedMedical || [],
+            surgicalHistory: data.surgicalHistory?.map(s => `${s.operation} (${s.date})`) || [],
+            familyHistory:   data.checkedFamily  || [],
+            vaccine: {
+              dose1:       data.vax1,       dose1Date:    data.vax1Date,
+              dose2:       data.vax2,       dose2Date:    data.vax2Date,
+              booster:     data.booster1,   boosterDate:  data.booster1Date,
+            },
+            labResults: {
+              cbc:         data.labCbc,     cbcFacility:  data.labCbcFacility,
+              ua:          data.labUa,      uaFacility:   data.labUaFacility,
+              xray:        data.labXray,    xrayFacility: data.labXrayFacility,
+            },
+            social: { smoking: data.smoking, alcohol: data.alcohol, drugs: data.drugs },
+          };
+        });
+
+        setExaminations(fetchedExams);
+      } catch (error) {
+        console.error("Error fetching approvals:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPendingExaminations();
+  }, []);
 
   // Filter examinations based on search
   const filteredExaminations = examinations.filter(exam =>
@@ -190,31 +120,23 @@ export const Approvals = () => {
     exam.patientId.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Show snackbar
   const showSnackbar = (message, type = 'success') => {
     setSnackbar({ message, type, visible: true });
     setTimeout(() => setSnackbar(prev => ({ ...prev, visible: false })), 3500);
   };
 
-  // Select an examination
-  const handleSelectExam = (exam) => {
-    setSelectedExam(exam);
-  };
+  const handleSelectExam = (exam) => setSelectedExam(exam);
 
-  // Approve examination
   const handleApprove = async (exam) => {
     setLoading(true);
     try {
-      // Update local state
-      const updated = examinations.map(e =>
-        e.id === exam.id ? { ...e, status: 'approved' } : e
-      );
-      setExaminations(updated);
-      setSelectedExam({ ...exam, status: 'approved' });
-
-      // TODO: Update Firestore in production
-      // await updateDoc(doc(db, 'examinations', exam.id), { status: 'approved' });
-
+      await updateDoc(exam.docRef, {
+        status: 'approved',
+        isApproved: true,
+        approvedAt: serverTimestamp()
+      });
+      setExaminations(examinations.filter(e => e.id !== exam.id));
+      setSelectedExam(null);
       showSnackbar(`Examination for ${exam.patientName} has been approved!`, 'success');
     } catch (error) {
       console.error('Error approving examination:', error);
@@ -224,16 +146,20 @@ export const Approvals = () => {
     }
   };
 
-  // Submit with remarks
   const handleSubmitCertificate = async (data) => {
     setLoading(true);
     try {
-      const updated = examinations.map(e =>
-        e.id === data.id ? { ...e, status: 'approved', remarks: data.remarks } : e
-      );
-      setExaminations(updated);
-      setSelectedExam({ ...data, status: 'approved' });
-
+      await updateDoc(selectedExam.docRef, {
+        status:           'approved',
+        isApproved:       true,
+        finding1:         data.finding1         ?? '',
+        remarks:          data.remarks          ?? '',
+        isFit:            data.isFit            ?? true,
+        isNormalFindings: data.isNormalFindings  ?? true,
+        approvedAt:       serverTimestamp(),
+      });
+      setExaminations(examinations.filter(e => e.id !== selectedExam.id));
+      setSelectedExam(null);
       showSnackbar(`Examination for ${data.patientName} submitted successfully!`, 'success');
     } catch (error) {
       console.error('Error submitting certificate:', error);
@@ -243,12 +169,8 @@ export const Approvals = () => {
     }
   };
 
-  // Edit certificate (placeholder)
-  const handleEdit = () => {
-    showSnackbar('Editing examination details...', 'success');
-  };
+  const handleEdit = () => showSnackbar('Editing examination details...', 'success');
 
-  // Render examination list item
   const renderExamItem = (exam) => (
     <div
       key={exam.id}
@@ -271,7 +193,6 @@ export const Approvals = () => {
     </div>
   );
 
-  // Render examination detail
   const renderExamDetail = (exam) => {
     if (!exam) {
       return (
@@ -283,9 +204,9 @@ export const Approvals = () => {
     }
 
     return (
-      <div className="animate-in">
+      <div className="animate-in fade-in duration-300">
         {/* Patient Header */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
           <div className="flex justify-between items-start mb-4">
             <div>
               <h3 className="text-lg font-bold text-[#466460]">{exam.patientName}</h3>
@@ -317,7 +238,7 @@ export const Approvals = () => {
         </div>
 
         {/* Medical Examination Summary */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
           <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-slate-200 pb-2">
             <i className="fa-solid fa-clipboard-list mr-2"></i>Medical Examination Summary
           </h4>
@@ -327,11 +248,11 @@ export const Approvals = () => {
             <p className="text-xs font-bold text-[#466460] uppercase mb-2">Vital Signs</p>
             <div className="grid grid-cols-5 gap-2">
               {[
-                { label: 'BP', value: exam.vitals?.bp || '120/80', unit: 'mmHg' },
-                { label: 'PR', value: exam.vitals?.pr || '72', unit: 'bpm' },
-                { label: 'RR', value: exam.vitals?.rr || '18', unit: 'cpm' },
-                { label: 'Temp', value: exam.vitals?.temp || '36.5', unit: '°C' },
-                { label: 'Weight', value: exam.vitals?.weight || '55', unit: 'kg' },
+                { label: 'BP',     value: exam.vitals?.bp              || '—', unit: 'mmHg' },
+                { label: 'PR',     value: exam.vitals?.pr              || '—', unit: 'bpm'  },
+                { label: 'RR',     value: exam.vitals?.rr              || '—', unit: 'cpm'  },
+                { label: 'Temp',   value: exam.vitals?.temp            || '—', unit: '°C'   },
+                { label: 'Weight', value: exam.anthropometrics?.weight || '—', unit: 'kg'   },
               ].map((item, idx) => (
                 <div key={idx} className="bg-slate-50 rounded-lg p-2 text-center">
                   <p className="text-[9px] text-slate-400 uppercase">{item.label}</p>
@@ -347,10 +268,10 @@ export const Approvals = () => {
             <p className="text-xs font-bold text-[#466460] uppercase mb-2">Anthropometrics</p>
             <div className="grid grid-cols-4 gap-2">
               {[
-                { label: 'Height', value: exam.anthropometrics?.height || '160', unit: 'cm' },
-                { label: 'Weight', value: exam.anthropometrics?.weight || '55', unit: 'kg' },
-                { label: 'BMI', value: exam.anthropometrics?.bmi || '21.5', unit: '' },
-                { label: 'Waist', value: exam.anthropometrics?.waist || '72', unit: 'cm' },
+                { label: 'Height', value: exam.anthropometrics?.height || '—', unit: 'cm' },
+                { label: 'Weight', value: exam.anthropometrics?.weight || '—', unit: 'kg' },
+                { label: 'BMI',    value: exam.anthropometrics?.bmi    || '—', unit: ''   },
+                { label: 'Waist',  value: exam.anthropometrics?.waist  || '—', unit: 'cm' },
               ].map((item, idx) => (
                 <div key={idx} className="bg-slate-50 rounded-lg p-2">
                   <p className="text-[9px] text-slate-400 uppercase">{item.label}</p>
@@ -364,8 +285,8 @@ export const Approvals = () => {
           <div className="mb-4">
             <p className="text-xs font-bold text-[#466460] uppercase mb-2">Past Medical History</p>
             <div className="flex flex-wrap gap-1">
-              {(exam.medicalHistory || ['No significant medical history']).map((h, idx) => (
-                <span key={idx} className="bg-amber-50 text-amber-700 px-2 py-1 rounded-full text-[10px] font-semibold">{h}</span>
+              {(exam.medicalHistory.length > 0 ? exam.medicalHistory : ['None recorded']).map((h, idx) => (
+                <span key={idx} className="bg-amber-50 text-amber-700 px-2 py-1 rounded-full text-[10px] font-semibold border border-amber-100">{h}</span>
               ))}
             </div>
           </div>
@@ -374,8 +295,8 @@ export const Approvals = () => {
           <div className="mb-4">
             <p className="text-xs font-bold text-[#466460] uppercase mb-2">Surgical History</p>
             <div className="flex flex-wrap gap-1">
-              {(exam.surgicalHistory || ['No surgical history']).map((h, idx) => (
-                <span key={idx} className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-[10px] font-semibold">{h}</span>
+              {(exam.surgicalHistory.length > 0 ? exam.surgicalHistory : ['None recorded']).map((h, idx) => (
+                <span key={idx} className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-[10px] font-semibold border border-blue-100">{h}</span>
               ))}
             </div>
           </div>
@@ -384,26 +305,8 @@ export const Approvals = () => {
           <div className="mb-4">
             <p className="text-xs font-bold text-[#466460] uppercase mb-2">Family History</p>
             <div className="flex flex-wrap gap-1">
-              {(exam.familyHistory || ['No significant family history']).map((h, idx) => (
-                <span key={idx} className="bg-purple-50 text-purple-700 px-2 py-1 rounded-full text-[10px] font-semibold">{h}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* COVID-19 Vaccine */}
-          <div className="mb-4">
-            <p className="text-xs font-bold text-[#466460] uppercase mb-2">COVID-19 Vaccine</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: '1st Dose', vaccine: exam.vaccine?.dose1 || 'Pfizer', date: exam.vaccine?.dose1Date || '2023-03-15' },
-                { label: '2nd Dose', vaccine: exam.vaccine?.dose2 || 'Pfizer', date: exam.vaccine?.dose2Date || '2023-04-15' },
-                { label: 'Booster', vaccine: exam.vaccine?.booster || 'Moderna', date: exam.vaccine?.boosterDate || '2023-10-01' },
-              ].map((item, idx) => (
-                <div key={idx} className="bg-slate-50 rounded-lg p-2">
-                  <p className="text-[9px] text-slate-400 uppercase">{item.label}</p>
-                  <p className="text-xs font-semibold">{item.vaccine}</p>
-                  <p className="text-[9px] text-slate-400">{item.date}</p>
-                </div>
+              {(exam.familyHistory.length > 0 ? exam.familyHistory : ['None recorded']).map((h, idx) => (
+                <span key={idx} className="bg-purple-50 text-purple-700 px-2 py-1 rounded-full text-[10px] font-semibold border border-purple-100">{h}</span>
               ))}
             </div>
           </div>
@@ -418,27 +321,23 @@ export const Approvals = () => {
                     <th className="text-left p-2 border-b font-semibold text-slate-600">Test</th>
                     <th className="text-left p-2 border-b font-semibold text-slate-600">Results</th>
                     <th className="text-left p-2 border-b font-semibold text-slate-600">Facility</th>
-                    <th className="text-left p-2 border-b font-semibold text-slate-600">Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td className="p-2 border-b">CBC</td>
-                    <td className="p-2 border-b font-semibold">{exam.labResults?.cbc || 'WBC: 7.2, RBC: 4.8, Hgb: 14.2, Hct: 42%'}</td>
-                    <td className="p-2 border-b">{exam.labResults?.cbcFacility || 'PLSP Clinic Lab'}</td>
-                    <td className="p-2 border-b">{exam.examDate}</td>
+                    <td className="p-2 border-b font-semibold">{exam.labResults?.cbc  || '—'}</td>
+                    <td className="p-2 border-b">{exam.labResults?.cbcFacility  || '—'}</td>
                   </tr>
                   <tr>
                     <td className="p-2 border-b">Urinalysis</td>
-                    <td className="p-2 border-b font-semibold">{exam.labResults?.ua || 'Color: Yellow, pH: 6.0, SG: 1.020'}</td>
-                    <td className="p-2 border-b">{exam.labResults?.uaFacility || 'PLSP Clinic Lab'}</td>
-                    <td className="p-2 border-b">{exam.examDate}</td>
+                    <td className="p-2 border-b font-semibold">{exam.labResults?.ua   || '—'}</td>
+                    <td className="p-2 border-b">{exam.labResults?.uaFacility   || '—'}</td>
                   </tr>
                   <tr>
                     <td className="p-2">Chest X-Ray</td>
-                    <td className="p-2 font-semibold">{exam.labResults?.xray || 'No active cardiopulmonary disease'}</td>
-                    <td className="p-2">{exam.labResults?.xrayFacility || 'San Pablo Medical Center'}</td>
-                    <td className="p-2">{exam.examDate}</td>
+                    <td className="p-2 font-semibold">{exam.labResults?.xray || '—'}</td>
+                    <td className="p-2">{exam.labResults?.xrayFacility || '—'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -450,9 +349,9 @@ export const Approvals = () => {
             <p className="text-xs font-bold text-[#466460] uppercase mb-2">Personal/Social History</p>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Smoking', value: exam.social?.smoking || 'No' },
-                { label: 'Alcohol', value: exam.social?.alcohol || 'No' },
-                { label: 'Illicit Drugs', value: exam.social?.drugs || 'No' },
+                { label: 'Smoking',       value: exam.social?.smoking || 'No' },
+                { label: 'Alcohol',       value: exam.social?.alcohol || 'No' },
+                { label: 'Illicit Drugs', value: exam.social?.drugs   || 'No' },
               ].map((item, idx) => (
                 <div key={idx} className="flex items-center gap-2">
                   <span className="text-xs text-slate-500">{item.label}:</span>
@@ -476,12 +375,12 @@ export const Approvals = () => {
   };
 
   return (
-    <div className="flex h-full min-h-[calc(100vh-140px)] bg-white">
+    <div className="flex h-full min-h-[calc(100vh-140px)] bg-[#f8fafc]">
       {/* Left Column - Examination List */}
-      <div className="w-1/3 border-r border-slate-200 flex flex-col bg-white">
+      <div className="w-1/3 border-r border-slate-200 flex flex-col bg-white shadow-sm z-10">
         <div className="p-4 border-b border-slate-200">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="font-bold text-[11px] uppercase text-[#466460]">Submitted Examinations</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-bold text-[11px] uppercase text-[#466460]">Pending Approvals</h3>
             <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">
               {filteredExaminations.length}
             </span>
@@ -493,40 +392,47 @@ export const Approvals = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search name or ID..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 pl-9 pr-3 text-xs outline-none focus:border-[#466460] focus:bg-white transition"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#466460] focus:bg-white transition"
             />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-          {filteredExaminations.length > 0 ? (
+          {loading ? (
+            <div className="text-center text-slate-400 text-sm py-12 flex flex-col items-center">
+              <i className="fa-solid fa-circle-notch fa-spin text-2xl text-[#466460] mb-3"></i>
+              Loading records...
+            </div>
+          ) : filteredExaminations.length > 0 ? (
             filteredExaminations.map(renderExamItem)
           ) : (
             <div className="text-center text-slate-400 text-sm py-12">
-              No examinations found
+              <i className="fa-regular fa-folder-open text-3xl mb-2 opacity-50 block"></i>
+              No pending examinations
             </div>
           )}
         </div>
       </div>
 
       {/* Right Column - Examination Detail */}
-      <div className="flex-1 flex flex-col bg-white overflow-hidden">
-        <div className="p-4 border-b border-slate-200">
+      <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-white">
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-[11px] uppercase text-[#466460]">Examination Details</h3>
             {selectedExam && (
               <div className="flex gap-2">
                 <button
                   onClick={handleEdit}
-                  className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1"
+                  className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1.5"
                 >
                   <i className="fa-solid fa-pen-to-square"></i> Edit
                 </button>
                 <button
                   onClick={() => handleApprove(selectedExam)}
                   disabled={loading || selectedExam?.status === 'approved'}
-                  className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white border-none px-4 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1 disabled:opacity-50"
+                  className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white border-none px-5 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                 >
-                  <i className="fa-solid fa-check-circle"></i> Approve
+                  {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check-circle"></i>}
+                  Approve Record
                 </button>
               </div>
             )}
@@ -538,11 +444,7 @@ export const Approvals = () => {
       </div>
 
       {/* Snackbar */}
-      <Snackbar
-        message={snackbar.message}
-        type={snackbar.type}
-        visible={snackbar.visible}
-      />
+      <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
     </div>
   );
 };

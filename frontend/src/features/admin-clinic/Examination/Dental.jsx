@@ -1,6 +1,8 @@
-//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Dental.jsx
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Dental.jsx
 
 import React, { useState, useEffect } from 'react';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../../firebase'; // Adjusted path for the Examination folder
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -31,20 +33,20 @@ const toothConditions = [
 
 const toothOperations = [
   { value: '',    label: 'None'                          },
-  { value: 'AM',  label: 'Amalgam (AM)'                 },
-  { value: 'AB',  label: 'Abutment (AB)'                },
-  { value: 'SI',  label: 'Silicate Cement (SI)'         },
-  { value: 'GI',  label: 'Gold Inlay (GI)'              },
-  { value: 'LC',  label: 'Light Cure (LC)'              },
-  { value: 'GC',  label: 'Gold Crown (GC)'              },
+  { value: 'AM',  label: 'Amalgam (AM)'                  },
+  { value: 'AB',  label: 'Abutment (AB)'                 },
+  { value: 'SI',  label: 'Silicate Cement (SI)'          },
+  { value: 'GI',  label: 'Gold Inlay (GI)'               },
+  { value: 'LC',  label: 'Light Cure (LC)'               },
+  { value: 'GC',  label: 'Gold Crown (GC)'               },
   { value: 'SSC', label: 'Stainless Steel Crown (SSC)'  },
   { value: 'PJC', label: 'Porcelain Jacket Crown (PJC)' },
-  { value: 'TF',  label: 'Temporary Filling (TF)'       },
-  { value: 'DC',  label: 'Dowel Crown (DC)'             },
+  { value: 'TF',  label: 'Temporary Filling (TF)'        },
+  { value: 'DC',  label: 'Dowel Crown (DC)'              },
   { value: 'SNT', label: 'Supernumerary Tooth (SNT)'    },
   { value: 'PP',  label: 'Periodontal Pocket (PP)'      },
-  { value: 'CA',  label: 'Cervical Abrasion (CA)'       },
-  { value: 'R',   label: 'Restorable (R)'               },
+  { value: 'CA',  label: 'Cervical Abrasion (CA)'        },
+  { value: 'R',   label: 'Restorable (R)'                },
 ];
 
 // ── Shared style tokens ────────────────────────────────────────────────────────
@@ -130,6 +132,8 @@ export const Dental = ({ selectedPatient, showMessage }) => {
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
   const [showSummary, setShowSummary]       = useState(false);
+  const [isSubmitting, setIsSubmitting]     = useState(false); // DB Loading State
+
   const [dentalHistory, setDentalHistory]   = useState(
     Object.fromEntries(dentalProcedures.map(p => [p, 'No']))
   );
@@ -167,7 +171,7 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         [toothModal.toothNum]: { condition: toothCondition, operation: toothOperation },
       }));
       setToothModal({ open: false, toothNum: null });
-      showMessage('Tooth status updated');
+
     }
   };
 
@@ -191,17 +195,58 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     .filter(([, d]) => d?.condition)
     .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
 
-  
-const handleFinalSubmit = () => {
-  setShowSummary(false);
-  
-  showMessage('Dental record submitted successfully!');
-};
+  // ── Database Submit Handler ──────────────────────────────────────────────────
+  const handleFinalSubmit = async () => {
+    if (!selectedPatient?.uid) {
+      alert("Error: No patient selected. Cannot save record.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // 1. Bundle all the data from the different objects and states
+      const payload = {
+        ...dentalFormData,
+        toothData,          // Dental chart map
+        dentalHistory,      // Procedures Yes/No
+        intraoral,          // Intraoral findings
+        createdAt: serverTimestamp(),
+        status: "approved",    // <-- SET TO APPROVED
+        isApproved: true,      // <-- DIRECTLY APPROVED
+        approvedAt: serverTimestamp(), // <-- Added so UI can sort by approval date
+      };
+
+      // 2. Point to the 'dental_records' subcollection inside this specific user
+      const dentalRecordsRef = collection(db, "users", selectedPatient.uid, "dental_records");
+
+      // 3. Save as a new document (This will not overwrite past exams)
+      await addDoc(dentalRecordsRef, payload);
+
+      // 4. Close the modal and show success toast
+      setShowSummary(false);
+      showMessage('Dental record saved and approved successfully!'); // <-- TWEAKED MESSAGE
+
+    } catch (error) {
+      console.error("Error saving dental record: ", error);
+      alert("Failed to save the record to the database. Check console for details.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      <form onSubmit={e => { e.preventDefault(); setShowSummary(true); }}>
+      <form
+        onSubmit={e => { e.preventDefault(); setShowSummary(true); }}
+        className="overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
+          [&::-webkit-scrollbar]:w-[5px]
+          [&::-webkit-scrollbar-thumb]:bg-gradient-to-b
+          [&::-webkit-scrollbar-thumb]:from-[#466460]
+          [&::-webkit-scrollbar-thumb]:to-[#8aacaa]
+          [&::-webkit-scrollbar-thumb]:rounded-full"
+      >
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-[#466460]">
@@ -412,9 +457,14 @@ const handleFinalSubmit = () => {
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-[1.5px] border-[#466460] bg-[#e0eceb] text-[#466460] font-bold text-sm hover:bg-[#d1e7e5] transition-all">
               <i className="fa-solid fa-eye"></i> Review Summary
             </button>
-            <button type="submit"
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition-all shadow-sm">
-              <i className="fa-solid fa-paper-plane"></i> Review & Submit
+            <button type="submit" disabled={isSubmitting}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
+              {isSubmitting ? (
+                <i className="fa-solid fa-spinner fa-spin"></i>
+              ) : (
+                <i className="fa-solid fa-paper-plane"></i>
+              )}
+              {isSubmitting ? 'Saving...' : 'Review & Submit'}
             </button>
           </div>
         </div>
@@ -516,12 +566,21 @@ const handleFinalSubmit = () => {
               </SumSection>
             </div>
             <div className="px-7 py-4 border-t border-slate-200 bg-slate-50 flex items-center gap-3 shrink-0">
-              <button onClick={() => setShowSummary(false)} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition">
+              <button onClick={() => setShowSummary(false)} disabled={isSubmitting} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition disabled:opacity-70">
                 <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
               </button>
               <div className="flex-1" />
-              <button onClick={handleFinalSubmit} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm">
-                <i className="fa-solid fa-circle-check"></i> Submit Dental Record
+              <button
+                onClick={handleFinalSubmit}
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <i className="fa-solid fa-spinner fa-spin"></i>
+                ) : (
+                  <i className="fa-solid fa-circle-check"></i>
+                )}
+                {isSubmitting ? 'Saving...' : 'Submit Dental Record'}
               </button>
             </div>
           </div>

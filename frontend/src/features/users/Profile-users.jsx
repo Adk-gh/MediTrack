@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../firebase';
+import BirthdayPicker from '../../components/Datepicker.jsx';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const DocIcon = () => (
@@ -49,7 +50,6 @@ const Card = ({ children, style }) => (
   </div>
 );
 
-// Helper for Edit Form Inputs
 const FormGroup = ({ label, children }) => (
   <div style={{ marginBottom: 14 }}>
     <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#6b8577', marginBottom: 6, textTransform: 'uppercase' }}>{label}</label>
@@ -59,18 +59,24 @@ const FormGroup = ({ label, children }) => (
 
 const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #ddeee5', fontSize: 13, backgroundColor: '#f9fbfa', color: '#1a2e22', boxSizing: 'border-box', outline: 'none' };
 
+const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
+
+const classificationColors = {
+  Regular:   { bg: '#e8f5ef', text: '#1a5c3a', dot: '#2d7a52' },
+  Irregular: { bg: '#fff7e6', text: '#92400e', dot: '#f59e0b' },
+  Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
   const [loading, setLoading]           = useState(true);
   const [logoutModal, setLogoutModal]   = useState(false);
   const [toast, setToast]               = useState(null);
 
-  // Edit State
-  const [editingSection, setEditingSection] = useState(null); // 'personal', 'academic', 'contact', 'emergency', 'vaccinations'
+  const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData]             = useState({});
   const [isSaving, setIsSaving]             = useState(false);
 
-  // Document upload state
   const [xrayDate, setXrayDate]         = useState('April 22, 2026');
   const [xrayFile, setXrayFile]         = useState('X-ray_Report_2026.pdf');
   const [drugtestDate, setDrugtestDate] = useState('April 22, 2026');
@@ -84,13 +90,13 @@ export default function ProfileUsers({ onLogout }) {
   const xrayInputRef    = useRef(null);
   const drugtestInputRef = useRef(null);
 
-  // All profile data
   const [profile, setProfile] = useState({
     firstName: '', middleInitial: '', lastName: '', suffix: '',
     birthday: '', age: '', sex: '', bloodType: '',
     homeAddress: '', religion: '', nationality: '', civilStatus: '',
     universityId: '', role: '',
     studentId: '', department: '', program: '', yearLevel: '', section: '',
+    studentClassification: '', // ← NEW
     classification: '', jobTitle: '',
     email: '', phoneNumber: '',
     emergencyContact: { name: '', relationship: '', phone: '', address: '' },
@@ -111,29 +117,30 @@ export default function ProfileUsers({ onLogout }) {
           if (snap.exists()) {
             const d = snap.data();
             setProfile({
-              firstName:      d.firstName      || '',
-              middleInitial:  d.middleInitial  || '',
-              lastName:       d.lastName       || '',
-              suffix:         d.suffix         || '',
-              birthday:       d.birthday       || '',
-              age:            d.age            || '',
-              sex:            d.sex            || '',
-              bloodType:      d.bloodType      || '',
-              homeAddress:    d.homeAddress    || '',
-              religion:       d.religion       || '',
-              nationality:    d.nationality    || '',
-              civilStatus:    d.civilStatus    || '',
-              universityId:   d.universityId   || user.uid.slice(0, 8).toUpperCase(),
-              role:           d.role           || '',
-              studentId:      d.studentId      || '',
-              department:     d.department     || '',
-              program:        d.program        || '',
-              yearLevel:      d.yearLevel      || '',
-              section:        d.section        || '',
-              classification: d.classification || '',
-              jobTitle:       d.jobTitle       || '',
-              email:          d.email          || user.email || '',
-              phoneNumber:    d.phoneNumber    || '',
+              firstName:              d.firstName              || '',
+              middleInitial:          d.middleInitial          || '',
+              lastName:               d.lastName               || '',
+              suffix:                 d.suffix                 || '',
+              birthday:               d.birthday               || '',
+              age:                    d.age                    || '',
+              sex:                    d.sex                    || '',
+              bloodType:              d.bloodType              || '',
+              homeAddress:            d.homeAddress            || '',
+              religion:               d.religion               || '',
+              nationality:            d.nationality            || '',
+              civilStatus:            d.civilStatus            || '',
+              universityId:           d.universityId           || user.uid.slice(0, 8).toUpperCase(),
+              role:                   d.role                   || '',
+              studentId:              d.studentId              || '',
+              department:             d.department             || '',
+              program:                d.program                || '',
+              yearLevel:              d.yearLevel              || '',
+              section:                d.section                || '',
+              studentClassification:  d.studentClassification  || 'Regular', // ← NEW
+              classification:         d.classification         || '',
+              jobTitle:               d.jobTitle               || '',
+              email:                  d.email                  || user.email || '',
+              phoneNumber:            d.phoneNumber            || '',
               emergencyContact: {
                 name:         d.emergencyContact?.name         || '',
                 relationship: d.emergencyContact?.relationship || '',
@@ -169,7 +176,7 @@ export default function ProfileUsers({ onLogout }) {
 
   // ── Editing Handlers ─────────────────────────────────────────────────────
   const openEdit = (section) => {
-    setEditData(JSON.parse(JSON.stringify(profile))); // Deep copy to avoid mutating state directly
+    setEditData(JSON.parse(JSON.stringify(profile)));
     setEditingSection(section);
   };
 
@@ -266,6 +273,9 @@ export default function ProfileUsers({ onLogout }) {
     );
   }
 
+  // ── Classification badge colors ──────────────────────────────────────────
+  const clsColors = classificationColors[profile.studentClassification] || classificationColors.Regular;
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none' }}>
 
@@ -280,13 +290,30 @@ export default function ProfileUsers({ onLogout }) {
               {isStudent ? (profile.program || profile.department || 'Student') : (profile.jobTitle || profile.classification || 'Personnel')}
             </div>
           </div>
+
+          {/* ── Right-side badges ── */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            {/* ID / classification badge */}
             <div style={{ background: '#e8f5ee', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#1a5c3a' }}>
               {isStudent ? `ID: ${profile.universityId}` : profile.classification}
             </div>
+             {/* ── Student Classification badge ── */}
+            {isStudent && profile.studentClassification && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: clsColors.bg, padding: '3px 10px',
+                borderRadius: 40, fontSize: 10, fontWeight: 700,
+                color: clsColors.text,
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: clsColors.dot, display: 'inline-block' }} />
+                {profile.studentClassification}
+              </div>
+            )}
+            {/* Role badge */}
             <div style={{ background: '#f4f7f5', padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 600, color: '#6b8577', textTransform: 'capitalize' }}>
               {profile.role || 'student'}
             </div>
+           
           </div>
         </div>
       </Card>
@@ -309,11 +336,12 @@ export default function ProfileUsers({ onLogout }) {
         <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} />
         {isStudent ? (
           <>
-            <InfoRow label="Student No."  value={profile.studentId} />
-            <InfoRow label="Department"   value={profile.department} />
-            <InfoRow label="Program"      value={profile.program} />
-            <InfoRow label="Year Level"   value={profile.yearLevel} />
-            <InfoRow label="Section"      value={profile.section} last />
+            <InfoRow label="Student No."       value={profile.universityId || profile.studentId} />
+            <InfoRow label="Department"         value={profile.department} />
+            <InfoRow label="Program"            value={profile.program} />
+            <InfoRow label="Year Level"         value={profile.yearLevel} />
+            <InfoRow label="Section"            value={profile.section} />
+            <InfoRow label="Classification"     value={profile.studentClassification} last />
           </>
         ) : (
           <>
@@ -405,7 +433,7 @@ export default function ProfileUsers({ onLogout }) {
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 450, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            
+
             {/* Modal Header */}
             <div style={{ background: '#1a5c3a', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 15, fontWeight: 700, textTransform: 'capitalize' }}>Edit {editingSection} Info</span>
@@ -414,20 +442,38 @@ export default function ProfileUsers({ onLogout }) {
 
             {/* Modal Body (Scrollable) */}
             <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-              
+
+              {/* ── Personal Section ── */}
               {editingSection === 'personal' && (
                 <>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <FormGroup label="First Name"><input style={inputStyle} value={editData.firstName} onChange={e => handleChange('firstName', e.target.value)} /></FormGroup>
-                    <FormGroup label="M.I."><input style={{...inputStyle, width: 60}} value={editData.middleInitial} onChange={e => handleChange('middleInitial', e.target.value)} maxLength={2} /></FormGroup>
+                    <FormGroup label="First Name">
+                      <input style={inputStyle} value={editData.firstName} onChange={e => handleChange('firstName', e.target.value)} />
+                    </FormGroup>
+                    <FormGroup label="M.I.">
+                      <input style={{...inputStyle, width: 60}} value={editData.middleInitial} onChange={e => handleChange('middleInitial', e.target.value)} maxLength={2} />
+                    </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <FormGroup label="Last Name"><input style={{...inputStyle, flex: 1}} value={editData.lastName} onChange={e => handleChange('lastName', e.target.value)} /></FormGroup>
-                    <FormGroup label="Suffix"><input style={{...inputStyle, width: 70}} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} /></FormGroup>
+                    <FormGroup label="Last Name">
+                      <input style={{...inputStyle, flex: 1}} value={editData.lastName} onChange={e => handleChange('lastName', e.target.value)} />
+                    </FormGroup>
+                    <FormGroup label="Suffix">
+                      <input style={{...inputStyle, width: 70}} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} />
+                    </FormGroup>
                   </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <FormGroup label="Birthday"><input type="date" style={inputStyle} value={editData.birthday} onChange={e => handleChange('birthday', e.target.value)} /></FormGroup>
-                    <FormGroup label="Age"><input type="number" style={{...inputStyle, width: 70}} value={editData.age} onChange={e => handleChange('age', e.target.value)} /></FormGroup>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <FormGroup label="Birthday">
+                        <BirthdayPicker
+                          value={editData.birthday || ''}
+                          onChange={(val) => handleChange('birthday', val)}
+                        />
+                      </FormGroup>
+                    </div>
+                    <FormGroup label="Age">
+                      <input type="number" style={{...inputStyle, width: 70}} value={editData.age} onChange={e => handleChange('age', e.target.value)} />
+                    </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <FormGroup label="Sex">
@@ -446,24 +492,71 @@ export default function ProfileUsers({ onLogout }) {
                       <option value="">Select</option><option value="Single">Single</option><option value="Married">Married</option><option value="Widowed">Widowed</option>
                     </select>
                   </FormGroup>
-                  <FormGroup label="Religion"><input style={inputStyle} value={editData.religion} onChange={e => handleChange('religion', e.target.value)} /></FormGroup>
-                  <FormGroup label="Nationality"><input style={inputStyle} value={editData.nationality} onChange={e => handleChange('nationality', e.target.value)} /></FormGroup>
-                  <FormGroup label="Home Address"><textarea style={{...inputStyle, resize: 'vertical', minHeight: 80}} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} /></FormGroup>
+                  <FormGroup label="Religion">
+                    <input style={inputStyle} value={editData.religion} onChange={e => handleChange('religion', e.target.value)} />
+                  </FormGroup>
+                  <FormGroup label="Nationality">
+                    <input style={inputStyle} value={editData.nationality} onChange={e => handleChange('nationality', e.target.value)} />
+                  </FormGroup>
+                  <FormGroup label="Home Address">
+                    <textarea style={{...inputStyle, resize: 'vertical', minHeight: 80}} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} />
+                  </FormGroup>
                 </>
               )}
 
+              {/* ── Academic Section (Student) ── */}
               {editingSection === 'academic' && isStudent && (
                 <>
-                  <FormGroup label="Student No."><input style={inputStyle} value={editData.studentId} onChange={e => handleChange('studentId', e.target.value)} /></FormGroup>
-                  <FormGroup label="Department"><input style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)} /></FormGroup>
-                  <FormGroup label="Program"><input style={inputStyle} value={editData.program} onChange={e => handleChange('program', e.target.value)} /></FormGroup>
+                  <FormGroup label="Student No.">
+                    <input style={inputStyle} value={editData.universityId || editData.studentId} onChange={e => handleChange('universityId', e.target.value)} />
+                  </FormGroup>
+                  <FormGroup label="Department">
+                    <input style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)} />
+                  </FormGroup>
+                  <FormGroup label="Program">
+                    <input style={inputStyle} value={editData.program} onChange={e => handleChange('program', e.target.value)} />
+                  </FormGroup>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <FormGroup label="Year Level"><input style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)} /></FormGroup>
-                    <FormGroup label="Section"><input style={inputStyle} value={editData.section} onChange={e => handleChange('section', e.target.value)} /></FormGroup>
+                    <FormGroup label="Year Level">
+                      <input style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)} />
+                    </FormGroup>
+                    <FormGroup label="Section">
+                      <input style={inputStyle} value={editData.section} onChange={e => handleChange('section', e.target.value)} />
+                    </FormGroup>
                   </div>
+
+                  {/* ── Student Classification picker ── */}
+                  <FormGroup label="Student Classification">
+                    <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                      {STUDENT_CLASSIFICATIONS.map(cls => {
+                        const isActive = editData.studentClassification === cls;
+                        const colors   = classificationColors[cls];
+                        return (
+                          <button
+                            key={cls}
+                            type="button"
+                            onClick={() => handleChange('studentClassification', cls)}
+                            style={{
+                              flex: 1,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              padding: '9px 6px', borderRadius: 11, fontSize: 12, fontWeight: 600,
+                              border: `1.5px solid ${isActive ? colors.dot : '#ddeee5'}`,
+                              background: isActive ? colors.bg : '#f9fbfa',
+                              color: isActive ? colors.text : '#94a3b8',
+                              cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                          >
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: isActive ? colors.dot : '#cbd5d1', flexShrink: 0 }} />
+                            {cls}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FormGroup>
                 </>
               )}
 
+              {/* ── Academic Section (Staff) ── */}
               {editingSection === 'academic' && !isStudent && (
                 <>
                   <FormGroup label="Classification"><input style={inputStyle} value={editData.classification} onChange={e => handleChange('classification', e.target.value)} /></FormGroup>
@@ -472,13 +565,17 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
+              {/* ── Contact Section ── */}
               {editingSection === 'contact' && (
                 <>
-                  <FormGroup label="Phone Number"><input style={inputStyle} value={editData.phoneNumber} onChange={e => handleChange('phoneNumber', e.target.value)} /></FormGroup>
+                  <FormGroup label="Phone Number">
+                    <input style={inputStyle} value={editData.phoneNumber} onChange={e => handleChange('phoneNumber', e.target.value)} />
+                  </FormGroup>
                   <p style={{ fontSize: 11, color: '#9bb5a5', marginTop: -4 }}>Email address can only be changed in account settings.</p>
                 </>
               )}
 
+              {/* ── Emergency Section ── */}
               {editingSection === 'emergency' && (
                 <>
                   <FormGroup label="Contact Name"><input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', e.target.value)} /></FormGroup>
@@ -488,16 +585,25 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
+              {/* ── Vaccinations Section ── */}
               {editingSection === 'vaccinations' && (
                 <>
                   {DOSE_LABELS.map(({ key, label }) => (
                     <div key={key} style={{ background: '#f4f7f5', padding: 12, borderRadius: 16, marginBottom: 12 }}>
                       <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '0 0 10px 0', textTransform: 'uppercase' }}>{label}</p>
                       <FormGroup label="Vaccine Brand">
-                        <input style={inputStyle} value={editData.vaccinations[key].vaccineName} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)} placeholder="e.g. Pfizer, Moderna" />
+                        <input
+                          style={inputStyle}
+                          value={editData.vaccinations[key].vaccineName}
+                          onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)}
+                          placeholder="e.g. Pfizer, Moderna"
+                        />
                       </FormGroup>
                       <FormGroup label="Date Given">
-                        <input type="date" style={inputStyle} value={editData.vaccinations[key].date} onChange={e => handleVaxChange(key, 'date', e.target.value)} />
+                        <BirthdayPicker
+                          value={editData.vaccinations[key].date || ''}
+                          onChange={(val) => handleVaxChange(key, 'date', val)}
+                        />
                       </FormGroup>
                     </div>
                   ))}

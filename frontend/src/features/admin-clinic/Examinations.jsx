@@ -159,7 +159,7 @@ const handleTabChange = (key) => {
         <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
           {[
             { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
-            { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Record'       },
+            { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Examination'       },
           ].map(({ key, icon, label }) => (
             <button
               key={key}
@@ -181,7 +181,7 @@ const handleTabChange = (key) => {
           </div>
           <div className="text-center">
             <p className="font-bold text-slate-700 text-base">
-              {examTab === 'medical' ? 'Medical Examination' : 'Dental Record'}
+              {examTab === 'medical' ? 'Medical Examination' : 'Dental Examination'} is ready to begin.
             </p>
             <p className="text-slate-400 text-sm mt-1 max-w-xs">
               Select a patient from Records to begin a new examination.
@@ -241,7 +241,7 @@ const handleTabChange = (key) => {
       <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
         {[
           { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
-          { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Record'       },
+          { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Examination'       },
         ].map(({ key, icon, label }) => (
           <button
             key={key}

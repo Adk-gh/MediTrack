@@ -134,15 +134,28 @@ export default function MediTrack() {
   const userName    = currentUser?.name         || "Student";
   const userId      = currentUser?.universityId || "—";
 
+  
   // ── Onboarding guard ───────────────────────────────────────────────────────
   useEffect(() => {
     const checkProfileSetup = async () => {
       if (!currentUser) return;
+      
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
       try {
-        const token = localStorage.getItem("token");
         const response = await fetch("http://localhost:5000/api/users/profile", {
           headers: { Authorization: `Bearer ${token}` },
         });
+
+        // 🚨 NEW: If the token is expired, clean it up and force a login!
+        if (response.status === 401) {
+          console.warn("Session expired. Redirecting to login...");
+          authService.logout();   // Clear the dead token
+          navigate("/login");     // Send them to the login screen
+          return;
+        }
+
         const result = await response.json();
         if (result.success && !result.data.isProfileSetup) {
           setShowOnboarding(true);
@@ -152,7 +165,7 @@ export default function MediTrack() {
       }
     };
     checkProfileSetup();
-  }, [currentUser]);
+  }, [userId, navigate]); // <-- added navigate to dependencies
 
   // ── Scroll-to-top on tab change ────────────────────────────────────────────
   useEffect(() => {

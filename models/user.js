@@ -31,6 +31,7 @@ const UserData = (data) => {
     program: data.program || '',
     yearLevel: data.yearLevel || '',
     section: data.section || '',
+    studentClassification: data.studentClassification || 'Regular', // ← NEW: Regular | Irregular | Returning
 
     // ── Work Info (non-students) ───────────────────
     classification: data.classification || '',

@@ -163,6 +163,7 @@ exports.register = async (req, res) => {
             isVerified: true,
             role,                   // ← dynamically resolved from OCR
             isProfileSetup: false,
+            studentClassification: role === 'student' ? 'Regular' : '',
             createdAt: new Date().toISOString()
         };
 

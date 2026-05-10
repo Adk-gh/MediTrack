@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import authService from '../services/auth.service.js';
 import { useLoading } from '../context/LoadingContext.jsx';
+import DatePicker from './Datepicker.jsx';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -88,20 +89,25 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [isMounted, setIsMounted] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [formData, setFormData] = React.useState({});
-  
-  // Assumes useLoading is imported at the top of your Headers.jsx file
+
+  // ── Drag state ──────────────────────────────────────────────────────────────
+  const [dragY, setDragY] = React.useState(0);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const dragStartY = React.useRef(0);
+  const dragStartTime = React.useRef(0);
+  const sheetRef = React.useRef(null);
+
   const { showLoading, hideLoading } = useLoading();
 
-  // Mount immediately so the enter animation can play
   React.useEffect(() => {
     if (isOpen) {
       setIsMounted(true);
-      setFormData(userProfile || {}); // Reset form data when opened
-      setIsEditing(false); // Default to view mode
+      setFormData(userProfile || {});
+      setIsEditing(false);
+      setDragY(0);
     }
   }, [isOpen, userProfile]);
 
-  // Check if we should show as bottom sheet (mobile or forced)
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768 || forceBottomSheet);
@@ -110,12 +116,54 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     return () => window.removeEventListener('resize', check);
   }, [forceBottomSheet]);
 
+  // ── Touch handlers ──────────────────────────────────────────────────────────
+  const handleTouchStart = (e) => {
+    if (!isMobile) return;
+    dragStartY.current = e.touches[0].clientY;
+    dragStartTime.current = Date.now();
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isMobile || !isDragging) return;
+    const delta = e.touches[0].clientY - dragStartY.current;
+    if (delta < 0) {
+      // Dragging upward — apply resistance
+      setDragY(delta / 4);
+    } else {
+      setDragY(delta);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isMobile) return;
+    setIsDragging(false);
+
+    const sheetHeight = sheetRef.current?.offsetHeight || window.innerHeight * 0.92;
+    const elapsed = Date.now() - dragStartTime.current;
+    const velocity = dragY / elapsed; // px/ms
+
+    const DISMISS_THRESHOLD = sheetHeight * 0.3;
+    const VELOCITY_THRESHOLD = 0.5;
+
+    if (dragY > DISMISS_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+      onClose();
+    } else {
+      setDragY(0);
+    }
+  };
+
   if (!isMounted) return null;
 
   const userRole = formData.role?.toLowerCase() || 'user';
   const isStudent = userRole === 'student';
 
-  const nameParts = [formData.firstName, formData.middleInitial ? `${formData.middleInitial}.` : '', formData.lastName, formData.suffix || ''].filter(Boolean);
+  const nameParts = [
+    formData.firstName,
+    formData.middleInitial ? `${formData.middleInitial}.` : '',
+    formData.lastName,
+    formData.suffix || '',
+  ].filter(Boolean);
   const displayName = nameParts.length > 0 ? nameParts.join(' ') : 'User';
 
   const vaccineDoseCount = formData.vaccinations
@@ -129,17 +177,11 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     { key: 'booster2', label: 'Booster 2' },
   ];
 
-  // ─── Input Handlers ─────────────────────────────────────────────────────────
+  // ── Input Handlers ──────────────────────────────────────────────────────────
   const handleChange = (field, value, nestedField = null) => {
     setFormData(prev => {
       if (nestedField) {
-        return {
-          ...prev,
-          [field]: {
-            ...(prev[field] || {}),
-            [nestedField]: value
-          }
-        };
+        return { ...prev, [field]: { ...(prev[field] || {}), [nestedField]: value } };
       }
       return { ...prev, [field]: value };
     });
@@ -150,11 +192,8 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       ...prev,
       vaccinations: {
         ...(prev.vaccinations || {}),
-        [key]: {
-          ...(prev.vaccinations?.[key] || {}),
-          [field]: value
-        }
-      }
+        [key]: { ...(prev.vaccinations?.[key] || {}), [field]: value },
+      },
     }));
   };
 
@@ -166,15 +205,15 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       const result = await response.json();
       if (result.success) {
         setIsEditing(false);
-        if (onProfileUpdate) onProfileUpdate(result.data); // Trigger parent refresh if needed
+        if (onProfileUpdate) onProfileUpdate(result.data);
       } else {
         alert(result.message || 'Failed to update profile');
       }
@@ -186,10 +225,9 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     }
   };
 
-  // ─── UI Components ──────────────────────────────────────────────────────────
+  // ── UI Components ────────────────────────────────────────────────────────────
   const EditableInfoRow = ({ icon, label, field, nestedField, value, type = 'text', options }) => {
     const displayValue = value || '';
-    
     return (
       <div className="flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0 gap-3 min-h-[40px]">
         <div className="flex items-center gap-2.5 text-slate-500 shrink-0 min-w-[110px]">
@@ -228,41 +266,96 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
   const isBottomSheet = isMobile;
 
+  // Drag-aware transform
+  const sheetTransform = isBottomSheet
+    ? isOpen
+      ? `translateY(${dragY}px)`
+      : 'translateY(100%)'
+    : isOpen
+      ? 'translateX(0)'
+      : 'translateX(100%)';
+
+  // Backdrop dims as sheet is dragged down
+  const backdropOpacity = isBottomSheet && isDragging
+    ? Math.max(0, 0.4 - (dragY / (sheetRef.current?.offsetHeight || 700)) * 0.4)
+    : 0.4;
+
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-[2000]" onClick={onClose} />
-
+      {/* Backdrop */}
       <div
-        className="fixed z-[2001] bg-white overflow-y-auto scrollbar-none shadow-[-4px_0_30px_rgba(0,0,0,0.15)] transition-transform duration-300 ease-in-out flex flex-col"
+        className="fixed inset-0 z-[2000]"
+        style={{
+          background: `rgba(0,0,0,${backdropOpacity})`,
+          transition: isDragging ? 'none' : 'background 0.3s ease',
+        }}
+        onClick={onClose}
+      />
+
+      {/* Sheet / Drawer */}
+      <div
+        ref={sheetRef}
+        className="fixed z-[2001] bg-white overflow-y-auto scrollbar-none shadow-[-4px_0_30px_rgba(0,0,0,0.15)] flex flex-col"
         onTransitionEnd={() => { if (!isOpen) setIsMounted(false); }}
         style={
           isBottomSheet
             ? {
-                bottom: 0, left: 0, right: 0, height: '92vh', borderRadius: '24px 24px 0 0',
-                transform: isOpen ? 'translateY(0)' : 'translateY(100%)',
+                bottom: 0, left: 0, right: 0,
+                height: '92vh',
+                borderRadius: '24px 24px 0 0',
+                transform: sheetTransform,
+                transition: isDragging ? 'none' : 'transform 0.3s ease-in-out',
+                willChange: 'transform',
+                touchAction: 'none',
               }
             : {
-                top: 0, right: 0, bottom: 0, width: '460px', height: '100%', borderRadius: 0,
-                transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+                top: 0, right: 0, bottom: 0,
+                width: '460px', height: '100%',
+                borderRadius: 0,
+                transform: sheetTransform,
+                transition: 'transform 0.3s ease-in-out',
               }
         }
       >
-        <div className="md:hidden flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 bg-slate-200 rounded-full" />
-        </div>
+        {/* Drag handle — mobile only */}
+        {isBottomSheet && (
+          <div
+            className="flex justify-center pt-3 pb-1 cursor-grab active:cursor-grabbing select-none"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <div
+              className="w-10 h-1 rounded-full transition-colors duration-150"
+              style={{ background: isDragging ? '#466460' : '#cbd5e1' }}
+            />
+          </div>
+        )}
 
-        {/* Header */}
-        <div className="bg-gradient-to-br from-[#466460] to-[#38524d] px-5 sm:px-6 py-6 sm:py-8 text-white relative flex-shrink-0">
-          <button onClick={onClose} className="sm:hidden absolute top-3 left-4 bg-white/10 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm flex items-center justify-center hover:bg-white/20 transition-all">
+        {/* Header — also draggable on mobile */}
+        <div
+          className="bg-gradient-to-br from-[#466460] to-[#38524d] px-5 sm:px-6 py-6 sm:py-8 text-white relative flex-shrink-0"
+          onTouchStart={isBottomSheet ? handleTouchStart : undefined}
+          onTouchMove={isBottomSheet ? handleTouchMove : undefined}
+          onTouchEnd={isBottomSheet ? handleTouchEnd : undefined}
+          style={{ cursor: isBottomSheet ? 'grab' : 'default', userSelect: 'none' }}
+        >
+          <button
+            onClick={onClose}
+            className="sm:hidden absolute top-3 left-4 bg-white/10 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm flex items-center justify-center hover:bg-white/20 transition-all"
+          >
             <i className="fa-solid fa-chevron-down"></i>
           </button>
 
-          <button onClick={onClose} className="hidden sm:flex absolute top-4 right-4 bg-white/20 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm items-center justify-center hover:bg-white/35 transition-all">
+          <button
+            onClick={onClose}
+            className="hidden sm:flex absolute top-4 right-4 bg-white/20 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm items-center justify-center hover:bg-white/35 transition-all"
+          >
             <i className="fa-solid fa-xmark"></i>
           </button>
 
-          <button 
-            onClick={() => setIsEditing(!isEditing)} 
+          <button
+            onClick={() => setIsEditing(!isEditing)}
             className={`absolute top-4 ${isMobile ? 'right-4' : 'right-14'} bg-white/10 border-none text-white px-3 py-1.5 rounded-full cursor-pointer text-xs font-semibold flex items-center gap-1.5 hover:bg-white/25 transition-all`}
           >
             <i className={`fa-solid ${isEditing ? 'fa-eye' : 'fa-pen'}`}></i>
@@ -271,22 +364,42 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
           <div className="flex items-center gap-4 mt-4 sm:mt-0">
             <div className="w-[60px] h-[60px] sm:w-[70px] sm:h-[70px] rounded-full border-2 border-white/40 overflow-hidden bg-white/10 flex-shrink-0">
-              <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=ffffff&color=466460&size=70`} alt="User" className="w-full h-full object-cover" />
+              <img
+                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=ffffff&color=466460&size=70`}
+                alt="User"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div className="min-w-0 flex-1">
               {isEditing ? (
                 <div className="flex gap-2 mb-1">
-                  <input type="text" value={formData.firstName || ''} onChange={(e) => handleChange('firstName', e.target.value)} placeholder="First" className="w-full bg-white/20 text-white placeholder-white/50 border border-white/30 rounded px-2 py-1 text-sm focus:outline-none focus:border-white" />
-                  <input type="text" value={formData.lastName || ''} onChange={(e) => handleChange('lastName', e.target.value)} placeholder="Last" className="w-full bg-white/20 text-white placeholder-white/50 border border-white/30 rounded px-2 py-1 text-sm focus:outline-none focus:border-white" />
+                  <input
+                    type="text"
+                    value={formData.firstName || ''}
+                    onChange={(e) => handleChange('firstName', e.target.value)}
+                    placeholder="First"
+                    className="w-full bg-white/20 text-white placeholder-white/50 border border-white/30 rounded px-2 py-1 text-sm focus:outline-none focus:border-white"
+                  />
+                  <input
+                    type="text"
+                    value={formData.lastName || ''}
+                    onChange={(e) => handleChange('lastName', e.target.value)}
+                    placeholder="Last"
+                    className="w-full bg-white/20 text-white placeholder-white/50 border border-white/30 rounded px-2 py-1 text-sm focus:outline-none focus:border-white"
+                  />
                 </div>
               ) : (
                 <h2 className="text-lg sm:text-xl font-extrabold mb-0.5 break-words leading-tight">{displayName}</h2>
               )}
               <p className="text-xs opacity-75 truncate">{formData.email || 'No email provided'}</p>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide uppercase">{formData.role || 'USER'}</span>
+                <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide uppercase">
+                  {formData.role || 'USER'}
+                </span>
                 {formData.universityId && (
-                  <span className="inline-block bg-white/10 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide font-mono">{formData.universityId}</span>
+                  <span className="inline-block bg-white/10 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide font-mono">
+                    {formData.universityId}
+                  </span>
                 )}
               </div>
             </div>
@@ -295,59 +408,81 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
+
+          {/* ── Personal Details ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <SectionHeader label="Personal Details" />
-            <EditableInfoRow icon="fa-cake-candles" label="Birthday" field="birthday" type="date" value={formData.birthday} />
-            <EditableInfoRow icon="fa-hashtag" label="Age" field="age" type="number" value={formData.age} />
-            <EditableInfoRow icon="fa-venus-mars" label="Sex" field="sex" value={formData.sex} options={['Male', 'Female']} />
-            <EditableInfoRow icon="fa-droplet" label="Blood Type" field="bloodType" value={formData.bloodType} options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']} />
-            <EditableInfoRow icon="fa-ring" label="Civil Status" field="civilStatus" value={formData.civilStatus} options={['Single', 'Married', 'Widowed', 'Separated']} />
-            <EditableInfoRow icon="fa-church" label="Religion" field="religion" value={formData.religion} />
-            <EditableInfoRow icon="fa-flag" label="Nationality" field="nationality" value={formData.nationality} />
-            <EditableInfoRow icon="fa-house" label="Home Address" field="homeAddress" value={formData.homeAddress} />
+
+            {isEditing ? (
+              <div className="flex items-center justify-between py-2 text-xs border-b border-slate-50 gap-3 min-h-[40px]">
+                <div className="flex items-center gap-2.5 text-slate-500 shrink-0 min-w-[110px]">
+                  <i className="fa-solid fa-cake-candles text-[#466460] w-4 text-center opacity-70 flex-shrink-0"></i>
+                  <span className="whitespace-nowrap">Birthday</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <DatePicker
+                    value={formData.birthday || ''}
+                    onChange={(val) => handleChange('birthday', val)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <EditableInfoRow icon="fa-cake-candles" label="Birthday" field="birthday" value={formData.birthday} />
+            )}
+
+            <EditableInfoRow icon="fa-hashtag"    label="Age"          field="age"         type="number" value={formData.age} />
+            <EditableInfoRow icon="fa-venus-mars" label="Sex"          field="sex"         value={formData.sex}         options={['Male', 'Female']} />
+            <EditableInfoRow icon="fa-droplet"    label="Blood Type"   field="bloodType"   value={formData.bloodType}   options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']} />
+            <EditableInfoRow icon="fa-ring"       label="Civil Status" field="civilStatus" value={formData.civilStatus} options={['Single', 'Married', 'Widowed', 'Separated']} />
+            <EditableInfoRow icon="fa-church"     label="Religion"     field="religion"    value={formData.religion} />
+            <EditableInfoRow icon="fa-flag"       label="Nationality"  field="nationality" value={formData.nationality} />
+            <EditableInfoRow icon="fa-house"      label="Home Address" field="homeAddress" value={formData.homeAddress} />
           </div>
 
+          {/* ── Academic / Professional ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <SectionHeader label={isStudent ? 'Academic Information' : 'Professional Information'} />
-            
-            {/* University ID is now explicitly available for ALL roles */}
-            <EditableInfoRow 
-              icon="fa-id-card" 
-              label={isStudent ? "Student No." : "Employee ID"} 
-              field="universityId" 
-              value={formData.universityId} 
+
+            <EditableInfoRow
+              icon="fa-id-card"
+              label={isStudent ? 'Student No.' : 'Employee ID'}
+              field="universityId"
+              value={formData.universityId}
             />
 
             {isStudent ? (
               <>
-                <EditableInfoRow icon="fa-building" label="Department" field="department" value={formData.department} />
-                <EditableInfoRow icon="fa-graduation-cap" label="Program" field="program" value={formData.program} />
-                <EditableInfoRow icon="fa-layer-group" label="Year Level" field="yearLevel" value={formData.yearLevel} />
-                <EditableInfoRow icon="fa-users" label="Section" field="section" value={formData.section} />
+                <EditableInfoRow icon="fa-building"      label="Department" field="department" value={formData.department} />
+                <EditableInfoRow icon="fa-graduation-cap" label="Program"   field="program"    value={formData.program} />
+                <EditableInfoRow icon="fa-layer-group"   label="Year Level" field="yearLevel"  value={formData.yearLevel} />
+                <EditableInfoRow icon="fa-users"         label="Section"    field="section"    value={formData.section} />
               </>
             ) : (
               <>
-                <EditableInfoRow icon="fa-user-tie" label="Classification" field="classification" value={formData.classification} />
-                <EditableInfoRow icon="fa-building" label="Department" field="department" value={formData.department} />
-                <EditableInfoRow icon="fa-briefcase" label="Job Title" field="jobTitle" value={formData.jobTitle} />
+                <EditableInfoRow icon="fa-user-tie"  label="Classification" field="classification" value={formData.classification} />
+                <EditableInfoRow icon="fa-building"  label="Department"     field="department"     value={formData.department} />
+                <EditableInfoRow icon="fa-briefcase" label="Job Title"      field="jobTitle"       value={formData.jobTitle} />
               </>
             )}
           </div>
 
+          {/* ── Contact ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <SectionHeader label="Contact Information" />
-            <EditableInfoRow icon="fa-phone" label="Phone Number" field="phoneNumber" type="tel" value={formData.phoneNumber} />
-            <EditableInfoRow icon="fa-envelope" label="Email Address" field="email" type="email" value={formData.email} />
+            <EditableInfoRow icon="fa-phone"    label="Phone Number"  field="phoneNumber" type="tel"   value={formData.phoneNumber} />
+            <EditableInfoRow icon="fa-envelope" label="Email Address" field="email"       type="email" value={formData.email} />
           </div>
 
+          {/* ── Emergency Contact ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-red-50/30">
             <SectionHeader label="Emergency Contact" color="text-red-400" />
-            <EditableInfoRow icon="fa-address-book" label="Full Name" field="emergencyContact" nestedField="name" value={formData.emergencyContact?.name} />
-            <EditableInfoRow icon="fa-heart" label="Relationship" field="emergencyContact" nestedField="relationship" value={formData.emergencyContact?.relationship} />
-            <EditableInfoRow icon="fa-phone-volume" label="Phone Number" field="emergencyContact" nestedField="phone" type="tel" value={formData.emergencyContact?.phone} />
-            <EditableInfoRow icon="fa-location-dot" label="Address" field="emergencyContact" nestedField="address" value={formData.emergencyContact?.address} />
+            <EditableInfoRow icon="fa-address-book"  label="Full Name"    field="emergencyContact" nestedField="name"         value={formData.emergencyContact?.name} />
+            <EditableInfoRow icon="fa-heart"         label="Relationship" field="emergencyContact" nestedField="relationship" value={formData.emergencyContact?.relationship} />
+            <EditableInfoRow icon="fa-phone-volume"  label="Phone Number" field="emergencyContact" nestedField="phone"        type="tel" value={formData.emergencyContact?.phone} />
+            <EditableInfoRow icon="fa-location-dot" label="Address"      field="emergencyContact" nestedField="address"      value={formData.emergencyContact?.address} />
           </div>
 
+          {/* ── COVID-19 Vaccination ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-blue-50/20">
             <div className="flex items-center justify-between mb-3">
               <SectionHeader label="COVID-19 Vaccination" color="text-blue-400" />
@@ -357,13 +492,12 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </span>
               )}
             </div>
-            
+
             <div className="flex flex-col gap-2">
               {VACCINE_DOSE_KEYS.map(({ key, label }) => {
                 const dose = formData.vaccinations?.[key] || {};
-                
                 if (!isEditing && !dose.vaccineName) return null;
-                
+
                 return (
                   <div key={key} className="flex flex-col bg-white rounded-lg px-3 py-2 border border-slate-100 gap-2">
                     <div className="flex items-center gap-2">
@@ -382,16 +516,14 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                         <span className="text-[11px] text-slate-700 font-medium truncate flex-1">{dose.vaccineName}</span>
                       )}
                     </div>
-                    
+
                     {isEditing ? (
-                       <div className="flex items-center gap-2 pl-[72px]">
-                         <input
-                           type="date"
-                           value={dose.date || ''}
-                           onChange={(e) => handleVaccineChange(key, 'date', e.target.value)}
-                           className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#466460] text-slate-800"
-                         />
-                       </div>
+                      <div className="pl-[72px]">
+                        <DatePicker
+                          value={dose.date || ''}
+                          onChange={(val) => handleVaccineChange(key, 'date', val)}
+                        />
+                      </div>
                     ) : (
                       dose.date && (
                         <div className="text-[10px] text-slate-400 pl-[72px]">{dose.date}</div>
@@ -400,6 +532,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                   </div>
                 );
               })}
+
               {!isEditing && vaccineDoseCount === 0 && (
                 <p className="text-[11px] text-slate-400 italic">No vaccination records on file.</p>
               )}
@@ -412,10 +545,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
           {isEditing ? (
             <div className="flex gap-3 animate-fadeIn">
               <button
-                onClick={() => {
-                  setFormData(userProfile || {});
-                  setIsEditing(false);
-                }}
+                onClick={() => { setFormData(userProfile || {}); setIsEditing(false); }}
                 className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors active:scale-[0.98]"
               >
                 Cancel
@@ -454,7 +584,6 @@ function LogoutConfirmModal({ isOpen, onConfirm, onCancel }) {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[3000] px-0 sm:px-4">
-      {/* Phone: bottom sheet style; Tablet+: centered card */}
       <div className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-3xl p-6 sm:p-6 shadow-2xl animate-slideUp">
         <div className="text-center mb-6">
           <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -545,14 +674,8 @@ export const DesktopHeader = ({ onOpenQR }) => {
         bg-gradient-to-br from-[#466460] to-[#38524d]
         flex items-center justify-between
         shadow-lg z-20 border-b border-white/10
-
-        /* Phone: compact */
         px-3 py-2
-
-        /* Tablet */
         sm:px-5 sm:py-0
-
-        /* Desktop */
         lg:px-6
       ">
         <img
@@ -564,13 +687,11 @@ export const DesktopHeader = ({ onOpenQR }) => {
 
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-3 sm:border-l sm:border-white/20 sm:pl-4 lg:pl-6">
-            {/* Name + role — hidden on small phones, visible tablet+ */}
             <div className="hidden sm:block text-right">
               <p className="text-xs font-bold text-white leading-tight">{displayName}</p>
               <p className="text-[9px] text-white/60 uppercase">{displayRole}</p>
             </div>
 
-            {/* Avatar */}
             <button
               onClick={() => setShowProfileDrawer(true)}
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-white/30 overflow-hidden bg-white/10 hover:border-white/60 transition-colors cursor-pointer flex-shrink-0 active:scale-95"
@@ -582,8 +703,6 @@ export const DesktopHeader = ({ onOpenQR }) => {
                 className="w-full h-full object-cover"
               />
             </button>
-
-            
           </div>
         </div>
       </header>
@@ -622,7 +741,7 @@ export const DesktopNav = () => {
       px-3 sm:px-6 lg:px-8
       py-3 sm:py-4
       z-10
-      overflow-x-auto scrollbar-none
+      overflow-y-auto scrollbar-none
     ">
       <NavLink to="/dashboard"     className={navLinkClass}>Dashboard</NavLink>
       <NavLink to="/records"       className={navLinkClass}>Records</NavLink>
@@ -637,9 +756,7 @@ export const DesktopNav = () => {
 };
 
 // ─── Mobile Header ────────────────────────────────────────────────────────────
-// Meditrack-style: green header with logo and avatar (profile drawer on tap)
 export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simple = false, onProfileClick }) => {
-  // Simple version: just logo centered (for very minimal mobile)
   if (simple) {
     return (
       <header className="
@@ -647,12 +764,8 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
         bg-white
         flex items-center justify-center
         shadow-sm border-b border-slate-100
-
-        /* Safe-area + status bar spacing */
         px-4 pt-[env(safe-area-inset-top,12px)] pb-3
         min-h-[64px]
-
-        /* Tablet adjustments */
         sm:px-6 sm:min-h-[70px]
       ">
         <img
@@ -665,19 +778,14 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
     );
   }
 
-  // Full version: green gradient header with logo, user name and avatar (opens profile drawer)
   return (
     <header className="
       absolute top-0 left-0 right-0 z-40
       bg-gradient-to-br from-[#466460] to-[#38524d]
       flex items-center justify-between
       shadow-lg border-b border-white/10
-
-      /* Safe-area + status bar spacing */
       px-4 pt-[env(safe-area-inset-top,12px)] pb-3
       min-h-[64px]
-
-      /* Tablet adjustments */
       sm:px-6 sm:min-h-[70px]
     ">
       <img
@@ -688,7 +796,6 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
       />
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* User name - visible on tablet+, hidden on small phones */}
         <div className="text-right hidden sm:block">
           <p className="text-xs font-bold text-white leading-tight">{userName}</p>
           <p className="text-[9px] text-white/60 uppercase truncate max-w-[140px]">{userId}</p>
@@ -705,28 +812,24 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
             className="w-full h-full object-cover"
           />
         </button>
-
-        
       </div>
     </header>
   );
 };
 
-
 // ─── Mobile Bottom Navigation ─────────────────────────────────────────────────
-// Meditrack-style: SVG icons with clean design
 export const MobileNav = ({
   active = 'dashboard',
   onSwitch,
   items = [
-    { id: 'dashboard', label: 'Home', icon: HomeIcon },
-    { id: 'records', label: 'Records', icon: RecordsIcon },
-    { id: 'appointments', label: 'Schedule', icon: CalendarIcon },
-    { id: 'examinations', label: 'Exam', icon: ExamIcon },
-    { id: 'approvals', label: 'Approval', icon: ApprovalsIcon },
-    { id: 'consultations', label: 'Consult', icon: ConsultIcon },
+    { id: 'dashboard',     label: 'Home',     icon: HomeIcon         },
+    { id: 'records',       label: 'Records',  icon: RecordsIcon      },
+    { id: 'appointments',  label: 'Schedule', icon: CalendarIcon     },
+    { id: 'examinations',  label: 'Exam',     icon: ExamIcon         },
+    { id: 'approvals',     label: 'Approval', icon: ApprovalsIcon    },
+    { id: 'consultations', label: 'Consult',  icon: ConsultIcon      },
     { id: 'announcements', label: 'Announce', icon: AnnouncementIcon },
-    { id: 'users', label: 'Users', icon: UsersIcon },
+    { id: 'users',         label: 'Users',    icon: UsersIcon        },
   ],
 }) => {
   return (
@@ -736,13 +839,9 @@ export const MobileNav = ({
       flex justify-between items-center
       shadow-[0_-4px_10px_rgba(0,0,0,0.05)]
       z-40
-
-      /* Phone - scrollable on small screens */
       h-[70px] px-1
       pb-[env(safe-area-inset-bottom,8px)]
-      overflow-x-auto
-
-      /* Tablet */
+      overflow-y-auto scrollbar-none
       sm:h-[76px] sm:px-4
     ">
       {items.map((item) => {
@@ -754,18 +853,16 @@ export const MobileNav = ({
             key={item.id}
             onClick={() => typeof onSwitch === 'function' && onSwitch(item.id)}
             className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-2xl transition-all flex-shrink-0 ${
-              isActive ? "text-[#557a5b]" : "text-slate-400"
+              isActive ? 'text-[#557a5b]' : 'text-slate-400'
             }`}
             aria-label={item.label}
           >
-            <div className={`transition-transform flex items-center justify-center w-6 h-6 ${isActive ? "scale-110" : ""}`}>
+            <div className={`transition-transform flex items-center justify-center w-6 h-6 ${isActive ? 'scale-110' : ''}`}>
               <IconComponent />
             </div>
-
-            <span className={`text-[7px] font-black uppercase tracking-wide whitespace-nowrap ${isActive ? "text-[#557a5b]" : "text-slate-400"}`}>
+            <span className={`text-[7px] font-black uppercase tracking-wide whitespace-nowrap ${isActive ? 'text-[#557a5b]' : 'text-slate-400'}`}>
               {item.label}
             </span>
-
             {isActive && (
               <span className="w-1 h-1 bg-[#557a5b] rounded-full" />
             )}
@@ -805,13 +902,6 @@ export const MobileLayout = ({
         .animate-slideUp { animation: slideUp 0.32s cubic-bezier(.34,1.56,.64,1) both; }
       `}</style>
 
-      {/*
-        Layout strategy:
-        - Phone  (< 768px):  full-screen, no frame
-        - Tablet (768–1023px): centered phone frame (wider: 420px)
-        - Desktop (1024px+):  centered phone frame (375px) on dark bg
-      */}
-
       {/* Phone: full screen */}
       <div className="md:hidden relative flex flex-col h-screen bg-slate-50 overflow-hidden">
         <MobileHeader
@@ -827,16 +917,11 @@ export const MobileLayout = ({
 
       {/* Tablet & Desktop: centered phone frame */}
       <div className="hidden md:flex min-h-screen items-center justify-center bg-slate-800">
-        {/* Tablet: slightly wider frame */}
         <div
           className="
             relative overflow-hidden bg-slate-50
             border-[10px] lg:border-[12px] border-slate-700
-
-            /* Tablet: 420px wide */
             w-[420px] h-[860px] rounded-[36px]
-
-            /* Desktop: standard 375px */
             lg:w-[375px] lg:h-[812px] lg:rounded-[40px]
           "
           style={{ boxShadow: '0 35px 70px -10px rgba(0,0,0,0.65)' }}

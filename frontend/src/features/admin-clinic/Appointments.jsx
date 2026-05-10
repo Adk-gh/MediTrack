@@ -1,21 +1,21 @@
 // frontend/src/features/admin-clinic/Appointments.jsx
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppointments } from '../../context/AppointmentContext';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ];
+const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
-/**
- * Predefined 1-hour clinic slots, 7 AM – 5 PM.
- */
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
-  const startH = 7 + i;          // 07 … 16
-  const endH   = startH + 1;     // 08 … 17
+  const startH = 7 + i;
+  const endH   = startH + 1;
   const fmt = (h) => {
     const period = h >= 12 ? 'PM' : 'AM';
     const hr     = h % 12 || 12;
@@ -28,17 +28,205 @@ const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const getInitials = (name) => {
-  const clean = name.replace(/^(Dr\.|Prof\.|Ms\.|Mr\.)\s*/i, '');
-  const parts  = clean.split(/[\s,]+/).filter(Boolean);
-  return ((parts[0]||'')[0] + (parts[1]||'')[0]).toUpperCase();
-};
-
 const fmtTime = (t) => {
   const [h, m] = t.split(':').map(Number);
   const period = h >= 12 ? 'PM' : 'AM';
   const hr     = h % 12 || 12;
   return `${hr}:${String(m).padStart(2,'0')} ${period}`;
+};
+
+// ── Drum Roll Picker ──────────────────────────────────────────────────────────
+/**
+ * A single scrollable drum-roll column.
+ * items   : string[]   — visible labels
+ * selIdx  : number     — currently selected index
+ * onSelect: (i)=>void
+ */
+const DrumColumn = ({ items, selIdx, onSelect }) => {
+  const ITEM_H    = 44;   // px per row
+  const VISIBLE   = 3;    // rows shown either side of center
+  const containerRef = useRef(null);
+  const isDragging   = useRef(false);
+  const startY       = useRef(0);
+  const startIdx     = useRef(0);
+
+  // Scroll to selected item whenever selIdx changes
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = selIdx * ITEM_H;
+    }
+  }, [selIdx]);
+
+  // Handle native scroll (mouse wheel / touch momentum)
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current || isDragging.current) return;
+    const raw = containerRef.current.scrollTop / ITEM_H;
+    const idx = Math.round(raw);
+    const clamped = Math.max(0, Math.min(items.length - 1, idx));
+    if (clamped !== selIdx) onSelect(clamped);
+  }, [items.length, selIdx, onSelect]);
+
+  // Touch / mouse drag
+  const onPointerDown = (e) => {
+    isDragging.current = true;
+    startY.current     = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    startIdx.current   = selIdx;
+  };
+  const onPointerMove = (e) => {
+    if (!isDragging.current) return;
+    const cy   = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    const diff = Math.round((startY.current - cy) / ITEM_H);
+    const next = Math.max(0, Math.min(items.length - 1, startIdx.current + diff));
+    if (next !== selIdx) onSelect(next);
+  };
+  const onPointerUp = () => { isDragging.current = false; };
+
+  return (
+    <div className="relative flex-1 select-none" style={{ height: ITEM_H * (VISIBLE * 2 + 1) }}>
+      {/* Selection band */}
+      <div
+        className="absolute left-0 right-0 pointer-events-none z-10 rounded-[10px]"
+        style={{
+          top: ITEM_H * VISIBLE,
+          height: ITEM_H,
+          background: 'rgba(70,100,96,0.08)',
+          borderTop: '1.5px solid rgba(70,100,96,0.25)',
+          borderBottom: '1.5px solid rgba(70,100,96,0.25)',
+        }}
+      />
+      {/* Top / bottom fade */}
+      <div className="absolute inset-0 pointer-events-none z-10" style={{
+        background: 'linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.95) 100%)',
+      }} />
+      {/* Scrollable list */}
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        onMouseDown={onPointerDown}
+        onMouseMove={onPointerMove}
+        onMouseUp={onPointerUp}
+        onMouseLeave={onPointerUp}
+        onTouchStart={onPointerDown}
+        onTouchMove={onPointerMove}
+        onTouchEnd={onPointerUp}
+        className="absolute inset-0 overflow-y-scroll"
+        style={{
+          scrollSnapType: 'y mandatory',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+          paddingTop:    ITEM_H * VISIBLE,
+          paddingBottom: ITEM_H * VISIBLE,
+          cursor: 'grab',
+        }}
+      >
+        <style>{`div::-webkit-scrollbar { display: none; }`}</style>
+        {items.map((label, i) => {
+          const dist = Math.abs(i - selIdx);
+          const opacity = dist === 0 ? 1 : dist === 1 ? 0.45 : 0.2;
+          const scale   = dist === 0 ? 1 : dist === 1 ? 0.88 : 0.78;
+          const weight  = dist === 0 ? '700' : '400';
+          const color   = dist === 0 ? '#1e293b' : '#94a3b8';
+          return (
+            <div
+              key={i}
+              onClick={() => onSelect(i)}
+              style={{
+                height: ITEM_H,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                scrollSnapAlign: 'center',
+                fontSize: dist === 0 ? 20 : 16,
+                fontWeight: weight,
+                color,
+                opacity,
+                transform: `scale(${scale})`,
+                transition: 'all 0.18s ease',
+                cursor: 'pointer',
+                fontFamily: "'DM Sans', sans-serif",
+                userSelect: 'none',
+              }}
+            >
+              {label}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Full drum-roll date picker.
+ * value    : "YYYY-MM-DD" string
+ * onChange : (newValue: string) => void
+ * onCancel : () => void
+ * onSubmit : () => void
+ */
+const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
+  const today  = new Date();
+  const parsed = value ? new Date(value + 'T00:00:00') : today;
+
+  const [day,   setDay]   = useState(parsed.getDate() - 1);        // 0-based index
+  const [month, setMonth] = useState(parsed.getMonth());            // 0-based
+  const [year,  setYear]  = useState(parsed.getFullYear() - 2020);  // offset from 2020
+
+  const BASE_YEAR = 2020;
+  const YEAR_COUNT = 11; // 2020 – 2030
+
+  const daysInMonth = new Date(BASE_YEAR + year, month + 1, 0).getDate();
+  const dayItems    = Array.from({ length: daysInMonth }, (_, i) =>
+    String(i + 1).padStart(2, '0')
+  );
+  const monthItems = MONTH_SHORT;
+  const yearItems  = Array.from({ length: YEAR_COUNT }, (_, i) => String(BASE_YEAR + i));
+
+  // Clamp day index when month/year changes
+  useEffect(() => {
+    const maxDay = new Date(BASE_YEAR + year, month + 1, 0).getDate();
+    if (day >= maxDay) setDay(maxDay - 1);
+  }, [month, year]);
+
+  // Propagate change upward
+  useEffect(() => {
+    const d = String(day + 1).padStart(2, '0');
+    const m = String(month + 1).padStart(2, '0');
+    const y = BASE_YEAR + year;
+    onChange(`${y}-${m}-${d}`);
+  }, [day, month, year]);
+
+  return (
+    <div className="flex flex-col">
+      <div className="text-center text-[13px] font-semibold text-[#1e293b] mb-3 tracking-wide">
+        Select Date
+      </div>
+
+      {/* Columns */}
+      <div className="flex items-center justify-center gap-1 px-2" style={{ height: 44 * 7 }}>
+        <DrumColumn items={dayItems}   selIdx={day}   onSelect={setDay}   />
+        <DrumColumn items={monthItems} selIdx={month} onSelect={setMonth} />
+        <DrumColumn items={yearItems}  selIdx={year}  onSelect={setYear}  />
+      </div>
+
+      {/* Actions */}
+      <div className="flex border-t border-[#eef2f6] mt-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-[14px] text-[14px] font-semibold text-[#475569] bg-transparent border-none cursor-pointer hover:bg-[#f8fafc] transition-colors rounded-bl-[12px]"
+        >
+          Cancel
+        </button>
+        <div className="w-px bg-[#eef2f6]" />
+        <button
+          onClick={onSubmit}
+          className="flex-1 py-[14px] text-[14px] font-semibold text-[#e05a2b] bg-transparent border-none cursor-pointer hover:bg-[#fff5f2] transition-colors rounded-br-[12px]"
+        >
+          Submit
+        </button>
+      </div>
+    </div>
+  );
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -78,14 +266,8 @@ export const Appointments = () => {
   const [selectedDay, setSelectedDay] = useState(null);
 
   // ── Accordion state for Time Slots ──
-  // Array of time strings (e.g., ["08:00", "09:00"]) that the user has manually closed.
-  // Empty array = Everything is Expanded/Open.
-  const [closedSlots, setClosedSlots] = useState([]);
-
-  // Force all accordions to expand when switching days
-  useEffect(() => {
-    setClosedSlots([]);
-  }, [selectedDay]);
+  const [expandedSlots, setExpandedSlots] = useState([]);
+  useEffect(() => { setExpandedSlots([]); }, [selectedDay]);
 
   // ── Mobile view state ──
   const [mobileView, setMobileView] = useState('pending');
@@ -95,9 +277,10 @@ export const Appointments = () => {
   const [searchTerm,    setSearchTerm]    = useState('');
 
   // ── Batch scheduling modal ──
-  const [batchModal, setBatchModal] = useState(false);
-  const [batchDate,  setBatchDate]  = useState('');
-  const [batchSlot,  setBatchSlot]  = useState('08:00');
+  const [batchModal,      setBatchModal]      = useState(false);
+  const [batchDate,       setBatchDate]       = useState('');
+  const [batchSlot,       setBatchSlot]       = useState('08:00');
+  const [showDatePicker,  setShowDatePicker]  = useState(false);   // drum-roll overlay
 
   // ── Detail / snackbar ──
   const [detailModal, setDetailModal] = useState(null);
@@ -150,27 +333,23 @@ export const Appointments = () => {
       return a.time.localeCompare(b.time);
     });
 
-  // Group appointments by time slot for the accordion UI
   const groupedAppts = useMemo(() => {
     const groups = {};
     selectedDayAppts.forEach(a => {
       if (!groups[a.time]) groups[a.time] = [];
       groups[a.time].push(a);
     });
-    return Object.keys(groups).sort().map(time => ({
-      time,
-      appts: groups[time]
-    }));
+    return Object.keys(groups).sort().map(time => ({ time, appts: groups[time] }));
   }, [selectedDayAppts]);
 
   const activeByTime = scheduledAppts
     .filter(a => a.year === calYear && a.month === calMonth && a.day === selectedDay && a.status !== 'done')
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  const selectedItems = pendingRequests.filter(r => selectedIds.has(r.id));
+  const selectedItems  = pendingRequests.filter(r => selectedIds.has(r.id));
   const chosenSlotLabel = HOUR_SLOTS.find(s => s.value === batchSlot)?.label ?? '';
 
-  // ── Toggle single selection ──
+  // ── Selection helpers ──
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -178,32 +357,23 @@ export const Appointments = () => {
       return next;
     });
   };
-
-  const selectAll = () =>
-    setSelectedIds(new Set(filteredPending.map(r => r.id)));
-
-  const clearAll = () => setSelectedIds(new Set());
+  const selectAll = () => setSelectedIds(new Set(filteredPending.map(r => r.id)));
+  const clearAll  = () => setSelectedIds(new Set());
 
   // ── Batch approve ──
   const handleBatchApprove = async () => {
-    if (!batchDate) {
-      showSnackbar('Please select a date', 'error');
-      return;
-    }
-
+    if (!batchDate) { showSnackbar('Please select a date', 'error'); return; }
     const [y, m, d] = batchDate.split('-').map(Number);
-
-    const promises = selectedItems.map((item) =>
-      approveAppointment(item.id, { year: y, month: m, day: d, time: batchSlot })
-    );
-
     try {
-      await Promise.all(promises);
+      await Promise.all(selectedItems.map(item =>
+        approveAppointment(item.id, { year: y, month: m, day: d, time: batchSlot })
+      ));
       showSnackbar(`${selectedIds.size} appointment${selectedIds.size > 1 ? 's' : ''} approved`);
       setBatchModal(false);
       setSelectedIds(new Set());
-      setCalYear(y); setCalMonth(m); setSelectedDay(d);
-      setClosedSlots([]); // Ensure new approvals are fully expanded
+      setSelectedDay(null);
+      setCalYear(y); setCalMonth(m);
+      setTimeout(() => setSelectedDay(d), 0);
     } catch {
       showSnackbar('Failed to approve some appointments', 'error');
     }
@@ -230,7 +400,19 @@ export const Appointments = () => {
     showSnackbar(`${appt.name} marked as done`);
   };
 
-  // ── Shared: Pending list ──────────────────────────────────────────────────
+  const toggleSlot = (time) =>
+    setExpandedSlots(prev =>
+      prev.includes(time) ? prev.filter(t => t !== time) : [...prev, time]
+    );
+
+  // ── Format batchDate for display ──
+  const formattedBatchDate = batchDate
+    ? new Date(batchDate + 'T00:00:00').toLocaleDateString('en-PH', {
+        month: 'long', day: 'numeric', year: 'numeric',
+      })
+    : null;
+
+  // ── Pending List ──────────────────────────────────────────────────────────
   const PendingList = ({ compact = false }) => (
     <div className={`flex flex-col overflow-hidden ${compact ? 'h-full' : 'flex-1'}`}>
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
@@ -343,10 +525,10 @@ export const Appointments = () => {
       {selectedIds.size > 0 && (
         <div className="shrink-0 border-t-2 border-[#e0eceb] bg-[#f8fdfc] px-3 py-3 flex flex-col gap-2.5">
           {!selectedDay && (
-             <div className="text-[10.5px] text-[#854F0B] bg-[#FAEEDA] px-2 py-[6px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[5px]">
-               <i className="fa-solid fa-circle-info"></i>
-               Select a date on the calendar to schedule
-             </div>
+            <div className="text-[10.5px] text-[#854F0B] bg-[#FAEEDA] px-2 py-[6px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[5px]">
+              <i className="fa-solid fa-circle-info"></i>
+              Select a date on the calendar to schedule
+            </div>
           )}
           <div className="flex gap-2">
             <button
@@ -379,9 +561,49 @@ export const Appointments = () => {
     </div>
   );
 
-  // ── Calendar panel ────────────────────────────────────────────────────────
+  // ── Redirect to Examination ──
+  const handleExaminePatient = async (appt) => {
+    showSnackbar('Locating patient record...');
+    try {
+      const usersRef = collection(db, 'users');
+      let q = query(usersRef, where('universityId', '==', appt.idno));
+      let snapshot = await getDocs(q);
+      if (snapshot.empty) {
+        q = query(usersRef, where('studentId', '==', appt.idno));
+        snapshot = await getDocs(q);
+      }
+      if (!snapshot.empty) {
+        const actualUid = snapshot.docs[0].id;
+        setDetailModal(null);
+        showSnackbar('Patient found! Redirecting...');
+        setTimeout(() => navigate(`/examinations?patientId=${actualUid}`), 1000);
+      } else {
+        const nameParts = (appt.name || '').trim().split(' ');
+        const patientProfile = {
+          uid: `temp-${Date.now()}`,
+          name: appt.name,
+          firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
+          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
+          id: appt.idno,
+          universityId: appt.idno,
+          department: appt.dept,
+          prog: appt.prog,
+          section: appt.section,
+        };
+        localStorage.setItem('selectedPatient', JSON.stringify(patientProfile));
+        setDetailModal(null);
+        showSnackbar('Patient not in DB. Using appointment data...');
+        setTimeout(() => navigate(`/examinations?patientId=${patientProfile.uid}`), 1000);
+      }
+    } catch (error) {
+      console.error("Error looking up patient:", error);
+      showSnackbar('Database error occurred.', 'error');
+    }
+  };
+
+  // ── Calendar Panel ────────────────────────────────────────────────────────
   const CalendarPanel = () => (
-    <div className="flex flex-col h-full bg-[#fafbfc]">
+    <div className="flex flex-col h-full bg-[#fafbfc] overflow-hidden">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <button onClick={() => changeMonth(-1)}
           className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
@@ -450,7 +672,7 @@ export const Appointments = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3
+      <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3
         [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
         {!selectedDay ? (
           <div className="text-center py-8 px-4 text-[#94a3b8] text-[12px]">
@@ -477,23 +699,14 @@ export const Appointments = () => {
                 {selectedDayAppts.filter(a => a.status === 'done').length} done
               </span>
             </div>
-            
-            {/* ── Grouped Time Slot Render ── */}
             {groupedAppts.map(({ time, appts }) => {
-              // Now checking against the Array of closed slots
-              const isCollapsed = closedSlots.includes(time);
-              const slotInfo = HOUR_SLOTS.find(s => s.value === time);
+              const isExpanded = expandedSlots.includes(time);
+              const slotInfo  = HOUR_SLOTS.find(s => s.value === time);
               const slotLabel = slotInfo ? slotInfo.label : time;
-
               return (
                 <div key={time} className="mb-3 last:mb-0">
-                  {/* Time Slot Header */}
                   <div
-                    onClick={() => setClosedSlots(prev => 
-                      prev.includes(time) 
-                        ? prev.filter(t => t !== time) // Remove from closed array (opens it)
-                        : [...prev, time]              // Add to closed array (closes it)
-                    )}
+                    onClick={() => toggleSlot(time)}
                     className="flex items-center justify-between px-3 py-2.5 bg-[#f8fafc] border border-[#eef2f6] rounded-[8px] cursor-pointer hover:bg-[#f1f5f9] transition-colors mb-2"
                   >
                     <div className="flex items-center gap-2.5">
@@ -503,11 +716,9 @@ export const Appointments = () => {
                         {appts.length} appt{appts.length !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <i className={`fa-solid fa-chevron-${isCollapsed ? 'down' : 'up'} text-[#94a3b8] text-[11px] transition-transform`}></i>
+                    <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} text-[#94a3b8] text-[11px] transition-transform`}></i>
                   </div>
-
-                  {/* Appointments Array for this Time Slot */}
-                  {!isCollapsed && (
+                  {isExpanded && (
                     <div className="flex flex-col gap-1 pl-[6px] border-l-2 border-[#eef2f6] ml-[10px]">
                       {appts.map(a => {
                         const isDone   = a.status === 'done';
@@ -567,7 +778,7 @@ export const Appointments = () => {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white">
+    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white overflow-hidden">
 
       {/* ── MOBILE ── */}
       <div className="flex flex-col md:hidden" style={{ height: 'calc(100vh - 134px)' }}>
@@ -641,19 +852,30 @@ export const Appointments = () => {
             </div>
 
             <div className="px-5 py-4 flex flex-col gap-4">
+
+              {/* ── Date field — opens drum-roll picker ── */}
               <div>
                 <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-1">
                   Appointment Date *
                 </label>
-                <input
-                  type="date"
-                  value={batchDate}
-                  onChange={e => setBatchDate(e.target.value)}
+                <button
+                  onClick={() => setShowDatePicker(true)}
                   className="w-full px-[10px] py-[8px] border border-[#e2e8f0] rounded-[8px] text-[13px]
-                    bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors"
-                />
+                    bg-white text-left outline-none focus:border-[#466460] transition-colors cursor-pointer
+                    flex items-center justify-between hover:border-[#466460]"
+                >
+                  <span className={batchDate ? 'text-[#1e293b] font-medium' : 'text-[#94a3b8]'}>
+                    {batchDate
+                      ? new Date(batchDate + 'T00:00:00').toLocaleDateString('en-PH', {
+                          weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
+                        })
+                      : 'Tap to select a date…'}
+                  </span>
+                  <i className="fa-regular fa-calendar text-[#466460] text-[13px]"></i>
+                </button>
               </div>
 
+              {/* ── Time slot ── */}
               <div>
                 <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
                   Time Slot (1-hour window)
@@ -666,15 +888,14 @@ export const Appointments = () => {
                       bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
                   >
                     {HOUR_SLOTS.map(slot => (
-                      <option key={slot.value} value={slot.value}>
-                        {slot.label}
-                      </option>
+                      <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}
                   </select>
                   <i className="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-[#94a3b8] text-[10px] pointer-events-none"></i>
                 </div>
               </div>
 
+              {/* ── Summary banner ── */}
               {batchDate && (
                 <div className="flex items-start gap-3 px-3 py-3 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
                   <i className="fa-solid fa-circle-info text-[#3B6D11] mt-[1px] shrink-0"></i>
@@ -688,11 +909,12 @@ export const Appointments = () => {
                     </span>
                     {' '}during the{' '}
                     <span className="font-bold">{chosenSlotLabel}</span>
-                    {' '}slot. Their queue numbers (#1–#{selectedIds.size}) will reflect walk-in order.
+                    {' '}slot.
                   </div>
                 </div>
               )}
 
+              {/* ── Patient list ── */}
               {selectedItems.length > 0 && (
                 <div>
                   <div className="text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
@@ -744,6 +966,33 @@ export const Appointments = () => {
         </ModalOverlay>
       )}
 
+      {/* ══════════════════════════════════════════════════════
+          DRUM-ROLL DATE PICKER MODAL
+      ══════════════════════════════════════════════════════ */}
+      {showDatePicker && (
+        <ModalOverlay onClose={() => setShowDatePicker(false)}>
+          <div
+            className="bg-white w-full sm:max-w-[340px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
+              animate-[fadeIn_0.2s_ease-out] overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle (mobile) */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            <div className="px-5 pt-3 pb-2">
+              <DrumDatePicker
+                value={batchDate || new Date().toISOString().slice(0, 10)}
+                onChange={setBatchDate}
+                onCancel={() => setShowDatePicker(false)}
+                onSubmit={() => setShowDatePicker(false)}
+              />
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
       {/* ── Detail modal ── */}
       {detailModal && (
         <ModalOverlay onClose={() => setDetailModal(null)}>
@@ -777,11 +1026,7 @@ export const Appointments = () => {
             </div>
             <div className="flex gap-2 mt-4">
               <button
-                onClick={() => {
-                  setDetailModal(null);
-                  showSnackbar('Redirecting to examination...');
-                  setTimeout(() => navigate(`/examinations?patientId=${detailModal.id}`), 1200);
-                }}
+                onClick={() => handleExaminePatient(detailModal)}
                 className="flex-1 p-[9px] border-none rounded-[8px] cursor-pointer font-semibold
                   text-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white"
               >

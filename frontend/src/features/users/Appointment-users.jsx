@@ -108,6 +108,11 @@ export default function AppointmentUsers() {
   const myAppointments = getPatientAppointments(currentPatient.idno)
     .sort((a, b) => new Date(b.bookedAt) - new Date(a.bookedAt));
 
+  // ── Check if patient already has an active appointment ──
+  const hasActiveAppointment = myAppointments.some(
+    (appt) => appt.status === 'pending' || appt.status === 'approved'
+  );
+
   // ── Calendar ──
   const changeMonth = (dir) => {
     let m = calMonth + dir, y = calYear;
@@ -210,13 +215,20 @@ export default function AppointmentUsers() {
       <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
 
         {/* Action row */}
-        <div className="flex justify-end">
+        <div 
+          className="flex justify-end" 
+          title={hasActiveAppointment ? "You can only have one active appointment at a time. Please wait for the clinic to complete your current appointment." : ""}
+        >
           <button
-            onClick={() => setShowModal(true)}
-            className="bg-[#1a5c3a] text-white border-none rounded-2xl py-2 px-3.5 text-xs
-              font-semibold flex items-center gap-1 cursor-pointer hover:bg-[#2d7a52] transition-colors"
+            onClick={() => !hasActiveAppointment && setShowModal(true)}
+            disabled={hasActiveAppointment}
+            className={`border-none rounded-2xl py-2 px-3.5 text-xs font-semibold flex items-center gap-1 transition-colors ${
+              hasActiveAppointment 
+                ? 'bg-[#9bb5a5] text-white cursor-not-allowed opacity-70' 
+                : 'bg-[#1a5c3a] text-white cursor-pointer hover:bg-[#2d7a52]'
+            }`}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
             Request Appointment

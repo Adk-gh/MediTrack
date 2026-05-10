@@ -33,16 +33,15 @@ import {
 } from '../components/Headers.jsx';
 
 // ─── Default mobile nav items ─────────────────────────────────────────────────
-// Mirrors the links in DesktopNav. Override via the `mobileNavItems` prop.
 const DEFAULT_MOBILE_NAV = [
-  { id: 'dashboard', label: 'Home', icon: HomeIcon },
-  { id: 'records', label: 'Records', icon: RecordsIcon },
-  { id: 'appointments', label: 'Schedule', icon: CalendarIcon },
-  { id: 'examinations', label: 'Exam', icon: ExamIcon },
-  { id: 'approvals', label: 'Approval', icon: ApprovalsIcon },
-  { id: 'consultations', label: 'Consult', icon: ConsultIcon },
+  { id: 'dashboard',     label: 'Home',     icon: HomeIcon },
+  { id: 'records',       label: 'Records',  icon: RecordsIcon },
+  { id: 'appointments',  label: 'Schedule', icon: CalendarIcon },
+  { id: 'examinations',  label: 'Exam',     icon: ExamIcon },
+  { id: 'approvals',     label: 'Approval', icon: ApprovalsIcon },
+  { id: 'consultations', label: 'Consult',  icon: ConsultIcon },
   { id: 'announcements', label: 'Announce', icon: AnnouncementIcon },
-  { id: 'users', label: 'Users', icon: UsersIcon },
+  { id: 'users',         label: 'Users',    icon: UsersIcon },
 ];
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -57,7 +56,6 @@ export const DashboardLayout = ({
   onLogout,
   userProfile,
 }) => {
-  // Derive two-letter initials from userName
   const getInitials = (name = '') => {
     const parts = name.trim().split(' ');
     return parts.length >= 2
@@ -65,19 +63,14 @@ export const DashboardLayout = ({
       : name.substring(0, 2).toUpperCase() || 'AU';
   };
 
-  // Profile drawer state
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
 
-  const handleProfileClick = () => setShowProfileDrawer(true);
-  const handleCloseProfile = () => setShowProfileDrawer(false);
-  const handleProfileLogout = () => {
-    setShowProfileDrawer(false);
-    onLogout?.();
-  };
+  const handleProfileClick  = () => setShowProfileDrawer(true);
+  const handleCloseProfile  = () => setShowProfileDrawer(false);
+  const handleProfileLogout = () => { setShowProfileDrawer(false); onLogout?.(); };
 
   return (
     <>
-      {/* Scoped utility styles — scrollbar hide + fade-in animation */}
       <style>{`
         .dl-scroll::-webkit-scrollbar { display: none; }
         .dl-scroll { scrollbar-width: none; -ms-overflow-style: none; }
@@ -90,39 +83,42 @@ export const DashboardLayout = ({
       `}</style>
 
       {/* ════════════════════════════════════════════════════════════════════
-          DESKTOP  (md and above)
-          Preserves the original layout exactly:
-            ┌──────────────────────────────────────┐
-            │  DesktopHeader  (gradient topbar)    │
+          DESKTOP (md+)
+          The shell is exactly viewport-height and never scrolls itself.
+          Each page/view is responsible for its own internal scrolling.
+
+            ┌──────────────────────────────────────┐  ← h-screen, overflow-hidden
+            │  DesktopHeader  (shrink-0)           │
             ├──────────────────────────────────────┤
-            │  DesktopNav     (white link bar)     │
+            │  DesktopNav     (shrink-0)           │
             ├──────────────────────────────────────┤
-            │  <main>  scrollable content          │
+            │  <main>  flex-1, overflow-hidden      │  ← hands full height to children
             └──────────────────────────────────────┘
       ════════════════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex min-h-screen flex-col bg-gradient-to-br from-[#f4f7f6] to-[#eef2f0]">
-        <DesktopHeader onOpenQR={onOpenQR} />
-        <DesktopNav />
-        <main className="flex-1 w-full overflow-y-auto dl-scroll">
-          <div className="dl-fade">{children}</div>
+      <div className="hidden md:flex h-screen flex-col overflow-hidden bg-gradient-to-br from-[#f4f7f6] to-[#eef2f0]">
+        <div className="shrink-0"><DesktopHeader onOpenQR={onOpenQR} /></div>
+        <div className="shrink-0"><DesktopNav /></div>
+        <main className="flex-1 min-h-0 overflow-hidden">
+          {/* dl-fade + h-full so the child can fill & scroll internally */}
+          <div className="dl-fade h-full">{children}</div>
         </main>
       </div>
 
       {/* ════════════════════════════════════════════════════════════════════
-          MOBILE  (below md) — mirrors MediTrack's UserDashboardLayout
-            ┌──────────────────────────┐
-            │  MobileHeader  (64 px)   │  sticky topbar
+          MOBILE (<md)
+          Same principle — the shell is h-screen, overflow-hidden.
+          Only the scrollable content div scrolls.
+
+            ┌──────────────────────────┐  ← h-screen, overflow-hidden
+            │  MobileHeader  (64 px)   │  fixed topbar (handled via pt offset)
             ├──────────────────────────┤
-            │                          │
-            │  scrollable children     │  flex-1, pt-[64px] pb-[70px]
-            │                          │
+            │  scrollable children     │  flex-1, overflow-y-auto
             ├──────────────────────────┤
-            │  MobileNav     (70 px)   │  fixed bottom tab bar
+            │  MobileNav     (70 px)   │  fixed bottom (handled via pb offset)
             └──────────────────────────┘
       ════════════════════════════════════════════════════════════════════ */}
-      <div className="md:hidden relative flex flex-col h-screen bg-slate-50 overflow-hidden">
+      <div className="md:hidden relative flex flex-col h-screen overflow-hidden bg-slate-50">
 
-        {/* Sticky topbar — green with avatar (opens profile drawer) */}
         <MobileHeader
           userName={userName}
           userId={userId}
@@ -132,19 +128,17 @@ export const DashboardLayout = ({
           simple={false}
         />
 
-        {/* Scrollable content area */}
-        <div className="flex-1 overflow-y-auto pt-[64px] pb-[70px] dl-scroll">
+        {/* Scrollable content — only this div scrolls */}
+        <div className="flex-1 min-h-0 overflow-y-auto pt-[64px] pb-[70px] dl-scroll">
           <div className="dl-fade">{children}</div>
         </div>
 
-        {/* Bottom tab bar */}
         <MobileNav
           active={activeTab}
           onSwitch={onTabChange}
           items={mobileNavItems}
         />
 
-        {/* Profile Drawer - bottom sheet on mobile */}
         <ProfileDrawer
           isOpen={showProfileDrawer}
           onClose={handleCloseProfile}

@@ -1,11 +1,9 @@
 // frontend/src/components/ProfileSetup.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
+import DatePicker from './Datepicker'; // ← replaces react-datepicker
 
 // --- PLSP Department Data ---
-// Each department has: abbr (UI label), full (DB value), programs (full names for both UI and DB)
 const departmentsData = [
   {
     abbr: 'CCSE',
@@ -87,17 +85,12 @@ const departmentsData = [
   },
 ];
 
-// Build lookup maps for easy access
-// abbr → full department name (for DB)
-const deptAbbrToFull = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
-// abbr → programs array
-const programsByDeptAbbr = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
-// All dept abbreviations (for select options)
-const DEPT_ABBRS = departmentsData.map(d => d.abbr);
+const deptAbbrToFull      = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
+const programsByDeptAbbr  = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
 
-// Non-academic offices (stored and displayed as-is)
 const NON_ACADEMIC_OFFICES = [
   'Accounting Office',
+  'University Clinic',
   'Human Resources',
   'Library',
   'Maintenance',
@@ -105,8 +98,6 @@ const NON_ACADEMIC_OFFICES = [
   'Security Services',
 ];
 
-// All offices for staff/faculty dropdowns (abbr shown in UI, full saved to DB)
-// We'll handle the display/save distinction in the onChange handler
 const PLSP_OFFICES_FOR_STAFF = [
   ...departmentsData.map(d => ({ label: d.abbr, value: d.full })),
   ...NON_ACADEMIC_OFFICES.map(o => ({ label: o, value: o })),
@@ -117,24 +108,14 @@ const RELIGIONS           = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Se
 const NATIONALITIES       = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
 const CIVIL_STATUSES      = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
 const EMERGENCY_RELATIONSHIPS = ['Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent', 'Relative', 'Guardian', 'Friend', 'Other'];
+const SECTIONS            = ['A', 'B', 'C', 'D', 'E', 'F'];
+const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 
 const VACCINE_DOSES = [
   { key: 'dose1',    label: 'Dose 1'    },
   { key: 'dose2',    label: 'Dose 2'    },
   { key: 'booster1', label: 'Booster 1' },
   { key: 'booster2', label: 'Booster 2' },
-];
-
-const COVID_VACCINES = [
-  'Pfizer-BioNTech (Comirnaty)',
-  'Moderna (Spikevax)',
-  'AstraZeneca (Vaxzevria/Covishield)',
-  'Sinovac (CoronaVac)',
-  'Johnson & Johnson (Janssen)',
-  'Novavax (Nuvaxovid)',
-  'Sputnik V',
-  'Sinopharm (BBIBP-CorV)',
-  'Other COVID-19 Vaccine',
 ];
 
 const API_URL     = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -185,8 +166,18 @@ const validatePhone = (value) => {
   return '';
 };
 
-// ── Generic required-field check ──────────────────────────────────────────────
 const isEmpty = (v) => !v || !String(v).trim();
+
+// ── Age calculator ────────────────────────────────────────────────────────────
+function calcAge(isoDate) {
+  if (!isoDate) return '';
+  const birth = new Date(isoDate);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return String(age);
+}
 
 // =============================================================================
 // MAIN COMPONENT
@@ -194,7 +185,6 @@ const isEmpty = (v) => !v || !String(v).trim();
 const ProfileSetup = ({ user, onComplete }) => {
   const [step, setStep]           = useState(1);
   const [loading, setLoading]     = useState(false);
-  const [birthdayError, setBirthdayError] = useState('');
   const navigate = useNavigate();
 
   const rawRole  = user?.role || 'student';
@@ -216,16 +206,15 @@ const ProfileSetup = ({ user, onComplete }) => {
     civilStatus:   'Single',
 
     // STEP 2 – Academic / Work
-    universityId:    user?.universityId || '',
-    // For students: stores the dept ABBREVIATION (UI) — converted to full name on submit
-    // For staff: stores the full department name directly (since PLSP_OFFICES_FOR_STAFF already maps)
-    departmentAbbr:  '',   // student: selected abbr (UI only)
-    department:      '',   // what gets sent to DB (full name)
-    program:         '',   // full program name (both UI and DB)
-    yearLevel:       '1st Year',
-    section:         '',
-    classification:  getDefaultClassification(userRole),
-    jobTitle:        getDefaultJobTitle(userRole),
+    universityId:           user?.universityId || '',
+    departmentAbbr:         '',
+    department:             '',
+    program:                '',
+    yearLevel:              '1st Year',
+    section:                '',
+    studentClassification:  'Regular',  // ← tracked here
+    classification:         getDefaultClassification(userRole),
+    jobTitle:               getDefaultJobTitle(userRole),
 
     // STEP 3 – Contact & Emergency
     email:       user?.email || '',
@@ -244,7 +233,6 @@ const ProfileSetup = ({ user, onComplete }) => {
     },
   });
 
-  // Per-field error map
   const [errors, setErrors] = useState({});
 
   // Auth Guard
@@ -257,20 +245,6 @@ const ProfileSetup = ({ user, onComplete }) => {
   const handleChange = (e) => {
     const { id, value } = e.target;
 
-    // Birthday → auto-compute age
-    if (id === 'birthday') {
-      const birthDate = new Date(value);
-      const today     = new Date();
-      let age         = today.getFullYear() - birthDate.getFullYear();
-      const m = today.getMonth() - birthDate.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-      setFormData(prev => ({ ...prev, birthday: value, age: age.toString() }));
-      setBirthdayError('');
-      clearError('birthday');
-      return;
-    }
-
-    // Phone fields → digits only, max 11
     if (id === 'phoneNumber' || id === 'emergencyPhone') {
       const clean = sanitizePhone(value);
       setFormData(prev => ({ ...prev, [id]: clean }));
@@ -278,21 +252,19 @@ const ProfileSetup = ({ user, onComplete }) => {
       return;
     }
 
-    // Student department: store abbr for UI, resolve full name for DB
     if (id === 'departmentAbbr' && userRole === 'student') {
       const fullName = deptAbbrToFull[value] || value;
       setFormData(prev => ({
         ...prev,
         departmentAbbr: value,
         department: fullName,
-        program: '', // reset program when dept changes
+        program: '',
       }));
       clearError('departmentAbbr');
       clearError('department');
       return;
     }
 
-    // Staff department: value is already the full name (from PLSP_OFFICES_FOR_STAFF)
     if (id === 'department' && userRole !== 'student') {
       setFormData(prev => ({ ...prev, department: value }));
       clearError('department');
@@ -303,7 +275,12 @@ const ProfileSetup = ({ user, onComplete }) => {
     clearError(id);
   };
 
-  // ── Keyboard guard for phone fields ──────────────────────────────────────
+  // ── Birthday change (from DatePicker) ────────────────────────────
+  const handleBirthdayChange = (isoDate) => {
+    setFormData(prev => ({ ...prev, birthday: isoDate, age: calcAge(isoDate) }));
+    clearError('birthday');
+  };
+
   const handlePhoneKeyDown = (e) => {
     const allowed = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'];
     if (e.ctrlKey || e.metaKey) return;
@@ -319,18 +296,6 @@ const ProfileSetup = ({ user, onComplete }) => {
     clearError(field);
   };
 
-  // ── Vaccination handler ───────────────────────────────────────────────────
-  const handleVaccineChange = (doseKey, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      vaccinations: {
-        ...prev.vaccinations,
-        [doseKey]: { ...prev.vaccinations[doseKey], [field]: value },
-      },
-    }));
-  };
-
-  // ── Error helpers ─────────────────────────────────────────────────────────
   const setError   = (field, msg) => setErrors(prev => ({ ...prev, [field]: msg }));
   const clearError = (field)      => setErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
 
@@ -379,10 +344,10 @@ const ProfileSetup = ({ user, onComplete }) => {
     const newErrors = {};
 
     if (targetStep > 1) {
-      if (isEmpty(formData.firstName))  newErrors.firstName  = 'First name is required.';
-      if (isEmpty(formData.lastName))   newErrors.lastName   = 'Last name is required.';
-      if (!formData.birthday)           newErrors.birthday   = 'Birthday is required.';
-      if (!formData.sex)                newErrors.sex        = 'Sex is required.';
+      if (isEmpty(formData.firstName)) newErrors.firstName = 'First name is required.';
+      if (isEmpty(formData.lastName))  newErrors.lastName  = 'Last name is required.';
+      if (!formData.birthday)          newErrors.birthday  = 'Birthday is required.';
+      if (!formData.sex)               newErrors.sex       = 'Sex is required.';
     }
 
     if (targetStep > 2) {
@@ -412,12 +377,10 @@ const ProfileSetup = ({ user, onComplete }) => {
 
   const nextStep = () => {
     if (step === 1 && !formData.birthday) {
-      setBirthdayError('Birthday is required.');
       setError('birthday', 'Birthday is required.');
       return;
     }
     if (!validateStep(step + 1)) return;
-    setBirthdayError('');
     setStep(prev => Math.min(prev + 1, TOTAL_STEPS));
   };
 
@@ -428,10 +391,10 @@ const ProfileSetup = ({ user, onComplete }) => {
     e.preventDefault();
 
     const allErrors = {};
-    if (isEmpty(formData.firstName))  allErrors.firstName  = 'First name is required.';
-    if (isEmpty(formData.lastName))   allErrors.lastName   = 'Last name is required.';
-    if (!formData.birthday)           allErrors.birthday   = 'Birthday is required.';
-    if (!formData.sex)                allErrors.sex        = 'Sex is required.';
+    if (isEmpty(formData.firstName)) allErrors.firstName = 'First name is required.';
+    if (isEmpty(formData.lastName))  allErrors.lastName  = 'Last name is required.';
+    if (!formData.birthday)          allErrors.birthday  = 'Birthday is required.';
+    if (!formData.sex)               allErrors.sex       = 'Sex is required.';
 
     if (userRole === 'student') {
       if (isEmpty(formData.universityId))   allErrors.universityId   = 'Student number is required.';
@@ -467,8 +430,8 @@ const ProfileSetup = ({ user, onComplete }) => {
         return;
       }
 
-      // department is already resolved to full name via handleChange
       const payload = {
+        // Personal
         firstName:     formData.firstName,
         middleInitial: formData.middleInitial,
         lastName:      formData.lastName,
@@ -481,22 +444,34 @@ const ProfileSetup = ({ user, onComplete }) => {
         religion:      formData.religion,
         nationality:   formData.nationality,
         civilStatus:   formData.civilStatus,
+
+        // Academic / Work
         universityId:  formData.universityId,
-        department:    formData.department,   // ← full name saved to DB
-        program:       formData.program,      // ← full program name saved to DB
+        department:    formData.department,
+        program:       formData.program,
         yearLevel:     formData.yearLevel,
         section:       formData.section,
+        // ✅ FIX: studentClassification is now included in the payload
+        studentClassification: userRole === 'student' ? formData.studentClassification : '',
         classification: formData.classification,
         jobTitle:      formData.jobTitle,
+
+        // Contact
         email:         formData.email,
         phoneNumber:   formData.phoneNumber,
+
+        // Emergency Contact
         emergencyContact: {
           name:         formData.emergencyName,
           relationship: formData.emergencyRelationship,
           phone:        formData.emergencyPhone,
           address:      formData.emergencyAddress,
         },
+
+        // Vaccinations
         vaccinations:    formData.vaccinations,
+
+        // Meta
         role:            userRole,
         isProfileSetup:  true,
         profileComplete: true,
@@ -564,10 +539,15 @@ const ProfileSetup = ({ user, onComplete }) => {
 
   const inputErrCls = (field) => errors[field] ? 'border-red-400 focus:border-red-400 bg-red-50' : '';
 
-  // Programs available for the currently selected dept (student only)
   const availablePrograms = formData.departmentAbbr
     ? (programsByDeptAbbr[formData.departmentAbbr] || [])
     : [];
+
+  const classificationColors = {
+    Regular:   { bg: '#e8f5ef', text: '#1a5c3a', dot: '#2d7a52' },
+    Irregular: { bg: '#fff7e6', text: '#92400e', dot: '#f59e0b' },
+    Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -634,52 +614,15 @@ const ProfileSetup = ({ user, onComplete }) => {
                 </div>
               </div>
 
+              {/* ── Birthday row: DatePicker + Age ── */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className={labelCls}>Birthday <span className="text-red-400">*</span></label>
                   <DatePicker
-                    selected={formData.birthday ? new Date(formData.birthday) : null}
-                    onChange={(date) => {
-                      if (date) {
-                        const offset    = date.getTimezoneOffset();
-                        const localDate = new Date(date.getTime() - offset * 60 * 1000);
-                        handleChange({ target: { id: 'birthday', value: localDate.toISOString().split('T')[0] } });
-                      } else {
-                        handleChange({ target: { id: 'birthday', value: '' } });
-                      }
-                    }}
-                    dateFormat="MMMM d, yyyy"
-                    showMonthDropdown
-                    showYearDropdown
-                    dropdownMode="select"
-                    maxDate={new Date()}
-                    minDate={new Date(1900, 0, 1)}
-                    placeholderText="Select birthday"
-                    popperPlacement="bottom-start"
-                    popperModifiers={[
-                      {
-                        name: 'preventOverflow',
-                        options: {
-                          boundary: 'viewport',
-                          padding: 16,
-                        },
-                      },
-                      {
-                        name: 'flip',
-                        options: {
-                          fallbackPlacements: ['top-start', 'bottom-end', 'top-end'],
-                        },
-                      },
-                    ]}
-                    className={`${inputCls} ${birthdayError || errors.birthday ? 'border-red-400 bg-red-50' : ''}`}
-                    
+                    value={formData.birthday}
+                    onChange={handleBirthdayChange}
+                    error={errors.birthday}
                   />
-                  {(birthdayError || errors.birthday) && (
-                    <p className="text-red-500 text-[11px] mt-1 ml-1 flex items-center gap-1">
-                      <i className="fa-solid fa-circle-exclamation text-[10px]"></i>
-                      {birthdayError || errors.birthday}
-                    </p>
-                  )}
                 </div>
                 <div>
                   <label className={labelCls}>Age</label>
@@ -757,22 +700,12 @@ const ProfileSetup = ({ user, onComplete }) => {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    {/* Department: shows abbr in UI, saves full name to DB via handleChange */}
                     <div>
                       <label className={labelCls}>Department <span className="text-red-400">*</span></label>
-                      <select
-                        id="departmentAbbr"
-                        required
-                        className={`${selectCls} ${inputErrCls('departmentAbbr')}`}
-                        value={formData.departmentAbbr}
-                        onChange={handleChange}
-                      >
+                      <select id="departmentAbbr" required className={`${selectCls} ${inputErrCls('departmentAbbr')}`} value={formData.departmentAbbr} onChange={handleChange}>
                         <option value="" disabled>Select Dept</option>
-                        {departmentsData.map(d => (
-                          <option key={d.abbr} value={d.abbr}>{d.abbr}</option>
-                        ))}
+                        {departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}
                       </select>
-                      {/* Show the full name as a hint below the select */}
                       {formData.departmentAbbr && (
                         <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">
                           {deptAbbrToFull[formData.departmentAbbr]}
@@ -781,21 +714,13 @@ const ProfileSetup = ({ user, onComplete }) => {
                       {fieldError('departmentAbbr')}
                     </div>
 
-                    {/* Program: full name shown in UI and saved to DB */}
                     <div>
                       <label className={labelCls}>Program <span className="text-red-400">*</span></label>
-                      <select
-                        id="program"
-                        required
-                        disabled={!formData.departmentAbbr}
+                      <select id="program" required disabled={!formData.departmentAbbr}
                         className={`${selectCls} disabled:bg-slate-50 ${inputErrCls('program')}`}
-                        value={formData.program}
-                        onChange={handleChange}
-                      >
+                        value={formData.program} onChange={handleChange}>
                         <option value="" disabled>Select Program</option>
-                        {availablePrograms.map(p => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
+                        {availablePrograms.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                       {fieldError('program')}
                     </div>
@@ -812,11 +737,40 @@ const ProfileSetup = ({ user, onComplete }) => {
                     </div>
                     <div>
                       <label className={labelCls}>Section <span className="text-red-400">*</span></label>
-                      <input id="section" type="text" placeholder="e.g. BSIT-1" required
-                        className={`${inputCls} ${inputErrCls('section')}`}
-                        value={formData.section} onChange={handleChange} />
+                      <select id="section" required className={`${selectCls} ${inputErrCls('section')}`} value={formData.section} onChange={handleChange}>
+                        <option value="" disabled>Select</option>
+                        {SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
+                      </select>
                       {fieldError('section')}
                     </div>
+                  </div>
+
+                  {/* Student Classification */}
+                  <div>
+                    <label className={labelCls}>Student Classification</label>
+                    <div className="flex gap-2 mt-1">
+                      {STUDENT_CLASSIFICATIONS.map(cls => {
+                        const isActive = formData.studentClassification === cls;
+                        const colors   = classificationColors[cls];
+                        return (
+                          <button key={cls} type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, studentClassification: cls }))}
+                            className="flex-1 flex items-center justify-center gap-[6px] py-[9px] px-2 rounded-[11px] text-[12px] font-semibold border-[1.5px] transition-all duration-150"
+                            style={isActive ? { background: colors.bg, borderColor: colors.dot, color: colors.text } : { background: '#f8fafc', borderColor: '#cbd5d1', color: '#94a3b8' }}
+                          >
+                            <span className="w-[7px] h-[7px] rounded-full shrink-0 transition-colors" style={{ background: isActive ? colors.dot : '#cbd5d1' }} />
+                            {cls}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-[#6b8577] mt-[5px] ml-[2px] leading-tight">
+                      {formData.studentClassification === 'Regular'
+                        ? 'Following the standard curriculum sequence.'
+                        : formData.studentClassification === 'Irregular'
+                        ? 'Taking subjects outside the standard curriculum order.'
+                        : 'Re-enrolled after a leave of absence or stopout.'}
+                    </p>
                   </div>
                 </>
               ) : (
@@ -830,26 +784,14 @@ const ProfileSetup = ({ user, onComplete }) => {
                     </select>
                   </div>
 
-                  {/* Staff department: label shows abbr for colleges, full name for offices; value is always full name */}
                   <div>
                     <label className={labelCls}>Office / Department <span className="text-red-400">*</span></label>
-                    <select
-                      id="department"
-                      required
-                      className={`${selectCls} ${inputErrCls('department')}`}
-                      value={formData.department}
-                      onChange={handleChange}
-                    >
+                    <select id="department" required className={`${selectCls} ${inputErrCls('department')}`} value={formData.department} onChange={handleChange}>
                       <option value="" disabled>Select Office</option>
-                      {PLSP_OFFICES_FOR_STAFF.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
+                      {PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
-                    {/* Show full college name as hint */}
                     {formData.department && departmentsData.find(d => d.full === formData.department) && (
-                      <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">
-                        {formData.department}
-                      </p>
+                      <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">{formData.department}</p>
                     )}
                     {fieldError('department')}
                   </div>

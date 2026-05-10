@@ -1,5 +1,7 @@
-//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Medical.jsx
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Medical.jsx
 import React, { useState, useEffect } from 'react';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../../firebase'; // Adjusted path for the Examination folder
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -67,11 +69,11 @@ const buildInitialForm = (p) => {
     schoolYear:  '',
     studentId:   p.universityId || p.studentId || p.id || '',
     course:      p.program      || p.prog  || '',
-    yearSection: p.yearLevel    || p.year  || '',
+    yearSection: [p.yearLevel || p.year || '', p.section || ''].filter(Boolean).join(' - '),
     sex:         p.gender       || p.sex   || 'Male',
     birthday:    p.birthday     || p.birthdate || '',
     age:         p.age ? String(p.age) : '',
-    address:     p.homeAddress  || '',
+     address:     p.homeAddress || p.address || '',
     contactNo:   p.phoneNumber  || '',
     landlineNo:  '',
     religion:    p.religion     || '',
@@ -115,13 +117,18 @@ const buildInitialForm = (p) => {
 };
 
 const defaultForm = () => buildInitialForm(null) || {};
+const createDefaultVital = () => ({ date: new Date().toISOString().split('T')[0], bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 export const Medical = ({ selectedPatient, showMessage }) => {
   const [phase, setPhase]               = useState(1);
   const [showSummary, setShowSummary]   = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // DB Loading State
+  
   const [surgicalHistory, setSurgicalHistory] = useState([]);
-  const [vitalRecords, setVitalRecords] = useState([]);
+  
+  // Initialize vitalRecords as an array with exactly one default object
+  const [vitalRecords, setVitalRecords] = useState([createDefaultVital()]);
 
   const [checkedMedical, setCheckedMedical] = useState([]);
   const [checkedFamily,  setCheckedFamily]  = useState([]);
@@ -137,7 +144,7 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     setCheckedFamily([]);
     setCheckedHealth([]);
     setSurgicalHistory([]);
-    setVitalRecords([]);
+    setVitalRecords([createDefaultVital()]); // Reset to a fresh single vital record
   }, [selectedPatient?.uid]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -165,9 +172,10 @@ export const Medical = ({ selectedPatient, showMessage }) => {
   const removeSurgical = (id) => setSurgicalHistory(p => p.filter(i => i.id !== id));
   const updateSurgical = (id, field, value) => setSurgicalHistory(p => p.map(i => i.id === id ? { ...i, [field]: value } : i));
 
-  const addVital    = () => setVitalRecords(p => [...p, { id: Date.now(), date: new Date().toISOString().split('T')[0], bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' }]);
-  const removeVital = (id) => setVitalRecords(p => p.filter(v => v.id !== id));
-  const updateVital = (id, field, value) => setVitalRecords(p => p.map(v => v.id === id ? { ...v, [field]: value } : v));
+  // Simplified vital update (always updates the single default item)
+  const updateVital = (field, value) => {
+    setVitalRecords(prev => [{ ...prev[0], [field]: value }]);
+  };
 
   const handlePhase1Next = () => {
     if (!formData.lastName) { alert("Please fill in patient's last name."); return; }
@@ -179,15 +187,59 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     setShowSummary(true);
   };
 
-  const handleFinalSubmit = () => {
-    setShowSummary(false);
-    showMessage('Medical record submitted successfully!');
+  // ── Database Submit Handler ──────────────────────────────────────────────────
+  const handleFinalSubmit = async () => {
+    if (!selectedPatient?.uid) {
+      alert("Error: No patient selected. Cannot save record.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // 1. Bundle all the data from the different arrays and states
+      const payload = {
+        ...formData,
+        checkedMedical,
+        checkedFamily,
+        checkedHealth,
+        surgicalHistory,
+        vitalRecords,
+        createdAt: serverTimestamp(), // Record the exact timestamp of submission
+        status: "pending",     // Marked pending for approval
+        isApproved: false,
+      };
+
+      // 2. Point to the 'medical_records' subcollection inside this specific user
+      const medicalRecordsRef = collection(db, "users", selectedPatient.uid, "medical_records");
+
+      // 3. Save as a new document (This will not overwrite past exams)
+      await addDoc(medicalRecordsRef, payload);
+
+      // 4. Close the modal and show success toast
+      setShowSummary(false);
+      showMessage('Medical record saved to database successfully!');
+      
+    } catch (error) {
+      console.error("Error saving medical record: ", error);
+      alert("Failed to save the record to the database. Check console for details.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      <form onSubmit={e => { e.preventDefault(); handleOpenSummary(); }}>
+      <form 
+        onSubmit={e => { e.preventDefault(); handleOpenSummary(); }}
+        className="overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
+          [&::-webkit-scrollbar]:w-[5px]
+          [&::-webkit-scrollbar-thumb]:bg-gradient-to-b
+          [&::-webkit-scrollbar-thumb]:from-[#466460]
+          [&::-webkit-scrollbar-thumb]:to-[#8aacaa]
+          [&::-webkit-scrollbar-thumb]:rounded-full"
+      >
 
         {/* Progress Bar */}
         <div className="mb-6">
@@ -375,12 +427,12 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               </thead>
               <tbody>
                 {[
-                  { q: '1. Are you in good health?',                                                                      name: 'q1',  detail: null        },
-                  { q: '2. Are you under medical treatment now?',                                                          name: 'q2',  detail: 'q2Details' },
+                  { q: '1. Are you in good health?',                                                                         name: 'q1',  detail: null        },
+                  { q: '2. Are you under medical treatment now?',                                                            name: 'q2',  detail: 'q2Details' },
                   { q: '3. Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?',  name: 'q3',  detail: 'q3Details' },
-                  { q: '4. Are you taking any medication?',                                                                name: 'q4',  detail: 'q4Details' },
-                  { q: '5. For women only: Are you pregnant?',                                                             name: 'q5',  detail: null        },
-                  { q: 'Are you nursing?',                                                                                  name: 'q5b', detail: null        },
+                  { q: '4. Are you taking any medication?',                                                                  name: 'q4',  detail: 'q4Details' },
+                  { q: '5. For women only: Are you pregnant?',                                                               name: 'q5',  detail: null        },
+                  { q: 'Are you nursing?',                                                                                   name: 'q5b', detail: null        },
                 ].map(({ q, name, detail }) => (
                   <tr key={name}>
                     <td className="border border-slate-300 p-2">{q}</td>
@@ -433,27 +485,18 @@ export const Medical = ({ selectedPatient, showMessage }) => {
 
           <div className={sectionClass}>
             <span>Anthropometric Measurements & Vital Signs</span>
-            <button type="button" onClick={addVital} className="bg-[#81b29a] text-white px-3 py-1 rounded text-xs hover:opacity-90">+ Add Vital Record</button>
           </div>
-          {vitalRecords.length === 0 ? (
-            <p className="text-xs text-slate-400 italic p-3 text-center mb-4">No vital signs recorded. Click "Add Vital Record" to add.</p>
-          ) : vitalRecords.map((r, idx) => (
-            <div key={r.id} className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-3 relative">
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-bold text-[#466460]">Record #{idx + 1}</span>
-                <button type="button" onClick={() => removeVital(r.id)} className="bg-[#e07a5f] text-white px-2 py-1 rounded text-xs">×</button>
-              </div>
-              <div className="grid grid-cols-12 gap-3">
-                <div className="col-span-2"><label className={labelClass}>Date</label><input type="date" className={inputClass} value={r.date} onChange={e => updateVital(r.id, 'date', e.target.value)} /></div>
-                <div className="col-span-2"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={r.bp} onChange={e => updateVital(r.id, 'bp', e.target.value)} /></div>
-                <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={r.pr} onChange={e => updateVital(r.id, 'pr', e.target.value)} /></div>
-                <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={r.rr} onChange={e => updateVital(r.id, 'rr', e.target.value)} /></div>
-                <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={r.temp} onChange={e => updateVital(r.id, 'temp', e.target.value)} /></div>
-                <div className="col-span-2"><label className={labelClass}>Nurse / Staff</label><input type="text" className={inputClass} placeholder="Nurse name" value={r.nurse} onChange={e => updateVital(r.id, 'nurse', e.target.value)} /></div>
-                <div className="col-span-12"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={r.remarks} onChange={e => updateVital(r.id, 'remarks', e.target.value)} /></div>
-              </div>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-2"><label className={labelClass}>Date</label><input type="date" className={inputClass} value={vitalRecords[0].date} onChange={e => updateVital('date', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={vitalRecords[0].bp} onChange={e => updateVital('bp', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={vitalRecords[0].pr} onChange={e => updateVital('pr', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={vitalRecords[0].rr} onChange={e => updateVital('rr', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={vitalRecords[0].temp} onChange={e => updateVital('temp', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>Nurse / Staff</label><input type="text" className={inputClass} placeholder="Nurse name" value={vitalRecords[0].nurse} onChange={e => updateVital('nurse', e.target.value)} /></div>
+              <div className="col-span-12"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords[0].remarks} onChange={e => updateVital('remarks', e.target.value)} /></div>
             </div>
-          ))}
+          </div>
 
           <div className="grid grid-cols-12 gap-4 mt-4">
             <div className="col-span-3"><label className={labelClass}>Height (cm)</label><input type="text" id="height" className={inputClass} placeholder="cm" value={formData.height} onChange={handleChange} onBlur={calculateBMI} /></div>
@@ -475,13 +518,13 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               <p className="text-[11px] text-slate-500 mt-1">Review all entries carefully before submitting.</p>
             </div>
             <div className="flex gap-3">
-              <button type="button" onClick={() => setPhase(1)}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-600 font-bold text-sm hover:bg-slate-100 transition">
+              <button type="button" onClick={() => setPhase(1)} disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-600 font-bold text-sm hover:bg-slate-100 transition disabled:opacity-70">
                 ← Previous
               </button>
               
-              <button type="submit"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm">
+              <button type="submit" disabled={isSubmitting}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
                 <i className="fa-solid fa-paper-plane"></i> Review & Submit
               </button>
             </div>
@@ -604,21 +647,15 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                 </div>
               </SumSection>
 
-              <SumSection icon="fa-heart" title={`Vital Signs — ${vitalRecords.length} record(s)`}>
-                {vitalRecords.length === 0
-                  ? <p className="text-[12px] text-slate-400 italic">None recorded.</p>
-                  : vitalRecords.map((r, i) => (
-                    <div key={r.id} className="mb-3">
-                      <p className="text-[10px] font-bold text-[#466460] uppercase tracking-wider mb-1">Record #{i+1} — {r.date}</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        <SumItem label="BP"   value={r.bp}    />
-                        <SumItem label="PR"   value={r.pr}    />
-                        <SumItem label="RR"   value={r.rr}    />
-                        <SumItem label="Temp" value={r.temp}  />
-                        <SumItem label="Nurse" value={r.nurse} />
-                      </div>
-                    </div>
-                  ))}
+              <SumSection icon="fa-heart" title="Vital Signs">
+                <div className="grid grid-cols-3 gap-2">
+                  <SumItem label="Date"  value={vitalRecords[0].date}  />
+                  <SumItem label="BP"    value={vitalRecords[0].bp}    />
+                  <SumItem label="PR"    value={vitalRecords[0].pr}    />
+                  <SumItem label="RR"    value={vitalRecords[0].rr}    />
+                  <SumItem label="Temp"  value={vitalRecords[0].temp}  />
+                  <SumItem label="Nurse" value={vitalRecords[0].nurse} />
+                </div>
               </SumSection>
 
               <SumSection icon="fa-ruler-vertical" title="Anthropometric Measurements">
@@ -640,12 +677,21 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               </SumSection>
             </div>
             <div className="px-7 py-4 border-t border-slate-200 bg-slate-50 flex items-center gap-3 shrink-0">
-              <button onClick={() => setShowSummary(false)} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition">
+              <button onClick={() => setShowSummary(false)} disabled={isSubmitting} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition disabled:opacity-70">
                 <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
               </button>
               <div className="flex-1" />
-              <button onClick={handleFinalSubmit} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm">
-                <i className="fa-solid fa-circle-check"></i> Submit Medical Record
+              <button 
+                onClick={handleFinalSubmit} 
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <i className="fa-solid fa-spinner fa-spin"></i>
+                ) : (
+                  <i className="fa-solid fa-circle-check"></i>
+                )}
+                {isSubmitting ? 'Saving...' : 'Submit Medical Record'}
               </button>
             </div>
           </div>
