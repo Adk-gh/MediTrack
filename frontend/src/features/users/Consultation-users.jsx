@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { rtdb } from '../../firebase';
 import {
-  ref, onValue, push, set, get, serverTimestamp, onDisconnect, off
+  ref, onValue, push, update, set, get, serverTimestamp, onDisconnect, off
 } from 'firebase/database';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -23,22 +23,45 @@ const formatDate = (ts) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+function BotText({ text }) {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  return (
+    <span>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+      )}
+    </span>
+  );
+}
+
+const INITIAL_OPTIONS = [
+  { label: '🤒 Illness / Fever',          type: 'medical' },
+  { label: '🤕 Injury / Pain',            type: 'medical' },
+  { label: '💊 Prescription / Medicine',  type: 'medical' },
+  { label: '📄 Medical Certificate',      type: 'medical' },
+  { label: '🩺 Follow-up Check-up',       type: 'medical' },
+  { label: '🦷 Toothache / Pain',         type: 'dental' },
+  { label: '🔍 Dental Check-up',          type: 'dental' },
+  { label: '😬 Oral Health Concern',      type: 'dental' },
+];
+
 export default function ConsultationUsers() {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
   const [messages, setMessages]             = useState([]);
   const [inputValue, setInputValue]         = useState('');
-  const [convId, setConvId]                 = useState(null);
   const [isClinicOnline, setIsClinicOnline] = useState(false);
-  const [loading, setLoading]               = useState(true);
-  const messagesEndRef                      = useRef(null);
-  const convIdRef                           = useRef(null);
-  const resolvedNameRef                     = useRef(currentUser.name || null);
+  const [isEnded, setIsEnded]               = useState(true);
+  const [consultType, setConsultType]       = useState(null);
 
-  // ── Set patient presence ──────────────────────────────────────────────────
+  const messagesEndRef  = useRef(null);
+  const resolvedNameRef = useRef(currentUser.name || null);
+
+  const convId = currentUser.uid; // Single universal thread per user!
+
+  // ── Presence ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.uid) return;
-
     const setPresence = async () => {
       let resolvedName = currentUser.name || currentUser.displayName || null;
       if (!resolvedName) {
@@ -46,107 +69,110 @@ export default function ConsultationUsers() {
           const snap = await getDoc(doc(db, 'users', currentUser.uid));
           if (snap.exists()) {
             const d = snap.data();
-            resolvedName = [
-              d.firstName,
-              d.middleInitial ? `${d.middleInitial}.` : '',
-              d.lastName,
-            ].filter(Boolean).join(' ').trim() || 'Unknown';
-            const updated = { ...currentUser, name: resolvedName };
-            localStorage.setItem('user', JSON.stringify(updated));
+            resolvedName = [d.firstName, d.middleInitial ? `${d.middleInitial}.` : '', d.lastName]
+              .filter(Boolean).join(' ').trim() || 'Unknown';
+            localStorage.setItem('user', JSON.stringify({ ...currentUser, name: resolvedName }));
           }
-        } catch (err) {
-          console.error('Failed to fetch name:', err);
-          resolvedName = 'Unknown';
-        }
+        } catch { resolvedName = 'Unknown'; }
       }
-
       resolvedNameRef.current = resolvedName || 'Unknown';
-
-      const presenceData = {
-        online:   true,
-        lastSeen: serverTimestamp(),
-        name:     resolvedNameRef.current,
-        role:     currentUser.role || 'student',
-      };
-      const offlineData = { ...presenceData, online: false };
-
       const presenceRef = ref(rtdb, `presence/${currentUser.uid}`);
+      const presenceData = { online: true, lastSeen: serverTimestamp(), name: resolvedNameRef.current, role: currentUser.role || 'student' };
       set(presenceRef, presenceData);
-      onDisconnect(presenceRef).set(offlineData);
-
-      return () => set(presenceRef, offlineData);
+      onDisconnect(presenceRef).set({ ...presenceData, online: false });
     };
-
     setPresence();
   }, [currentUser?.uid]);
 
-  // ── Find or create this patient's conversation ────────────────────────────
-  useEffect(() => {
-    if (!currentUser?.uid) return;
-
-    const initConversation = async () => {
-      setLoading(true);
-      const convRef = ref(rtdb, `consultations/${currentUser.uid}`);
-      const snap = await get(convRef);
-
-      if (!snap.exists()) {
-        await set(convRef, {
-          metadata: {
-            patientUid:     currentUser.uid,
-            patientName:    resolvedNameRef.current || currentUser.name || 'Patient',
-            patientRole:    currentUser.role  || 'student',
-            lastMessage:    '',
-            lastTimestamp:  Date.now(),
-            lastSenderRole: 'patient',
-            createdAt:      Date.now(),
-          },
-          messages: {},
-        });
-      }
-
-      setConvId(currentUser.uid);
-      convIdRef.current = currentUser.uid;
-      setLoading(false);
-    };
-
-    initConversation();
-  }, [currentUser?.uid]);
-
-  // ── Listen to messages ────────────────────────────────────────────────────
+  // ── DB Listener (Messages & Metadata) ─────────────────────────────────
   useEffect(() => {
     if (!convId) return;
-    const msgsRef = ref(rtdb, `consultations/${convId}/messages`);
-    const unsub = onValue(msgsRef, (snap) => {
+    const convRef = ref(rtdb, `consultations/${convId}`);
+
+    const unsub = onValue(convRef, (snap) => {
       const data = snap.val() || {};
-      const list = Object.entries(data)
+
+      // Update Metadata
+      const meta = data.metadata || {};
+      setIsEnded(!meta.status || meta.status === 'ended');
+      setConsultType(meta.consultType || null);
+
+      // Extract & Sort Messages
+      const msgList = Object.entries(data.messages || {})
         .map(([id, msg]) => ({ id, ...msg }))
         .sort((a, b) => a.timestamp - b.timestamp);
-      setMessages(list);
+
+      setMessages(msgList);
+
+      // Bulk update unread clinic messages as read by patient
+      const unreadClinicMsgs = msgList.filter(m => m.sender === 'clinic' && !m.readByPatient && !m.isBot);
+      if (unreadClinicMsgs.length > 0) {
+        const updates = {};
+        unreadClinicMsgs.forEach(m => {
+          updates[`messages/${m.id}/readByPatient`] = true;
+        });
+        update(ref(rtdb, `consultations/${convId}`), updates);
+      }
+
     });
-    return () => off(msgsRef, 'value', unsub);
+    return () => off(convRef, 'value', unsub);
   }, [convId]);
 
-  // ── Listen to clinic online presence ─────────────────────────────────────
+  // ── Clinic Online Presence ────────────────────────────────────────────
   useEffect(() => {
     const presRef = ref(rtdb, 'presence');
     const unsub = onValue(presRef, (snap) => {
       const data = snap.val() || {};
-      const anyClinicOnline = Object.values(data).some(p =>
+      const anyOnline = Object.values(data).some(p =>
         p.online && ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase())
       );
-      setIsClinicOnline(anyClinicOnline);
+      setIsClinicOnline(anyOnline);
     });
     return () => off(presRef, 'value', unsub);
   }, []);
 
-  // ── Auto-scroll ───────────────────────────────────────────────────────────
+  // ── Auto-scroll ───────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isEnded]);
 
-  // ── Send message ──────────────────────────────────────────────────────────
+  // ── Start New Consultation (Handle Option Click) ──────────────────────
+  const handleOptionSelect = async (option) => {
+    const metadataRef = ref(rtdb, `consultations/${convId}/metadata`);
+    const msgsRef = ref(rtdb, `consultations/${convId}/messages`);
+
+    // 1. Update metadata so it jumps to the correct active tab on Admin side
+    await update(metadataRef, {
+      patientUid:     currentUser.uid,
+      patientName:    resolvedNameRef.current || currentUser.name || 'Patient',
+      patientRole:    currentUser.role || 'student',
+      status:         'active',
+      consultType:    option.type,
+      lastMessage:    `Started new ${option.type} consultation`,
+      lastTimestamp:  Date.now(),
+      lastSenderRole: 'patient',
+      createdAt:      Date.now() // Optional: Keeps track of thread initialization
+    });
+
+    // 2. Add system/bot separators for visual clarity in history
+    await push(msgsRef, {
+      text: option.label,
+      isBot: false,
+      isTriageChoice: true, // Rendered as patient bubble but muted
+      timestamp: Date.now(),
+    });
+
+    await push(msgsRef, {
+      text: `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
+      isBot: true,
+      timestamp: Date.now() + 1, // Ensure sorting order
+    });
+  };
+
+  // ── Send Real Message ─────────────────────────────────────────────────
   const handleSend = async () => {
-    if (!inputValue.trim() || !convId) return;
+    if (!inputValue.trim() || !convId || isEnded) return;
+
     const text = inputValue.trim();
     setInputValue('');
 
@@ -158,17 +184,20 @@ export default function ConsultationUsers() {
         senderUid:    currentUser.uid,
         senderName:   resolvedNameRef.current || 'Patient',
         timestamp:    Date.now(),
-        readByClinic: false,
+        readByClinic: false, // Set false initially until clinic opens chat
+        isBot:        false,
       });
-      await set(ref(rtdb, `consultations/${convId}/metadata/lastMessage`), text);
-      await set(ref(rtdb, `consultations/${convId}/metadata/lastTimestamp`), Date.now());
-      await set(ref(rtdb, `consultations/${convId}/metadata/lastSenderRole`), 'patient');
+      await update(ref(rtdb, `consultations/${convId}/metadata`), {
+        lastMessage: text,
+        lastTimestamp: Date.now(),
+        lastSenderRole: 'patient'
+      });
     } catch (err) {
       console.error('Send error:', err);
     }
   };
 
-  // ── Group messages by date ────────────────────────────────────────────────
+  // ── Format Messages for Display ───────────────────────────────────────
   const groupedMessages = () => {
     const groups = [];
     let lastDate = null;
@@ -183,125 +212,200 @@ export default function ConsultationUsers() {
     return groups;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-[#f4f7f5]">
-        <i className="fa-solid fa-spinner fa-spin text-2xl text-[#1a5c3a]"></i>
-      </div>
-    );
-  }
+  // ── Config for UI Styling ─────────────────────────────────────────────
+  const typeConfig = {
+    generic: { label: 'MediTrack', sublabel: 'Assistant', accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
+    medical: { label: 'Medical',   sublabel: 'Doctors & Nurses', accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
+    dental:  { label: 'Dental',    sublabel: 'Dentists',         accent: '#1a4a7a', accentLight: '#e8f0fa', accentBorder: '#b2c8e8' },
+  };
+
+  // Use generic style if ended or undefined
+  const cfg = (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic;
 
   return (
-    /* Clean, math-free wrapper. Relies on the parent to define screen height. */
     <div className="flex flex-col h-full w-full overflow-hidden bg-[#f4f7f5] font-sans">
 
       {/* Header */}
-      <div className="bg-white px-5 py-4 border-b border-[#edf3f0] flex items-center gap-4 shadow-sm z-20 flex-shrink-0">
-        <div className="w-14 h-14 bg-[#e8f5ee] rounded-full flex items-center justify-center flex-shrink-0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="1.5" className="w-7 h-7">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
+      <div className="bg-white px-5 py-4 border-b border-[#edf3f0] flex items-center gap-3 shadow-sm z-20 flex-shrink-0 transition-all duration-300">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300" style={{ backgroundColor: cfg.accentLight }}>
+          {consultType === 'dental' && !isEnded ? (
+            <svg viewBox="0 0 64 64" fill="none" stroke={cfg.accent} strokeWidth="2.4" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke={cfg.accent} strokeWidth="1.5" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
+            </svg>
+          )}
         </div>
-        <div>
-          <h3 className="text-base font-bold text-[#1a2e22] tracking-tight">University Clinic</h3>
-          <p className="text-[11px] text-[#6b8577] font-medium mb-1">Medical & Dental Staff</p>
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
-            isClinicOnline ? 'bg-[#e8f5ee] text-[#1a5c3a]' : 'bg-slate-100 text-slate-500'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isClinicOnline ? 'bg-[#1a5c3a]' : 'bg-slate-400'}`}></span>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-[#1a2e22]">{cfg.label} {!isEnded && 'Consultation'}</h3>
+            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold transition-colors duration-300" style={{ backgroundColor: cfg.accentLight, color: cfg.accent }}>
+              {cfg.sublabel}
+            </span>
+          </div>
+          <span
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide mt-0.5 transition-colors duration-300"
+            style={{
+              backgroundColor: isClinicOnline ? cfg.accentLight : '#f1f5f9',
+              color:           isClinicOnline ? cfg.accent      : '#94a3b8',
+            }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isClinicOnline ? cfg.accent : '#94a3b8' }}></span>
             {isClinicOnline ? 'Clinic Online' : 'Clinic Offline'}
           </span>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 px-5 py-6 flex flex-col gap-3 bg-[#f4f7f5] overflow-y-auto min-h-0">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center flex-1 text-center py-16 gap-3 text-[#6b8577]">
-            <i className="fa-regular fa-comment-medical text-4xl text-[#c8e0d8]"></i>
-            <p className="text-sm font-semibold">Start a consultation</p>
-            <p className="text-xs max-w-[220px]">Send a message and our clinic staff will respond as soon as possible.</p>
-          </div>
-        )}
-
+      {/* Messages Scroll Area */}
+      <div className="flex-1 px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5] overflow-y-auto min-h-0">
         {groupedMessages().map((item, i) => {
+
           if (item.type === 'date') {
             return (
               <div key={item.key} className="flex justify-center my-2">
-                <span className="bg-[#ddeee5] text-[#1a5c3a] px-4 py-1 rounded-full text-[10px] font-bold">
+                <span className="px-4 py-1 rounded-full text-[10px] font-bold transition-colors duration-300 bg-slate-200 text-slate-500">
                   {item.label}
                 </span>
               </div>
             );
           }
 
-          const isPatient = item.sender === 'patient';
-          return (
-            <div key={item.id || i} className={`flex flex-col ${isPatient ? 'items-end' : 'items-start'}`}>
+          // System / Bot message
+          if (item.isBot) {
+            return (
+              <div key={item.id || i} className="flex items-end gap-2 my-1">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 transition-colors duration-300 bg-[#e0eceb]">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" className="w-3.5 h-3.5">
+                    <rect x="3" y="8" width="18" height="13" rx="2" />
+                    <path strokeLinecap="round" d="M8 8V6a4 4 0 018 0v2" />
+                    <circle cx="9" cy="14" r="1" fill="#466460" />
+                    <circle cx="15" cy="14" r="1" fill="#466460" />
+                  </svg>
+                </div>
+                <div className="max-w-[78%] px-4 py-2.5 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm break-words transition-colors duration-300 bg-white text-[#1a2e22] border border-[#c4dbd8]">
+                  <BotText text={item.text} />
+                </div>
+              </div>
+            );
+          }
 
-              {/* Clinic responder name + role */}
+          // Patient Triage Selection (Muted Outgoing Bubble)
+          if (item.isTriageChoice) {
+            return (
+              <div key={item.id || i} className="flex justify-end my-1">
+                <div className="max-w-[72%] px-4 py-2.5 text-[12px] font-medium leading-relaxed rounded-2xl rounded-br-sm break-words opacity-70 transition-colors duration-300 bg-[#e0eceb] text-[#466460] border border-[#c4dbd8]">
+                  {item.text}
+                </div>
+              </div>
+            );
+          }
+
+          // Real User/Clinic Message
+          const isPatient = item.sender === 'patient';
+          const msgCfg = isPatient ? cfg : (item.consultType === 'dental' ? typeConfig.dental : typeConfig.medical);
+
+          return (
+            <div key={item.id || i} className={`flex flex-col my-1 ${isPatient ? 'items-end' : 'items-start'}`}>
               {!isPatient && (
                 <div className="flex items-center gap-1.5 mb-0.5 ml-2">
-                  <div className="w-5 h-5 rounded-full bg-[#e8f5ee] flex items-center justify-center flex-shrink-0">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="2" className="w-3 h-3">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300" style={{ backgroundColor: msgCfg.accentLight }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke={msgCfg.accent} strokeWidth="2" className="w-3 h-3">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
                   </div>
-                  <p className="text-[10px] text-[#1a5c3a] font-bold">
+                  <p className="text-[10px] font-bold transition-colors duration-300" style={{ color: msgCfg.accent }}>
                     {item.senderName || 'Clinic Staff'}
                   </p>
-                  {item.senderRole && (
-                    <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#e8f5ee] text-[#1a5c3a] font-semibold capitalize">
-                      {item.senderRole}
-                    </span>
-                  )}
                 </div>
               )}
-
-              <div className={`max-w-[80%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl break-words ${
-                isPatient
-                  ? 'bg-[#1a5c3a] text-white rounded-br-sm'
-                  : 'bg-white text-[#1a2e22] border border-[#ddeee5] rounded-bl-sm'
-              }`}>
+              <div
+                className="max-w-[80%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl break-words transition-colors duration-300"
+                style={isPatient
+                  ? { backgroundColor: '#466460', color: '#fff', borderBottomRightRadius: 4 }
+                  : { backgroundColor: '#fff', color: '#1a2e22', border: `1px solid ${msgCfg.accentBorder}`, borderBottomLeftRadius: 4 }
+                }
+              >
                 {item.text}
               </div>
-
               <div className={`text-[9px] text-[#9bb5a5] mt-1 mx-2 flex items-center gap-1 ${isPatient ? 'justify-end' : ''}`}>
                 <span>{formatTime(item.timestamp)}</span>
+                {/* ── Patient Side SEEN Indicator ── */}
                 {isPatient && (
-                  <i className={`fa-solid fa-check${item.readByClinic ? '-double text-[#1a5c3a]' : ''} text-[8px]`}></i>
+                  <i className={`fa-solid ${item.readByClinic ? 'fa-check-double' : 'fa-check'} text-[10px] transition-colors duration-300 ml-0.5`}
+                     style={item.readByClinic ? { color: msgCfg.accent } : { color: '#9bb5a5' }} />
                 )}
               </div>
             </div>
           );
         })}
+
+        {/* ── Dynamic Bot Triage Block appended when Ended ── */}
+        {isEnded && (
+          <div className="mt-4 mb-2 flex flex-col gap-3 fade-in">
+            <div className="flex items-end gap-2">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" className="w-3.5 h-3.5">
+                  <rect x="3" y="8" width="18" height="13" rx="2" />
+                  <path strokeLinecap="round" d="M8 8V6a4 4 0 018 0v2" />
+                  <circle cx="9" cy="14" r="1" fill="#466460" />
+                  <circle cx="15" cy="14" r="1" fill="#466460" />
+                </svg>
+              </div>
+              <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm bg-white border border-[#c4dbd8] text-[#1a2e22]">
+                👋 Hello! I'm the MediTrack assistant.<br/>
+                <strong>What brings you in today?</strong> Please select the type of consultation you need:
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-9 max-w-[90%]">
+              {INITIAL_OPTIONS.map((opt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleOptionSelect(opt)}
+                  className="text-left text-[12px] font-bold px-4 py-3 rounded-xl border-2 bg-white transition-all hover:shadow-md active:scale-[0.98] duration-300 border-[#c4dbd8] text-[#466460] hover:border-[#466460]"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-[#edf3f0] px-4 py-3 flex gap-3 items-center z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] flex-shrink-0">
+      <div className="bg-white border-t border-[#edf3f0] px-4 py-3 flex gap-3 items-center z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] flex-shrink-0 transition-colors duration-300">
         <input
           type="text"
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder="Type a message…"
-          className="flex-1 border border-[#ddeee5] rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none focus:border-[#1a5c3a] transition-colors placeholder:text-[#9bb5a5]"
+          placeholder={isEnded ? "Please select an option above…" : "Type a message…"}
+          disabled={isEnded}
+          className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
+          style={{ borderColor: cfg.accentBorder }}
+          onFocus={e => !isEnded && (e.target.style.borderColor = cfg.accent)}
+          onBlur={e => (e.target.style.borderColor = cfg.accentBorder)}
         />
         <button
           onClick={handleSend}
-          disabled={!inputValue.trim()}
-          className="w-11 h-11 bg-[#1a5c3a] rounded-full flex items-center justify-center text-white hover:bg-[#124028] transition disabled:opacity-40 flex-shrink-0 shadow-md"
+          disabled={!inputValue.trim() || isEnded}
+          className="w-11 h-11 rounded-full flex items-center justify-center text-white transition disabled:opacity-40 flex-shrink-0 shadow-md duration-300"
+          style={{ backgroundColor: cfg.accent }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 ml-[-2px] mt-[2px]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 ml-[-2px] mt-[2px]">
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
         </button>
       </div>
-
     </div>
   );
 }

@@ -21,7 +21,8 @@ if (!admin.apps.length) {
   try {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      // databaseURL: "https://<YOUR-PROJECT-ID>.firebaseio.com" // Uncomment if using Realtime DB
+      // ADD YOUR STORAGE BUCKET HERE:
+      storageBucket: "meditrack-plsp.firebasestorage.app"
     });
     console.log('Firebase Admin SDK initialized successfully.');
   } catch (error) {

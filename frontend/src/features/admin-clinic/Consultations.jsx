@@ -1,12 +1,11 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Consultations.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { rtdb } from '../../firebase';
+import { rtdb, db } from '../../firebase';
 import {
-  ref, onValue, push, set, serverTimestamp, onDisconnect, off
+  ref, onValue, push, set, update, serverTimestamp, onDisconnect, off
 } from 'firebase/database';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
 
 const formatTime = (ts) => {
   if (!ts) return '';
@@ -32,11 +31,51 @@ const getRoleClass = (role) => {
   return 'bg-green-100 text-green-700';
 };
 
+const TABS = [
+  {
+    key:     'medical',
+    label:   'Medical',
+    sublabel:'Doctors & Nurses',
+    accent:  '#1a5c3a',
+    light:   '#e8f5ee',
+    border:  '#b2d9c2',
+    icon: (color) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" className="w-3.5 h-3.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
+        <rect x="3" y="3" width="18" height="18" rx="3" strokeWidth="1.5" />
+      </svg>
+    ),
+  },
+  {
+    key:     'dental',
+    label:   'Dental',
+    sublabel:'Dentists',
+    accent:  '#1a4a7a',
+    light:   '#e8f0fa',
+    border:  '#b2c8e8',
+    icon: (color) => (
+      <svg viewBox="0 0 64 64" fill="none" stroke={color} strokeWidth="3" className="w-3.5 h-3.5">
+        <path strokeLinecap="round" strokeLinejoin="round"
+          d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z" />
+      </svg>
+    ),
+  },
+];
+
 export const Consultations = () => {
   const navigate    = useNavigate();
   const location    = useLocation();
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const userRole    = (currentUser.role || '').toLowerCase();
 
+  // ── Determine Allowed Tabs based on Role ──────────────────────────────
+  const allowedTabs = React.useMemo(() => {
+    if (['doctor', 'nurse'].includes(userRole)) return TABS.filter(t => t.key === 'medical');
+    if (userRole === 'dentist') return TABS.filter(t => t.key === 'dental');
+    return TABS; // Admins or unrecognized roles see both
+  }, [userRole]);
+
+  const [activeTab, setActiveTab]               = useState(allowedTabs[0]?.key || 'medical');
   const [conversations, setConversations]       = useState([]);
   const [selectedConvId, setSelectedConvId]     = useState(null);
   const [messages, setMessages]                 = useState([]);
@@ -46,24 +85,30 @@ export const Consultations = () => {
   const [loadingMsgs, setLoadingMsgs]           = useState(false);
   const [toast, setToast]                       = useState(null);
   const [showPatientPanel, setShowPatientPanel] = useState(false);
-  
-  const messagesEndRef      = useRef(null);
-  const msgListenerRef      = useRef(null);
-  const resolvedNameRef     = useRef(currentUser.name || null);
 
-  // ── Auto-select conversation from URL (Triggered from Records.jsx) ────────
+  const messagesEndRef  = useRef(null);
+  const msgListenerRef  = useRef(null);
+  const resolvedNameRef = useRef(currentUser.name || null);
+
+  const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
+
+  // ── Auto-select conversation from URL ─────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const convIdToOpen = params.get('convId');
     if (convIdToOpen) {
       setSelectedConvId(convIdToOpen);
+      if (convIdToOpen.endsWith('_dental') && allowedTabs.some(t => t.key === 'dental')) {
+        setActiveTab('dental');
+      } else if (allowedTabs.some(t => t.key === 'medical')) {
+        setActiveTab('medical');
+      }
     }
-  }, [location.search]);
+  }, [location.search, allowedTabs]);
 
-  // ── Set doctor presence ───────────────────────────────────────────────────
+  // ── Doctor presence ───────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.uid) return;
-
     const setPresence = async () => {
       let resolvedName = currentUser.name || currentUser.displayName || null;
       if (!resolvedName) {
@@ -76,93 +121,73 @@ export const Consultations = () => {
               d.middleInitial ? `${d.middleInitial}.` : '',
               d.lastName,
             ].filter(Boolean).join(' ').trim() || 'Clinic Staff';
-            const updated = { ...currentUser, name: resolvedName };
-            localStorage.setItem('user', JSON.stringify(updated));
+            localStorage.setItem('user', JSON.stringify({ ...currentUser, name: resolvedName }));
           }
-        } catch (err) {
-          console.error('Failed to fetch name:', err);
-          resolvedName = 'Clinic Staff';
-        }
+        } catch { resolvedName = 'Clinic Staff'; }
       }
-
       resolvedNameRef.current = resolvedName || 'Clinic Staff';
 
-      const presenceData = {
-        online:   true,
-        lastSeen: serverTimestamp(),
-        name:     resolvedNameRef.current,
-        role:     currentUser.role || 'staff',
-      };
-      const offlineData = { ...presenceData, online: false };
-
       const presenceRef = ref(rtdb, `presence/${currentUser.uid}`);
+      const presenceData = {
+        online: true, lastSeen: serverTimestamp(),
+        name: resolvedNameRef.current, role: currentUser.role || 'staff',
+      };
       set(presenceRef, presenceData);
-      onDisconnect(presenceRef).set(offlineData);
-
-      return () => set(presenceRef, offlineData);
+      onDisconnect(presenceRef).set({ ...presenceData, online: false });
     };
-
     setPresence();
   }, [currentUser?.uid]);
 
-  // ── Load Firestore user profiles for display ──────────────────────────────
+  // ── Load Firestore profiles ───────────────────────────────────────────
   useEffect(() => {
-    const loadProfiles = async () => {
+    const load = async () => {
       try {
         const snap = await getDocs(collection(db, 'users'));
         const map = {};
         snap.docs.forEach(d => { map[d.id] = { uid: d.id, ...d.data() }; });
         setPatientProfiles(map);
-      } catch (err) {
-        console.error('Failed to load profiles:', err);
-      }
+      } catch (err) { console.error(err); }
     };
-    loadProfiles();
+    load();
   }, []);
 
-  // ── Listen to all conversations ───────────────────────────────────────────
+  // ── Listen to ALL conversations ───────────────────────────────────────
   useEffect(() => {
     const convRef = ref(rtdb, 'consultations');
     const unsub = onValue(convRef, (snap) => {
       const data = snap.val() || {};
-      
-      // Map ALL conversations to state so we don't lose data
       const list = Object.entries(data).map(([id, conv]) => {
-        const hasMessages = conv.messages && Object.keys(conv.messages).length > 0;
-        
+        const realMessages = Object.values(conv.messages || {}).filter(m => !m.isBot);
+        const hasRealMessages = realMessages.length > 0;
+        const consultType = conv.metadata?.consultType || 'medical';
+
         return {
           id,
           ...conv.metadata,
-          hasMessages,
+          consultType,
+          hasMessages: hasRealMessages,
           lastMessage:   conv.metadata?.lastMessage   || '',
           lastTimestamp: conv.metadata?.lastTimestamp || 0,
-          unreadCount:   Object.values(conv.messages || {}).filter(
-            m => m.sender === 'patient' && !m.readByClinic
-          ).length,
+          status:        conv.metadata?.status || 'ended',
+          unreadCount: realMessages.filter(m => m.sender === 'patient' && !m.readByClinic).length,
         };
       });
-      
       list.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
       setConversations(list);
     });
     return () => off(convRef, 'value', unsub);
   }, []);
 
-  // ── Listen to presence ────────────────────────────────────────────────────
+  // ── Presence ──────────────────────────────────────────────────────────
   useEffect(() => {
     const presRef = ref(rtdb, 'presence');
-    const unsub = onValue(presRef, (snap) => {
-      setOnlinePresence(snap.val() || {});
-    });
+    const unsub = onValue(presRef, (snap) => setOnlinePresence(snap.val() || {}));
     return () => off(presRef, 'value', unsub);
   }, []);
 
-  // ── Listen to selected conversation messages ──────────────────────────────
+  // ── Messages listener ─────────────────────────────────────────────────
   useEffect(() => {
-    if (msgListenerRef.current) {
-      off(msgListenerRef.current);
-      msgListenerRef.current = null;
-    }
+    if (msgListenerRef.current) { off(msgListenerRef.current); msgListenerRef.current = null; }
     if (!selectedConvId) { setMessages([]); return; }
 
     setLoadingMsgs(true);
@@ -173,37 +198,33 @@ export const Consultations = () => {
       const data = snap.val() || {};
       const list = Object.entries(data)
         .map(([id, msg]) => ({ id, ...msg }))
+        .filter(msg => !msg.isBot) // Hide bot triage messages from clinic
         .sort((a, b) => a.timestamp - b.timestamp);
+
       setMessages(list);
       setLoadingMsgs(false);
 
-      // Mark patient messages as read
-      list.forEach(msg => {
-        if (msg.sender === 'patient' && !msg.readByClinic) {
-          set(ref(rtdb, `consultations/${selectedConvId}/messages/${msg.id}/readByClinic`), true);
-        }
-      });
+      // Bulk update unread patient messages as read by clinic
+      const unreadPatientMsgs = list.filter(msg => msg.sender === 'patient' && !msg.readByClinic);
+      if (unreadPatientMsgs.length > 0) {
+        const updates = {};
+        unreadPatientMsgs.forEach(msg => {
+          updates[`${msg.id}/readByClinic`] = true;
+        });
+        update(ref(rtdb, `consultations/${selectedConvId}/messages`), updates);
+      }
     });
-
     return () => off(msgsRef, 'value', unsub);
   }, [selectedConvId]);
 
-  // ── Close patient panel when conversation changes ─────────────────────────
-  useEffect(() => {
-    setShowPatientPanel(false);
-  }, [selectedConvId]);
+  useEffect(() => { setShowPatientPanel(false); }, [selectedConvId]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // ── Auto-scroll ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // ── Send message ──────────────────────────────────────────────────────────
+  // ── Send Message ──────────────────────────────────────────────────────
   const sendMessage = async () => {
     if (!selectedConvId || !messageInput.trim()) return;
     const text = messageInput.trim();
     setMessageInput('');
-
     try {
       const msgsRef = ref(rtdb, `consultations/${selectedConvId}/messages`);
       await push(msgsRef, {
@@ -213,14 +234,36 @@ export const Consultations = () => {
         senderName:   resolvedNameRef.current || 'Clinic Staff',
         senderRole:   currentUser.role || 'staff',
         timestamp:    Date.now(),
-        readByClinic: true,
+        readByPatient: false, // Set false initially until patient opens the chat
+        isBot:        false,
       });
-      await set(ref(rtdb, `consultations/${selectedConvId}/metadata/lastMessage`), text);
-      await set(ref(rtdb, `consultations/${selectedConvId}/metadata/lastTimestamp`), Date.now());
-      await set(ref(rtdb, `consultations/${selectedConvId}/metadata/lastSenderRole`), 'clinic');
+      await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), {
+        lastMessage: text,
+        lastTimestamp: Date.now(),
+        lastSenderRole: 'clinic'
+      });
     } catch (err) {
       console.error('Send error:', err);
       showToast('Failed to send message', 'error');
+    }
+  };
+
+  // ── End Consultation ──────────────────────────────────────────────────
+  const handleEndConsultation = async () => {
+    if (!selectedConvId) return;
+    try {
+      await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), {
+        status: 'ended'
+      });
+      await push(ref(rtdb, `consultations/${selectedConvId}/messages`), {
+        text: "Consultation marked as complete by clinic staff.",
+        isBot: true,
+        timestamp: Date.now()
+      });
+      showToast('Consultation ended');
+    } catch (err) {
+      console.error('Failed to end consultation', err);
+      showToast('Failed to end consultation', 'error');
     }
   };
 
@@ -229,7 +272,6 @@ export const Consultations = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── Group messages by date ────────────────────────────────────────────────
   const groupedMessages = () => {
     const groups = [];
     let lastDate = null;
@@ -244,7 +286,9 @@ export const Consultations = () => {
     return groups;
   };
 
+  // ── Derived data ──────────────────────────────────────────────────────
   const selectedConv   = conversations.find(c => c.id === selectedConvId);
+  const isConvEnded    = selectedConv?.status === 'ended';
   const patientUid     = selectedConv?.patientUid;
   const patientProfile = patientProfiles[patientUid] || {};
   const patientName    = patientProfile.firstName
@@ -257,32 +301,31 @@ export const Consultations = () => {
       ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
     .map(([, p]) => p.name);
 
-  // ── Sidebar Filter (The Fix) ──────────────────────────────────────────────
-  // We filter visually here instead of in the Firebase listener
-  const visibleConversations = conversations.filter(
-    conv => conv.hasMessages || conv.id === selectedConvId
+  // Filter conversations for the active tab (only show active ones, or ended ones that have messages)
+  const visibleConversations = conversations.filter(conv =>
+    conv.consultType === activeTab &&
+    (conv.hasMessages || conv.id === selectedConvId)
   );
 
-  // ── Navigate to full examination ──────────────────────────────────────────
+  const unreadByTab = {};
+  allowedTabs.forEach(tab => {
+    unreadByTab[tab.key] = conversations
+      .filter(c => c.consultType === tab.key && c.status === 'active')
+      .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  });
+
   const handleOpenExamination = () => {
     if (!patientUid) return;
     const person = {
-      uid:        patientUid,
-      name:       patientName,
-      firstName:  patientProfile.firstName  || '',
-      lastName:   patientProfile.lastName   || '',
-      id:         patientProfile.universityId || patientProfile.studentId || patientUid,
-      role:       patientProfile.role       || '',
-      prog:       patientProfile.program    || patientProfile.course || '',
-      year:       patientProfile.yearLevel  || '',
-      section:    patientProfile.section    || '',
-      age:        patientProfile.age        || '',
-      gender:     patientProfile.gender     || patientProfile.sex || '',
-      birthdate:  patientProfile.birthday   || '',
-      email:      patientProfile.email      || '',
-      phoneNumber: patientProfile.phoneNumber || '',
-      department: patientProfile.department || '',
-      _raw:       patientProfile,
+      uid: patientUid, name: patientName,
+      firstName: patientProfile.firstName || '', lastName: patientProfile.lastName || '',
+      id: patientProfile.universityId || patientProfile.studentId || patientUid,
+      role: patientProfile.role || '', prog: patientProfile.program || patientProfile.course || '',
+      year: patientProfile.yearLevel || '', section: patientProfile.section || '',
+      age: patientProfile.age || '', gender: patientProfile.gender || patientProfile.sex || '',
+      birthdate: patientProfile.birthday || '', email: patientProfile.email || '',
+      phoneNumber: patientProfile.phoneNumber || '', department: patientProfile.department || '',
+      _raw: patientProfile,
     };
     localStorage.setItem('selectedPatient', JSON.stringify(person));
     navigate(`/examinations?patientId=${patientUid}`);
@@ -291,19 +334,14 @@ export const Consultations = () => {
   return (
     <div className="flex h-[calc(100vh-140px)] bg-white overflow-hidden relative">
 
-      {/* ── Left: Conversation List ── */}
-      <div 
-        className={`w-full md:w-[340px] border-r border-slate-200 flex-col flex-shrink-0 ${
-          selectedConvId ? 'hidden md:flex' : 'flex'
-        }`}
-      >
+      {/* ── Left: Sidebar ── */}
+      <div className={`w-full md:w-[340px] border-r border-slate-200 flex-col flex-shrink-0 ${
+        selectedConvId ? 'hidden md:flex' : 'flex'
+      }`}>
         <div className="p-4 border-b border-slate-200 bg-white">
           <h3 className="font-extrabold text-[#466460] text-base">
             <i className="fa-regular fa-comment-dots mr-2"></i>Consultations
           </h3>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            {visibleConversations.length} active thread{visibleConversations.length !== 1 ? 's' : ''}
-          </p>
           {onlineClinicStaff.length > 0 && (
             <p className="text-[10px] text-emerald-600 mt-1 font-semibold">
               <i className="fa-solid fa-circle text-[7px] mr-1"></i>
@@ -312,21 +350,62 @@ export const Consultations = () => {
           )}
         </div>
 
+        <div className="flex border-b border-slate-200 bg-white">
+          {allowedTabs.map(tab => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  if (selectedConv && selectedConv.consultType !== tab.key) setSelectedConvId(null);
+                }}
+                className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 text-xs font-bold transition-all relative"
+                style={{ color: isActive ? tab.accent : '#94a3b8', backgroundColor: isActive ? tab.light : 'transparent' }}
+              >
+                <div className="flex items-center gap-1.5">
+                  {tab.icon(isActive ? tab.accent : '#94a3b8')}
+                  <span>{tab.label}</span>
+                  {unreadByTab[tab.key] > 0 && (
+                    <span className="text-[8px] font-bold rounded-full px-1.5 py-0.5 text-white min-w-[16px] text-center" style={{ backgroundColor: '#e07a5f' }}>
+                      {unreadByTab[tab.key]}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[8px] font-normal" style={{ color: isActive ? tab.accent : '#94a3b8' }}>
+                  {tab.sublabel}
+                </span>
+                {isActive && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t" style={{ backgroundColor: tab.accent }}></span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="px-4 pt-2 pb-1">
+          <p className="text-[10px] text-slate-400">
+            {visibleConversations.length} total thread{visibleConversations.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+
         <div className="flex-1 overflow-y-auto">
           {visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 p-6 text-center">
               <i className="fa-regular fa-comment-dots text-4xl text-slate-200"></i>
-              <p className="text-sm">No consultations yet</p>
+              <p className="text-sm">No {tabCfg.label.toLowerCase()} consultations yet</p>
               <p className="text-xs">Patients will appear here when they send a message</p>
             </div>
           ) : visibleConversations.map(conv => {
-            const profile     = patientProfiles[conv.patientUid] || {};
+            const profile = patientProfiles[conv.patientUid] || {};
             const displayName = profile.firstName
               ? `${profile.lastName || ''}, ${profile.firstName || ''}`.trim()
               : conv.patientName || 'Unknown';
             const initial  = displayName.charAt(0).toUpperCase();
             const isOnline = onlinePresence[conv.patientUid]?.online || false;
             const isActive = selectedConvId === conv.id;
+            const tab = TABS.find(t => t.key === conv.consultType) || TABS[0];
+            const isEnded = conv.status === 'ended';
 
             return (
               <div
@@ -334,20 +413,20 @@ export const Consultations = () => {
                 onClick={() => setSelectedConvId(conv.id)}
                 className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
                   isActive ? 'md:bg-gradient-to-r md:from-[#e0eceb] md:to-white md:border-l-4 md:border-l-[#466460]' : ''
-                }`}
+                } ${isEnded ? 'opacity-70' : ''}`}
               >
                 <div className="relative flex-shrink-0">
-                  <div className="w-11 h-11 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-base">
+                  <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-base ${isEnded ? 'grayscale' : ''}`} style={{ backgroundColor: tab.light, color: tab.accent }}>
                     {initial}
                   </div>
-                  {isOnline && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
-                  )}
+                  {isOnline && !isEnded && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>}
                 </div>
-
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-sm text-slate-800 truncate">{displayName}</p>
+                    <p className="font-bold text-sm text-slate-800 truncate flex items-center gap-2">
+                      {displayName}
+                      {isEnded && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>}
+                    </p>
                     <span className="text-[9px] text-slate-400 flex-shrink-0 ml-2">
                       {conv.lastTimestamp ? formatTime(conv.lastTimestamp) : ''}
                     </span>
@@ -359,8 +438,7 @@ export const Consultations = () => {
                     <p className="text-[10px] text-slate-400 truncate">{conv.lastMessage || 'No messages'}</p>
                   </div>
                 </div>
-
-                {conv.unreadCount > 0 && (
+                {conv.unreadCount > 0 && !isEnded && (
                   <span className="bg-[#e07a5f] text-white text-[9px] font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center flex-shrink-0">
                     {conv.unreadCount}
                   </span>
@@ -371,25 +449,14 @@ export const Consultations = () => {
         </div>
       </div>
 
-      {/* ── Right: Chat + optional Patient Panel ── */}
-      <div 
-        className={`flex-1 min-w-0 overflow-hidden ${
-          !selectedConvId ? 'hidden md:flex' : 'flex'
-        }`}
-      >
-
-        {/* ── Chat Column ── */}
+      {/* ── Right: Chat ── */}
+      <div className={`flex-1 min-w-0 overflow-hidden ${!selectedConvId ? 'hidden md:flex' : 'flex'}`}>
         <div className="flex-1 flex flex-col min-w-0">
 
           {/* Chat Header */}
           <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3">
-            
-            {/* Native Mobile Back Button */}
             <button
-              onClick={() => {
-                setSelectedConvId(null);
-                setShowPatientPanel(false);
-              }}
+              onClick={() => { setSelectedConvId(null); setShowPatientPanel(false); }}
               className="md:hidden w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors flex-shrink-0"
             >
               <i className="fa-solid fa-chevron-left"></i>
@@ -397,37 +464,53 @@ export const Consultations = () => {
 
             {selectedConv ? (
               <>
+                {(() => {
+                  const t = TABS.find(tab => tab.key === selectedConv.consultType) || TABS[0];
+                  return (
+                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold flex-shrink-0" style={{ backgroundColor: t.light, color: t.accent }}>
+                      {t.icon(t.accent)}
+                      {t.label}
+                    </div>
+                  );
+                })()}
+
                 <div className="relative flex-shrink-0">
                   <div className="w-10 h-10 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460]">
                     {patientName.charAt(0).toUpperCase()}
                   </div>
-                  {isPatientOnline && (
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white"></span>
-                  )}
+                  {isPatientOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white"></span>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-slate-800 truncate">{patientName}</p>
                   <p className="text-[10px] text-slate-400 truncate">
-                    {isPatientOnline
-                      ? <span className="text-emerald-500 font-semibold">● Online</span>
-                      : <span>● Offline</span>}
+                    {isConvEnded ? <span className="text-slate-500 font-semibold">● Session Ended</span>
+                    : isPatientOnline ? <span className="text-emerald-500 font-semibold">● Online</span>
+                    : <span>● Offline</span>}
                     {patientProfile.program    ? ` · ${patientProfile.program}`    : ''}
-                    {patientProfile.department ? ` · ${patientProfile.department}` : ''}
                   </p>
                 </div>
 
-                {/* ── View Records Toggle Button ── */}
-                <button
-                  onClick={() => setShowPatientPanel(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-full text-[11px] font-semibold transition-all flex-shrink-0 ${
-                    showPatientPanel
-                      ? 'bg-[#466460] text-white shadow-sm'
-                      : 'bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white'
-                  }`}
-                >
-                  <i className="fa-solid fa-address-card text-[10px] md:mr-1"></i>
-                  <span className="hidden md:inline">{showPatientPanel ? 'Hide Records' : 'View Records'}</span>
-                </button>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!isConvEnded && (
+                    <button
+                      onClick={handleEndConsultation}
+                      className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm"
+                    >
+                      <i className="fa-solid fa-check-double text-[10px]"></i>
+                      End Consultation
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowPatientPanel(v => !v)}
+                    className={`flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
+                      showPatientPanel ? 'bg-[#466460] text-white' : 'bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white'
+                    }`}
+                  >
+                    <i className="fa-solid fa-address-card text-[10px] md:mr-1"></i>
+                    <span className="hidden md:inline">{showPatientPanel ? 'Hide Records' : 'View Records'}</span>
+                  </button>
+                </div>
               </>
             ) : (
               <div className="hidden md:block">
@@ -453,50 +536,56 @@ export const Consultations = () => {
               <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
                 <i className="fa-regular fa-comment text-4xl text-slate-200"></i>
                 <p className="text-sm">No messages yet</p>
+                <p className="text-xs text-center px-4">The patient is completing the intake form. Their first message will appear here.</p>
               </div>
             ) : (
-              groupedMessages().map((item) => {
-                if (item.type === 'date') {
+              <>
+                {groupedMessages().map((item) => {
+                  if (item.type === 'date') {
+                    return (
+                      <div key={item.id} className="flex justify-center my-2">
+                        <span className="bg-slate-200 text-slate-500 px-3 py-1 rounded-full text-[10px] font-semibold">
+                          {item.label}
+                        </span>
+                      </div>
+                    );
+                  }
+                  const isClinic = item.sender === 'clinic';
                   return (
-                    <div key={item.id} className="flex justify-center my-2">
-                      <span className="bg-slate-200 text-slate-500 px-3 py-1 rounded-full text-[10px] font-semibold">
-                        {item.label}
-                      </span>
-                    </div>
-                  );
-                }
-
-                const isClinic = item.sender === 'clinic';
-                return (
-                  <div key={item.id} className={`flex flex-col ${isClinic ? 'items-end' : 'items-start'}`}>
-                    {isClinic && (
-                      <div className="flex items-center gap-1.5 mb-0.5 mr-2">
-                        <p className="text-[9px] text-slate-400 font-semibold">
-                          {item.senderName || 'Clinic Staff'}
-                        </p>
-                        {item.senderRole && (
-                          <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold capitalize">
-                            {item.senderRole}
-                          </span>
+                    <div key={item.id} className={`flex flex-col ${isClinic ? 'items-end' : 'items-start'}`}>
+                      {isClinic && (
+                        <div className="flex items-center gap-1.5 mb-0.5 mr-2">
+                          <p className="text-[9px] text-slate-400 font-semibold">{item.senderName || 'Clinic Staff'}</p>
+                          {item.senderRole && (
+                            <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold capitalize">
+                              {item.senderRole}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm ${
+                        isClinic ? 'bg-[#466460] text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
+                      }`}>
+                        {item.text}
+                      </div>
+                      <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
+                        <span>{formatTime(item.timestamp)}</span>
+                        {/* ── Admin Side SEEN Indicator ── */}
+                        {isClinic && (
+                          <i className={`fa-solid ${item.readByPatient ? 'fa-check-double text-[#466460]' : 'fa-check text-slate-300'} text-[10px] ml-1`}></i>
                         )}
                       </div>
-                    )}
-                    <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm ${
-                      isClinic
-                        ? 'bg-[#466460] text-white rounded-br-sm'
-                        : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
-                    }`}>
-                      {item.text}
                     </div>
-                    <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
-                      <span>{formatTime(item.timestamp)}</span>
-                      {isClinic && (
-                        <i className={`fa-solid fa-check${item.readByClinic ? '-double' : ''} text-[8px]`}></i>
-                      )}
-                    </div>
+                  );
+                })}
+                {isConvEnded && (
+                  <div className="flex items-center gap-3 my-4 opacity-60">
+                    <div className="flex-1 h-px bg-slate-300"></div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
+                    <div className="flex-1 h-px bg-slate-300"></div>
                   </div>
-                );
-              })
+                )}
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -505,16 +594,16 @@ export const Consultations = () => {
           <div className="px-3 md:px-4 py-3 bg-white border-t border-slate-200 flex gap-2 md:gap-3 items-center">
             <input
               type="text"
-              placeholder={selectedConvId ? 'Type a reply…' : 'Select a conversation first'}
+              placeholder={!selectedConvId ? 'Select a conversation first' : isConvEnded ? 'Consultation has been ended.' : 'Type a reply…'}
               value={messageInput}
               onChange={e => setMessageInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              disabled={!selectedConvId}
+              disabled={!selectedConvId || isConvEnded}
               className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendMessage}
-              disabled={!selectedConvId || !messageInput.trim()}
+              disabled={!selectedConvId || !messageInput.trim() || isConvEnded}
               className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               <i className="fa-regular fa-paper-plane"></i>
@@ -525,46 +614,33 @@ export const Consultations = () => {
         {/* ── Patient Records Side Panel ── */}
         {showPatientPanel && selectedConv && (
           <div className="absolute inset-0 z-50 md:relative md:z-auto w-full md:w-[420px] flex-shrink-0 md:border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-
-            {/* Panel Header */}
             <div className="px-4 py-3 md:py-3.5 border-b border-slate-200 flex items-center justify-between bg-white shadow-sm md:shadow-none">
               <p className="text-xs font-extrabold text-[#466460] flex items-center gap-1.5">
                 <i className="fa-solid fa-address-card text-[11px]"></i>
                 Patient Records
               </p>
-              <button
-                onClick={() => setShowPatientPanel(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100"
-              >
+              <button onClick={() => setShowPatientPanel(false)} className="text-slate-400 hover:text-slate-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100">
                 <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
-            {/* Panel Body */}
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-
-              {/* Avatar + Name */}
               <div className="flex items-center gap-3">
                 <div className="relative flex-shrink-0">
                   <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-lg">
                     {patientName.charAt(0).toUpperCase()}
                   </div>
-                  {isPatientOnline && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
-                  )}
+                  {isPatientOnline && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>}
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm text-slate-800 leading-tight truncate">{patientName}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    {patientProfile.universityId || patientProfile.studentId || '—'}
-                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.universityId || patientProfile.studentId || '—'}</p>
                   <span className={`text-[8px] px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patientRole)}`}>
                     {patientProfile.role || selectedConv?.patientRole || 'patient'}
                   </span>
                 </div>
               </div>
 
-              {/* Info Grid */}
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { label: 'Age',    value: patientProfile.age    || '—' },
@@ -579,7 +655,6 @@ export const Consultations = () => {
                 ))}
               </div>
 
-              {/* Birthdate */}
               {patientProfile.birthday && (
                 <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
                   <p className="text-[8px] text-slate-400 uppercase tracking-wide">Birthdate</p>
@@ -587,7 +662,6 @@ export const Consultations = () => {
                 </div>
               )}
 
-              {/* Contact */}
               <div>
                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Contact</p>
                 <div className="flex flex-col gap-1.5">
@@ -604,7 +678,6 @@ export const Consultations = () => {
                 </div>
               </div>
 
-              {/* Program / Department */}
               {(patientProfile.program || patientProfile.course || patientProfile.department) && (
                 <div>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Program</p>
@@ -613,16 +686,10 @@ export const Consultations = () => {
                     {patientProfile.yearLevel ? ` · ${patientProfile.yearLevel}` : ''}
                     {patientProfile.section   ? ` · Sec ${patientProfile.section}` : ''}
                   </p>
-                  {patientProfile.department && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.department}</p>
-                  )}
-                  {patientProfile.jobTitle && (
-                    <p className="text-[10px] text-slate-500 mt-0.5">{patientProfile.jobTitle}</p>
-                  )}
+                  {patientProfile.department && <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.department}</p>}
                 </div>
               )}
 
-              {/* Home Address */}
               {patientProfile.homeAddress && (
                 <div>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Address</p>
@@ -630,15 +697,12 @@ export const Consultations = () => {
                 </div>
               )}
 
-              {/* Emergency Contact */}
               {patientProfile.emergencyContact?.name && (
                 <div>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Emergency Contact</p>
                   <p className="text-[11px] font-semibold text-slate-700">
                     {patientProfile.emergencyContact.name}
-                    {patientProfile.emergencyContact.relationship
-                      ? ` (${patientProfile.emergencyContact.relationship})`
-                      : ''}
+                    {patientProfile.emergencyContact.relationship ? ` (${patientProfile.emergencyContact.relationship})` : ''}
                   </p>
                   {patientProfile.emergencyContact.phone && (
                     <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
@@ -646,13 +710,9 @@ export const Consultations = () => {
                       {patientProfile.emergencyContact.phone}
                     </p>
                   )}
-                  {patientProfile.emergencyContact.address && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.emergencyContact.address}</p>
-                  )}
                 </div>
               )}
 
-              {/* Vaccinations */}
               {patientProfile.vaccinations &&
                 Object.values(patientProfile.vaccinations).some(v => v?.vaccineName) && (
                 <div>
@@ -661,11 +721,8 @@ export const Consultations = () => {
                     {Object.entries(patientProfile.vaccinations).map(([key, v]) =>
                       v?.vaccineName ? (
                         <div key={key} className="text-[8px] px-2 py-1 rounded-lg bg-green-50 border border-green-100 text-green-700">
-                          <span className="font-semibold">
-                            {key.replace('dose', 'Dose ').replace('booster', 'Booster ')}:
-                          </span>{' '}
-                          {v.vaccineName}
-                          {v.date ? ` · ${v.date}` : ''}
+                          <span className="font-semibold">{key.replace('dose', 'Dose ').replace('booster', 'Booster ')}:</span>{' '}
+                          {v.vaccineName}{v.date ? ` · ${v.date}` : ''}
                         </div>
                       ) : null
                     )}
@@ -673,10 +730,8 @@ export const Consultations = () => {
                 </div>
               )}
 
-              {/* Divider */}
               <div className="border-t border-slate-100 pt-1"></div>
 
-              {/* Open Full Examination Button */}
               <button
                 onClick={handleOpenExamination}
                 className="w-full bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white text-[11px] font-bold py-3 md:py-2.5 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-sm"
@@ -686,17 +741,15 @@ export const Consultations = () => {
               </button>
 
               <button
-                onClick={() => navigate(`/records`)}
+                onClick={() => navigate('/records')}
                 className="w-full bg-[#e0eceb] text-[#466460] text-[11px] font-bold py-3 md:py-2 rounded-xl hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
               >
                 <i className="fa-solid fa-folder-open text-[10px]"></i>
                 Go to Records
               </button>
-
             </div>
           </div>
         )}
-
       </div>
 
       {/* Toast */}

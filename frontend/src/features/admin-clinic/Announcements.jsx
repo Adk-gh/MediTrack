@@ -245,7 +245,7 @@ export const Announcements = () => {
     setIsFormModalOpen(true);
   };
 
-  // ── Save (create or update) ──
+ // ── Save (create or update) ──
   const handleSave = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
       showSnackbar('Title and content are required', 'error');
@@ -263,31 +263,28 @@ export const Announcements = () => {
       contactPerson: formData.contactPerson.trim(),
       contactEmail:  formData.contactEmail.trim(),
       date:          todayIso(),
-      image:         formData.image || null,
+      image:         formData.image || null, // See Note #2 about this!
     };
 
     try {
       if (currentEditId) {
         await announcementsService.updateAnnouncement(currentEditId, payload);
         setAnnouncements(prev => prev.map(a => a.id === currentEditId ? { ...a, ...payload } : a));
-        showSnackbar('Announcement updated');
+        showSnackbar('Announcement updated', 'success');
       } else {
         const created = await announcementsService.createAnnouncement(payload);
-        setAnnouncements(prev => [{ id: created?.id ?? Date.now(), ...payload }, ...prev]);
-        showSnackbar('Announcement posted');
+        // Use the ID returned by Firebase, not a fake Date.now() ID
+        setAnnouncements(prev => [{ id: created.id, ...payload }, ...prev]);
+        showSnackbar('Announcement posted', 'success');
       }
-    } catch (_) {
-      if (currentEditId) {
-        setAnnouncements(prev => prev.map(a => a.id === currentEditId ? { ...a, ...payload } : a));
-        showSnackbar('Announcement updated');
-      } else {
-        setAnnouncements(prev => [{ id: Date.now(), ...payload }, ...prev]);
-        showSnackbar('Announcement posted');
-      }
+      setIsFormModalOpen(false); // Only close if successful
+    } catch (error) {
+      console.error("Failed to save announcement:", error);
+      // SHOW AN ERROR INSTEAD OF FAKING SUCCESS
+      showSnackbar(error.message || 'Failed to save announcement to database', 'error');
+    } finally {
+      setFormSaving(false);
     }
-
-    setFormSaving(false);
-    setIsFormModalOpen(false);
   };
 
   // ── Delete ──
