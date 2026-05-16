@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../services/auth.service.js';
 import * as announcementsService from '../../services/announcements.service';
+import { useAppointments } from '../../context/AppointmentContext';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -27,8 +28,21 @@ const CATEGORY_COLORS = {
 const PRIORITY_STRIPE = {
   urgent: 'bg-red-500',
   high:   'bg-orange-400',
-  normal: 'bg-[#2d7a52]',
+  normal: 'bg-[#466460]',
 };
+
+const HEALTH_TIPS = [
+  { emoji: '💧', tip: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
+  { emoji: '🥦', tip: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
+  { emoji: '🏃', tip: 'Aim for at least 30 minutes of physical activity most days of the week.' },
+  { emoji: '😴', tip: 'Get 7–9 hours of quality sleep each night to support your immune system.' },
+  { emoji: '🧴', tip: 'Wash your hands regularly for at least 20 seconds to prevent the spread of illness.' },
+];
+
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
 
 // ── Announcement Detail Modal ──────────────────────────────────────────────
 
@@ -38,63 +52,64 @@ const AnnouncementModal = ({ item, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center z-[1000] px-0"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center sm:items-center z-[1000] px-0"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-3xl w-full max-w-md max-h-[85vh] overflow-y-auto animate-[slideUp_0.25s_ease_both]"
+        className="bg-white rounded-3xl w-[calc(100%-24px)] mx-3 mb-24 sm:mb-0 max-w-md max-h-[80vh] flex flex-col overflow-hidden shadow-2xl animate-[slideUp_0.25s_ease_both]"
         onClick={e => e.stopPropagation()}
       >
-        {/* Image */}
-        {item.image && (
-          <div className="h-44 w-full overflow-hidden bg-slate-100 rounded-t-3xl">
-            <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+        <div className="flex justify-center pt-4 pb-2 sticky top-0 bg-white z-10 flex-shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-200"></div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto pb-5 flex flex-col">
+          {item.image && (
+            <div className="h-44 w-full overflow-hidden bg-slate-100 flex-shrink-0">
+              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+            </div>
+          )}
+
+          <div className="px-5 py-3 flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {item.priority && item.priority !== 'normal' && (
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_STRIPE[item.priority]}`}>
+                    {item.priority === 'urgent' ? '⚡ Urgent' : '● High'}
+                  </span>
+                )}
+                <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
+                  {item.category || 'General'}
+                </span>
+                {item.dept && (
+                  <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#eef2f1] text-[#466460]">
+                    {item.dept}
+                  </span>
+                )}
+              </div>
+
+              <h3 className="text-base font-bold text-[#1f2d2b] leading-snug mb-1">{item.title}</h3>
+
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[#98a8a5] mb-3">
+                <span>📅 {formatDate(item.date)}</span>
+                {item.location      && <span>📍 {item.location}</span>}
+                {item.contactPerson && <span>👤 {item.contactPerson}</span>}
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 mb-4">
+                <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">
+                  {item.content}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="w-full bg-[#eef2f1] text-[#466460] font-bold text-sm py-2.5 rounded-xl hover:bg-[#466460] hover:text-white transition-all mt-2"
+            >
+              Close
+            </button>
           </div>
-        )}
-
-        {/* Drag handle */}
-        {!item.image && (
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="w-10 h-1 rounded-full bg-slate-200"></div>
-          </div>
-        )}
-
-        <div className="px-5 py-4">
-          {/* Badges */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {item.priority && item.priority !== 'normal' && (
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_STRIPE[item.priority]}`}>
-                {item.priority === 'urgent' ? '⚡ Urgent' : '● High'}
-              </span>
-            )}
-            <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
-              {item.category || 'General'}
-            </span>
-            <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e8f5ee] text-[#2d7a52]">
-              {item.dept}
-            </span>
-          </div>
-
-          <h3 className="text-base font-bold text-[#1a2e22] leading-snug mb-1">{item.title}</h3>
-
-          {/* Meta */}
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[#9bb5a5] mb-4">
-            <span>📅 {formatDate(item.date)}</span>
-            {item.location      && <span>📍 {item.location}</span>}
-            {item.contactPerson && <span>👤 {item.contactPerson}</span>}
-            {item.contactEmail  && <span>✉️ {item.contactEmail}</span>}
-          </div>
-
-          <div className="border-t border-slate-100 pt-4">
-            <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{item.content}</p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="mt-5 w-full bg-[#e8f5ee] text-[#2d7a52] font-bold text-sm py-3 rounded-2xl hover:bg-[#2d7a52] hover:text-white transition-all"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
@@ -110,12 +125,10 @@ const AnnouncementCard = ({ item, onClick }) => {
   return (
     <div
       onClick={() => onClick(item)}
-      className="bg-white border border-[#ddeee5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.98] hover:shadow-md hover:border-[#4aab72] transition-all relative flex-shrink-0 w-[220px]"
+      className="bg-white border border-[#dfe6e5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.98] hover:shadow-md hover:border-[#466460] transition-all relative flex-shrink-0 w-[220px]"
     >
-      {/* Priority stripe */}
       <div className={`absolute top-0 left-0 right-0 h-[3px] ${stripeColor}`}></div>
 
-      {/* Image */}
       {item.image ? (
         <div className="h-28 w-full overflow-hidden bg-slate-100">
           <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
@@ -125,7 +138,6 @@ const AnnouncementCard = ({ item, onClick }) => {
       )}
 
       <div className="px-3.5 pb-3.5">
-        {/* Category badge */}
         <div className="flex items-center gap-1.5 mb-2">
           <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
             {item.category || 'General'}
@@ -137,29 +149,47 @@ const AnnouncementCard = ({ item, onClick }) => {
           )}
         </div>
 
-        <p className="text-xs font-bold text-[#1a2e22] leading-snug line-clamp-2 mb-1">{item.title}</p>
-        <p className="text-[10px] text-[#9bb5a5] line-clamp-2 leading-relaxed">{item.content}</p>
-        <p className="text-[9px] text-[#b5cfc0] mt-1.5">{formatDate(item.date)}</p>
+        <p className="text-xs font-bold text-[#1f2d2b] leading-snug line-clamp-2 mb-1">{item.title}</p>
+        <p className="text-[10px] text-[#98a8a5] line-clamp-2 leading-relaxed">{item.content}</p>
+        <p className="text-[9px] text-[#b8c9c6] mt-1.5">{formatDate(item.date)}</p>
       </div>
     </div>
   );
 };
 
-// ── Main Component ─────────────────────────────────────────────────────────
-
-const HEALTH_TIPS = [
-  { emoji: '💧', tip: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
-  { emoji: '🥦', tip: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
-  { emoji: '🏃', tip: 'Aim for at least 30 minutes of physical activity most days of the week.' },
-  { emoji: '😴', tip: 'Get 7–9 hours of quality sleep each night to support your immune system.' },
-  { emoji: '🧴', tip: 'Wash your hands regularly for at least 20 seconds to prevent the spread of illness.' },
-];
+// ── Main Dashboard Component ───────────────────────────────────────────────
 
 const HomePageUsers = () => {
   const navigate    = useNavigate();
   const currentUser = authService.getCurrentUser();
-  const userName    = currentUser?.name?.split(',')[0]?.trim() || 'Student';
+  const userName = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
+  const studentId   = currentUser?.universityId ?? currentUser?.idno ?? currentUser?.idNumber;
 
+  // ── Missing Information Check ──
+  const isMissingVaccination = !currentUser?.vaccinationStatus && !currentUser?.vaccinationHistory;
+  const isMissingEmergencyContact = !currentUser?.emergencyContact;
+
+  let pendingAction = null;
+  if (isMissingVaccination) {
+    pendingAction = {
+      title: "Action Required",
+      desc: "Please update your vaccination history in your profile for campus safety compliance.",
+      btnText: "Update Profile",
+      targetTab: "profile"
+    };
+  } else if (isMissingEmergencyContact) {
+    pendingAction = {
+      title: "Action Required",
+      desc: "Please add an emergency contact to your profile.",
+      btnText: "Add Contact",
+      targetTab: "profile"
+    };
+  }
+
+  // Global Contexts
+  const { getPatientAppointments, loadingAppts } = useAppointments();
+
+  // Local States
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnn, setLoadingAnn]       = useState(true);
   const [selectedAnn, setSelectedAnn]     = useState(null);
@@ -170,7 +200,6 @@ const HomePageUsers = () => {
     const load = async () => {
       try {
         const data = await announcementsService.getAllAnnouncements();
-        // Sort newest first, take latest 10
         const sorted = (data || [])
           .sort((a, b) => new Date(b.date) - new Date(a.date))
           .slice(0, 10);
@@ -184,138 +213,171 @@ const HomePageUsers = () => {
     load();
   }, []);
 
-  const quickActions = [
-    {
-      title: 'Book Appointment',
-      subtitle: 'Schedule a visit',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="#2d7a52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-          <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
-        </svg>
-      ),
-      id: 'booking',
-    },
-    {
-      title: 'My Records',
-      subtitle: 'View health files',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="#2d7a52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </svg>
-      ),
-      id: 'records',
-    },
-    {
-      title: 'Consult',
-      subtitle: 'Talk to a doctor',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="#2d7a52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-        </svg>
-      ),
-      id: 'consult',
-    },
-    {
-      title: 'My Account',
-      subtitle: 'Profile & settings',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="#2d7a52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-          <circle cx="12" cy="7" r="4" />
-        </svg>
-      ),
-      id: 'account',
-    },
-  ];
+  // ── Fetch dynamic user appointments ──
+  const studentAppointments = studentId ? getPatientAppointments(studentId) : [];
+  const upcomingAppt = studentAppointments.find(a => a.status === 'approved')
+                    || studentAppointments.find(a => a.status === 'pending');
 
   const tip = HEALTH_TIPS[tipIndex];
 
-  // ── Urgent announcement (pinned banner) ───────────────────────────────────
+  // ── Pinned announcement logic ──
   const urgentAnn = announcements.find(a => a.priority === 'urgent');
   const latestAnn = announcements[0];
   const pinnedAnn = urgentAnn || latestAnn;
 
   return (
-    <div className="flex flex-col h-full bg-[#f7faf8]">
+    <div className="flex flex-col h-full bg-[#f7faf8] pb-16">
 
-      {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
 
-        {/* ── Pinned / Latest Announcement Banner ── */}
-        {loadingAnn ? (
-          <div className="bg-[#e8f5ee] border border-[#c0e0ce] rounded-2xl p-4 animate-pulse">
-            <div className="h-3 bg-[#c0e0ce] rounded w-32 mb-3"></div>
-            <div className="h-4 bg-[#c0e0ce] rounded w-48 mb-2"></div>
-            <div className="h-3 bg-[#c0e0ce] rounded w-40"></div>
+        {/* ── Welcome Header & Clinic Status ── */}
+        <div className="flex items-start justify-between mt-2 animate-[slideUp_0.3s_ease_both]">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1f2d2b]">
+              Hello, {userName} 👋
+            </h1>
+            <p className="text-xs text-[#98a8a5] mt-1">
+              Here is your health overview for today.
+            </p>
           </div>
-        ) : pinnedAnn ? (
-          <div
-            className="bg-[#e8f5ee] border border-[#c0e0ce] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition-transform animate-[slideUp_0.5s_ease_both]"
-            onClick={() => setSelectedAnn(pinnedAnn)}
-          >
-            {/* Image if present */}
-            {pinnedAnn.image && (
-              <div className="h-32 w-full overflow-hidden">
-                <img src={pinnedAnn.image} alt={pinnedAnn.title} className="w-full h-full object-cover" />
-              </div>
-            )}
-
-            <div className="p-4">
-              {/* Header label */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#2d7a52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    <path d="M18 8a3 3 0 010 8" />
-                    <path d="M14 8.5l4-3v9l-4-3H6a2 2 0 01-2-2v-1a2 2 0 012-2h8z" />
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#2d7a52]">
-                    {urgentAnn ? '⚡ Urgent Notice' : 'Latest Announcement'}
-                  </span>
-                </div>
-                <span className="text-[9px] text-[#9bb5a5]">{formatDate(pinnedAnn.date)}</span>
-              </div>
-
-              <div className="text-sm font-bold text-[#1a2e22] mb-1 leading-snug">{pinnedAnn.title}</div>
-              <div className="text-xs text-[#6b8577] line-clamp-2 leading-relaxed">{pinnedAnn.content}</div>
-
-              {(pinnedAnn.location || pinnedAnn.contactPerson) && (
-                <div className="flex gap-3 mt-2 text-[10px] text-[#9bb5a5]">
-                  {pinnedAnn.location      && <span>📍 {pinnedAnn.location}</span>}
-                  {pinnedAnn.contactPerson && <span>👤 {pinnedAnn.contactPerson}</span>}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between mt-3">
-                <span className={`text-[8px] font-semibold px-2 py-0.5 rounded-full ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).bg} ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).text}`}>
-                  {pinnedAnn.category || 'General'}
-                </span>
-                <span className="text-[10px] text-[#2d7a52] font-semibold">Tap to read more →</span>
-              </div>
-            </div>
+          <div className="inline-flex items-center gap-1.5 bg-green-100 px-2.5 py-1 rounded-full mt-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide">Clinic Open</span>
           </div>
-        ) : (
-          <div className="bg-[#e8f5ee] border border-[#c0e0ce] rounded-2xl p-4 animate-[slideUp_0.5s_ease_both]">
-            <div className="flex items-center gap-1.5 mb-2">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#2d7a52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                <path d="M18 8a3 3 0 010 8" />
-                <path d="M14 8.5l4-3v9l-4-3H6a2 2 0 01-2-2v-1a2 2 0 012-2h8z" />
-              </svg>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#2d7a52]">Announcements</span>
+        </div>
+
+        {/* ── Pending Actions (Dynamic) ── */}
+        {pendingAction && (
+          <div className="animate-[slideUp_0.35s_ease_both]">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-start gap-3 shadow-sm">
+              <span className="text-amber-500 mt-0.5">⚠️</span>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-amber-900">{pendingAction.title}</h4>
+                <p className="text-[11px] text-amber-700 mt-0.5">{pendingAction.desc}</p>
+              </div>
+              <button
+                onClick={() => navigate('/student/account', { state: { activeTab: pendingAction.targetTab } })}
+                className="text-[10px] font-bold bg-amber-200 text-amber-800 px-3 py-1.5 rounded-full hover:bg-amber-300 transition-colors flex-shrink-0 shadow-sm"
+              >
+                {pendingAction.btnText}
+              </button>
             </div>
-            <p className="text-xs text-[#9bb5a5]">No announcements at the moment. Check back later.</p>
           </div>
         )}
 
+        {/* ── Dynamic Upcoming Appointment ── */}
+        <div className="animate-[slideUp_0.4s_ease_both]">
+          <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">Up Next</div>
+
+          {loadingAppts ? (
+            <div className="bg-white border border-[#dfe6e5] rounded-2xl p-4 animate-pulse h-[72px]"></div>
+          ) : upcomingAppt ? (
+            <div className={`bg-white border rounded-2xl p-3 flex items-center justify-between shadow-sm border-l-4 ${upcomingAppt.status === 'approved' ? 'border-l-[#466460]' : 'border-l-[#f0c070]'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`rounded-xl py-2 px-3 text-center min-w-[50px] ${upcomingAppt.status === 'approved' ? 'bg-[#eef2f1] text-[#466460]' : 'bg-[#fffdf7] text-[#b07020]'}`}>
+                  <div className="text-[9px] uppercase font-bold">
+                    {upcomingAppt.status === 'approved' && upcomingAppt.month ? MONTHS_SHORT[upcomingAppt.month - 1] : 'TBD'}
+                  </div>
+                  <div className="text-lg font-black leading-none mt-0.5">
+                    {upcomingAppt.status === 'approved' ? upcomingAppt.day : '—'}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-[#1f2d2b] line-clamp-1">{upcomingAppt.reason}</h4>
+                  <p className="text-[10px] text-[#98a8a5] mt-0.5 flex items-center gap-1">
+                    {upcomingAppt.status === 'pending' ? (
+                      <><span className="text-[#f0c070] text-[12px]">⏳</span> Awaiting Schedule</>
+                    ) : (
+                      <>{upcomingAppt.time} • University Clinic</>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/student/booking')}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-[#466460]"
+              >
+                <span className="text-lg">→</span>
+              </button>
+            </div>
+          ) : (
+            <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-4 flex flex-col items-center justify-center text-center">
+               <span className="text-[11px] text-[#98a8a5] mb-2">No upcoming appointments</span>
+               <button onClick={() => navigate('/student/booking')} className="text-[10px] font-bold bg-white border border-[#cdd6d5] text-[#466460] px-4 py-1.5 rounded-full hover:bg-[#eef2f1] transition-colors shadow-sm">
+                 Book Now
+               </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Pinned / Latest Announcement Banner ── */}
+        <div className="animate-[slideUp_0.45s_ease_both]">
+          <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">Notice Board</div>
+          {loadingAnn ? (
+            <div className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl p-4 animate-pulse">
+              <div className="h-3 bg-[#cdd6d5] rounded w-32 mb-3"></div>
+              <div className="h-4 bg-[#cdd6d5] rounded w-48 mb-2"></div>
+              <div className="h-3 bg-[#cdd6d5] rounded w-40"></div>
+            </div>
+          ) : pinnedAnn ? (
+            <div
+              className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition-transform shadow-sm"
+              onClick={() => setSelectedAnn(pinnedAnn)}
+            >
+              {pinnedAnn.image && (
+                <div className="h-32 w-full overflow-hidden">
+                  <img src={pinnedAnn.image} alt={pinnedAnn.title} className="w-full h-full object-cover" />
+                </div>
+              )}
+
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      <path d="M18 8a3 3 0 010 8" />
+                      <path d="M14 8.5l4-3v9l-4-3H6a2 2 0 01-2-2v-1a2 2 0 012-2h8z" />
+                    </svg>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#466460]">
+                      {urgentAnn ? '⚡ Urgent Notice' : 'Latest Announcement'}
+                    </span>
+                  </div>
+                  <span className="text-[9px] text-[#98a8a5]">{formatDate(pinnedAnn.date)}</span>
+                </div>
+
+                <div className="text-sm font-bold text-[#1f2d2b] mb-1 leading-snug">{pinnedAnn.title}</div>
+                <div className="text-xs text-[#697d7a] line-clamp-2 leading-relaxed">{pinnedAnn.content}</div>
+
+                {(pinnedAnn.location || pinnedAnn.contactPerson) && (
+                  <div className="flex gap-3 mt-2 text-[10px] text-[#98a8a5]">
+                    {pinnedAnn.location      && <span>📍 {pinnedAnn.location}</span>}
+                    {pinnedAnn.contactPerson && <span>👤 {pinnedAnn.contactPerson}</span>}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mt-3">
+                  <span className={`text-[8px] font-semibold px-2 py-0.5 rounded-full ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).bg} ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).text}`}>
+                    {pinnedAnn.category || 'General'}
+                  </span>
+                  <span className="text-[10px] text-[#466460] font-semibold">Tap to read more →</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl p-4">
+              <p className="text-xs text-[#98a8a5]">No announcements at the moment. Check back later.</p>
+            </div>
+          )}
+        </div>
+
         {/* ── All Announcements Horizontal Scroll ── */}
         {!loadingAnn && announcements.length > 1 && (
-          <div className="animate-[slideUp_0.55s_ease_both]">
+          <div className="animate-[slideUp_0.5s_ease_both]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-[#6b8577] uppercase tracking-wide">All Announcements</span>
-              <span className="text-[10px] text-[#9bb5a5]">{announcements.length} posts</span>
+              <span className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">All Announcements</span>
+              <span className="text-[10px] text-[#98a8a5]">{announcements.length} posts</span>
             </div>
             <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -330,30 +392,12 @@ const HomePageUsers = () => {
           </div>
         )}
 
-        {/* ── Quick Actions ── */}
-        <div className="text-[11px] font-bold text-[#6b8577] uppercase tracking-wide">Quick Access</div>
-        <div className="grid grid-cols-2 gap-2.5 animate-[slideUp_0.6s_ease_both]">
-          {quickActions.map((action, index) => (
-            <div
-              key={index}
-              onClick={() => navigate(`/student/${action.id}`)}
-              className="bg-white border border-[#ddeee5] rounded-2xl p-3.5 cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:border-[#4aab72] transition-all active:scale-[0.97]"
-            >
-              <div className="w-[34px] h-[34px] bg-[#e8f5ee] rounded-[10px] flex items-center justify-center mb-2">
-                {action.icon}
-              </div>
-              <div className="text-xs font-bold text-[#1a2e22]">{action.title}</div>
-              <div className="text-[11px] text-[#9bb5a5] mt-0.5">{action.subtitle}</div>
-            </div>
-          ))}
-        </div>
-
         {/* ── Health Tip Banner ── */}
-        <div className="bg-gradient-to-r from-[#1a5c3a] to-[#2d7a52] rounded-2xl p-4 flex items-center gap-3 animate-[slideUp_0.65s_ease_both]">
+        <div className="bg-gradient-to-r from-[#2f4542] to-[#466460] rounded-2xl p-4 flex items-center gap-3 animate-[slideUp_0.55s_ease_both] shadow-md mt-1">
           <span className="text-[28px] flex-shrink-0">{tip.emoji}</span>
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[1px] text-[#34c472] mb-0.5">Health Tip</div>
-            <div className="text-xs text-white/90 leading-[1.45]">{tip.tip}</div>
+            <div className="text-[10px] font-bold uppercase tracking-[1px] text-[#79a39d] mb-0.5">Health Tip</div>
+            <div className="text-[11px] text-white/90 leading-[1.45]">{tip.tip}</div>
           </div>
         </div>
 

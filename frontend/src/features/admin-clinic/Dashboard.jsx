@@ -373,7 +373,7 @@ export const Dashboard = () => {
       if (!currentUser) return;
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(`${API_URL}/api/users/profile`, {
+        const response = await fetch(`${API_URL}/users/profile`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const result = await response.json();

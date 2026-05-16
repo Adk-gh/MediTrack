@@ -6,17 +6,21 @@
 body {
   margin: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f9f9f9;
+  background-color: transparent;
+}
+
+#root {
+  background-color: transparent;
 }
 
 @keyframes fadeInSlideUp {
-  from { 
-    opacity: 0; 
-    transform: translateY(10px); 
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -34,35 +38,35 @@ body {
   --accent-sage: #81b29a;
 }
 
-.glass-card { 
-  background: white; 
-  border-radius: 12px; 
+.glass-card {
+  background: white;
+  border-radius: 12px;
   border: 1px solid #e2e8f0;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0,0,0,0.03);
 }
 
-.filter-pill { 
-  display: inline-block; 
-  padding: 4px 12px; 
-  border-radius: 20px; 
-  font-size: 10px; 
-  font-weight: 600; 
-  cursor: pointer; 
-  background: #f1f5f9; 
-  color: #475569; 
+.filter-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f1f5f9;
+  color: #475569;
 }
-.filter-pill.active { 
-  background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-light)); 
-  color: white; 
+.filter-pill.active {
+  background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-light));
+  color: white;
 }
 
 @keyframes fadeInSlide {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-in { 
-  animation: fadeInSlide 0.4s ease-out forwards; 
+.animate-in {
+  animation: fadeInSlide 0.4s ease-out forwards;
 }
 
 
@@ -97,7 +101,7 @@ body {
   border-radius: 16px !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05) !important;
   overflow: hidden;
-  max-width: 280px !important; /* Prevent calendar from being too wide */
+  max-width: 280px !important;
 }
 
 .react-datepicker__header {
@@ -141,8 +145,6 @@ body {
   font-weight: 700;
   cursor: pointer;
   transition: border-color 0.2s ease;
-
-  /* Prevent the dropdowns from growing too tall and overflowing */
   max-height: 180px;
   overflow-y: auto;
 }

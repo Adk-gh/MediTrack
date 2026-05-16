@@ -101,9 +101,12 @@ const buildDentalForm = (p) => {
   const lastName  = p?.lastName  || (p?.name ? p.name.split(', ')[0] : '');
   const firstName = p?.firstName || (p?.name ? (p.name.split(', ')[1] || '') : '');
 
-  // Pull vaccination dates from the structured vaccinations object
+  // Pull vaccination dates
   const vax = p?.vaccinations || {};
   const vaxDate = (key) => vax[key]?.date || '';
+
+  // Pull existing user-filled dental history (if any)
+  const dh = p?.dentalHistory || {};
 
   return {
     dLastName:   lastName,
@@ -115,13 +118,23 @@ const buildDentalForm = (p) => {
     dAddress:    p?.homeAddress || '',
     dCellphone:  p?.phoneNumber || '',
     dCourseYear: [p?.program || p?.prog || '', p?.yearLevel || p?.year || '', p?.section || ''].filter(Boolean).join(' '),
-    dOfficeAddress: '', dTelNo: '', dNationality: p?.nationality || 'Filipino',
-    dLastVisit: '', dPrevDentist: '', dPhysician: '',
-    dTeethUpper: '', dTeethLower: '',
+    dOfficeAddress: '',
+    dTelNo: '',
+    dNationality: p?.nationality || 'Filipino',
+
+    // MAP FIELDS DIRECTLY FROM USER'S DENTAL HISTORY
+    dLastVisit: dh.lastVisit || '',
+    dPrevDentist: dh.prevDentist || '',
+    dPhysician: dh.physician || '',
+    dTeethUpper: dh.teethUpper || '',
+    dTeethLower: dh.teethLower || '',
+
     dVax1Date:      vaxDate('dose1'),
     dVax2Date:      vaxDate('dose2'),
     dBoosterDate:   vaxDate('booster1'),
-    dPatientSig: '', dSigDate: new Date().toISOString().split('T')[0], dExaminedBy: '',
+    dPatientSig: '',
+    dSigDate: new Date().toISOString().split('T')[0],
+    dExaminedBy: '',
   };
 };
 
@@ -132,7 +145,7 @@ export const Dental = ({ selectedPatient, showMessage }) => {
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
   const [showSummary, setShowSummary]       = useState(false);
-  const [isSubmitting, setIsSubmitting]     = useState(false); // DB Loading State
+  const [isSubmitting, setIsSubmitting]     = useState(false);
 
   const [dentalHistory, setDentalHistory]   = useState(
     Object.fromEntries(dentalProcedures.map(p => [p, 'No']))
@@ -146,10 +159,23 @@ export const Dental = ({ selectedPatient, showMessage }) => {
 
   // Re-populate when selectedPatient changes
   useEffect(() => {
+    // 1. Populate top-level form fields
     setDentalFormData(buildDentalForm(selectedPatient));
-    setToothData({});
-    setDentalHistory(Object.fromEntries(dentalProcedures.map(p => [p, 'No'])));
-    setIntraoral({ gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
+
+    // 2. Extract nested dental objects from patient profile
+    const userDh = selectedPatient?.dentalHistory || {};
+
+    // 3. Set tooth chart data
+    setToothData(userDh.toothData || {});
+
+    // 4. Set Procedures (Merge with defaults to avoid undefined errors)
+    const defaultProcedures = Object.fromEntries(dentalProcedures.map(p => [p, 'No']));
+    setDentalHistory({ ...defaultProcedures, ...(userDh.procedures || {}) });
+
+    // 5. Set Intraoral Findings
+    const defaultIntraoral = { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false };
+    setIntraoral({ ...defaultIntraoral, ...(userDh.intraoral || {}) });
+
   }, [selectedPatient?.uid]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -171,7 +197,6 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         [toothModal.toothNum]: { condition: toothCondition, operation: toothOperation },
       }));
       setToothModal({ open: false, toothNum: null });
-
     }
   };
 
@@ -205,27 +230,22 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     setIsSubmitting(true);
 
     try {
-      // 1. Bundle all the data from the different objects and states
       const payload = {
         ...dentalFormData,
-        toothData,          // Dental chart map
-        dentalHistory,      // Procedures Yes/No
-        intraoral,          // Intraoral findings
+        toothData,
+        dentalHistory,
+        intraoral,
         createdAt: serverTimestamp(),
-        status: "approved",    // <-- SET TO APPROVED
-        isApproved: true,      // <-- DIRECTLY APPROVED
-        approvedAt: serverTimestamp(), // <-- Added so UI can sort by approval date
+        status: "approved",
+        isApproved: true,
+        approvedAt: serverTimestamp(),
       };
 
-      // 2. Point to the 'dental_records' subcollection inside this specific user
       const dentalRecordsRef = collection(db, "users", selectedPatient.uid, "dental_records");
-
-      // 3. Save as a new document (This will not overwrite past exams)
       await addDoc(dentalRecordsRef, payload);
 
-      // 4. Close the modal and show success toast
       setShowSummary(false);
-      showMessage('Dental record saved and approved successfully!'); // <-- TWEAKED MESSAGE
+      showMessage('Dental record saved and approved successfully!');
 
     } catch (error) {
       console.error("Error saving dental record: ", error);

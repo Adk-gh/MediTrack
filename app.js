@@ -1,18 +1,19 @@
-
+// C:\Users\HP\MediTrack\app.js
 require('dotenv').config();
 const express = require("express");
 const database = require("./configs/database");
 const globalErr = require("./middleware/global-err");
-const routes = require("./routes/index"); // This is where we link the new auth routes
+const routes = require("./routes/index");
 const cors = require("cors");
 
 const app = express();
 
-// ✅ Middleware 
+// ✅ Middleware
 app.use(cors());
-app.use(express.json());
-// extended: true is important for handling the complex data Multer sends
-app.use(express.urlencoded({ extended: true }));
+
+// 🔴 FIX: Increase the payload limits to handle large Base64 image strings
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // ✅ Debug test route
 app.post("/test", (req, res) => {
@@ -29,8 +30,7 @@ app.use(globalErr);
 const PORT = process.env.PORT || 5000;
 
 database().then(() => {
-  app.listen(PORT, "0.0.0.0", () => { // <-- Add "0.0.0.0" right here
-    // ... console logs
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`
 =========================================
   MediTrack Node Server Running

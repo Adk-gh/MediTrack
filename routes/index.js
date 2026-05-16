@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\routes\index.js
 require('dotenv').config();
 const express = require('express');
 const router = express.Router();
@@ -12,6 +13,7 @@ const recordsRoutes = require('../features/Records/records.route');
 const appointmentsRoutes = require('../features/appointments/appointments.route');
 const examinationsRoutes = require('../features/examinations/examinations.route');
 const announcementsRoutes = require('../features/announcements/announcements.route');
+const notificationsRoutes = require('../features/notifications/notifications.route');
 
 const profileSetupRoutes = require('../features/user/profile-setup/profile-setup');
 
@@ -22,5 +24,6 @@ router.use('/records', recordsRoutes);
 router.use('/appointments', appointmentsRoutes);
 router.use('/examinations', examinationsRoutes);
 router.use('/announcements', announcementsRoutes);
+router.use('/notifications', notificationsRoutes);
 
 module.exports = router;

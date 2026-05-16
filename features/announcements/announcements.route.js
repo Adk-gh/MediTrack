@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\announcements\announcements.route.js
 const express = require("express");
 const router = express.Router();
 const announcementsController = require("./announcements.controller");

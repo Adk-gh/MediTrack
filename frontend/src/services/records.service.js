@@ -1,3 +1,4 @@
+// C:\Users\HP\MediTrack\frontend\src\services\records.service.js
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const getAuthHeaders = () => {
@@ -29,18 +30,18 @@ export const getRecordById = async (id) => {
 export const createRecord = async (recordData) => {
   const res = await fetch(`${API_URL}/records`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(), // ← FIXED: Now includes both Content-Type and the Bearer Token
     body: JSON.stringify(recordData),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || "Failed to create record");
-  return data.data;
+  return data.data; // Returns the created user object
 };
 
 export const updateRecord = async (id, recordData) => {
   const res = await fetch(`${API_URL}/records/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(), // ← FIXED
     body: JSON.stringify(recordData),
   });
   const data = await res.json();

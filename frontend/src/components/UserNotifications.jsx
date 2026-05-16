@@ -81,15 +81,15 @@ const formatTimeAgo = (dateString) => {
   return date.toLocaleDateString();
 };
 
-// ─── Notification Bell Button (for header) ───────────────────────────────────────
-export function NotificationBell({ onClick, count }) {
+// ─── Notification Bell Button (for header) ─────────────────────────────────────
+export function UserNotificationBell({ onClick, count }) {
   return (
     <button
       onClick={onClick}
-      className="relative p-2 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+      className="relative p-2 rounded-full hover:bg-slate-50 transition-colors cursor-pointer"
       aria-label="Notifications"
     >
-      <div className="w-5 h-5 text-white">
+      <div className="w-5 h-5 text-[#466460]">
         <BellIcon />
       </div>
       {count > 0 && (
@@ -102,7 +102,7 @@ export function NotificationBell({ onClick, count }) {
 }
 
 // ─── Notification Dropdown Panel ────────────────────────────────────────────────
-export function NotificationPanel({ isOpen, onClose }) {
+export function UserNotificationPanel({ isOpen, onClose }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -175,7 +175,7 @@ export function NotificationPanel({ isOpen, onClose }) {
       {/* Panel */}
       <div className="fixed top-0 right-0 sm:top-2 sm:right-2 z-[2000] w-full sm:w-[380px] h-full sm:h-[calc(100vh-16px)] sm:max-h-[600px] bg-white sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slideIn">
         {/* Header */}
-        <div className="bg-gradient-to-br from-[#466460] to-[#38524d] px-4 py-4 flex items-center justify-between flex-shrink-0">
+        <div className="bg-gradient-to-br from-[#466460] to-[#466048] px-4 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 text-white">
               <BellIcon />
@@ -229,7 +229,7 @@ export function NotificationPanel({ isOpen, onClose }) {
                   <div
                     key={notification.id}
                     className={`px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer ${
-                      !notification.isRead ? 'bg-blue-50/50' : ''
+                      !notification.isRead ? 'bg-green-50/50' : ''
                     }`}
                     onClick={() => !notification.isRead && handleMarkAsRead(notification.id)}
                   >
@@ -305,24 +305,4 @@ export function NotificationPanel({ isOpen, onClose }) {
   );
 }
 
-// ─── Notification Badge (for mobile) ─────────────────────────────────────────────
-export function NotificationBadge({ count, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="relative p-2 -my-1"
-      aria-label="Notifications"
-    >
-      <div className="w-5 h-5 text-[#466460]">
-        <BellIcon />
-      </div>
-      {count > 0 && (
-        <span className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-bold min-w-[14px] h-[14px] rounded-full flex items-center justify-center">
-          {count > 9 ? '9+' : count}
-        </span>
-      )}
-    </button>
-  );
-}
-
-export default { NotificationBell, NotificationPanel, NotificationBadge };
+export default { UserNotificationBell, UserNotificationPanel };

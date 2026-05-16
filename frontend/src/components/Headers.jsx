@@ -5,9 +5,11 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import authService from '../services/auth.service.js';
 import { useLoading } from '../context/LoadingContext.jsx';
 import DatePicker from './Datepicker.jsx';
+import { NotificationBell, NotificationPanel } from './Notifications.jsx';
+import notificationsService from '../services/notifications.service.js';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -84,6 +86,385 @@ const DefaultIcon = () => (
   </svg>
 );
 
+// ─── Dental History static data ───────────────────────────────────────────────
+const DENTAL_PROCEDURES = [
+  'Oral Prophylaxis', 'Filling / Restoration', 'Extraction',
+  'Drug Sensitivity / Allergy', 'Pulp Therapy', 'Periodontal Therapy',
+  'Orthodontic Therapy', 'TMJ Treatment', 'Prosthodontic Therapy',
+];
+
+const INTRAORAL_FIELDS = [
+  { name: 'gingiva',       title: 'Consistency of Gingiva', opts: ['Firm','Good','Pink','Palpable','Class (Molar)','Pain'] },
+  { name: 'oralHygiene',   title: 'Oral Hygiene',           opts: ['Good','Fair','Poor'] },
+  { name: 'gingivalColor', title: 'Gingival Color',         opts: ['Bright red','Pale'] },
+  { name: 'occlusion',     title: 'Occlusion',              opts: ['Smooth','Overjet','Overbite','Clicking'] },
+  { name: 'lymph',         title: 'Lymph Nodes',            opts: ['Palpable','Not Palpable'] },
+  { name: 'status',        title: 'Status',                 opts: ['Hyperplastic','Normal'] },
+  { name: 'otherFindings', title: 'Other Findings',         opts: ['Midline Deviation','Tooth Wear','Trismus'] },
+];
+
+const TOOTH_CONDITIONS = [
+  { value: '',               label: '( / ) Free from Caries' },
+  { value: 'caries',         label: '(C) Caries'             },
+  { value: 'filled',         label: '(●) Filled'             },
+  { value: 'missing',        label: '(M) Missing'            },
+  { value: 'extracted',      label: '(X) For Extraction'     },
+  { value: 'root-fragment',  label: '(RF) Root Fragment'     },
+  { value: 'improved',       label: '(IM) Improved'          },
+  { value: 'pontic',         label: '(P) Pontic'             },
+];
+
+const TOOTH_OPERATIONS = [
+  { value: '',    label: 'None'                          },
+  { value: 'AM',  label: 'Amalgam (AM)'                  },
+  { value: 'AB',  label: 'Abutment (AB)'                 },
+  { value: 'SI',  label: 'Silicate Cement (SI)'          },
+  { value: 'GI',  label: 'Gold Inlay (GI)'               },
+  { value: 'LC',  label: 'Light Cure (LC)'               },
+  { value: 'GC',  label: 'Gold Crown (GC)'               },
+  { value: 'SSC', label: 'Stainless Steel Crown (SSC)'  },
+  { value: 'PJC', label: 'Porcelain Jacket Crown (PJC)' },
+  { value: 'TF',  label: 'Temporary Filling (TF)'        },
+  { value: 'DC',  label: 'Dowel Crown (DC)'              },
+  { value: 'SNT', label: 'Supernumerary Tooth (SNT)'    },
+  { value: 'PP',  label: 'Periodontal Pocket (PP)'      },
+  { value: 'CA',  label: 'Cervical Abrasion (CA)'        },
+  { value: 'R',   label: 'Restorable (R)'                },
+];
+
+const TOOTH_CONDITION_STYLE = {
+  caries:          'bg-red-100 border-red-400 text-red-600',
+  filled:          'bg-yellow-100 border-yellow-500 text-yellow-700',
+  missing:         'bg-slate-100 border-slate-400 text-slate-500',
+  extracted:       'bg-pink-100 border-pink-400 text-pink-700',
+  'root-fragment': 'bg-amber-100 border-amber-400 text-amber-700',
+  improved:        'bg-blue-100 border-blue-400 text-blue-700',
+  pontic:          'bg-purple-100 border-purple-400 text-purple-700',
+};
+
+const TOOTH_CONDITION_LABEL = {
+  caries: 'C', filled: '●', missing: 'M', extracted: 'X',
+  'root-fragment': 'RF', improved: 'IM', pontic: 'P',
+};
+
+const PERM_UPPER_RIGHT  = [18,17,16,15,14,13,12,11];
+const PERM_UPPER_LEFT   = [21,22,23,24,25,26,27,28];
+const PERM_LOWER_RIGHT  = [48,47,46,45,44,43,42,41];
+const PERM_LOWER_LEFT   = [31,32,33,34,35,36,37,38];
+const DECID_UPPER_RIGHT = [55,54,53,52,51];
+const DECID_UPPER_LEFT  = [61,62,63,64,65];
+const DECID_LOWER_RIGHT = [85,84,83,82,81];
+const DECID_LOWER_LEFT  = [71,72,73,74,75];
+
+const emptyDentalHistory = () => ({
+  lastVisit: '', prevDentist: '', physician: '',
+  teethUpper: '', teethLower: '', notes: '',
+  procedures: Object.fromEntries(DENTAL_PROCEDURES.map(p => [p, 'No'])),
+  intraoral: { gingiva:'', oralHygiene:'', gingivalColor:'', occlusion:'', lymph:'', status:'', otherFindings:'', tmjExam: false },
+  toothData: {},
+});
+
+// ── Mini tooth-modal inside the drawer ────────────────────────────────────────
+function DrawerToothModal({ num, toothData, onSave, onClose }) {
+  const [cond, setCond] = React.useState(toothData[num]?.condition || '');
+  const [op,   setOp]   = React.useState(toothData[num]?.operation  || '');
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]">
+      <div className="bg-white p-5 rounded-2xl w-[290px] shadow-2xl">
+        <h4 className="text-sm font-bold text-[#466460] mb-3">Tooth #{num}</h4>
+        <div className="mb-3">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Condition</label>
+          <select className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-[#466460]" value={cond} onChange={e => setCond(e.target.value)}>
+            {TOOTH_CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </div>
+        <div className="mb-4">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Operation / Restoration</label>
+          <select className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-[#466460]" value={op} onChange={e => setOp(e.target.value)}>
+            {TOOTH_OPERATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => onSave(num, cond, op)} className="flex-1 bg-[#466460] text-white py-2 rounded-lg text-xs font-bold hover:bg-[#3a524f]">Save</button>
+          <button onClick={onClose} className="flex-1 bg-slate-100 text-slate-600 py-2 rounded-lg text-xs font-semibold hover:bg-slate-200">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Dental History section inside the ProfileDrawer ───────────────────────────
+function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
+  const dh = { ...emptyDentalHistory(), ...dentalHistory };
+  const [expanded,      setExpanded]      = React.useState(false);
+  const [chartExpanded, setChartExpanded] = React.useState(false);
+  const [toothModal,    setToothModal]    = React.useState(null); // tooth number or null
+
+  const update      = (partial) => onUpdate({ ...dh, ...partial });
+  const updateIntra = (partial) => onUpdate({ ...dh, intraoral: { ...dh.intraoral, ...partial } });
+  const updateProc  = (proc, val) => onUpdate({ ...dh, procedures: { ...dh.procedures, [proc]: val } });
+  const saveToothModal = (num, cond, op) => {
+    onUpdate({ ...dh, toothData: { ...dh.toothData, [num]: { condition: cond, operation: op } } });
+    setToothModal(null);
+  };
+
+  const inputCls = "flex-1 min-w-0 text-right bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-[#466460] focus:ring-1 focus:ring-[#466460] text-slate-800 text-xs transition-all";
+  const rowCls   = "flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0 gap-3 min-h-[38px]";
+  const lCls     = "flex items-center gap-2 text-slate-500 shrink-0 min-w-[118px]";
+
+  const affectedCount = Object.values(dh.toothData || {}).filter(d => d?.condition).length;
+  const yesCount      = Object.values(dh.procedures || {}).filter(v => v === 'Yes').length;
+
+  // Tooth chart rows
+  const toothRows = [
+    { label: 'Deciduous Upper', right: DECID_UPPER_RIGHT, left: DECID_UPPER_LEFT },
+    { label: 'Deciduous Lower', right: DECID_LOWER_RIGHT, left: DECID_LOWER_LEFT },
+    { label: 'Permanent Upper', right: PERM_UPPER_RIGHT,  left: PERM_UPPER_LEFT  },
+    { label: 'Permanent Lower', right: PERM_LOWER_RIGHT,  left: PERM_LOWER_LEFT  },
+  ];
+
+  const renderToothRow = (teeth) => teeth.map(n => {
+    const cond  = dh.toothData[n]?.condition;
+    const label = TOOTH_CONDITION_LABEL[cond] || '/';
+    const cls   = TOOTH_CONDITION_STYLE[cond]  || 'bg-white border-slate-300 text-slate-400';
+    return (
+      <div key={n} className="flex flex-col items-center gap-0.5">
+        <span className="text-[7px] text-slate-400">{n}</span>
+        <div
+          onClick={() => isEditing && setToothModal(n)}
+          className={`w-6 h-6 border-2 flex items-center justify-center text-[9px] font-bold rounded transition-all
+            ${isEditing ? 'cursor-pointer hover:scale-110' : 'cursor-default'} ${cls}`}
+          title={`Tooth #${n}`}
+        >
+          {label}
+        </div>
+      </div>
+    );
+  });
+
+  return (
+    <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+
+      {/* Section header — collapse toggle */}
+      <button type="button" onClick={() => setExpanded(p => !p)} className="w-full flex items-center justify-between mb-2 group">
+        <div className="text-[9px] font-extrabold uppercase tracking-widest text-[#466460]">
+          <i className="fa-solid fa-tooth mr-1.5 opacity-70"></i>Dental History
+        </div>
+        <div className="flex items-center gap-2">
+          {!expanded && yesCount > 0 && (
+            <span className="text-[8px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">{yesCount} procedure{yesCount > 1 ? 's' : ''}</span>
+          )}
+          {!expanded && affectedCount > 0 && (
+            <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{affectedCount} tooth note{affectedCount > 1 ? 's' : ''}</span>
+          )}
+          <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'} text-[10px] text-slate-400 group-hover:text-[#466460] transition-colors`}></i>
+        </div>
+      </button>
+
+      {!expanded && (
+        <p className="text-[10px] text-slate-400 italic">
+          {dh.lastVisit ? `Last visit: ${dh.lastVisit}` : 'No dental history recorded.'}
+        </p>
+      )}
+
+      {expanded && (
+        <div>
+          {/* ── Basic info ── */}
+          <div className={rowCls}>
+            <div className={lCls}><i className="fa-solid fa-calendar-day text-[#466460] w-4 opacity-70"></i><span>Last Visit</span></div>
+            {isEditing
+              ? <input type="date" className={inputCls} value={dh.lastVisit} onChange={e => update({ lastVisit: e.target.value })} />
+              : <span className="font-semibold text-slate-800 text-xs text-right">{dh.lastVisit || '—'}</span>}
+          </div>
+
+          <div className={rowCls}>
+            <div className={lCls}><i className="fa-solid fa-user-doctor text-[#466460] w-4 opacity-70"></i><span>Previous Dentist</span></div>
+            {isEditing
+              ? <input type="text" className={inputCls} placeholder="Dr. Last name" value={dh.prevDentist} onChange={e => update({ prevDentist: e.target.value })} />
+              : <span className="font-semibold text-slate-800 text-xs text-right">{dh.prevDentist ? `Dr. ${dh.prevDentist}` : '—'}</span>}
+          </div>
+
+          <div className={rowCls}>
+            <div className={lCls}><i className="fa-solid fa-stethoscope text-[#466460] w-4 opacity-70"></i><span>Physician</span></div>
+            {isEditing
+              ? <input type="text" className={inputCls} placeholder="Dr. Last name" value={dh.physician} onChange={e => update({ physician: e.target.value })} />
+              : <span className="font-semibold text-slate-800 text-xs text-right">{dh.physician ? `Dr. ${dh.physician}` : '—'}</span>}
+          </div>
+
+          {/* ── Teeth count ── */}
+          <div className={rowCls}>
+            <div className={lCls}><i className="fa-solid fa-teeth text-[#466460] w-4 opacity-70"></i><span>Teeth Present</span></div>
+            {isEditing ? (
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-slate-400">Upper</span>
+                <input type="number" min="0" max="16" className="w-12 p-1.5 border border-slate-200 rounded text-xs text-center bg-slate-50 focus:outline-none focus:border-[#466460]"
+                  value={dh.teethUpper} onChange={e => update({ teethUpper: e.target.value })} />
+                <span className="text-[10px] text-slate-400">Lower</span>
+                <input type="number" min="0" max="16" className="w-12 p-1.5 border border-slate-200 rounded text-xs text-center bg-slate-50 focus:outline-none focus:border-[#466460]"
+                  value={dh.teethLower} onChange={e => update({ teethLower: e.target.value })} />
+              </div>
+            ) : (
+              <span className="font-semibold text-slate-800 text-xs">
+                {(dh.teethUpper || dh.teethLower) ? `${dh.teethUpper || 0} upper · ${dh.teethLower || 0} lower` : '—'}
+              </span>
+            )}
+          </div>
+
+          {/* ── Procedures ── */}
+          <div className="mt-3 mb-1">
+            <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Dental Procedures</p>
+            <div className="flex flex-col gap-0.5">
+              {DENTAL_PROCEDURES.map(proc => {
+                const val = dh.procedures?.[proc] ?? 'No';
+                return (
+                  <div key={proc} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
+                    <span className="text-[11px] text-slate-600">{proc}</span>
+                    {isEditing ? (
+                      <div className="flex gap-3">
+                        {['Yes','No'].map(opt => (
+                          <label key={opt} className="flex items-center gap-1 text-[10px] cursor-pointer">
+                            <input type="radio"
+                              name={`dh_drawer_${proc.replace(/\W/g,'')}`}
+                              value={opt}
+                              checked={val === opt}
+                              onChange={() => updateProc(proc, opt)}
+                              className="accent-[#466460]"
+                            />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${val === 'Yes' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {val}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Intraoral findings ── */}
+          <div className="mt-3">
+            <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Intraoral Findings</p>
+            <div className="flex flex-col gap-0.5">
+              {INTRAORAL_FIELDS.map(({ name, title, opts }) => {
+                const val = dh.intraoral?.[name] || '';
+                return (
+                  <div key={name} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0 gap-2">
+                    <span className="text-[11px] text-slate-600 shrink-0">{title}</span>
+                    {isEditing ? (
+                      <select
+                        className="text-xs border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-[#466460] text-slate-800"
+                        value={val}
+                        onChange={e => updateIntra({ [name]: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <span className={`text-[11px] font-semibold text-right ${val ? 'text-slate-800' : 'text-slate-300 italic font-normal'}`}>{val || 'Not set'}</span>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* TMJ */}
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[11px] text-slate-600">TMJ Examination</span>
+                {isEditing ? (
+                  <label className="flex items-center gap-2 cursor-pointer text-xs">
+                    <input type="checkbox"
+                      checked={!!dh.intraoral?.tmjExam}
+                      onChange={e => updateIntra({ tmjExam: e.target.checked })}
+                      className="accent-[#466460] w-4 h-4"
+                    />
+                    <span className="text-slate-600">Yes</span>
+                  </label>
+                ) : (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dh.intraoral?.tmjExam ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                    {dh.intraoral?.tmjExam ? 'Yes' : 'No'}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Dental Chart ── */}
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setChartExpanded(p => !p)}
+              className="w-full flex items-center justify-between py-1 text-[9px] font-extrabold uppercase tracking-widest text-slate-400 hover:text-[#466460] transition-colors"
+            >
+              <span>Dental Chart{affectedCount > 0 ? ` · ${affectedCount} noted` : ''}</span>
+              <i className={`fa-solid fa-chevron-${chartExpanded ? 'up' : 'down'} text-[9px]`}></i>
+            </button>
+
+            {chartExpanded && (
+              <div className="mt-2 bg-white border border-slate-200 rounded-xl p-3">
+                {isEditing && <p className="text-center text-[9px] text-slate-400 mb-2">Tap a tooth to set its condition</p>}
+                {toothRows.map(({ label, right, left }) => (
+                  <div key={label} className="mb-3">
+                    <p className="text-[8px] font-bold text-[#466460] uppercase text-center mb-1.5 bg-slate-50 rounded py-1">{label}</p>
+                    <div className="flex justify-center gap-0.5">
+                      {renderToothRow(right)}
+                      <span className="mx-2" />
+                      {renderToothRow(left)}
+                    </div>
+                    <div className="grid grid-cols-2 text-[7px] text-slate-300 text-center mt-0.5"><div>RIGHT</div><div>LEFT</div></div>
+                  </div>
+                ))}
+
+                {/* Read-only affected teeth list */}
+                {!isEditing && affectedCount > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
+                    {Object.entries(dh.toothData).filter(([,d]) => d?.condition).map(([num, d]) => (
+                      <div key={num} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-6 h-6 rounded bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 shrink-0">{num}</span>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${TOOTH_CONDITION_STYLE[d.condition] || ''}`}>
+                          {TOOTH_CONDITION_LABEL[d.condition] || d.condition}
+                        </span>
+                        <span className="text-slate-500">{TOOTH_CONDITIONS.find(c => c.value === d.condition)?.label}</span>
+                        {d.operation && <span className="ml-auto px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[9px] font-bold text-slate-600">{d.operation}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Notes ── */}
+          <div className="mt-3">
+            <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-1.5">Notes</p>
+            {isEditing ? (
+              <textarea rows={2} className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-slate-50 focus:outline-none focus:border-[#466460] resize-none text-slate-800"
+                placeholder="Additional dental notes…"
+                value={dh.notes}
+                onChange={e => update({ notes: e.target.value })}
+              />
+            ) : (
+              <p className={`text-[11px] ${dh.notes ? 'text-slate-700' : 'text-slate-300 italic'}`}>{dh.notes || 'No notes recorded.'}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tooth modal */}
+      {toothModal && isEditing && (
+        <DrawerToothModal
+          num={toothModal}
+          toothData={dh.toothData || {}}
+          onSave={saveToothModal}
+          onClose={() => setToothModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Profile Drawer ───────────────────────────────────────────────────────────
 export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBottomSheet = false, onProfileUpdate }) {
   const [isMounted, setIsMounted] = React.useState(false);
@@ -128,7 +509,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     if (!isMobile || !isDragging) return;
     const delta = e.touches[0].clientY - dragStartY.current;
     if (delta < 0) {
-      // Dragging upward — apply resistance
       setDragY(delta / 4);
     } else {
       setDragY(delta);
@@ -138,14 +518,11 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const handleTouchEnd = () => {
     if (!isMobile) return;
     setIsDragging(false);
-
     const sheetHeight = sheetRef.current?.offsetHeight || window.innerHeight * 0.92;
     const elapsed = Date.now() - dragStartTime.current;
-    const velocity = dragY / elapsed; // px/ms
-
+    const velocity = dragY / elapsed;
     const DISMISS_THRESHOLD = sheetHeight * 0.3;
     const VELOCITY_THRESHOLD = 0.5;
-
     if (dragY > DISMISS_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
       onClose();
     } else {
@@ -197,11 +574,16 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     }));
   };
 
+  // ── Dental history update handler ────────────────────────────────────────────
+  const handleDentalHistoryUpdate = (newDh) => {
+    setFormData(prev => ({ ...prev, dentalHistory: newDh }));
+  };
+
   const handleSaveProfile = async () => {
     showLoading('Saving profile...', 'light');
     try {
       const token = localStorage.getItem('token');
-       const response = await fetch(`${API_URL}/users/profile`, {
+      const response = await fetch(`${API_URL}/users/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -266,7 +648,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
   const isBottomSheet = isMobile;
 
-  // Drag-aware transform
   const sheetTransform = isBottomSheet
     ? isOpen
       ? `translateY(${dragY}px)`
@@ -275,7 +656,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       ? 'translateX(0)'
       : 'translateX(100%)';
 
-  // Backdrop dims as sheet is dragged down
   const backdropOpacity = isBottomSheet && isDragging
     ? Math.max(0, 0.4 - (dragY / (sheetRef.current?.offsetHeight || 700)) * 0.4)
     : 0.4;
@@ -332,7 +712,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
           </div>
         )}
 
-        {/* Header — also draggable on mobile */}
+        {/* Header */}
         <div
           className="bg-gradient-to-br from-[#466460] to-[#38524d] px-5 sm:px-6 py-6 sm:py-8 text-white relative flex-shrink-0"
           onTouchStart={isBottomSheet ? handleTouchStart : undefined}
@@ -538,6 +918,14 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
               )}
             </div>
           </div>
+
+          {/* ── Dental History ── */}
+          <DentalHistoryDrawerSection
+            dentalHistory={formData.dentalHistory || {}}
+            isEditing={isEditing}
+            onUpdate={handleDentalHistoryUpdate}
+          />
+
         </div>
 
         {/* Footer Actions */}
@@ -617,6 +1005,8 @@ export const DesktopHeader = ({ onOpenQR }) => {
   const { showLoading, hideLoading } = useLoading();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const authUser = authService.getCurrentUser();
   const [fullProfile, setFullProfile] = useState(authUser || {});
@@ -627,7 +1017,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         const token = localStorage.getItem('token');
         if (!token) { navigate('/login'); return; }
 
-         const response = await fetch(`${API_URL}/users/profile`, {
+        const response = await fetch(`${API_URL}/users/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -650,6 +1040,21 @@ export const DesktopHeader = ({ onOpenQR }) => {
 
     fetchFullProfile();
   }, [navigate]);
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await notificationsService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (err) {
+        console.error('Error fetching unread count:', err);
+      }
+    };
+
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const displayName = (fullProfile.firstName && fullProfile.lastName)
     ? `${fullProfile.firstName} ${fullProfile.lastName}`
@@ -686,6 +1091,11 @@ export const DesktopHeader = ({ onOpenQR }) => {
         />
 
         <div className="flex items-center gap-2 sm:gap-4">
+          <NotificationBell
+            onClick={() => setShowNotifications(true)}
+            count={unreadCount}
+          />
+
           <div className="flex items-center gap-2 sm:gap-3 sm:border-l sm:border-white/20 sm:pl-4 lg:pl-6">
             <div className="hidden sm:block text-right">
               <p className="text-xs font-bold text-white leading-tight">{displayName}</p>
@@ -718,6 +1128,11 @@ export const DesktopHeader = ({ onOpenQR }) => {
         isOpen={showLogoutConfirm}
         onConfirm={handleConfirmLogout}
         onCancel={() => setShowLogoutConfirm(false)}
+      />
+
+      <NotificationPanel
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
       />
     </>
   );
@@ -756,7 +1171,7 @@ export const DesktopNav = () => {
 };
 
 // ─── Mobile Header ────────────────────────────────────────────────────────────
-export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simple = false, onProfileClick }) => {
+export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simple = false, onProfileClick, onNotificationClick, notificationCount = 0 }) => {
   if (simple) {
     return (
       <header className="
@@ -796,6 +1211,13 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
       />
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {onNotificationClick && (
+          <NotificationBell
+            onClick={onNotificationClick}
+            count={notificationCount}
+          />
+        )}
+
         <div className="text-right hidden sm:block">
           <p className="text-xs font-bold text-white leading-tight">{userName}</p>
           <p className="text-[9px] text-white/60 uppercase truncate max-w-[140px]">{userId}</p>

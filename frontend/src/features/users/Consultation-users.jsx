@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { rtdb } from '../../firebase';
 import {
-  ref, onValue, push, update, set, get, serverTimestamp, onDisconnect, off
+  ref, onValue, push, update, set, serverTimestamp, onDisconnect, off
 } from 'firebase/database';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -35,14 +35,14 @@ function BotText({ text }) {
 }
 
 const INITIAL_OPTIONS = [
-  { label: '🤒 Illness / Fever',          type: 'medical' },
-  { label: '🤕 Injury / Pain',            type: 'medical' },
-  { label: '💊 Prescription / Medicine',  type: 'medical' },
-  { label: '📄 Medical Certificate',      type: 'medical' },
-  { label: '🩺 Follow-up Check-up',       type: 'medical' },
-  { label: '🦷 Toothache / Pain',         type: 'dental' },
-  { label: '🔍 Dental Check-up',          type: 'dental' },
-  { label: '😬 Oral Health Concern',      type: 'dental' },
+  { label: '🤒 Illness / Fever',         type: 'medical' },
+  { label: '🤕 Injury / Pain',           type: 'medical' },
+  { label: '💊 Prescription / Medicine', type: 'medical' },
+  { label: '📄 Medical Certificate',     type: 'medical' },
+  { label: '🩺 Follow-up Check-up',      type: 'medical' },
+  { label: '🦷 Toothache / Pain',        type: 'dental'  },
+  { label: '🔍 Dental Check-up',         type: 'dental'  },
+  { label: '😬 Oral Health Concern',     type: 'dental'  },
 ];
 
 export default function ConsultationUsers() {
@@ -56,10 +56,9 @@ export default function ConsultationUsers() {
 
   const messagesEndRef  = useRef(null);
   const resolvedNameRef = useRef(currentUser.name || null);
+  const convId = currentUser.uid;
 
-  const convId = currentUser.uid; // Single universal thread per user!
-
-  // ── Presence ──────────────────────────────────────────────────────────
+  // ── Presence ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.uid) return;
     const setPresence = async () => {
@@ -76,49 +75,40 @@ export default function ConsultationUsers() {
         } catch { resolvedName = 'Unknown'; }
       }
       resolvedNameRef.current = resolvedName || 'Unknown';
-      const presenceRef = ref(rtdb, `presence/${currentUser.uid}`);
-      const presenceData = { online: true, lastSeen: serverTimestamp(), name: resolvedNameRef.current, role: currentUser.role || 'student' };
+      const presenceRef   = ref(rtdb, `presence/${currentUser.uid}`);
+      const presenceData  = { online: true, lastSeen: serverTimestamp(), name: resolvedNameRef.current, role: currentUser.role || 'student' };
       set(presenceRef, presenceData);
       onDisconnect(presenceRef).set({ ...presenceData, online: false });
     };
     setPresence();
   }, [currentUser?.uid]);
 
-  // ── DB Listener (Messages & Metadata) ─────────────────────────────────
+  // ── DB Listener ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!convId) return;
     const convRef = ref(rtdb, `consultations/${convId}`);
-
     const unsub = onValue(convRef, (snap) => {
       const data = snap.val() || {};
-
-      // Update Metadata
       const meta = data.metadata || {};
       setIsEnded(!meta.status || meta.status === 'ended');
       setConsultType(meta.consultType || null);
 
-      // Extract & Sort Messages
       const msgList = Object.entries(data.messages || {})
         .map(([id, msg]) => ({ id, ...msg }))
         .sort((a, b) => a.timestamp - b.timestamp);
-
       setMessages(msgList);
 
-      // Bulk update unread clinic messages as read by patient
-      const unreadClinicMsgs = msgList.filter(m => m.sender === 'clinic' && !m.readByPatient && !m.isBot);
-      if (unreadClinicMsgs.length > 0) {
+      const unread = msgList.filter(m => m.sender === 'clinic' && !m.readByPatient && !m.isBot);
+      if (unread.length > 0) {
         const updates = {};
-        unreadClinicMsgs.forEach(m => {
-          updates[`messages/${m.id}/readByPatient`] = true;
-        });
+        unread.forEach(m => { updates[`messages/${m.id}/readByPatient`] = true; });
         update(ref(rtdb, `consultations/${convId}`), updates);
       }
-
     });
     return () => off(convRef, 'value', unsub);
   }, [convId]);
 
-  // ── Clinic Online Presence ────────────────────────────────────────────
+  // ── Clinic Online ──────────────────────────────────────────────────────
   useEffect(() => {
     const presRef = ref(rtdb, 'presence');
     const unsub = onValue(presRef, (snap) => {
@@ -131,73 +121,52 @@ export default function ConsultationUsers() {
     return () => off(presRef, 'value', unsub);
   }, []);
 
-  // ── Auto-scroll ───────────────────────────────────────────────────────
+  // ── Auto-scroll ────────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isEnded]);
 
-  // ── Start New Consultation (Handle Option Click) ──────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────
   const handleOptionSelect = async (option) => {
     const metadataRef = ref(rtdb, `consultations/${convId}/metadata`);
-    const msgsRef = ref(rtdb, `consultations/${convId}/messages`);
-
-    // 1. Update metadata so it jumps to the correct active tab on Admin side
+    const msgsRef     = ref(rtdb, `consultations/${convId}/messages`);
     await update(metadataRef, {
-      patientUid:     currentUser.uid,
-      patientName:    resolvedNameRef.current || currentUser.name || 'Patient',
-      patientRole:    currentUser.role || 'student',
-      status:         'active',
-      consultType:    option.type,
-      lastMessage:    `Started new ${option.type} consultation`,
-      lastTimestamp:  Date.now(),
+      patientUid: currentUser.uid,
+      patientName: resolvedNameRef.current || currentUser.name || 'Patient',
+      patientRole: currentUser.role || 'student',
+      status: 'active',
+      consultType: option.type,
+      lastMessage: `Started new ${option.type} consultation`,
+      lastTimestamp: Date.now(),
       lastSenderRole: 'patient',
-      createdAt:      Date.now() // Optional: Keeps track of thread initialization
+      createdAt: Date.now(),
     });
-
-    // 2. Add system/bot separators for visual clarity in history
-    await push(msgsRef, {
-      text: option.label,
-      isBot: false,
-      isTriageChoice: true, // Rendered as patient bubble but muted
-      timestamp: Date.now(),
-    });
-
+    await push(msgsRef, { text: option.label, isBot: false, isTriageChoice: true, timestamp: Date.now() });
     await push(msgsRef, {
       text: `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
       isBot: true,
-      timestamp: Date.now() + 1, // Ensure sorting order
+      timestamp: Date.now() + 1,
     });
   };
 
-  // ── Send Real Message ─────────────────────────────────────────────────
   const handleSend = async () => {
     if (!inputValue.trim() || !convId || isEnded) return;
-
     const text = inputValue.trim();
     setInputValue('');
-
     try {
       const msgsRef = ref(rtdb, `consultations/${convId}/messages`);
       await push(msgsRef, {
-        text,
-        sender:       'patient',
-        senderUid:    currentUser.uid,
-        senderName:   resolvedNameRef.current || 'Patient',
-        timestamp:    Date.now(),
-        readByClinic: false, // Set false initially until clinic opens chat
-        isBot:        false,
+        text, sender: 'patient', senderUid: currentUser.uid,
+        senderName: resolvedNameRef.current || 'Patient',
+        timestamp: Date.now(), readByClinic: false, isBot: false,
       });
       await update(ref(rtdb, `consultations/${convId}/metadata`), {
-        lastMessage: text,
-        lastTimestamp: Date.now(),
-        lastSenderRole: 'patient'
+        lastMessage: text, lastTimestamp: Date.now(), lastSenderRole: 'patient',
       });
-    } catch (err) {
-      console.error('Send error:', err);
-    }
+    } catch (err) { console.error('Send error:', err); }
   };
 
-  // ── Format Messages for Display ───────────────────────────────────────
+  // ── Group by date ──────────────────────────────────────────────────────
   const groupedMessages = () => {
     const groups = [];
     let lastDate = null;
@@ -212,22 +181,52 @@ export default function ConsultationUsers() {
     return groups;
   };
 
-  // ── Config for UI Styling ─────────────────────────────────────────────
+  // ── Style config ───────────────────────────────────────────────────────
   const typeConfig = {
-    generic: { label: 'MediTrack', sublabel: 'Assistant', accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
+    generic: { label: 'MediTrack', sublabel: 'Assistant',        accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
     medical: { label: 'Medical',   sublabel: 'Doctors & Nurses', accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
     dental:  { label: 'Dental',    sublabel: 'Dentists',         accent: '#1a4a7a', accentLight: '#e8f0fa', accentBorder: '#b2c8e8' },
   };
-
-  // Use generic style if ended or undefined
   const cfg = (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic;
 
+  // ─────────────────────────────────────────────────────────────────────
+  //  Layout (works on both mobile & desktop):
+  //
+  //  The component fills the full height of whatever container mounts it.
+  //  It is a flex-column with three children:
+  //
+  //    1. HEADER  — position:sticky top:0    → always visible at top
+  //    2. MESSAGES — flex:1 overflow-y:auto  → scrollable middle
+  //    3. INPUT   — position:sticky bottom:0 → always visible at bottom
+  //
+  //  On MOBILE:  MobileShell is the scroll-port (overflow-y:auto).
+  //              paddingBottom:136px on MobileShell clears the pill nav.
+  //              sticky header/input stick to the top/bottom of the VIEWPORT,
+  //              which is what we want.
+  //
+  //  On DESKTOP: DesktopShell's inner div is the scroll-port (overflow-y:auto).
+  //              sticky header/input stick to the top/bottom of THAT div.
+  // ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-[#f4f7f5] font-sans">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#f4f7f5' }}>
 
-      {/* Header */}
-      <div className="bg-white px-5 py-4 border-b border-[#edf3f0] flex items-center gap-3 shadow-sm z-20 flex-shrink-0 transition-all duration-300">
-        <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300" style={{ backgroundColor: cfg.accentLight }}>
+      {/* 1. STICKY HEADER */}
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 20,
+          background: '#ffffff',
+          borderBottom: '1px solid #edf3f0',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+          flexShrink: 0,
+        }}
+        className="px-5 py-4 flex items-center gap-3 transition-all duration-300"
+      >
+        <div
+          className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300"
+          style={{ backgroundColor: cfg.accentLight }}
+        >
           {consultType === 'dental' && !isEnded ? (
             <svg viewBox="0 0 64 64" fill="none" stroke={cfg.accent} strokeWidth="2.4" className="w-6 h-6">
               <path strokeLinecap="round" strokeLinejoin="round"
@@ -242,8 +241,13 @@ export default function ConsultationUsers() {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-bold text-[#1a2e22]">{cfg.label} {!isEnded && 'Consultation'}</h3>
-            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold transition-colors duration-300" style={{ backgroundColor: cfg.accentLight, color: cfg.accent }}>
+            <h3 className="text-sm font-bold text-[#1a2e22]">
+              {cfg.label}{!isEnded && ' Consultation'}
+            </h3>
+            <span
+              className="text-[9px] px-2 py-0.5 rounded-full font-bold transition-colors duration-300"
+              style={{ backgroundColor: cfg.accentLight, color: cfg.accent }}
+            >
               {cfg.sublabel}
             </span>
           </div>
@@ -254,31 +258,33 @@ export default function ConsultationUsers() {
               color:           isClinicOnline ? cfg.accent      : '#94a3b8',
             }}
           >
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isClinicOnline ? cfg.accent : '#94a3b8' }}></span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isClinicOnline ? cfg.accent : '#94a3b8' }} />
             {isClinicOnline ? 'Clinic Online' : 'Clinic Offline'}
           </span>
         </div>
       </div>
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5] overflow-y-auto min-h-0">
+      {/* 2. SCROLLABLE MESSAGES */}
+      <div
+        style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
+        className="px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5]"
+      >
         {groupedMessages().map((item, i) => {
 
           if (item.type === 'date') {
             return (
               <div key={item.key} className="flex justify-center my-2">
-                <span className="px-4 py-1 rounded-full text-[10px] font-bold transition-colors duration-300 bg-slate-200 text-slate-500">
+                <span className="px-4 py-1 rounded-full text-[10px] font-bold bg-slate-200 text-slate-500">
                   {item.label}
                 </span>
               </div>
             );
           }
 
-          // System / Bot message
           if (item.isBot) {
             return (
               <div key={item.id || i} className="flex items-end gap-2 my-1">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 transition-colors duration-300 bg-[#e0eceb]">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
                   <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" className="w-3.5 h-3.5">
                     <rect x="3" y="8" width="18" height="13" rx="2" />
                     <path strokeLinecap="round" d="M8 8V6a4 4 0 018 0v2" />
@@ -286,25 +292,23 @@ export default function ConsultationUsers() {
                     <circle cx="15" cy="14" r="1" fill="#466460" />
                   </svg>
                 </div>
-                <div className="max-w-[78%] px-4 py-2.5 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm break-words transition-colors duration-300 bg-white text-[#1a2e22] border border-[#c4dbd8]">
+                <div className="max-w-[78%] px-4 py-2.5 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm break-words bg-white text-[#1a2e22] border border-[#c4dbd8]">
                   <BotText text={item.text} />
                 </div>
               </div>
             );
           }
 
-          // Patient Triage Selection (Muted Outgoing Bubble)
           if (item.isTriageChoice) {
             return (
               <div key={item.id || i} className="flex justify-end my-1">
-                <div className="max-w-[72%] px-4 py-2.5 text-[12px] font-medium leading-relaxed rounded-2xl rounded-br-sm break-words opacity-70 transition-colors duration-300 bg-[#e0eceb] text-[#466460] border border-[#c4dbd8]">
+                <div className="max-w-[72%] px-4 py-2.5 text-[12px] font-medium leading-relaxed rounded-2xl rounded-br-sm break-words opacity-70 bg-[#e0eceb] text-[#466460] border border-[#c4dbd8]">
                   {item.text}
                 </div>
               </div>
             );
           }
 
-          // Real User/Clinic Message
           const isPatient = item.sender === 'patient';
           const msgCfg = isPatient ? cfg : (item.consultType === 'dental' ? typeConfig.dental : typeConfig.medical);
 
@@ -312,13 +316,13 @@ export default function ConsultationUsers() {
             <div key={item.id || i} className={`flex flex-col my-1 ${isPatient ? 'items-end' : 'items-start'}`}>
               {!isPatient && (
                 <div className="flex items-center gap-1.5 mb-0.5 ml-2">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300" style={{ backgroundColor: msgCfg.accentLight }}>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: msgCfg.accentLight }}>
                     <svg viewBox="0 0 24 24" fill="none" stroke={msgCfg.accent} strokeWidth="2" className="w-3 h-3">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
                   </div>
-                  <p className="text-[10px] font-bold transition-colors duration-300" style={{ color: msgCfg.accent }}>
+                  <p className="text-[10px] font-bold" style={{ color: msgCfg.accent }}>
                     {item.senderName || 'Clinic Staff'}
                   </p>
                 </div>
@@ -334,19 +338,19 @@ export default function ConsultationUsers() {
               </div>
               <div className={`text-[9px] text-[#9bb5a5] mt-1 mx-2 flex items-center gap-1 ${isPatient ? 'justify-end' : ''}`}>
                 <span>{formatTime(item.timestamp)}</span>
-                {/* ── Patient Side SEEN Indicator ── */}
                 {isPatient && (
-                  <i className={`fa-solid ${item.readByClinic ? 'fa-check-double' : 'fa-check'} text-[10px] transition-colors duration-300 ml-0.5`}
-                     style={item.readByClinic ? { color: msgCfg.accent } : { color: '#9bb5a5' }} />
+                  <i
+                    className={`fa-solid ${item.readByClinic ? 'fa-check-double' : 'fa-check'} text-[10px] ml-0.5`}
+                    style={item.readByClinic ? { color: msgCfg.accent } : { color: '#9bb5a5' }}
+                  />
                 )}
               </div>
             </div>
           );
         })}
 
-        {/* ── Dynamic Bot Triage Block appended when Ended ── */}
         {isEnded && (
-          <div className="mt-4 mb-2 flex flex-col gap-3 fade-in">
+          <div className="mt-4 mb-2 flex flex-col gap-3">
             <div className="flex items-end gap-2">
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" className="w-3.5 h-3.5">
@@ -357,11 +361,10 @@ export default function ConsultationUsers() {
                 </svg>
               </div>
               <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm bg-white border border-[#c4dbd8] text-[#1a2e22]">
-                👋 Hello! I'm the MediTrack assistant.<br/>
+                👋 Hello! I'm the MediTrack assistant.<br />
                 <strong>What brings you in today?</strong> Please select the type of consultation you need:
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-9 max-w-[90%]">
               {INITIAL_OPTIONS.map((opt, idx) => (
                 <button
@@ -379,19 +382,30 @@ export default function ConsultationUsers() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="bg-white border-t border-[#edf3f0] px-4 py-3 flex gap-3 items-center z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] flex-shrink-0 transition-colors duration-300">
+      {/* 3. STICKY INPUT BAR */}
+      <div
+        style={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 20,
+          background: '#ffffff',
+          borderTop: '1px solid #edf3f0',
+          boxShadow: '0 -4px 10px rgba(0,0,0,0.04)',
+          flexShrink: 0,
+        }}
+        className="px-4 py-3 flex gap-3 items-center transition-colors duration-300"
+      >
         <input
           type="text"
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder={isEnded ? "Please select an option above…" : "Type a message…"}
+          placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
           disabled={isEnded}
           className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
           style={{ borderColor: cfg.accentBorder }}
           onFocus={e => !isEnded && (e.target.style.borderColor = cfg.accent)}
-          onBlur={e => (e.target.style.borderColor = cfg.accentBorder)}
+          onBlur={e  =>             (e.target.style.borderColor = cfg.accentBorder)}
         />
         <button
           onClick={handleSend}

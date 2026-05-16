@@ -100,7 +100,7 @@ const AdminLayoutWrapper = ({ children }) => {
           return;
         }
 
-        const response = await fetch(`${API_URL}/api/users/profile`, {
+        const response = await fetch(`${API_URL}/users/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

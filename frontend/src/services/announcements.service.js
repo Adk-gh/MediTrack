@@ -1,5 +1,4 @@
-//C:\Users\HP\MediTrack\frontend\src\services\announcements.service.js
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000");
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
@@ -30,7 +29,7 @@ export const getAnnouncementById = async (id) => {
 export const createAnnouncement = async (announcementData) => {
   const res = await fetch(`${API_URL}/announcements`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(), // 🔴 FIX: Added auth headers here
     body: JSON.stringify(announcementData),
   });
   const data = await res.json();
@@ -41,7 +40,7 @@ export const createAnnouncement = async (announcementData) => {
 export const updateAnnouncement = async (id, announcementData) => {
   const res = await fetch(`${API_URL}/announcements/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(), // 🔴 FIX: Added auth headers here
     body: JSON.stringify(announcementData),
   });
   const data = await res.json();

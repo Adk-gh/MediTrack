@@ -194,173 +194,180 @@ export default function AppointmentUsers() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-[#f7faf8]">
+    <div className="flex flex-col h-full bg-[#f7faf8] overflow-hidden">
 
       {/* Success flash */}
       {submitted && (
-        <div className="mx-4 mt-3 px-4 py-2.5 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl
+        <div className="shrink-0 mx-4 mt-3 px-4 py-2.5 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl
           text-[12px] font-semibold text-[#3B6D11] flex items-center gap-2">
           <i className="fa-solid fa-circle-check"></i>
           Request submitted! The clinic will assign your schedule soon.
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+      {/* Content Wrapper */}
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        {/* Action row */}
-        <div
-          className="flex justify-end"
-          title={hasActiveAppointment ? "You can only have one active appointment at a time. Please wait for the clinic to complete your current appointment." : ""}
-        >
-          <button
-            onClick={() => !hasActiveAppointment && setShowModal(true)}
-            disabled={hasActiveAppointment}
-            className={`border-none rounded-2xl py-2 px-3.5 text-xs font-semibold flex items-center gap-1 transition-colors ${
-              hasActiveAppointment
-                ? 'bg-[#9bb5a5] text-white cursor-not-allowed opacity-70'
-                : 'bg-[#466460] text-white cursor-pointer hover:bg-[#364e4a]'
-            }`}
+        {/* Fixed Upper Section (Action Row, Calendar, Title) */}
+        <div className="shrink-0 p-5 pb-3 flex flex-col gap-4">
+
+          {/* Action row */}
+          <div
+            className="flex justify-end"
+            title={hasActiveAppointment ? "You can only have one active appointment at a time. Please wait for the clinic to complete your current appointment." : ""}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Request Appointment
-          </button>
-        </div>
+            <button
+              onClick={() => !hasActiveAppointment && setShowModal(true)}
+              disabled={hasActiveAppointment}
+              className={`border-none rounded-2xl py-2 px-3.5 text-xs font-semibold flex items-center gap-1 transition-colors ${
+                hasActiveAppointment
+                  ? 'bg-[#9bb5a5] text-white cursor-not-allowed opacity-70'
+                  : 'bg-[#466460] text-white cursor-pointer hover:bg-[#364e4a]'
+              }`}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Request Appointment
+            </button>
+          </div>
 
-        {/* Calendar */}
-        <div className="bg-white border border-[#ddeee5] rounded-3xl p-3.5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-bold text-[#1a2e22]">
-              {MONTHS[calMonth - 1]} {calYear}
-            </span>
-            <div className="flex gap-1.5">
-              <button onClick={() => changeMonth(-1)}
-                className="w-6 h-6 border border-[#ddeee5] rounded-lg bg-white cursor-pointer text-[#6b8577] text-xs">
-                &#8249;
-              </button>
-              <button onClick={() => changeMonth(1)}
-                className="w-6 h-6 border border-[#ddeee5] rounded-lg bg-white cursor-pointer text-[#6b8577] text-xs">
-                &#8250;
-              </button>
+          {/* Calendar */}
+          <div className="bg-white border border-[#ddeee5] rounded-3xl p-3.5 relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-bold text-[#1a2e22]">
+                {MONTHS[calMonth - 1]} {calYear}
+              </span>
+              <div className="flex gap-1.5">
+                <button onClick={() => changeMonth(-1)}
+                  className="w-6 h-6 border border-[#ddeee5] rounded-lg bg-white cursor-pointer text-[#6b8577] text-xs">
+                  &#8249;
+                </button>
+                <button onClick={() => changeMonth(1)}
+                  className="w-6 h-6 border border-[#ddeee5] rounded-lg bg-white cursor-pointer text-[#6b8577] text-xs">
+                  &#8250;
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 mb-1">
+              {WEEKDAYS_SHORT.map((d, i) => (
+                <span key={i} className="text-center text-[10px] font-bold text-[#9bb5a5] uppercase py-0.5">{d}</span>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-px">
+              {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
+              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                const isToday = today.getFullYear() === calYear
+                  && (today.getMonth() + 1) === calMonth
+                  && today.getDate() === day;
+                const apptCount = approvedCountByDay[day] ?? 0;
+                const hasAppt   = apptCount > 0;
+                const isHovered = hoveredDay === day;
+
+                return (
+                  <div
+                    key={day}
+                    className={`relative text-center py-1.5 text-xs font-medium rounded-2xl
+                      ${isToday ? 'bg-[#466460] text-white font-bold' : 'text-[#1a2e22] hover:bg-[#e8f5ee]'}
+                      ${hasAppt ? 'cursor-default' : ''}`}
+                    onMouseEnter={() => hasAppt && setHoveredDay(day)}
+                    onMouseLeave={() => setHoveredDay(null)}
+                  >
+                    {day}
+
+                    {/* Dot indicator */}
+                    {hasAppt && (
+                      <span className={`absolute bottom-[2px] left-1/2 -translate-x-1/2
+                        w-[5px] h-[5px] rounded-full ${isToday ? 'bg-white' : 'bg-[#466460]'}`} />
+                    )}
+
+                    {/* Hover tooltip */}
+                    {hasAppt && isHovered && (
+                      <div
+                        className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5
+                          bg-[#1a2e22] text-white text-[9.5px] font-semibold
+                          px-2 py-1 rounded-lg whitespace-nowrap shadow-lg
+                          pointer-events-none"
+                        style={{ minWidth: '80px' }}
+                      >
+                        <i className="fa-solid fa-calendar-check mr-1 text-[#4aab72]"></i>
+                        {apptCount} approved {apptCount === 1 ? 'appt' : 'appts'}
+                        <span
+                          className="absolute top-full left-1/2 -translate-x-1/2"
+                          style={{
+                            width: 0, height: 0,
+                            borderLeft: '5px solid transparent',
+                            borderRight: '5px solid transparent',
+                            borderTop: '5px solid #1a2e22',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#9bb5a5]">
+              <span className="w-[7px] h-[7px] rounded-full bg-[#466460] inline-block"></span>
+              Approved appointment — hover to see count
             </div>
           </div>
 
-          <div className="grid grid-cols-7 mb-1">
-            {WEEKDAYS_SHORT.map((d, i) => (
-              <span key={i} className="text-center text-[10px] font-bold text-[#9bb5a5] uppercase py-0.5">{d}</span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-px">
-            {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
-            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-              const isToday = today.getFullYear() === calYear
-                && (today.getMonth() + 1) === calMonth
-                && today.getDate() === day;
-              const apptCount = approvedCountByDay[day] ?? 0;
-              const hasAppt   = apptCount > 0;
-              const isHovered = hoveredDay === day;
-
-              return (
-                <div
-                  key={day}
-                  className={`relative text-center py-1.5 text-xs font-medium rounded-2xl
-                    ${isToday ? 'bg-[#466460] text-white font-bold' : 'text-[#1a2e22] hover:bg-[#e8f5ee]'}
-                    ${hasAppt ? 'cursor-default' : ''}`}
-                  onMouseEnter={() => hasAppt && setHoveredDay(day)}
-                  onMouseLeave={() => setHoveredDay(null)}
-                >
-                  {day}
-
-                  {/* Dot indicator */}
-                  {hasAppt && (
-                    <span className={`absolute bottom-[2px] left-1/2 -translate-x-1/2
-                      w-[5px] h-[5px] rounded-full ${isToday ? 'bg-white' : 'bg-[#466460]'}`} />
-                  )}
-
-                  {/* Hover tooltip */}
-                  {hasAppt && isHovered && (
-                    <div
-                      className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5
-                        bg-[#1a2e22] text-white text-[9.5px] font-semibold
-                        px-2 py-1 rounded-lg whitespace-nowrap shadow-lg
-                        pointer-events-none"
-                      style={{ minWidth: '80px' }}
-                    >
-                      <i className="fa-solid fa-calendar-check mr-1 text-[#4aab72]"></i>
-                      {apptCount} approved {apptCount === 1 ? 'appt' : 'appts'}
-                      <span
-                        className="absolute top-full left-1/2 -translate-x-1/2"
-                        style={{
-                          width: 0, height: 0,
-                          borderLeft: '5px solid transparent',
-                          borderRight: '5px solid transparent',
-                          borderTop: '5px solid #1a2e22',
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#9bb5a5]">
-            <span className="w-[7px] h-[7px] rounded-full bg-[#466460] inline-block"></span>
-            Approved appointment — hover to see count
-          </div>
+          {/* Appointments list Header */}
+          <div className="text-[13px] font-bold text-[#1a2e22] mt-1">My Appointment Requests</div>
         </div>
 
-        {/* Appointments list */}
-        <div className="text-[13px] font-bold text-[#1a2e22]">My Appointment Requests</div>
+        {/* Scrollable Appointments List Section */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-5">
+          {loadingAppts ? (
+            <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
+              <i className="fa-solid fa-spinner fa-spin block text-2xl mb-2 text-[#c6dfd0]"></i>
+              Loading your appointments…
+            </div>
+          ) : myAppointments.length === 0 ? (
+            <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
+              <i className="fa-regular fa-calendar block text-2xl mb-2 text-[#c6dfd0]"></i>
+              No appointment requests yet
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {myAppointments.map((appt) => {
+                const style     = STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending;
+                const isPending = appt.status === 'pending';
 
-        {loadingAppts ? (
-          <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
-            <i className="fa-solid fa-spinner fa-spin block text-2xl mb-2 text-[#c6dfd0]"></i>
-            Loading your appointments…
-          </div>
-        ) : myAppointments.length === 0 ? (
-          <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
-            <i className="fa-regular fa-calendar block text-2xl mb-2 text-[#c6dfd0]"></i>
-            No appointment requests yet
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {myAppointments.map((appt) => {
-              const style     = STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending;
-              const isPending = appt.status === 'pending';
-
-              return (
-                <div key={appt.id}
-                  className={`border rounded-3xl p-3 transition-all
-                    ${isPending
-                      ? 'bg-[#fffdf7] border-[#f0c070]'
-                      : 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]'}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-bold text-[#1a2e22]">{appt.reason}</div>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
-                      {style.label}
-                    </span>
+                return (
+                  <div key={appt.id}
+                    className={`border rounded-3xl p-3 transition-all shrink-0
+                      ${isPending
+                        ? 'bg-[#fffdf7] border-[#f0c070]'
+                        : 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-bold text-[#1a2e22]">{appt.reason}</div>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
+                        {style.label}
+                      </span>
+                    </div>
+                    <div className={`text-[11px] mt-1 font-medium
+                      ${isPending ? 'text-[#b07020] italic' : 'text-[#3B6D11]'}`}>
+                      <i className={`mr-1 fa-solid ${isPending ? 'fa-hourglass-half' : 'fa-calendar-check'}`}></i>
+                      {formatApptDate(appt)}
+                    </div>
+                    <div className="text-[10px] text-[#9bb5a5] mt-1">
+                      <i className="fa-regular fa-clock mr-1"></i>
+                      Requested {new Date(appt.bookedAt).toLocaleString('en-PH', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </div>
                   </div>
-                  <div className={`text-[11px] mt-1 font-medium
-                    ${isPending ? 'text-[#b07020] italic' : 'text-[#3B6D11]'}`}>
-                    <i className={`mr-1 fa-solid ${isPending ? 'fa-hourglass-half' : 'fa-calendar-check'}`}></i>
-                    {formatApptDate(appt)}
-                  </div>
-                  <div className="text-[10px] text-[#9bb5a5] mt-1">
-                    <i className="fa-regular fa-clock mr-1"></i>
-                    Requested {new Date(appt.bookedAt).toLocaleString('en-PH', {
-                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Modal ── */}

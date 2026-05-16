@@ -1,13 +1,9 @@
 // frontend/src/features/users/MediTrack.jsx
 //
 // Root orchestrator for the student portal.
-// All layout chrome (topbar, sidebar, mobile nav, preview modal) lives in
-// UserDashboardLayout.  This file only manages:
-//   • auth / user identity
-//   • active tab state
-//   • record-preview state
-//   • onboarding guard (ProfileSetup)
-//   • the VIEW map that routes tabs → child components
+// Manages: auth, active tab, record-preview state, onboarding guard, view map.
+// All layout chrome (topbar, sidebar, mobile pill nav, preview modal) is in
+// UserDashboardLayout.
 
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -15,19 +11,18 @@ import { useNavigate } from "react-router-dom";
 import authService from "../../services/auth.service.js";
 import ProfileSetup from "../../components/ProfileSetup.jsx";
 import { useLoading } from "../../context/LoadingContext.jsx";
-
-// Layout shell (handles desktop ↔ mobile, nav, topbar, preview modal)
 import UserDashboardLayout from "../../layouts/UserDashboardLayout.jsx";
 
-// Child view components
 import HomePageUsers     from "./HomePage-users.jsx";
 import AppointmentUsers  from "./Appointment-users.jsx";
 import ConsultationUsers from "./Consultation-users.jsx";
 import RecordsUsers      from "./Records-users.jsx";
 import ProfileUsers      from "./Profile-users.jsx";
+import Settings          from "./Settings.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-// ─── Icons (Replacing Emojis) ─────────────────────────────────────────────────
+
+// ─── Icons for HistoryView ────────────────────────────────────────────────────
 const ShieldIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -67,13 +62,13 @@ const EyeIcon = () => (
   </svg>
 );
 
-// ─── History view (inline — small enough to live here) ────────────────────────
-const records = [
+// ─── History view ─────────────────────────────────────────────────────────────
+const RECORDS = [
   { id: 1, date: "Feb 18, 2026", title: "Medical Clearance",   desc: "Patient is clinically fit for academic internship and physical education activities.", doc: "Dr. Suarez, MD"  },
   { id: 2, date: "Jan 10, 2026", title: "Consultation",        desc: "Seasonal Influenza. Prescribed 3 days rest and Vitamin C supplement.",               doc: "Dr. Mercado, MD" },
   { id: 3, date: "Nov 12, 2025", title: "Dental Exam",         desc: "Routine cleaning completed. Recommended molar checkup in 6 months.",                 doc: "Dr. Lanto, DMD"  },
   { id: 4, date: "Oct 05, 2025", title: "Laboratory Referral", desc: "Annual CBC and Chest X-Ray referral issued for campus compliance.",                  doc: "Dr. Suarez, MD"  },
-  { id: 5, date: "Sep 20, 2025", title: "First Aid",           desc: "Treatment for minor sprain on right ankle during campus event.",                       doc: "Nurse Ramos, RN" },
+  { id: 5, date: "Sep 20, 2025", title: "First Aid",           desc: "Treatment for minor sprain on right ankle during campus event.",                     doc: "Nurse Ramos, RN" },
 ];
 
 const TAG_ICON = {
@@ -89,7 +84,7 @@ function HistoryView({ onPreview }) {
     <div className="p-5 animate-fadeIn">
       <h2 className="text-xl font-black text-slate-800 mb-5">Medical Logs</h2>
       <div className="space-y-3">
-        {records.map((r) => (
+        {RECORDS.map((r) => (
           <div
             key={r.id}
             className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center"
@@ -99,9 +94,7 @@ function HistoryView({ onPreview }) {
                 {TAG_ICON[r.title]}
               </div>
               <div>
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em]">
-                  {r.date}
-                </p>
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em]">{r.date}</p>
                 <p className="text-sm font-bold text-slate-700">{r.title}</p>
               </div>
             </div>
@@ -123,24 +116,20 @@ export default function MediTrack() {
   const navigate = useNavigate();
   const { showLoading, hideLoading } = useLoading();
 
-  // ── State ──────────────────────────────────────────────────────────────────
   const [activeTab,      setActiveTab]      = useState("home");
   const [preview,        setPreview]        = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   const scrollRef = useRef(null);
 
-  // ── Auth ───────────────────────────────────────────────────────────────────
   const currentUser = authService.getCurrentUser();
   const userName    = currentUser?.name         || "Student";
   const userId      = currentUser?.universityId || "—";
-
 
   // ── Onboarding guard ───────────────────────────────────────────────────────
   useEffect(() => {
     const checkProfileSetup = async () => {
       if (!currentUser) return;
-
       const token = localStorage.getItem("token");
       if (!token) return;
 
@@ -149,11 +138,10 @@ export default function MediTrack() {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        // 🚨 NEW: If the token is expired, clean it up and force a login!
         if (response.status === 401) {
           console.warn("Session expired. Redirecting to login...");
-          authService.logout();   // Clear the dead token
-          navigate("/login");     // Send them to the login screen
+          authService.logout();
+          navigate("/login");
           return;
         }
 
@@ -166,37 +154,32 @@ export default function MediTrack() {
       }
     };
     checkProfileSetup();
-  }, [userId, navigate]); // <-- added navigate to dependencies
+  }, [userId, navigate]);
 
-  // ── Scroll-to-top on tab change ────────────────────────────────────────────
+  // ── Scroll to top on tab change ────────────────────────────────────────────
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [activeTab]);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    showLoading('Signing out', 'light');
+    showLoading("Signing out", "light");
     authService.logout();
     hideLoading();
     navigate("/login");
   };
 
   // ── View map ───────────────────────────────────────────────────────────────
-  // "history" is desktop-only (it's in the desktop nav but not the mobile nav).
-  // "account" is the unified key for both mobile "Account" and desktop "Account".
   const VIEW = {
-    home:    <HomePageUsers     userName={userName} />,
-    booking: <AppointmentUsers  />,
-    consult: <ConsultationUsers />,
-    records: <RecordsUsers      />,
-    history: <HistoryView       onPreview={setPreview} />,
-    account: <ProfileUsers      userName={userName} userId={userId} onLogout={handleLogout} />, // Passed onLogout here
+    home:     <HomePageUsers     userName={userName} />,
+    booking:  <AppointmentUsers  />,
+    consult:  <ConsultationUsers />,
+    records:  <RecordsUsers      />,
+    history:  <HistoryView       onPreview={setPreview} />,
+    settings: <Settings          userName={userName} userId={userId} onLogout={handleLogout} />,
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Onboarding overlay — rendered above everything until dismissed */}
       {showOnboarding && (
         <ProfileSetup
           user={currentUser}
@@ -213,7 +196,6 @@ export default function MediTrack() {
         userName={userName}
         userId={userId}
       >
-        {/* The active view is passed as children into the layout's content area */}
         {VIEW[activeTab]}
       </UserDashboardLayout>
     </>

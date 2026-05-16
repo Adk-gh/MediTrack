@@ -1,10 +1,156 @@
-// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Records.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, collectionGroup, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { rtdb } from '../../firebase';
 import { ref, get, push, set } from 'firebase/database';
+// Import your custom BirthdayPicker component
+import BirthdayPicker from '../../components/Datepicker';
+import recordsService from '../../services/records.service';
+
+// ============================================================
+// CONSTANTS FROM PROFILE SETUP
+// ============================================================
+const departmentsData = [
+  {
+    abbr: 'CCSE',
+    full: 'College of Computing Science and Engineering',
+    programs: [
+      'Bachelor of Science in Information Technology',
+      'Bachelor of Science in Information System',
+      'Bachelor of Science in Computer Engineering',
+      'Bachelor of Science in Industrial Engineering',
+    ],
+  },
+  {
+    abbr: 'CBAM',
+    full: 'College of Business Administration and Management',
+    programs: [
+      'Bachelor of Science in Entrepreneurship',
+      'Bachelor of Science in Public Administration',
+      'Bachelor of Science in Office Administration',
+      'Bachelor of Science in Business Administration Major in Human Resource Development Management',
+      'Bachelor of Science in Business Administration Major in Financial Management',
+      'Bachelor of Science in Business Administration Major in Marketing Management',
+    ],
+  },
+  {
+    abbr: 'CAS',
+    full: 'College of Art and Sciences',
+    programs: [
+      'Bachelor of Science in Economics',
+      'Bachelor of Arts in Communication',
+      'Bachelor of Science in Psychology',
+      'Bachelor of Arts in Political Science',
+    ],
+  },
+  {
+    abbr: 'CTHM',
+    full: 'College of Tourism and Hospitality Management',
+    programs: [
+      'Bachelor of Science in Tourism Management',
+      'Bachelor of Science in Hospitality Management',
+    ],
+  },
+  {
+    abbr: 'COA',
+    full: 'College of Accountancy',
+    programs: [
+      'Bachelor of Science in Accountancy',
+      'Bachelor of Science in Accountancy Information System',
+      'Bachelor of Science in Management Accounting',
+    ],
+  },
+  {
+    abbr: 'CTE',
+    full: 'College of Teacher Education',
+    programs: [
+      'Bachelor of Secondary Education Major in English',
+      'Bachelor of Secondary Education Major in Filipino',
+      'Bachelor of Secondary Education Major in Math',
+      'Bachelor of Secondary Education Major in Science',
+      'Bachelor of Secondary Education Major in Social Studies',
+      'Bachelor of Elementary Education',
+      'Bachelor of Technical-Vocational Teacher Education',
+      'Bachelor of Special Needs Education',
+    ],
+  },
+  {
+    abbr: 'CHK',
+    full: 'College of Human Kinetics',
+    programs: [
+      'Bachelor of Science in Physical Education',
+      'Bachelor of Science in Sports Science',
+    ],
+  },
+  {
+    abbr: 'CNAHS',
+    full: 'College of Nursing and Allied Health Sciences',
+    programs: [
+      'Bachelor of Science in Nursing',
+    ],
+  },
+];
+
+const deptAbbrToFull      = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
+const programsByDeptAbbr  = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
+
+const NON_ACADEMIC_OFFICES = [
+  'Accounting Office',
+  'University Clinic',
+  'Human Resources',
+  'Library',
+  'Maintenance',
+  'Registrar Office',
+  'Security Services',
+];
+
+const PLSP_OFFICES_FOR_STAFF = [
+  ...departmentsData.map(d => ({ label: d.abbr, value: d.full })),
+  ...NON_ACADEMIC_OFFICES.map(o => ({ label: o, value: o })),
+];
+
+const SUFFIXES            = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
+const RELIGIONS           = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'];
+const NATIONALITIES       = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
+const CIVIL_STATUSES      = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
+const SECTIONS            = ['A', 'B', 'C', 'D', 'E', 'F'];
+const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
+
+function getDefaultClassification(role) {
+  const classMap = {
+    'administrator': 'Administrator',
+    'admin':         'Administrator',
+    'nurse':         'Nurse Personnel',
+    'doctor':        'Physician / Doctor',
+    'staff':         'Non-Teaching Personnel',
+    'employee':      'Non-Teaching Personnel',
+    'guard':         'Security Personnel',
+    'technician':    'Non-Teaching Personnel',
+    'librarian':     'Non-Teaching Personnel',
+    'lecturer':      'Teaching Personnel',
+    'professor':     'Teaching Personnel',
+    'instructor':    'Teaching Personnel',
+  };
+  return classMap[role] || 'Teaching Personnel';
+}
+
+function getDefaultJobTitle(role) {
+  const titleMap = {
+    'nurse':         'Nurse',
+    'doctor':        'Physician',
+    'admin':         'Administrator',
+    'administrator': 'Administrator',
+    'lecturer':      'Lecturer',
+    'professor':     'Professor',
+    'instructor':    'Instructor',
+    'librarian':     'Librarian',
+    'technician':    'Technician',
+    'guard':         'Security Guard',
+    'staff':         'Staff',
+  };
+  return titleMap[role] || '';
+}
 
 // ============================================================
 // SNACKBAR COMPONENT
@@ -29,10 +175,12 @@ const Snackbar = ({ message, type, visible }) => (
 // ============================================================
 // TYPE BADGE COLORS
 // ============================================================
-const typeBadgeClass = (type) => {
-  const t = type?.toLowerCase();
-  if (t === 'student') return 'bg-blue-100 text-blue-600';
-  if (t === 'instructor' || t === 'doctor' || t === 'nurse') return 'bg-purple-100 text-purple-600';
+const typeBadgeClass = (roleStr) => {
+  const t = (roleStr || '').toLowerCase();
+  if (t.includes('student')) return 'bg-blue-100 text-blue-600';
+  if (['instructor', 'faculty', 'lecturer', 'professor', 'doctor', 'nurse'].some(k => t.includes(k))) {
+    return 'bg-purple-100 text-purple-600';
+  }
   return 'bg-green-100 text-green-600';
 };
 
@@ -50,23 +198,15 @@ const normalizeUser = (doc) => {
     ? `${lastName}, ${firstName}${middle}${suffix}`.trim()
     : `${firstName}${middle}${suffix}`.trim() || '—';
 
-  const role = d.role?.toLowerCase() || 'staff';
-  const type =
-    role === 'student'                    ? 'student'
-    : role === 'doctor' || role === 'nurse' || role === 'admin' || role === 'administrator'
-      ? 'instructor'
-      : 'staff';
-
   return {
-    uid: doc.uid,
+    uid: doc.uid || doc.id,
     name,
     firstName,
     lastName,
     middleInitial: d.middleInitial || '',
     suffix:        d.suffix        || '',
     id:         d.universityId  || d.studentId || doc.uid,
-    type,
-    role:       d.role          || '',
+    role:       d.role || d.type || 'staff',
     prog:       d.program       || d.course    || '',
     year:       d.yearLevel     || '',
     section:    d.section       || '',
@@ -619,16 +759,19 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) =>
 // ============================================================
 export const Records = () => {
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
   const [activeSubTab, setActiveSubTab]     = useState('view');
   const [peopleData, setPeopleData]         = useState([]);
   const [loading, setLoading]               = useState(true);
+  const [isSubmitting, setIsSubmitting]     = useState(false);
   const [currentDept, setCurrentDept]       = useState(null);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [searchQuery, setSearchQuery]       = useState('');
 
   const [filterYear, setFilterYear]       = useState('All');
   const [filterSection, setFilterSection] = useState('All');
+  const [filterProgram, setFilterProgram] = useState('All');
   const [filterRole, setFilterRole]       = useState('All');
   const [sortOrder, setSortOrder]         = useState('asc');
 
@@ -638,61 +781,51 @@ export const Records = () => {
   const snackbarTimer = useRef(null);
 
   const [form, setForm] = useState({
-    surname: '', firstname: '', middlename: '', id: '',
+    surname: '', firstname: '', middlename: '', suffix: '', id: '',
     birthdate: '', age: '', gender: 'Male', type: 'student',
-    department: 'College of Computing', prog: '', year: '1st Year',
-    section: '', email: '', phone: '',
+    departmentAbbr: '',
+    department: '',
+    prog: '', year: '1st Year', section: '',
+    studentClassification: 'Regular',
+    jobTitle: '', classification: 'Teaching Personnel',
+    civilStatus: 'Single', nationality: 'Filipino', religion: '',
+    email: '', phone: '', password: '',
   });
 
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const snapshot = await getDocs(collection(db, 'users'));
+      const users = snapshot.docs.map(doc =>
+        normalizeUser({ uid: doc.id, ...doc.data() })
+      );
+      setPeopleData(users);
+    } catch (err) {
+      console.error('Failed to load users from Firestore:', err);
+      showSnackbar('Could not load users from database', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const snapshot = await getDocs(collection(db, 'users'));
-        const users = snapshot.docs.map(doc =>
-          normalizeUser({ uid: doc.id, ...doc.data() })
-        );
-        setPeopleData(users);
-      } catch (err) {
-        console.error('Failed to load users from Firestore:', err);
-        showSnackbar('Could not load users from database', 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
     loadUsers();
   }, []);
 
-  const departments = [...new Set(
-    peopleData.map(p => p.department).filter(Boolean)
-  )].sort();
-
-  const uniqueYears = ['All', ...new Set(
-    peopleData.filter(p => p.department === currentDept && p.year).map(p => p.year)
-  )].sort();
-
-  const uniqueSections = ['All', ...new Set(
+  const departments = [...new Set(peopleData.map(p => p.department).filter(Boolean))].sort();
+  const uniqueYears = ['All', ...new Set(peopleData.filter(p => p.department === currentDept && p.year).map(p => p.year))].sort();
+  const uniqueSections = ['All', ...new Set(peopleData.filter(p => p.department === currentDept && (filterYear === 'All' || p.year === filterYear) && p.section).map(p => p.section))].sort();
+  const uniquePrograms = ['All', ...new Set(
     peopleData
-      .filter(p =>
-        p.department === currentDept &&
-        (filterYear === 'All' || p.year === filterYear) &&
-        p.section
-      )
-      .map(p => p.section)
+      .filter(p => p.department === currentDept && p.prog)
+      .map(p => p.prog)
   )].sort();
-
-  // ── Dynamic role list: only roles that actually exist in the current dept ──
-  const uniqueRoles = ['All', ...new Set(
-    peopleData
-      .filter(p => p.department === currentDept && p.type)
-      .map(p => p.type)
-  )].sort((a, b) => {
-    // Keep 'All' first, then sort alphabetically
+  const uniqueRoles = ['All', ...new Set(peopleData.filter(p => p.department === currentDept && p.role).map(p => p.role))].sort((a, b) => {
     if (a === 'All') return -1;
     if (b === 'All') return 1;
     return a.localeCompare(b);
   });
 
-  // Capitalise first letter for display
   const roleLabel = (r) => r === 'All' ? 'All Roles' : r.charAt(0).toUpperCase() + r.slice(1);
 
   useEffect(() => {
@@ -704,7 +837,6 @@ export const Records = () => {
     }
   }, [peopleData]);
 
-  // Reset role filter when dept changes (role list may differ per dept)
   const handleSelectDept = (dept) => {
     setCurrentDept(dept);
     setSelectedPerson(null);
@@ -712,16 +844,14 @@ export const Records = () => {
     setFilterYear('All');
     setFilterSection('All');
     setFilterRole('All');
+    setFilterProgram('All');
     setProfileOpen(false);
   };
 
   const showSnackbar = (message, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
     setSnackbar({ visible: true, message, type });
-    snackbarTimer.current = setTimeout(
-      () => setSnackbar(s => ({ ...s, visible: false })),
-      3500
-    );
+    snackbarTimer.current = setTimeout(() => setSnackbar(s => ({ ...s, visible: false })), 3500);
   };
 
   const filteredPeople = peopleData
@@ -729,8 +859,9 @@ export const Records = () => {
       const inDept    = p.department === currentDept;
       const inYear    = filterYear    === 'All' ? true : p.year    === filterYear;
       const inSection = filterSection === 'All' ? true : p.section === filterSection;
-      const inRole    = filterRole    === 'All' ? true : p.type    === filterRole;
-      if (!inDept || !inYear || !inSection || !inRole) return false;
+      const inRole    = filterRole    === 'All' ? true : p.role    === filterRole;
+      const inProgram = filterProgram === 'All' ? true : p.prog    === filterProgram;
+      if (!inDept || !inYear || !inSection || !inRole || !inProgram) return false;
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
@@ -738,9 +869,7 @@ export const Records = () => {
     .sort((a, b) => {
       const nameA = a.name.toLowerCase();
       const nameB = b.name.toLowerCase();
-      return sortOrder === 'asc'
-        ? nameA.localeCompare(nameB)
-        : nameB.localeCompare(nameA);
+      return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
     });
 
   const handleSelectPerson = (person) => {
@@ -755,6 +884,28 @@ export const Records = () => {
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === 'type') {
+      setForm(f => ({
+        ...f,
+        [name]: value,
+        classification: getDefaultClassification(value),
+        jobTitle: getDefaultJobTitle(value)
+      }));
+      return;
+    }
+
+    if (name === 'departmentAbbr' && form.type === 'student') {
+      const fullName = deptAbbrToFull[value] || value;
+      setForm(f => ({
+        ...f,
+        departmentAbbr: value,
+        department: fullName,
+        prog: '',
+      }));
+      return;
+    }
+
     setForm(f => ({ ...f, [name]: value }));
   };
 
@@ -772,104 +923,120 @@ export const Records = () => {
     setForm(f => ({ ...f, birthdate: dob, age: age.toString() }));
   };
 
-  const handleAddRecord = () => {
-    if (!form.surname.trim() || !form.firstname.trim() || !form.id.trim()) {
-      showSnackbar('Please fill required fields', 'error');
+  const handleAddRecord = async () => {
+    if (!form.surname.trim() || !form.firstname.trim() || !form.id.trim() || !form.email.trim() || !form.password.trim()) {
+      showSnackbar('Please fill all required fields, including Email and Password', 'error');
       return;
     }
-    const newPerson = {
-      uid: `local-${Date.now()}`,
-      name: `${form.surname}, ${form.firstname}`,
-      firstName: form.firstname,
-      lastName:  form.surname,
-      id: form.id,
-      type: form.type,
-      prog: form.prog,
-      year: form.year,
-      section: form.section,
-      age: parseInt(form.age) || 0,
-      gender: form.gender,
-      birthdate: form.birthdate,
-      email: form.email,
-      department: form.department,
-      history: [],
-      diseases: [],
-    };
-    setPeopleData(prev => [...prev, newPerson]);
-    showSnackbar('Record added successfully');
-    handleClearForm();
+
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        firstName: form.firstname || '',
+        lastName: form.surname || '',
+        middleInitial: form.middlename || '',
+        suffix: form.suffix || '',
+        universityId: form.id || '',
+        email: form.email || '',
+        password: form.password || '',
+        role: form.type || 'student',
+        sex: form.gender || '',
+        birthday: form.birthdate || '',
+        age: String(form.age || '0'),
+        department: form.department || '',
+        phoneNumber: form.phone || '',
+        civilStatus: form.civilStatus || '',
+        nationality: form.nationality || '',
+        religion: form.religion || '',
+        program: form.type === 'student' ? (form.prog || '') : '',
+        yearLevel: form.type === 'student' ? (form.year || '') : '',
+        section: form.type === 'student' ? (form.section || '') : '',
+        studentClassification: form.type === 'student' ? (form.studentClassification || '') : '',
+        jobTitle: form.type !== 'student' ? (form.jobTitle || '') : '',
+        classification: form.type !== 'student' ? (form.classification || '') : '',
+        bloodType: '',
+        homeAddress: '',
+        emergencyContact: { name: '', relationship: '', phone: '', address: '' },
+        vaccinations: {
+          dose1: { vaccineName: '', date: '' },
+          dose2: { vaccineName: '', date: '' },
+          booster1: { vaccineName: '', date: '' },
+          booster2: { vaccineName: '', date: '' }
+        },
+        isProfileSetup: true,
+        profileComplete: true,
+      };
+
+      const createdUser = await recordsService.createRecord(payload);
+      showSnackbar('User Account Created Successfully!');
+      const newPerson = normalizeUser({ uid: createdUser.id, ...payload });
+      setPeopleData(prev => [...prev, newPerson]);
+      handleClearForm();
+      setActiveSubTab('view');
+    } catch (err) {
+      console.error('Error adding user record:', err);
+      showSnackbar(err.message || 'Network error. Failed to add record.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClearForm = () => {
     setForm({
-      surname: '', firstname: '', middlename: '', id: '',
+      surname: '', firstname: '', middlename: '', suffix: '', id: '',
       birthdate: '', age: '', gender: 'Male', type: 'student',
-      department: 'College of Computing', prog: '', year: '1st Year',
-      section: '', email: '', phone: '',
+      departmentAbbr: '', department: '', prog: '', year: '1st Year', section: '',
+      studentClassification: 'Regular', jobTitle: '', classification: 'Teaching Personnel',
+      civilStatus: 'Single', nationality: 'Filipino', religion: '',
+      email: '', phone: '', password: ''
     });
   };
 
-  // ── Shared filter controls (used in both mobile and desktop) ───────────────
   const FilterSelects = ({ size = 'sm' }) => {
-    const cls = size === 'sm'
-      ? 'flex-1 min-w-[80px] px-2 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600'
-      : 'flex-1 px-1 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[10px] outline-none focus:border-[#466460] transition-all text-slate-600';
+    const base = size === 'sm'
+      ? 'px-2 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate'
+      : 'px-1 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[10px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate';
+
+    // Role + Year + Section: fixed small widths; Program gets remaining space but capped
+    const fixedCls  = `${base} w-[78px] shrink-0`;
+    const progCls   = `${base} flex-1 min-w-0 max-w-[160px]`;
 
     return (
       <>
-        {/* Role — dynamic from DB */}
-        <select
-          value={filterRole}
-          onChange={e => setFilterRole(e.target.value)}
-          className={cls}
-        >
-          {uniqueRoles.map(r => (
-            <option key={r} value={r}>{roleLabel(r)}</option>
-          ))}
+        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className={fixedCls}>
+          {uniqueRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
         </select>
-
-        {/* Year */}
-        <select
-          value={filterYear}
-          onChange={e => { setFilterYear(e.target.value); setFilterSection('All'); }}
-          className={cls}
-        >
-          {uniqueYears.map(y => (
-            <option key={y} value={y}>{y === 'All' ? 'All Years' : y}</option>
-          ))}
+        <select value={filterProgram} onChange={e => { setFilterProgram(e.target.value); setFilterYear('All'); setFilterSection('All'); }} className={progCls}>
+          {uniquePrograms.map(p => <option key={p} value={p}>{p === 'All' ? 'All Programs' : p}</option>)}
         </select>
-
-        {/* Section */}
-        <select
-          value={filterSection}
-          onChange={e => setFilterSection(e.target.value)}
-          className={cls}
-        >
-          {uniqueSections.map(s => (
-            <option key={s} value={s}>{s === 'All' ? 'All Secs' : `Sec ${s}`}</option>
-          ))}
+        <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setFilterSection('All'); }} className={fixedCls}>
+          {uniqueYears.map(y => <option key={y} value={y}>{y === 'All' ? 'All Years' : y}</option>)}
+        </select>
+        <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className={fixedCls}>
+          {uniqueSections.map(s => <option key={s} value={s}>{s === 'All' ? 'All Secs' : `Sec ${s}`}</option>)}
         </select>
       </>
     );
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
+  const formSelectCls = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] bg-white";
+  const formInputCls  = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]";
+  const formLabelCls  = "text-[10px] font-bold text-slate-500 uppercase block mb-1";
+
+  const availablePrograms = form.departmentAbbr ? (programsByDeptAbbr[form.departmentAbbr] || []) : [];
+
   return (
     <>
       <div className="h-full flex flex-col bg-white overflow-hidden">
-
-        {/* Sub Navigation */}
+        {/* ── TAB BAR ── */}
         <div className="shrink-0 border-b border-slate-200 px-4 sm:px-6 py-2 flex gap-2 bg-white">
           {['view', 'add'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveSubTab(tab)}
               className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full transition-all ${
-                activeSubTab === tab
-                  ? 'bg-[#466460] text-white'
-                  : 'text-slate-500 hover:bg-[#e0eceb] hover:text-[#466460]'
+                activeSubTab === tab ? 'bg-[#466460] text-white' : 'text-slate-500 hover:bg-[#e0eceb] hover:text-[#466460]'
               }`}
             >
               {tab === 'view' ? 'Current' : 'Add New Record'}
@@ -879,11 +1046,15 @@ export const Records = () => {
 
         <div className="flex-1 min-h-0 overflow-hidden">
 
-          {/* ── VIEW TAB ── */}
+          {/* ══════════════════════════════════════════
+              VIEW TAB
+          ══════════════════════════════════════════ */}
           {activeSubTab === 'view' && (
             <>
               {/* ── MOBILE layout ── */}
               <div className="flex flex-col lg:hidden h-full bg-white overflow-hidden">
+
+                {/* Department pills */}
                 <div className="shrink-0 border-b border-[#eef2f6] px-3 py-3">
                   <p className="text-[9px] font-bold uppercase text-[#466460] mb-2 px-1">Departments</p>
                   {loading ? (
@@ -909,7 +1080,9 @@ export const Records = () => {
                   )}
                 </div>
 
+                {/* Search + sort + filters */}
                 <div className="shrink-0 px-3 py-3 border-b border-[#eef2f6]">
+                  {/* Search row */}
                   <div className="flex items-center gap-2 mb-2">
                     <div className="relative flex-1">
                       <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
@@ -921,23 +1094,47 @@ export const Records = () => {
                         className="w-full pl-9 pr-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs outline-none focus:border-[#466460] focus:bg-white transition-all"
                       />
                     </div>
+                    {/* ── Sort button ── */}
                     <button
                       onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                      className="px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-slate-600 outline-none hover:border-[#466460] transition-all flex items-center justify-center"
-                      title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                      style={{ minWidth: '38px', minHeight: '38px', flexShrink: 0 }}
+                      className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center gap-0.5 text-[10px] font-bold"
+                      title={`Sort ${sortOrder === 'asc' ? 'Z → A' : 'A → Z'}`}
                     >
-                      <i className={`fa-solid ${sortOrder === 'asc' ? 'fa-arrow-down-a-z' : 'fa-arrow-up-z-a'}`}></i>
+                      {sortOrder === 'asc' ? (
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <text x="1" y="7" fontSize="5" fontWeight="700" fill="currentColor">A</text>
+                          <text x="1" y="13" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
+                          <path d="M11 2v10M11 12l-2-2M11 12l2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <text x="1" y="7" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
+                          <text x="1" y="13" fontSize="5" fontWeight="700" fill="currentColor">A</text>
+                          <path d="M11 14V4M11 4l-2 2M11 4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <FilterSelects size="sm" />
+                  {/* Filter row */}
+                  <div className="flex items-center gap-2 mt-2 overflow-hidden">
+                    <span className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                      </svg>
+                    </span>
+                    <div className="flex flex-1 gap-1.5 min-w-0 overflow-hidden">
+                      <FilterSelects size="sm" />
+                    </div>
                   </div>
+
                   <p className="text-[9px] text-slate-400 mt-2 px-1">
                     {filteredPeople.length} record{filteredPeople.length !== 1 ? 's' : ''} in {currentDept || '—'}
                   </p>
                 </div>
 
+                {/* List */}
                 <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                   {filteredPeople.length === 0 ? (
                     <div className="text-center text-slate-400 text-sm py-12">No records found</div>
@@ -973,6 +1170,7 @@ export const Records = () => {
                   )}
                 </div>
 
+                {/* Mobile profile drawer */}
                 {profileOpen && (
                   <div className="fixed inset-0 bg-black/30 z-40 lg:hidden" onClick={() => setProfileOpen(false)} />
                 )}
@@ -989,7 +1187,7 @@ export const Records = () => {
               {/* ── DESKTOP layout ── */}
               <div className="hidden lg:flex h-full bg-white overflow-hidden">
 
-                {/* Column 1: Departments */}
+                {/* Column 1 — Departments */}
                 <div className="flex-[1.2] border-r border-[#eef2f6] flex flex-col min-w-[160px] overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
                     <h3 className="font-bold text-[11px] uppercase text-[#466460]">Departments</h3>
@@ -1017,42 +1215,66 @@ export const Records = () => {
                   </div>
                 </div>
 
-                {/* Column 2: People */}
+                {/* Column 2 — People */}
                 <div className="flex-[1.5] border-r border-[#eef2f6] flex flex-col min-w-[200px] overflow-hidden">
-                  <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
+                  <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-4">
+
+                    {/* Header row */}
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="font-bold text-[11px] uppercase text-[#466460]">People</h3>
-                      <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">
-                        {filteredPeople.length}
-                      </span>
+                      <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">{filteredPeople.length}</span>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
-                          <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="Search name or ID..."
-                            className="w-full pl-8 pr-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] focus:bg-white transition-all"
-                          />
-                        </div>
-                        <button
-                          onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                          className="px-2 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] text-slate-600 outline-none hover:border-[#466460] transition-all flex items-center justify-center"
-                          title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-                        >
-                          <i className={`fa-solid ${sortOrder === 'asc' ? 'fa-arrow-down-a-z' : 'fa-arrow-up-z-a'}`}></i>
-                        </button>
-                      </div>
 
-                      <div className="flex gap-2">
+                    {/* ── Search + Sort row ── */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="relative flex-1">
+                        <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          placeholder="Search name or ID..."
+                          className="w-full pl-8 pr-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] focus:bg-white transition-all"
+                        />
+                      </div>
+                      {/* Sort button — explicit dimensions so it never collapses */}
+                      <button
+                        onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                        style={{ minWidth: '34px', minHeight: '34px', flexShrink: 0 }}
+                        className="bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center"
+                        title={`Sort ${sortOrder === 'asc' ? 'Z → A' : 'A → Z'}`}
+                      >
+                        {sortOrder === 'asc' ? (
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <text x="1" y="7" fontSize="5" fontWeight="700" fill="currentColor">A</text>
+                            <text x="1" y="13" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
+                            <path d="M11 2v10M11 12l-2-2M11 12l2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <text x="1" y="7" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
+                            <text x="1" y="13" fontSize="5" fontWeight="700" fill="currentColor">A</text>
+                            <path d="M11 14V4M11 4l-2 2M11 4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* ── Filter icon + selects row ── */}
+                    <div className="flex items-center gap-1.5 mt-2 overflow-hidden">
+                      <span className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                        </svg>
+                      </span>
+                      <div className="flex flex-1 gap-1.5 min-w-0 overflow-hidden">
                         <FilterSelects size="xs" />
                       </div>
                     </div>
+
                   </div>
 
+                  {/* People list */}
                   <div className="flex-1 min-h-0 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                     {filteredPeople.length === 0 ? (
                       <div className="text-center text-slate-400 text-sm py-12">No records found</div>
@@ -1075,9 +1297,7 @@ export const Records = () => {
                                   {person.id} {person.prog ? `• ${person.prog}` : ''} {person.year || ''} {person.section ? `• Sec ${person.section}` : ''}
                                 </p>
                               </div>
-                              <span className={`text-[8px] px-2 py-0.5 rounded-full flex-shrink-0 ml-1 ${typeBadgeClass(person.role || person.type)}`}>
-                                {person.role || person.type}
-                              </span>
+                              <span className={`text-[8px] px-2 py-0.5 rounded-full flex-shrink-0 ml-1 ${typeBadgeClass(person.role)}`}>{person.role}</span>
                             </div>
                           </div>
                         ))}
@@ -1086,7 +1306,7 @@ export const Records = () => {
                   </div>
                 </div>
 
-                {/* Column 3: Clinical Profile */}
+                {/* Column 3 — Clinical Profile */}
                 <div className="flex-[2.2] flex flex-col min-w-0 overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
                     <h3 className="font-bold text-[11px] uppercase text-[#466460]">Clinical Profile</h3>
@@ -1107,97 +1327,186 @@ export const Records = () => {
             </>
           )}
 
-          {/* ── ADD NEW RECORD TAB ── */}
+          {/* ══════════════════════════════════════════
+              ADD NEW RECORD TAB
+          ══════════════════════════════════════════ */}
           {activeSubTab === 'add' && (
             <div className="h-full overflow-y-auto [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
-              <div className="p-4 sm:p-6 lg:p-8 bg-white">
-                <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-5">Add New Health Record</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 max-w-4xl">
-                  {[
-                    { label: 'Surname *',   name: 'surname',    type: 'text', placeholder: 'Last name'   },
-                    { label: 'First Name *', name: 'firstname', type: 'text', placeholder: 'First name'  },
-                    { label: 'Middle Name', name: 'middlename', type: 'text', placeholder: 'Middle name' },
-                    { label: 'ID Number *', name: 'id',         type: 'text', placeholder: 'e.g. 25-00001' },
-                  ].map(f => (
-                    <div key={f.name}>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">{f.label}</label>
-                      <input name={f.name} type={f.type} value={form[f.name]} onChange={handleFormChange}
-                        placeholder={f.placeholder}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
-                    </div>
-                  ))}
+              <div className="p-4 sm:p-6 lg:p-8 bg-white max-w-5xl">
+                <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-5">Create New User & Profile</h3>
+
+                {/* PERSONAL INFO */}
+                <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Personal Information</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Birthdate</label>
-                    <input name="birthdate" type="date" value={form.birthdate} onChange={handleBirthdateChange}
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
+                    <label className={formLabelCls}>Last Name *</label>
+                    <input name="surname" type="text" value={form.surname} onChange={handleFormChange} className={formInputCls} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Age</label>
-                    <input name="age" type="number" value={form.age} readOnly placeholder="Auto"
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none bg-gray-50" />
+                    <label className={formLabelCls}>First Name *</label>
+                    <input name="firstname" type="text" value={form.firstname} onChange={handleFormChange} className={formInputCls} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Gender</label>
-                    <select name="gender" value={form.gender} onChange={handleFormChange}
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] bg-white">
-                      <option>Male</option><option>Female</option>
+                    <label className={formLabelCls}>Middle Initial</label>
+                    <input name="middlename" type="text" value={form.middlename} onChange={handleFormChange} className={formInputCls} maxLength="1" />
+                  </div>
+                  <div>
+                    <label className={formLabelCls}>Suffix</label>
+                    <select name="suffix" value={form.suffix} onChange={handleFormChange} className={formSelectCls}>
+                      <option value="">None</option>
+                      {SUFFIXES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Type</label>
-                    <select name="type" value={form.type} onChange={handleFormChange}
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] bg-white">
+                    <label className={formLabelCls}>Birthdate</label>
+                    <BirthdayPicker
+                      value={form.birthdate}
+                      onChange={(dateStr) => handleBirthdateChange({ target: { value: dateStr } })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={formLabelCls}>Age</label>
+                      <input name="age" type="number" value={form.age} readOnly className={`${formInputCls} bg-gray-50`} />
+                    </div>
+                    <div>
+                      <label className={formLabelCls}>Gender</label>
+                      <select name="gender" value={form.gender} onChange={handleFormChange} className={formSelectCls}>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className={formLabelCls}>Civil Status</label>
+                    <select name="civilStatus" value={form.civilStatus} onChange={handleFormChange} className={formSelectCls}>
+                      {CIVIL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={formLabelCls}>Nationality</label>
+                    <select name="nationality" value={form.nationality} onChange={handleFormChange} className={formSelectCls}>
+                      {NATIONALITIES.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={formLabelCls}>Religion</label>
+                    <select name="religion" value={form.religion} onChange={handleFormChange} className={formSelectCls}>
+                      <option value="">Select Religion</option>
+                      {RELIGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* ACADEMIC / WORK */}
+                <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Academic / Work Detail</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
+                  <div>
+                    <label className={formLabelCls}>Role / Type</label>
+                    <select name="type" value={form.type} onChange={handleFormChange} className={formSelectCls}>
                       <option value="student">Student</option>
                       <option value="instructor">Instructor/Faculty</option>
                       <option value="staff">Staff</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Department</label>
-                    <input name="department" type="text" value={form.department} onChange={handleFormChange}
-                      placeholder="e.g. College of Computing"
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
+                    <label className={formLabelCls}>ID Number *</label>
+                    <input name="id" type="text" value={form.id} onChange={handleFormChange} placeholder="e.g. 23-00001" className={formInputCls} />
+                  </div>
+
+                  {form.type === 'student' ? (
+                    <>
+                      <div>
+                        <label className={formLabelCls}>Department *</label>
+                        <select name="departmentAbbr" value={form.departmentAbbr} onChange={handleFormChange} className={formSelectCls}>
+                          <option value="" disabled>Select Department</option>
+                          {departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={formLabelCls}>Program / Course</label>
+                        <select name="prog" value={form.prog} onChange={handleFormChange} disabled={!form.departmentAbbr} className={formSelectCls}>
+                          <option value="" disabled>Select Program</option>
+                          {availablePrograms.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className={formLabelCls}>Year</label>
+                          <select name="year" value={form.year} onChange={handleFormChange} className={formSelectCls}>
+                            {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', 'N/A'].map(yr => <option key={yr} value={yr}>{yr}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={formLabelCls}>Section</label>
+                          <select name="section" value={form.section} onChange={handleFormChange} className={formSelectCls}>
+                            <option value="">None</option>
+                            {SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={formLabelCls}>Classification</label>
+                        <select name="studentClassification" value={form.studentClassification} onChange={handleFormChange} className={formSelectCls}>
+                          {STUDENT_CLASSIFICATIONS.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className={formLabelCls}>Office / Department *</label>
+                        <select name="department" value={form.department} onChange={handleFormChange} className={formSelectCls}>
+                          <option value="" disabled>Select Office</option>
+                          {PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={formLabelCls}>Job Title</label>
+                        <input name="jobTitle" type="text" value={form.jobTitle} onChange={handleFormChange} placeholder="e.g. Associate Professor" className={formInputCls} />
+                      </div>
+                      <div>
+                        <label className={formLabelCls}>Classification</label>
+                        <select name="classification" value={form.classification} onChange={handleFormChange} className={formSelectCls}>
+                          {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* ACCOUNT & CONTACT */}
+                <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Account & Contact</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
+                  <div>
+                    <label className={formLabelCls}>Email Address *</label>
+                    <input name="email" type="email" value={form.email} onChange={handleFormChange} placeholder="e.g. name@plsp.edu.ph" className={formInputCls} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Program / Course</label>
-                    <input name="prog" type="text" value={form.prog} onChange={handleFormChange}
-                      placeholder="e.g. BSIT"
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
+                    <label className={formLabelCls}>Phone Number</label>
+                    <input name="phone" type="text" value={form.phone} onChange={handleFormChange} placeholder="e.g. 09123456789" className={formInputCls} maxLength={11} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Year Level</label>
-                    <select name="year" value={form.year} onChange={handleFormChange}
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] bg-white">
-                      <option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option><option>N/A</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Section</label>
-                    <input name="section" type="text" value={form.section} onChange={handleFormChange}
-                      placeholder="e.g. A"
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
-                  </div>
-                  <div className="sm:col-span-2 lg:col-span-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Email Address</label>
-                    <input name="email" type="email" value={form.email} onChange={handleFormChange}
-                      placeholder="e.g. name@plsp.edu.ph"
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Phone Number</label>
-                    <input name="phone" type="text" value={form.phone} onChange={handleFormChange}
-                      placeholder="e.g. 09123456789"
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]" />
+                    <label className={formLabelCls}>Set Password *</label>
+                    <input name="password" type="text" value={form.password} onChange={handleFormChange} placeholder="Initial secure password" className={formInputCls} />
                   </div>
                 </div>
-                <div className="mt-6 flex flex-col sm:flex-row gap-3">
-                  <button onClick={handleAddRecord}
-                    className="bg-[#466460] text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity w-full sm:w-auto">
-                    Save Record
+
+                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={handleAddRecord}
+                    disabled={isSubmitting}
+                    className="bg-[#466460] text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity w-full sm:w-auto disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting && <i className="fa-solid fa-spinner fa-spin"></i>}
+                    {isSubmitting ? 'Saving Profile...' : 'Save User Record'}
                   </button>
-                  <button onClick={handleClearForm}
-                    className="bg-slate-200 text-slate-600 px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-300 transition-colors w-full sm:w-auto">
-                    Clear
+                  <button
+                    onClick={handleClearForm}
+                    disabled={isSubmitting}
+                    className="bg-slate-200 text-slate-600 px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-300 transition-colors w-full sm:w-auto"
+                  >
+                    Clear Fields
                   </button>
                 </div>
               </div>
@@ -1206,7 +1515,6 @@ export const Records = () => {
 
         </div>
       </div>
-
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
     </>
   );

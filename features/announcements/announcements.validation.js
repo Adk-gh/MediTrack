@@ -5,13 +5,19 @@ const createAnnouncementSchema = z.object({
   content: z.string().min(10, "Content must be at least 10 characters"),
   dept: z.string().default("All Departments"),
   date: z.string().min(1, "Date is required"),
+
+  // 👇 The new fields from your frontend form
+  category: z.string().optional(),
+  priority: z.string().optional(),
+  location: z.string().optional(),
+  contactPerson: z.string().optional(),
+  contactEmail: z.string().optional(),
+
+  // 🔴 CRITICAL: Allow the base64 image string to pass validation
+  image: z.string().nullable().optional(),
 });
 
-const updateAnnouncementSchema = z.object({
-  title: z.string().min(3).max(200).optional(),
-  content: z.string().min(10).optional(),
-  dept: z.string().optional(),
-  date: z.string().optional(),
-});
+// Zod's .partial() makes every field inside the schema optional for updates!
+const updateAnnouncementSchema = createAnnouncementSchema.partial();
 
 module.exports = { createAnnouncementSchema, updateAnnouncementSchema };

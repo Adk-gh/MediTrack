@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\announcements\announcements.controller.js
 const announcementsService = require("./announcements.service");
 
 const getAllAnnouncements = async (req, res, next) => {
@@ -20,9 +21,14 @@ const getAnnouncementById = async (req, res, next) => {
 
 const createAnnouncement = async (req, res, next) => {
   try {
+    // 👇 ADD THIS CONSOLE LOG
+    console.log("INCOMING PAYLOAD IMAGE:", req.body.image ? "YES - Image string received" : "NO - Image is missing or null");
+
     const result = await announcementsService.createAnnouncement(req.body);
     res.status(201).json({ success: true, data: result });
   } catch (error) {
+    // 👇 ADD THIS TO CATCH SILENT ERRORS
+    console.error("CREATE ANNOUNCEMENT ERROR:", error);
     next(error);
   }
 };

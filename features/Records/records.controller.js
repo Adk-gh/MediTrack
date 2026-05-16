@@ -1,3 +1,4 @@
+// C:\Users\HP\MediTrack\features\Records\records.controller.js
 const recordsService = require("./records.service");
 
 const getAllRecords = async (req, res, next) => {
@@ -21,9 +22,9 @@ const getRecordById = async (req, res, next) => {
 const createRecord = async (req, res, next) => {
   try {
     const result = await recordsService.createRecord(req.body);
-    res.status(201).json({ success: true, data: result });
+    res.status(201).json({ success: true, message: 'User Account Initialized.', data: result });
   } catch (error) {
-    next(error);
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -39,7 +40,7 @@ const updateRecord = async (req, res, next) => {
 const deleteRecord = async (req, res, next) => {
   try {
     await recordsService.deleteRecord(req.params.id);
-    res.status(200).json({ success: true, message: "Record deleted" });
+    res.status(200).json({ success: true, message: "User Account & Record deleted" });
   } catch (error) {
     next(error);
   }

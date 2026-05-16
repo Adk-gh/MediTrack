@@ -35,29 +35,225 @@ const fmtTime = (t) => {
   return `${hr}:${String(m).padStart(2,'0')} ${period}`;
 };
 
+// ── Inline SVG Icons ──────────────────────────────────────────────────────────
+const IconChevronLeft = ({ size = 12, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polyline points="8,2 4,6 8,10"/>
+  </svg>
+);
+
+const IconChevronRight = ({ size = 12, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polyline points="4,2 8,6 4,10"/>
+  </svg>
+);
+
+const IconChevronUp = ({ size = 11, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polyline points="2,8 6,4 10,8"/>
+  </svg>
+);
+
+const IconChevronDown = ({ size = 11, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polyline points="2,4 6,8 10,4"/>
+  </svg>
+);
+
+const IconCheck = ({ size = 9, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 9 7" fill="none" stroke="white"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M1 3.5L3.5 6L8 1"/>
+  </svg>
+);
+
+const IconCircleCheck = ({ size = 14, color = "currentColor", ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="8" r="7"/>
+    <path d="M5 8l2 2 4-4"/>
+  </svg>
+);
+
+const IconCircleExclamation = ({ size = 14, color = "currentColor", ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="8" r="7"/>
+    <line x1="8" y1="5" x2="8" y2="8.5"/>
+    <circle cx="8" cy="11" r="0.5" fill={color}/>
+  </svg>
+);
+
+const IconClock = ({ size = 13, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="8" r="7"/>
+    <polyline points="8,4.5 8,8 10.5,10"/>
+  </svg>
+);
+
+const IconCalendar = ({ size = 13, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="1.5" y="2.5" width="13" height="12" rx="2"/>
+    <line x1="1.5" y1="6.5" x2="14.5" y2="6.5"/>
+    <line x1="5" y1="1" x2="5" y2="4"/>
+    <line x1="11" y1="1" x2="11" y2="4"/>
+  </svg>
+);
+
+const IconCalendarCheck = ({ size = 13, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="1.5" y="2.5" width="13" height="12" rx="2"/>
+    <line x1="1.5" y1="6.5" x2="14.5" y2="6.5"/>
+    <line x1="5" y1="1" x2="5" y2="4"/>
+    <line x1="11" y1="1" x2="11" y2="4"/>
+    <path d="M5.5 10.5l1.5 1.5 3-3"/>
+  </svg>
+);
+
+const IconCalendarXmark = ({ size = 28, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="2" y="3.5" width="20" height="18" rx="3"/>
+    <line x1="2" y1="9.5" x2="22" y2="9.5"/>
+    <line x1="7" y1="1.5" x2="7" y2="5.5"/>
+    <line x1="17" y1="1.5" x2="17" y2="5.5"/>
+    <line x1="9" y1="14" x2="15" y2="19"/>
+    <line x1="15" y1="14" x2="9" y2="19"/>
+  </svg>
+);
+
+const IconInbox = ({ size = 28, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polyline points="22,12 16,12 14,15 10,15 8,12 2,12"/>
+    <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/>
+  </svg>
+);
+
+const IconMagnifyingGlass = ({ size = 28, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="11" cy="11" r="7"/>
+    <line x1="16.5" y1="16.5" x2="22" y2="22"/>
+  </svg>
+);
+
+const IconUser = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="5" r="3"/>
+    <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+  </svg>
+);
+
+const IconIdCard = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="1" y="3.5" width="14" height="9" rx="2"/>
+    <circle cx="5.5" cy="8" r="1.5"/>
+    <line x1="8.5" y1="6.5" x2="13" y2="6.5"/>
+    <line x1="8.5" y1="9.5" x2="13" y2="9.5"/>
+  </svg>
+);
+
+const IconTag = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M13.5 8.5l-5-5H2v6.5l5 5 6.5-6.5z"/>
+    <circle cx="5.5" cy="5.5" r="1"/>
+  </svg>
+);
+
+const IconBuilding = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="2" y="1.5" width="12" height="13" rx="1"/>
+    <line x1="2" y1="6" x2="14" y2="6"/>
+    <line x1="2" y1="10" x2="14" y2="10"/>
+    <line x1="6" y1="6" x2="6" y2="14.5"/>
+    <line x1="10" y1="6" x2="10" y2="14.5"/>
+  </svg>
+);
+
+const IconGraduationCap = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polygon points="8,2 15,6 8,10 1,6"/>
+    <path d="M4 7.5v3.5c0 1.7 1.8 3 4 3s4-1.3 4-3V7.5"/>
+    <line x1="15" y1="6" x2="15" y2="10"/>
+  </svg>
+);
+
+const IconUsers = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="6" cy="5" r="2.5"/>
+    <path d="M1 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/>
+    <circle cx="11.5" cy="5" r="2"/>
+    <path d="M13.5 13c0-1.9-1-3.5-2.5-4.3"/>
+  </svg>
+);
+
+const IconStethoscope = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M3 2.5c0 3 2.5 5 5 5s5-2 5-5"/>
+    <line x1="3" y1="2.5" x2="3" y2="5"/>
+    <line x1="13" y1="2.5" x2="13" y2="5"/>
+    <path d="M13 7.5a3.5 3.5 0 010 7h-1a3.5 3.5 0 01-3.5-3.5V10"/>
+    <circle cx="13" cy="13.5" r="1" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+const IconXmark = ({ size = 12, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" {...props}>
+    <line x1="2" y1="2" x2="10" y2="10"/>
+    <line x1="10" y1="2" x2="2" y2="10"/>
+  </svg>
+);
+
+const IconCircleInfo = ({ size = 13, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="8" r="7"/>
+    <line x1="8" y1="7" x2="8" y2="11"/>
+    <circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+const IconUserClock = ({ size = 16, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 20 16" fill="none" stroke="currentColor"
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="7" cy="5" r="3.5"/>
+    <path d="M1 15c0-3.3 2.7-6 6-6"/>
+    <circle cx="15" cy="10" r="4"/>
+    <polyline points="15,8 15,10.5 16.5,12"/>
+  </svg>
+);
+
 // ── Drum Roll Picker ──────────────────────────────────────────────────────────
-/**
- * A single scrollable drum-roll column.
- * items   : string[]   — visible labels
- * selIdx  : number     — currently selected index
- * onSelect: (i)=>void
- */
 const DrumColumn = ({ items, selIdx, onSelect }) => {
-  const ITEM_H    = 44;   // px per row
-  const VISIBLE   = 3;    // rows shown either side of center
+  const ITEM_H    = 44;
+  const VISIBLE   = 3;
   const containerRef = useRef(null);
   const isDragging   = useRef(false);
   const startY       = useRef(0);
   const startIdx     = useRef(0);
 
-  // Scroll to selected item whenever selIdx changes
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = selIdx * ITEM_H;
     }
   }, [selIdx]);
 
-  // Handle native scroll (mouse wheel / touch momentum)
   const handleScroll = useCallback(() => {
     if (!containerRef.current || isDragging.current) return;
     const raw = containerRef.current.scrollTop / ITEM_H;
@@ -66,7 +262,6 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
     if (clamped !== selIdx) onSelect(clamped);
   }, [items.length, selIdx, onSelect]);
 
-  // Touch / mouse drag
   const onPointerDown = (e) => {
     isDragging.current = true;
     startY.current     = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
@@ -83,7 +278,6 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
 
   return (
     <div className="relative flex-1 select-none" style={{ height: ITEM_H * (VISIBLE * 2 + 1) }}>
-      {/* Selection band */}
       <div
         className="absolute left-0 right-0 pointer-events-none z-10 rounded-[10px]"
         style={{
@@ -94,11 +288,9 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
           borderBottom: '1.5px solid rgba(70,100,96,0.25)',
         }}
       />
-      {/* Top / bottom fade */}
       <div className="absolute inset-0 pointer-events-none z-10" style={{
         background: 'linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.95) 100%)',
       }} />
-      {/* Scrollable list */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
@@ -157,23 +349,16 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
   );
 };
 
-/**
- * Full drum-roll date picker.
- * value    : "YYYY-MM-DD" string
- * onChange : (newValue: string) => void
- * onCancel : () => void
- * onSubmit : () => void
- */
 const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
   const today  = new Date();
   const parsed = value ? new Date(value + 'T00:00:00') : today;
 
-  const [day,   setDay]   = useState(parsed.getDate() - 1);        // 0-based index
-  const [month, setMonth] = useState(parsed.getMonth());            // 0-based
-  const [year,  setYear]  = useState(parsed.getFullYear() - 2020);  // offset from 2020
+  const [day,   setDay]   = useState(parsed.getDate() - 1);
+  const [month, setMonth] = useState(parsed.getMonth());
+  const [year,  setYear]  = useState(parsed.getFullYear() - 2020);
 
   const BASE_YEAR = 2020;
-  const YEAR_COUNT = 11; // 2020 – 2030
+  const YEAR_COUNT = 11;
 
   const daysInMonth = new Date(BASE_YEAR + year, month + 1, 0).getDate();
   const dayItems    = Array.from({ length: daysInMonth }, (_, i) =>
@@ -182,13 +367,11 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
   const monthItems = MONTH_SHORT;
   const yearItems  = Array.from({ length: YEAR_COUNT }, (_, i) => String(BASE_YEAR + i));
 
-  // Clamp day index when month/year changes
   useEffect(() => {
     const maxDay = new Date(BASE_YEAR + year, month + 1, 0).getDate();
     if (day >= maxDay) setDay(maxDay - 1);
   }, [month, year]);
 
-  // Propagate change upward
   useEffect(() => {
     const d = String(day + 1).padStart(2, '0');
     const m = String(month + 1).padStart(2, '0');
@@ -201,15 +384,11 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
       <div className="text-center text-[13px] font-semibold text-[#1e293b] mb-3 tracking-wide">
         Select Date
       </div>
-
-      {/* Columns */}
       <div className="flex items-center justify-center gap-1 px-2" style={{ height: 44 * 7 }}>
         <DrumColumn items={dayItems}   selIdx={day}   onSelect={setDay}   />
         <DrumColumn items={monthItems} selIdx={month} onSelect={setMonth} />
         <DrumColumn items={yearItems}  selIdx={year}  onSelect={setYear}  />
       </div>
-
-      {/* Actions */}
       <div className="flex border-t border-[#eef2f6] mt-2">
         <button
           onClick={onCancel}
@@ -239,7 +418,10 @@ const Snackbar = ({ message, type, visible }) => (
       ? 'bg-gradient-to-br from-[#166534] to-[#15803d]'
       : 'bg-gradient-to-br from-[#991b1b] to-[#dc2626]'}`}
   >
-    <i className={`fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
+    {type === 'success'
+      ? <IconCircleCheck size={14} color="white" />
+      : <IconCircleExclamation size={14} color="white" />
+    }
     {message}
   </div>
 );
@@ -280,7 +462,7 @@ export const Appointments = () => {
   const [batchModal,      setBatchModal]      = useState(false);
   const [batchDate,       setBatchDate]       = useState('');
   const [batchSlot,       setBatchSlot]       = useState('08:00');
-  const [showDatePicker,  setShowDatePicker]  = useState(false);   // drum-roll overlay
+  const [showDatePicker,  setShowDatePicker]  = useState(false);
 
   // ── Detail / snackbar ──
   const [detailModal, setDetailModal] = useState(null);
@@ -405,7 +587,6 @@ export const Appointments = () => {
       prev.includes(time) ? prev.filter(t => t !== time) : [...prev, time]
     );
 
-  // ── Format batchDate for display ──
   const formattedBatchDate = batchDate
     ? new Date(batchDate + 'T00:00:00').toLocaleDateString('en-PH', {
         month: 'long', day: 'numeric', year: 'numeric',
@@ -413,8 +594,8 @@ export const Appointments = () => {
     : null;
 
   // ── Pending List ──────────────────────────────────────────────────────────
-  const PendingList = ({ compact = false }) => (
-    <div className={`flex flex-col overflow-hidden ${compact ? 'h-full' : 'flex-1'}`}>
+  const PendingList = () => (
+    <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
           <div className="text-[13px] font-semibold text-[#1e293b]">Pending Requests</div>
@@ -425,7 +606,7 @@ export const Appointments = () => {
         </span>
       </div>
 
-      <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0 flex flex-col gap-1.5">
+      <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0 flex flex-col gap-1.5 bg-white">
         <input
           type="text"
           placeholder="Search name, ID, dept..."
@@ -459,12 +640,16 @@ export const Appointments = () => {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0
+      <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0 bg-white
         [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
         {filteredPending.length === 0 ? (
           <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[12px]">
-            <i className={`block text-[1.8rem] mb-2 text-[#cbd5e1] fa-regular
-              ${pendingRequests.length === 0 ? 'fa-inbox' : 'fa-magnifying-glass'}`}></i>
+            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+              {pendingRequests.length === 0
+                ? <IconInbox size={28} />
+                : <IconMagnifyingGlass size={28} />
+              }
+            </div>
             {pendingRequests.length === 0 ? 'All requests processed' : 'No results found'}
           </div>
         ) : filteredPending.map(r => {
@@ -491,12 +676,7 @@ export const Appointments = () => {
                 ${isChecked
                   ? 'bg-[#466460] border-[#466460]'
                   : 'bg-white border-[#cbd5e1] group-hover:border-[#466460]'}`}>
-                {isChecked && (
-                  <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                    <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.8"
-                      strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
+                {isChecked && <IconCheck size={9} />}
               </div>
 
               <div className={`font-['DM_Mono',monospace] text-[10px] font-medium rounded-[5px] px-[6px]
@@ -513,8 +693,9 @@ export const Appointments = () => {
                 <div className="text-[10px] text-[#64748b] leading-[1.5]">{r.dept}</div>
                 <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px]
                   rounded-[20px] inline-block mt-[3px] font-medium">{r.reason}</span>
-                <div className="text-[9px] text-[#94a3b8] mt-[3px]">
-                  <i className="fa-regular fa-clock mr-[3px]"></i>Requested {bTime}
+                <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
+                  <IconClock size={10} />
+                  Requested {bTime}
                 </div>
               </div>
             </div>
@@ -526,7 +707,7 @@ export const Appointments = () => {
         <div className="shrink-0 border-t-2 border-[#e0eceb] bg-[#f8fdfc] px-3 py-3 flex flex-col gap-2.5">
           {!selectedDay && (
             <div className="text-[10.5px] text-[#854F0B] bg-[#FAEEDA] px-2 py-[6px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[5px]">
-              <i className="fa-solid fa-circle-info"></i>
+              <IconCircleInfo size={13} />
               Select a date on the calendar to schedule
             </div>
           )}
@@ -544,16 +725,17 @@ export const Appointments = () => {
                   ? 'bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white cursor-pointer hover:opacity-90'
                   : 'bg-[#e2e8f0] text-[#94a3b8] cursor-not-allowed'}`}
             >
-              <i className="fa-solid fa-calendar-check"></i>
+              <IconCalendarCheck size={13} />
               Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
             </button>
             <button
               onClick={handleDeclineSelected}
               title="Decline selected"
               className="px-[13px] py-[8px] bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]
-                rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]"
+                rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]
+                flex items-center justify-center"
             >
-              <i className="fa-solid fa-xmark"></i>
+              <IconXmark size={12} />
             </button>
           </div>
         </div>
@@ -603,20 +785,28 @@ export const Appointments = () => {
 
   // ── Calendar Panel ────────────────────────────────────────────────────────
   const CalendarPanel = () => (
-    <div className="flex flex-col h-full bg-[#fafbfc] overflow-hidden">
+    <div className="flex flex-col h-full bg-[#fafbfc] overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
-        <button onClick={() => changeMonth(-1)}
+        {/* ← Prev month */}
+        <button
+          onClick={() => changeMonth(-1)}
           className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
-            rounded-[8px] flex items-center justify-center text-[11px] transition-colors
-            hover:bg-[#E1F5EE] hover:border-[#466460] hover:text-[#466460]">
-          <i className="fa-solid fa-chevron-left"></i>
+            rounded-[8px] flex items-center justify-center transition-colors
+            hover:bg-[#E1F5EE] hover:border-[#466460] hover:text-[#466460]"
+        >
+          <IconChevronLeft size={12} />
         </button>
+
         <span className="text-[14px] font-semibold text-[#1e293b]">{MONTHS[calMonth - 1]} {calYear}</span>
-        <button onClick={() => changeMonth(1)}
+
+        {/* → Next month */}
+        <button
+          onClick={() => changeMonth(1)}
           className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
-            rounded-[8px] flex items-center justify-center text-[11px] transition-colors
-            hover:bg-[#E1F5EE] hover:border-[#466460] hover:text-[#466460]">
-          <i className="fa-solid fa-chevron-right"></i>
+            rounded-[8px] flex items-center justify-center transition-colors
+            hover:bg-[#E1F5EE] hover:border-[#466460] hover:text-[#466460]"
+        >
+          <IconChevronRight size={12} />
         </button>
       </div>
 
@@ -641,23 +831,40 @@ export const Appointments = () => {
             const isToday = today.getFullYear() === calYear
               && (today.getMonth() + 1) === calMonth
               && today.getDate() === day;
-            const isSel    = selectedDay === day;
+            const isSel = selectedDay === day;
+
+            // True if the day is strictly before today
+            const isPast = (() => {
+              const cellDate     = new Date(calYear, calMonth - 1, day);
+              const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+              return cellDate < todayMidnight;
+            })();
+
             const dayAppts = scheduledAppts.filter(
               a => a.year === calYear && a.month === calMonth && a.day === day
             );
+
             return (
               <div
                 key={day}
-                onClick={() => setSelectedDay(day)}
-                className={`min-h-[40px] sm:min-h-[46px] border px-1 py-1 cursor-pointer rounded-[8px] transition-all
-                  ${isSel
-                    ? 'bg-[#466460] border-[#466460]'
-                    : isToday
-                      ? 'border-[#466460] hover:bg-[#E1F5EE]'
-                      : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB]'}`}
+                onClick={() => !isPast && setSelectedDay(day)}
+                className={`min-h-[40px] sm:min-h-[46px] border px-1 py-1 rounded-[8px] transition-all
+                  ${isPast
+                    ? 'border-transparent cursor-default bg-[#e8edec]'
+                    : isSel
+                      ? 'bg-[#466460] border-[#466460] cursor-pointer'
+                      : isToday
+                        ? 'border-[#466460] hover:bg-[#E1F5EE] cursor-pointer'
+                        : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB] cursor-pointer'}`}
               >
                 <div className={`text-[11px] font-semibold
-                  ${isSel ? 'text-white' : isToday ? 'text-[#0F6E56]' : 'text-[#475569]'}`}>
+                  ${isSel
+                    ? 'text-white'
+                    : isToday
+                      ? 'text-[#0F6E56]'
+                      : isPast
+                        ? 'text-[#8aa8a4]'
+                        : 'text-[#475569]'}`}>
                   {day}
                 </div>
                 <div className="flex gap-[2px] flex-wrap mt-[2px]">
@@ -676,7 +883,9 @@ export const Appointments = () => {
         [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
         {!selectedDay ? (
           <div className="text-center py-8 px-4 text-[#94a3b8] text-[12px]">
-            <i className="fa-regular fa-calendar block text-[1.8rem] mb-2 text-[#cbd5e1]"></i>
+            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+              <IconCalendar size={28} />
+            </div>
             <p>Select a date to view appointments</p>
           </div>
         ) : selectedDayAppts.length === 0 ? (
@@ -686,7 +895,9 @@ export const Appointments = () => {
               <span className="text-[10px] text-[#64748b] font-normal">No appointments</span>
             </div>
             <div className="text-center py-8 px-4 text-[#94a3b8] text-[12px]">
-              <i className="fa-regular fa-calendar-xmark block text-[1.8rem] mb-2 text-[#cbd5e1]"></i>
+              <div className="flex justify-center mb-2 text-[#cbd5e1]">
+                <IconCalendarXmark size={28} />
+              </div>
               <p>No approved appointments on this date</p>
             </div>
           </>
@@ -710,13 +921,16 @@ export const Appointments = () => {
                     className="flex items-center justify-between px-3 py-2.5 bg-[#f8fafc] border border-[#eef2f6] rounded-[8px] cursor-pointer hover:bg-[#f1f5f9] transition-colors mb-2"
                   >
                     <div className="flex items-center gap-2.5">
-                      <i className="fa-regular fa-clock text-[#466460]"></i>
+                      <IconClock size={13} className="text-[#466460]" style={{ color: '#466460' }} />
                       <span className="text-[12px] font-bold text-[#1e293b]">{slotLabel}</span>
                       <span className="text-[10px] text-[#64748b] bg-white border border-[#e2e8f0] px-2 py-[2px] rounded-full font-medium shadow-sm">
                         {appts.length} appt{appts.length !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} text-[#94a3b8] text-[11px] transition-transform`}></i>
+                    {isExpanded
+                      ? <IconChevronUp size={11} style={{ color: '#94a3b8' }} />
+                      : <IconChevronDown size={11} style={{ color: '#94a3b8' }} />
+                    }
                   </div>
                   {isExpanded && (
                     <div className="flex flex-col gap-1 pl-[6px] border-l-2 border-[#eef2f6] ml-[10px]">
@@ -736,7 +950,10 @@ export const Appointments = () => {
                             <span className={`font-['DM_Mono',monospace] text-[10px] font-bold text-white
                               rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0 leading-[1.6]
                               ${isDone ? 'bg-[#94a3b8]' : 'bg-[#466460]'}`}>
-                              {isDone ? <i className="fa-solid fa-check"></i> : `#${queueIdx + 1}`}
+                              {isDone
+                                ? <IconCheck size={9} />
+                                : `#${queueIdx + 1}`
+                              }
                             </span>
                             <div className="flex-1 min-w-0">
                               <div className={`font-semibold text-[12px] truncate
@@ -755,9 +972,11 @@ export const Appointments = () => {
                                 onClick={(e) => handleMarkDone(e, a.id)}
                                 className="ml-1 px-[8px] py-[3px] text-[9px] font-bold rounded-[6px]
                                   border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer
-                                  transition-colors shrink-0 whitespace-nowrap hover:bg-[#EAF3DE]"
+                                  transition-colors shrink-0 whitespace-nowrap hover:bg-[#EAF3DE]
+                                  flex items-center gap-[3px]"
                               >
-                                <i className="fa-solid fa-check mr-[3px]"></i>Done
+                                <IconCheck size={8} style={{ stroke: '#1D9E75' }} />
+                                Done
                               </button>
                             )}
                           </div>
@@ -778,17 +997,17 @@ export const Appointments = () => {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white overflow-hidden">
+    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white w-full h-[calc(100vh-134px)] md:h-[calc(100vh-116px)] flex flex-col overflow-hidden">
 
       {/* ── MOBILE ── */}
-      <div className="flex flex-col md:hidden" style={{ height: 'calc(100vh - 134px)' }}>
+      <div className="flex flex-col md:hidden flex-1 min-h-0 w-full h-full">
         <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
           <button
             onClick={() => setMobileView('pending')}
             className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors
               ${mobileView === 'pending' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
-            <i className="fa-regular fa-clock"></i> Pending
+            <IconClock size={13} /> Pending
             {pendingRequests.length > 0 && (
               <span className="text-[9px] font-bold bg-[#FAEEDA] text-[#854F0B] px-1.5 py-0.5 rounded-full">
                 {pendingRequests.length}
@@ -800,30 +1019,30 @@ export const Appointments = () => {
             className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors
               ${mobileView === 'calendar' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
-            <i className="fa-regular fa-calendar"></i> Calendar
+            <IconCalendar size={13} /> Calendar
           </button>
         </div>
-        <div className="flex-1 overflow-hidden">
-          {mobileView === 'pending' ? <PendingList compact /> : <CalendarPanel />}
+        <div className="flex-1 overflow-hidden h-full flex flex-col">
+          {mobileView === 'pending' ? <PendingList /> : <CalendarPanel />}
         </div>
       </div>
 
       {/* ── TABLET ── */}
-      <div className="hidden md:flex lg:hidden" style={{ height: 'calc(100vh - 116px)' }}>
-        <div className="flex flex-col border-r border-[#eef2f6] overflow-hidden w-[320px]">
+      <div className="hidden md:flex lg:hidden flex-1 min-h-0 w-full h-full">
+        <div className="flex flex-col border-r border-[#eef2f6] overflow-hidden w-[320px] shrink-0 h-full">
           <PendingList />
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden h-full flex flex-col">
           <CalendarPanel />
         </div>
       </div>
 
       {/* ── DESKTOP ── */}
-      <div className="hidden lg:flex" style={{ height: 'calc(100vh - 116px)', overflow: 'hidden' }}>
-        <div className="w-[420px] shrink-0 flex flex-col border-r border-[#eef2f6] overflow-hidden">
+      <div className="hidden lg:flex flex-1 min-h-0 w-full h-full">
+        <div className="w-[420px] shrink-0 flex flex-col border-r border-[#eef2f6] overflow-hidden h-full">
           <PendingList />
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden h-full flex flex-col">
           <CalendarPanel />
         </div>
       </div>
@@ -843,7 +1062,7 @@ export const Appointments = () => {
 
             <div className="px-5 pt-4 pb-3 border-b border-[#eef2f6]">
               <div className="text-[15px] font-semibold text-[#1e293b] flex items-center gap-2">
-                <i className="fa-solid fa-calendar-check text-[#0F6E56]"></i>
+                <IconCalendarCheck size={15} style={{ color: '#0F6E56' }} />
                 Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
               </div>
               <div className="text-[11px] text-[#64748b] mt-[2px]">
@@ -853,7 +1072,7 @@ export const Appointments = () => {
 
             <div className="px-5 py-4 flex flex-col gap-4">
 
-              {/* ── Date field — opens drum-roll picker ── */}
+              {/* ── Date field ── */}
               <div>
                 <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-1">
                   Appointment Date *
@@ -871,7 +1090,7 @@ export const Appointments = () => {
                         })
                       : 'Tap to select a date…'}
                   </span>
-                  <i className="fa-regular fa-calendar text-[#466460] text-[13px]"></i>
+                  <IconCalendar size={13} style={{ color: '#466460' }} />
                 </button>
               </div>
 
@@ -891,14 +1110,14 @@ export const Appointments = () => {
                       <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}
                   </select>
-                  <i className="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-[#94a3b8] text-[10px] pointer-events-none"></i>
+                  <IconChevronDown size={10} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
                 </div>
               </div>
 
               {/* ── Summary banner ── */}
               {batchDate && (
                 <div className="flex items-start gap-3 px-3 py-3 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
-                  <i className="fa-solid fa-circle-info text-[#3B6D11] mt-[1px] shrink-0"></i>
+                  <IconCircleInfo size={13} style={{ color: '#3B6D11', marginTop: 1, flexShrink: 0 }} />
                   <div className="text-[11px] text-[#3B6D11] leading-[1.6]">
                     <span className="font-bold">{selectedIds.size} patient{selectedIds.size > 1 ? 's' : ''}</span>
                     {' '}will be scheduled on{' '}
@@ -950,7 +1169,7 @@ export const Appointments = () => {
                   transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
                   flex items-center justify-center gap-2"
               >
-                <i className="fa-solid fa-circle-check"></i>
+                <IconCircleCheck size={14} color="white" />
                 Confirm &amp; Approve All
               </button>
               <button
@@ -976,11 +1195,9 @@ export const Appointments = () => {
               animate-[fadeIn_0.2s_ease-out] overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            {/* Drag handle (mobile) */}
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
-
             <div className="px-5 pt-3 pb-2">
               <DrumDatePicker
                 value={batchDate || new Date().toISOString().slice(0, 10)}
@@ -1001,24 +1218,25 @@ export const Appointments = () => {
             <div className="flex justify-center -mt-1 mb-3 sm:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
-            <h3 className="m-0 mb-[14px] text-[#466460] text-[1rem] font-semibold">
-              <i className="fa-solid fa-user-clock mr-[8px]"></i>Appointment Details
+            <h3 className="m-0 mb-[14px] text-[#466460] text-[1rem] font-semibold flex items-center gap-2">
+              <IconUserClock size={16} style={{ color: '#466460' }} />
+              Appointment Details
             </h3>
             <div className="divide-y divide-[#f1f5f9]">
               {[
-                { icon: 'fa-user',             label: 'Full Name',  value: detailModal.name },
-                { icon: 'fa-id-card',          label: 'ID Number',  value: detailModal.idno },
-                { icon: 'fa-tag',              label: 'Type',       value: detailModal.type?.charAt(0).toUpperCase() + detailModal.type?.slice(1) },
-                { icon: 'fa-building-columns', label: 'Department', value: detailModal.dept },
-                { icon: 'fa-graduation-cap',   label: 'Program',    value: detailModal.prog },
-                { icon: 'fa-users',            label: 'Section',    value: detailModal.section },
-                { icon: 'fa-stethoscope',      label: 'Purpose',    value: detailModal.reason },
-                { icon: 'fa-calendar',         label: 'Date',       value: `${MONTHS[detailModal.month - 1]} ${detailModal.day}, ${detailModal.year}` },
-                { icon: 'fa-clock',            label: 'Time',       value: detailModal.time },
-                { icon: 'fa-circle-check',     label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
-              ].map(({ icon, label, value }) => (
+                { Icon: IconUser,          label: 'Full Name',  value: detailModal.name },
+                { Icon: IconIdCard,        label: 'ID Number',  value: detailModal.idno },
+                { Icon: IconTag,           label: 'Type',       value: detailModal.type?.charAt(0).toUpperCase() + detailModal.type?.slice(1) },
+                { Icon: IconBuilding,      label: 'Department', value: detailModal.dept },
+                { Icon: IconGraduationCap, label: 'Program',    value: detailModal.prog },
+                { Icon: IconUsers,         label: 'Section',    value: detailModal.section },
+                { Icon: IconStethoscope,   label: 'Purpose',    value: detailModal.reason },
+                { Icon: IconCalendar,      label: 'Date',       value: `${MONTHS[detailModal.month - 1]} ${detailModal.day}, ${detailModal.year}` },
+                { Icon: IconClock,         label: 'Time',       value: detailModal.time },
+                { Icon: IconCircleCheck,   label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
+              ].map(({ Icon, label, value }) => (
                 <div key={label} className="flex items-center gap-[10px] py-[6px] text-[12px]">
-                  <i className={`fa-solid ${icon} text-[#0F6E56] w-[16px] text-center shrink-0`}></i>
+                  <Icon size={14} style={{ color: '#0F6E56', flexShrink: 0 }} />
                   <span className="text-[#64748b] min-w-[100px]">{label}</span>
                   <span className="font-medium text-[#1e293b]">{value}</span>
                 </div>
@@ -1028,9 +1246,11 @@ export const Appointments = () => {
               <button
                 onClick={() => handleExaminePatient(detailModal)}
                 className="flex-1 p-[9px] border-none rounded-[8px] cursor-pointer font-semibold
-                  text-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white"
+                  text-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
+                  flex items-center justify-center gap-2"
               >
-                <i className="fa-solid fa-stethoscope mr-[6px]"></i>Examine Patient
+                <IconStethoscope size={13} style={{ color: 'white' }} />
+                Examine Patient
               </button>
               <button
                 onClick={() => setDetailModal(null)}

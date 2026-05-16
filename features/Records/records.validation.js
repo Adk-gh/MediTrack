@@ -1,18 +1,40 @@
-const { z } = require("zod");
+const { z } = require('zod');
 
 const createRecordSchema = z.object({
-  patientId: z.string().min(1, "Patient ID is required"),
-  name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be at most 100 characters"),
-  type: z.enum(["student", "instructor", "staff"], { errorMap: () => ({ message: "Type must be student, instructor, or staff" }) }),
-  department: z.string().min(1, "Department is required"),
-  history: z.array(z.string()).optional(),
-});
+  // Only the absolute core fields should be required
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password is required"),
+  universityId: z.string().min(1, "ID is required"),
+  role: z.string().min(1, "Role is required"),
 
-const updateRecordSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters").max(100).optional(),
-  type: z.enum(["student", "instructor", "staff"]).optional(),
+  // EVERYTHING else must be optional so Zod doesn't throw the "undefined" error
+  middleInitial: z.string().optional(),
+  suffix: z.string().optional(),
+  sex: z.string().optional(),
+  birthday: z.string().optional(),
+  age: z.union([z.string(), z.number()]).optional(),
   department: z.string().optional(),
-  history: z.array(z.string()).optional(),
+  phoneNumber: z.string().optional(),
+  civilStatus: z.string().optional(),
+  nationality: z.string().optional(),
+  religion: z.string().optional(),
+
+  program: z.string().optional(),
+  yearLevel: z.string().optional(),
+  section: z.string().optional(),
+  studentClassification: z.string().optional(),
+
+  jobTitle: z.string().optional(),
+  classification: z.string().optional(),
+
+  isProfileSetup: z.boolean().optional(),
+  profileComplete: z.boolean().optional(),
+  bloodType: z.string().optional(),
+  homeAddress: z.string().optional(),
+  emergencyContact: z.any().optional(),
+  vaccinations: z.any().optional()
 });
 
-module.exports = { createRecordSchema, updateRecordSchema };
+module.exports = { createRecordSchema };

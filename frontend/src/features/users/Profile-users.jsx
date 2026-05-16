@@ -67,6 +67,11 @@ const classificationColors = {
   Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
 };
 
+const DENTAL_PROCEDURES = [
+  'Oral Prophylaxis', 'Filling / Restoration', 'Extraction', 'Drug Sensitivity / Allergy',
+  'Pulp Therapy', 'Periodontal Therapy', 'Orthodontic Therapy', 'TMJ Treatment', 'Prosthodontic Therapy',
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
   const [loading, setLoading]           = useState(true);
@@ -96,7 +101,7 @@ export default function ProfileUsers({ onLogout }) {
     homeAddress: '', religion: '', nationality: '', civilStatus: '',
     universityId: '', role: '',
     studentId: '', department: '', program: '', yearLevel: '', section: '',
-    studentClassification: '', // ← NEW
+    studentClassification: '',
     classification: '', jobTitle: '',
     email: '', phoneNumber: '',
     emergencyContact: { name: '', relationship: '', phone: '', address: '' },
@@ -106,6 +111,10 @@ export default function ProfileUsers({ onLogout }) {
       booster1: { vaccineName: '', date: '' },
       booster2: { vaccineName: '', date: '' },
     },
+    dentalHistory: {
+      lastVisit: '', prevDentist: '', physician: '', teethUpper: '', teethLower: '',
+      procedures: {}
+    }
   });
 
   // ── Fetch from Firestore on mount ────────────────────────────────────────
@@ -136,7 +145,7 @@ export default function ProfileUsers({ onLogout }) {
               program:                d.program                || '',
               yearLevel:              d.yearLevel              || '',
               section:                d.section                || '',
-              studentClassification:  d.studentClassification  || 'Regular', // ← NEW
+              studentClassification:  d.studentClassification  || 'Regular',
               classification:         d.classification         || '',
               jobTitle:               d.jobTitle               || '',
               email:                  d.email                  || user.email || '',
@@ -153,6 +162,14 @@ export default function ProfileUsers({ onLogout }) {
                 booster1: { vaccineName: d.vaccinations?.booster1?.vaccineName || '', date: d.vaccinations?.booster1?.date || '' },
                 booster2: { vaccineName: d.vaccinations?.booster2?.vaccineName || '', date: d.vaccinations?.booster2?.date || '' },
               },
+              dentalHistory: {
+                lastVisit:   d.dentalHistory?.lastVisit   || '',
+                prevDentist: d.dentalHistory?.prevDentist || '',
+                physician:   d.dentalHistory?.physician   || '',
+                teethUpper:  d.dentalHistory?.teethUpper  || '',
+                teethLower:  d.dentalHistory?.teethLower  || '',
+                procedures:  d.dentalHistory?.procedures  || {},
+              }
             });
           } else {
             setProfile(prev => ({ ...prev, email: user.email || '' }));
@@ -197,6 +214,23 @@ export default function ProfileUsers({ onLogout }) {
     setEditData(prev => ({
       ...prev,
       vaccinations: { ...prev.vaccinations, [dose]: { ...prev.vaccinations[dose], [field]: value } }
+    }));
+  };
+
+  const handleDentalChange = (field, value) => {
+    setEditData(prev => ({
+      ...prev,
+      dentalHistory: { ...prev.dentalHistory, [field]: value }
+    }));
+  };
+
+  const handleDentalProcChange = (proc, value) => {
+    setEditData(prev => ({
+      ...prev,
+      dentalHistory: {
+        ...prev.dentalHistory,
+        procedures: { ...(prev.dentalHistory.procedures || {}), [proc]: value }
+      }
     }));
   };
 
@@ -313,7 +347,6 @@ export default function ProfileUsers({ onLogout }) {
             <div style={{ background: '#f4f7f5', padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 600, color: '#6b8577', textTransform: 'capitalize' }}>
               {profile.role || 'student'}
             </div>
-           
           </div>
         </div>
       </Card>
@@ -393,6 +426,21 @@ export default function ProfileUsers({ onLogout }) {
             </div>
           );
         })}
+      </Card>
+
+      {/* ── Dental History ── */}
+      <Card>
+        <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} />
+        <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} />
+        <InfoRow label="Previous Dentist" value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} />
+        <InfoRow label="Physician" value={profile.dentalHistory.physician ? `Dr. ${profile.dentalHistory.physician}` : ''} />
+        <InfoRow
+          label="Teeth Present"
+          value={(profile.dentalHistory.teethUpper || profile.dentalHistory.teethLower)
+            ? `Upper: ${profile.dentalHistory.teethUpper || 0}, Lower: ${profile.dentalHistory.teethLower || 0}`
+            : ''}
+          last
+        />
       </Card>
 
       {/* ── Health Documents ── */}
@@ -607,6 +655,85 @@ export default function ProfileUsers({ onLogout }) {
                       </FormGroup>
                     </div>
                   ))}
+                </>
+              )}
+
+              {/* ── Dental History Section ── */}
+              {editingSection === 'dental' && (
+                <>
+                  <FormGroup label="Last Dental Visit">
+                    <BirthdayPicker
+                      value={editData.dentalHistory.lastVisit || ''}
+                      onChange={(val) => handleDentalChange('lastVisit', val)}
+                    />
+                  </FormGroup>
+                  <FormGroup label="Previous Dentist (Dr.)">
+                    <input
+                      style={inputStyle}
+                      value={editData.dentalHistory.prevDentist}
+                      placeholder="e.g. Smith"
+                      onChange={e => handleDentalChange('prevDentist', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup label="Physician (Dr.)">
+                    <input
+                      style={inputStyle}
+                      value={editData.dentalHistory.physician}
+                      placeholder="e.g. Doe"
+                      onChange={e => handleDentalChange('physician', e.target.value)}
+                    />
+                  </FormGroup>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <FormGroup label="Teeth Present (Upper)">
+                      <input
+                        type="number"
+                        min="0" max="16"
+                        style={inputStyle}
+                        value={editData.dentalHistory.teethUpper}
+                        onChange={e => handleDentalChange('teethUpper', e.target.value)}
+                      />
+                    </FormGroup>
+                    <FormGroup label="Teeth Present (Lower)">
+                      <input
+                        type="number"
+                        min="0" max="16"
+                        style={inputStyle}
+                        value={editData.dentalHistory.teethLower}
+                        onChange={e => handleDentalChange('teethLower', e.target.value)}
+                      />
+                    </FormGroup>
+                  </div>
+
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '16px 0 10px 0', textTransform: 'uppercase', borderTop: '1px solid #ddeee5', paddingTop: 16 }}>Procedures History</p>
+                  {DENTAL_PROCEDURES.map(proc => {
+                    const isYes = editData.dentalHistory.procedures?.[proc] === 'Yes';
+                    const isNo = editData.dentalHistory.procedures?.[proc] === 'No' || !editData.dentalHistory.procedures?.[proc];
+                    return (
+                      <div key={proc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 12, color: '#1a2e22', background: '#f4f7f5', padding: '8px 12px', borderRadius: 8 }}>
+                        <span style={{ fontWeight: 600 }}>{proc}</span>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 600 }}>
+                            <input
+                              type="radio"
+                              name={`modal_dh_${proc}`}
+                              checked={isYes}
+                              onChange={() => handleDentalProcChange(proc, 'Yes')}
+                              style={{ accentColor: '#1a5c3a' }}
+                            /> Yes
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 600 }}>
+                            <input
+                              type="radio"
+                              name={`modal_dh_${proc}`}
+                              checked={isNo}
+                              onChange={() => handleDentalProcChange(proc, 'No')}
+                              style={{ accentColor: '#1a5c3a' }}
+                            /> No
+                          </label>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </>
               )}
 

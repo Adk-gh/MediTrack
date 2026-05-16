@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\Records\records.route.js,
 const express = require("express");
 const router = express.Router();
 const recordsController = require("./records.controller");
@@ -7,7 +8,7 @@ const { createRecordSchema, updateRecordSchema } = require("./records.validation
 
 router.get("/", authorized, recordsController.getAllRecords);
 router.get("/:id", authorized, recordsController.getRecordById);
-router.post("/", validateData(createRecordSchema), recordsController.createRecord);
+router.post("/", authorized, validateData(createRecordSchema), recordsController.createRecord);
 router.put("/:id", validateData(updateRecordSchema), recordsController.updateRecord);
 router.delete("/:id", authorized, recordsController.deleteRecord);
 

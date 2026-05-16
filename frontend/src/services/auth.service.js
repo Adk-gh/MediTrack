@@ -1,5 +1,3 @@
-//C:\Users\HP\MediTrack\frontend\src\services\auth.service.js
-
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const register = async (formData) => {
@@ -24,17 +22,27 @@ const login = async ({ email, password }) => {
 
   if (data.success && data.data) {
     const user = data.data;
+
+    // Save the user data to localStorage, including the fields needed for the Home Page checks
     localStorage.setItem(
       "user",
       JSON.stringify({
-        uid:           user.id,
-        firstName:     user.firstName,
-        lastName:      user.lastName,
-        middleInitial: user.middleInitial || '',
-        suffix:        user.suffix || '',
-        role:          user.role,
-        email:         user.email,
-        universityId:  user.universityId,
+        uid:                user.id,
+        name:               user.name || `${user.firstName} ${user.lastName}`, // Added to ensure the Home Page greeting works
+        firstName:          user.firstName,
+        lastName:           user.lastName,
+        middleInitial:      user.middleInitial || '',
+        suffix:             user.suffix || '',
+        role:               user.role,
+        email:              user.email,
+        universityId:       user.universityId,
+        department:         user.department || user.dept || '', // Helpful for UI
+        program:            user.program || user.classification || '', // Helpful for UI
+
+        // ── NEW FIELDS ADDED FOR PROFILE CHECKS ──
+        vaccinationStatus:  user.vaccinationStatus,
+        vaccinationHistory: user.vaccinationHistory,
+        emergencyContact:   user.emergencyContact,
       })
     );
     localStorage.setItem("token", user.token);
