@@ -7,7 +7,7 @@ const { authorized } = require("../../middleware/authorized");
 const validateData = require("../../validation/validate-data");
 
 // FIX: Updated path to go up two directories
-const { db, auth } = require('../../configs/firebase-admin'); 
+const { db, auth } = require('../../configs/firebase-admin');
 
 const {
   registerSchema,
@@ -17,10 +17,17 @@ const {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Auth & Registration Routes
 router.post("/register", upload.single("image"), validateData(registerSchema), userController.register);
 router.post("/login", validateData(loginSchema), userController.login);
 router.post("/firebase-auth", validateData(firebaseAuthSchema), userController.firebaseAuth);
+
+// Profile Routes
 router.get("/profile", authorized, userController.getProfile);
+
+// ─── ADDED THIS LINE to fix the 404 Not Found error ───
+router.get("/profile-setup", authorized, userController.checkProfileSetup);
+
 router.post("/profile-setup", authorized, userController.setupProfile);
 
 // Get all users function

@@ -1,4 +1,5 @@
-const { db } = require("../../configs/database");
+//C:\Users\HP\MediTrack\features\notifications\notifications.service.js
+const { db } = require("../../configs/firebase-admin");// Adjust the path if needed
 
 const COLLECTION = "notifications";
 

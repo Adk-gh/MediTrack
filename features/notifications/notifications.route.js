@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\notifications\notifications.route.js
 const express = require("express");
 const router = express.Router();
 const notificationsController = require("./notifications.controller");

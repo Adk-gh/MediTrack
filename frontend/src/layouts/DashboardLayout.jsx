@@ -1,5 +1,5 @@
 // frontend/src/layouts/DashboardLayout.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   DesktopHeader,
   DesktopNav,
@@ -9,7 +9,7 @@ import {
 import { NotificationPanel } from '../components/Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
 
-// ─── SVG Icons (Unified style for Pill Nav) ──────────────────────────────────
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
 const NavHomeIcon = ({ active }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -78,153 +78,239 @@ const NavUsersIcon = ({ active }) => (
 
 // ─── Default mobile nav items ─────────────────────────────────────────────────
 const DEFAULT_MOBILE_NAV = [
-  { id: 'dashboard',     label: 'Home',     Icon: NavHomeIcon },
-  { id: 'records',       label: 'Records',  Icon: NavRecordsIcon },
-  { id: 'appointments',  label: 'Schedule', Icon: NavScheduleIcon },
-  { id: 'examinations',  label: 'Exam',     Icon: NavExamIcon },
-  { id: 'approvals',     label: 'Approval', Icon: NavApprovalIcon },
-  { id: 'consultations', label: 'Consult',  Icon: NavConsultIcon },
-  { id: 'announcements', label: 'Announce', Icon: NavAnnounceIcon },
-  { id: 'users',         label: 'Users',    Icon: NavUsersIcon },
+  { id: 'dashboard',     label: 'Home',          Icon: NavHomeIcon },
+  { id: 'records',       label: 'Records',       Icon: NavRecordsIcon },
+  { id: 'appointments',  label: 'Schedule',      Icon: NavScheduleIcon },
+  { id: 'examinations',  label: 'Exam',          Icon: NavExamIcon },
+  { id: 'approvals',     label: 'Approval',      Icon: NavApprovalIcon },
+  { id: 'consultations', label: 'Consult',       Icon: NavConsultIcon },
+  { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
+  { id: 'users',         label: 'Users',         Icon: NavUsersIcon },
 ];
 
-// ─── Floating Pill Nav ────────────────────────────────────────────────────────
-function MobilePillNav({ activeTab, onTabChange, items, hidden }) {
-  const [vw, setVw] = useState(window.innerWidth);
-
-  useEffect(() => {
-    const onResize = () => setVw(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const scale  = Math.min(1.1, Math.max(0.85, vw / 360));
-  const pillH  = Math.round(56 * scale);
-  const bubble = Math.round(48 * scale);
-  const iconSm = Math.round(18 * scale);
-  const iconLg = Math.round(20 * scale);
-  const labelSz= Math.max(9, Math.round(10 * scale));
-  const popUp  = Math.round(24 * scale);
-  const bottomOffset = Math.round(20 * scale);
-
-  // Fixed width to prevent squishing when there are 8 items
-  const itemWidth = Math.round(62 * scale);
-
+// ─── Floating Hamburger Button ────────────────────────────────────────────────
+function HamburgerButton({ isOpen, onClick }) {
   return (
-    <nav
+    <button
+      id="mobile-hamburger-btn" // <--- ID ADDED HERE
+      data-hamburger="true"
+      onClick={onClick}
       style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        zIndex: 40, // Low enough so modals/drawers cover it
-        pointerEvents: "none",
-        // Smoothly translate the nav down and fade it out when hidden is true
-        transform: hidden ? "translateY(100%)" : "translateY(0)",
-        opacity: hidden ? 0 : 1,
-        transition: "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+        position: 'fixed',
+        bottom: 24,
+        right: 20,
+        zIndex: 50,
+        width: 52,
+        height: 52,
+        borderRadius: '50%',
+        background: isOpen
+          ? 'rgba(26, 46, 34, 0.92)'
+          : 'rgba(5, 150, 105, 0.88)',
+        backdropFilter: 'blur(16px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+        border: isOpen
+          ? '1.5px solid rgba(255,255,255,0.12)'
+          : '1.5px solid rgba(255,255,255,0.22)',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: isOpen
+          ? '0 8px 32px rgba(26,46,34,0.5), 0 0 0 4px rgba(26,46,34,0.12)'
+          : '0 8px 32px rgba(5,150,105,0.4), 0 0 0 4px rgba(5,150,105,0.12)',
+        transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        transform: isOpen ? 'rotate(45deg) scale(1.06)' : 'scale(1)',
       }}
+      aria-label={isOpen ? 'Close menu' : 'Open menu'}
     >
-      <div
-        className="dl-scroll"
-        style={{
-          width: "100%",
-          overflowX: "auto",
-          pointerEvents: hidden ? "none" : "auto",
-          paddingTop: popUp + 10,
-          paddingBottom: bottomOffset,
-          scrollBehavior: "smooth",
-          WebkitOverflowScrolling: "touch",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            width: "max-content",
-            minWidth: "100%",
-            justifyContent: "center",
-            padding: "0 16px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              background: "#ffffff",
-              borderRadius: 999,
-              padding: `0 ${Math.round(4 * scale)}px`,
-              height: pillH,
-              boxShadow: "0 4px 32px rgba(0,0,0,0.15)",
-            }}
-          >
-            {items.map((item) => {
-              const isActive = activeTab === item.id;
-              const Icon = item.Icon || item.icon;
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onTabChange(item.id)}
-                  aria-label={item.label}
-                  style={{
-                    flex: "0 0 auto", // Stops buttons from squishing
-                    width: itemWidth,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: pillH,
-                    border: "none",
-                    background: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: isActive ? bubble : Math.round(34 * scale),
-                      height: isActive ? bubble : Math.round(34 * scale),
-                      borderRadius: "50%",
-                      background: isActive ? "#059669" : "transparent",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: isActive ? -popUp : 0,
-                      boxShadow: isActive ? "0 6px 20px rgba(5,150,105,0.40)" : "none",
-                      color: isActive ? "#ffffff" : "#94a3b8",
-                      transition: "all 0.28s cubic-bezier(.34,1.56,.64,1)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <div style={{ width: isActive ? iconLg : iconSm, height: isActive ? iconLg : iconSm }}>
-                      <Icon active={isActive} />
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: labelSz,
-                      fontWeight: 700,
-                      letterSpacing: "0.04em",
-                      color: isActive ? "#059669" : "#94a3b8",
-                      marginTop: isActive ? Math.round(5 * scale) : Math.round(3 * scale),
-                      lineHeight: 1,
-                      transition: "color 0.2s",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </nav>
+      {isOpen ? (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      ) : (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      )}
+    </button>
   );
 }
 
-// ─── Layout Component ────────────────────────────────────────────────────────
+// ─── Floating Drawer Nav — glassmorphism style ────────────────────────────────
+function HamburgerDrawerNav({ isOpen, activeTab, onTabChange, items, onClose }) {
+  const drawerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e) => {
+      if (drawerRef.current && !drawerRef.current.contains(e.target)) {
+        if (e.target.closest('[data-hamburger]')) return;
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
+  }, [isOpen, onClose]);
+
+  const handleSelect = (id) => {
+    onTabChange(id);
+    onClose();
+  };
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 44,
+          background: 'rgba(8, 18, 12, 0.25)',
+          backdropFilter: isOpen ? 'blur(4px)' : 'blur(0px)',
+          WebkitBackdropFilter: isOpen ? 'blur(4px)' : 'blur(0px)',
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease, backdrop-filter 0.3s ease',
+        }}
+      />
+
+      <div
+        ref={drawerRef}
+        style={{
+          position: 'fixed',
+          bottom: 88,
+          right: 16,
+          zIndex: 45,
+          width: 248,
+          background: 'rgba(255, 255, 255, 0.72)',
+          backdropFilter: 'blur(24px) saturate(200%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(200%)',
+          border: '1px solid rgba(255, 255, 255, 0.55)',
+          borderRadius: 22,
+          boxShadow: `
+            0 20px 60px rgba(0, 0, 0, 0.18),
+            0 8px 24px rgba(0, 0, 0, 0.10),
+            inset 0 1px 0 rgba(255,255,255,0.8)
+          `,
+          overflow: 'hidden',
+          transformOrigin: 'bottom right',
+          transform: isOpen ? 'scale(1) translateY(0)' : 'scale(0.88) translateY(12px)',
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? 'auto' : 'none',
+          transition: 'transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease',
+        }}
+      >
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(5,150,105,0.85) 0%, rgba(4,120,87,0.9) 100%)',
+          backdropFilter: 'blur(8px)',
+          padding: '11px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          borderBottom: '1px solid rgba(255,255,255,0.15)',
+        }}>
+          <div style={{
+            width: 5, height: 5, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.7)',
+            boxShadow: '0 0 6px rgba(255,255,255,0.6)',
+          }} />
+          <span style={{
+            fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.92)',
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+          }}>
+            Navigation
+          </span>
+        </div>
+
+        <div style={{ padding: '6px 0' }}>
+          {items.map((item, idx) => {
+            const isActive = activeTab === item.id;
+            const Icon = item.Icon || item.icon;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleSelect(item.id)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 11,
+                  padding: '10px 14px',
+                  border: 'none',
+                  background: isActive
+                    ? 'linear-gradient(90deg, rgba(5,150,105,0.12) 0%, rgba(5,150,105,0.04) 100%)'
+                    : 'transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderLeft: isActive ? '3px solid rgba(5,150,105,0.85)' : '3px solid transparent',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => {
+                  if (!isActive) e.currentTarget.style.background = 'rgba(5,150,105,0.06)';
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 9,
+                  background: isActive
+                    ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+                    : 'rgba(241, 245, 243, 0.9)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: isActive
+                    ? '0 3px 10px rgba(5,150,105,0.35)'
+                    : '0 1px 3px rgba(0,0,0,0.06)',
+                  transition: 'all 0.2s ease',
+                }}>
+                  <div style={{ width: 15, height: 15, color: isActive ? '#ffffff' : '#64748b' }}>
+                    <Icon active={isActive} />
+                  </div>
+                </div>
+
+                <span style={{
+                  fontSize: 13,
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? '#065f46' : '#374151',
+                  transition: 'color 0.15s',
+                }}>
+                  {item.label}
+                </span>
+
+                {isActive && (
+                  <div style={{
+                    marginLeft: 'auto',
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#059669',
+                    boxShadow: '0 0 6px rgba(5,150,105,0.6)',
+                    flexShrink: 0,
+                  }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Layout Component ─────────────────────────────────────────────────────────
 export const DashboardLayout = ({
   children,
   onOpenQR,
@@ -243,16 +329,24 @@ export const DashboardLayout = ({
       : name.substring(0, 2).toUpperCase() || 'AU';
   };
 
-  const [showProfileDrawer, setShowProfileDrawer] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
+  const [showProfileDrawer,   setShowProfileDrawer]   = useState(false);
+  const [showNotifications,   setShowNotifications]   = useState(false);
+  const [showHamburger,       setShowHamburger]       = useState(false);
+  const [notificationCount,   setNotificationCount]   = useState(0);
 
-  const handleProfileClick  = () => setShowProfileDrawer(true);
-  const handleCloseProfile  = () => setShowProfileDrawer(false);
-  const handleProfileLogout = () => { setShowProfileDrawer(false); onLogout?.(); };
+  const handleProfileClick    = () => { setShowHamburger(false); setShowProfileDrawer(true); };
+  const handleCloseProfile    = () => setShowProfileDrawer(false);
+  const handleProfileLogout   = () => { setShowProfileDrawer(false); onLogout?.(); };
 
-  const handleNotificationClick = () => setShowNotifications(true);
+  const handleNotificationClick  = () => { setShowHamburger(false); setShowNotifications(true); };
   const handleCloseNotifications = () => setShowNotifications(false);
+
+  const toggleHamburger = () => setShowHamburger(prev => !prev);
+  const closeHamburger  = () => setShowHamburger(false);
+
+  useEffect(() => {
+    if (showProfileDrawer || showNotifications) setShowHamburger(false);
+  }, [showProfileDrawer, showNotifications]);
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -263,14 +357,12 @@ export const DashboardLayout = ({
         console.error('Error fetching unread count:', err);
       }
     };
-
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Determine if any blocking overlay is open so we can hide the bottom nav
-  const isOverlayOpen = showProfileDrawer || showNotifications;
+  const activeItem = mobileNavItems.find(i => i.id === activeTab);
 
   return (
     <>
@@ -280,14 +372,14 @@ export const DashboardLayout = ({
 
         @keyframes dl-fade {
           from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0);   }
+          to   { opacity: 1; transform: translateY(0); }
         }
         .dl-fade { animation: dl-fade 0.25s ease both; }
       `}</style>
 
-      {/* ════════════════════════════════════════════════════════════════════
+      {/* ════════════════════════════════════════════════════════════════
           DESKTOP (md+)
-      ════════════════════════════════════════════════════════════════════ */}
+      ════════════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex h-screen flex-col overflow-hidden bg-gradient-to-br from-[#f4f7f6] to-[#eef2f0]">
         <div className="shrink-0"><DesktopHeader onOpenQR={onOpenQR} /></div>
         <div className="shrink-0"><DesktopNav /></div>
@@ -296,9 +388,9 @@ export const DashboardLayout = ({
         </main>
       </div>
 
-      {/* ════════════════════════════════════════════════════════════════════
+      {/* ════════════════════════════════════════════════════════════════
           MOBILE (<md)
-      ════════════════════════════════════════════════════════════════════ */}
+      ════════════════════════════════════════════════════════════════ */}
       <div className="md:hidden relative flex flex-col h-screen overflow-hidden bg-slate-50">
 
         <MobileHeader
@@ -312,28 +404,65 @@ export const DashboardLayout = ({
           simple={false}
         />
 
-        {/* CRITICAL FIX:
-          1. paddingTop: '64px' clears the top header
-          2. paddingBottom: '90px' ensures content has a safe zone from the pill nav
-          3. min-h-full allows the content inside to naturally expand to full height
-        */}
         <div
-          className="flex-1 min-h-0 overflow-y-auto dl-scroll"
-          style={{ paddingTop: '64px', paddingBottom: '90px' }}
+          className="flex-1 min-h-0 overflow-hidden dl-scroll"
+          style={{ paddingTop: '64px' }}
         >
-          <div className="dl-fade min-h-full flex flex-col">
+          <div className="dl-fade h-full flex flex-col">
             {children}
-            {/* Safe spacer for bottom padding */}
-            <div style={{ height: '24px', flexShrink: 0, width: '100%' }} />
           </div>
         </div>
 
-        <MobilePillNav
+        <HamburgerDrawerNav
+          isOpen={showHamburger}
           activeTab={activeTab}
           onTabChange={onTabChange}
           items={mobileNavItems}
-          hidden={isOverlayOpen}
+          onClose={closeHamburger}
         />
+
+        <HamburgerButton
+          isOpen={showHamburger}
+          onClick={toggleHamburger}
+        />
+
+        <div
+          id="mobile-active-tab-chip" // <--- ID ADDED HERE
+          style={{
+            position: 'fixed',
+            bottom: 35,
+            right: 84,
+            zIndex: 49,
+            background: 'rgba(255, 255, 255, 0.78)',
+            backdropFilter: 'blur(16px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+            border: '1px solid rgba(255,255,255,0.6)',
+            borderRadius: 999,
+            padding: '6px 14px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            opacity: showHamburger ? 0 : 1,
+            transform: showHamburger ? 'translateX(6px) scale(0.95)' : 'translateX(0) scale(1)',
+            transition: 'all 0.22s ease',
+            pointerEvents: 'none',
+          }}
+        >
+          <div style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: '#059669',
+            boxShadow: '0 0 6px rgba(5,150,105,0.55)',
+            flexShrink: 0,
+          }} />
+          <span style={{
+            fontSize: 12, fontWeight: 700,
+            color: '#1a2e22',
+            whiteSpace: 'nowrap',
+          }}>
+            {activeItem?.label || 'Menu'}
+          </span>
+        </div>
 
         <ProfileDrawer
           isOpen={showProfileDrawer}

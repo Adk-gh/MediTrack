@@ -998,7 +998,6 @@ export const Records = () => {
       ? 'px-2 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate'
       : 'px-1 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[10px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate';
 
-    // Role + Year + Section: fixed small widths; Program gets remaining space but capped
     const fixedCls  = `${base} w-[78px] shrink-0`;
     const progCls   = `${base} flex-1 min-w-0 max-w-[160px]`;
 
@@ -1054,28 +1053,53 @@ export const Records = () => {
               {/* ── MOBILE layout ── */}
               <div className="flex flex-col lg:hidden h-full bg-white overflow-hidden">
 
-                {/* Department pills */}
+                {/* ── Department Dropdown (mobile only) ── */}
                 <div className="shrink-0 border-b border-[#eef2f6] px-3 py-3">
-                  <p className="text-[9px] font-bold uppercase text-[#466460] mb-2 px-1">Departments</p>
                   {loading ? (
                     <div className="text-xs text-slate-400 py-1 px-1">
-                      <i className="fa-solid fa-spinner fa-spin mr-1"></i> Loading...
+                      <i className="fa-solid fa-spinner fa-spin mr-1"></i> Loading departments...
                     </div>
                   ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
-                      {departments.map(dept => (
-                        <button
-                          key={dept}
-                          onClick={() => handleSelectDept(dept)}
-                          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[10px] font-semibold transition-all whitespace-nowrap border ${
-                            currentDept === dept
-                              ? 'bg-[#466460] text-white border-[#466460]'
-                              : 'bg-white text-slate-600 border-slate-200 hover:border-[#466460] hover:text-[#466460]'
-                          }`}
+                    <div className="relative">
+                      {/* Label */}
+                      <p className="text-[9px] font-bold uppercase text-[#466460] mb-1.5 px-0.5">Department</p>
+
+                      {/* Custom styled select wrapper */}
+                      <div className="relative">
+                        {/* Left icon */}
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                          </svg>
+                        </div>
+
+                        <select
+                          value={currentDept || ''}
+                          onChange={e => handleSelectDept(e.target.value)}
+                          className="w-full pl-9 pr-10 py-2.5 bg-[#f4f8f6] border border-[#c8ddd8] rounded-xl text-[12px] font-semibold text-[#1a2e22] outline-none appearance-none focus:border-[#466460] focus:bg-white transition-all cursor-pointer"
+                          style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
                         >
-                          {dept}
-                        </button>
-                      ))}
+                          {departments.map(dept => (
+                            <option key={dept} value={dept}>{dept}</option>
+                          ))}
+                        </select>
+
+                        {/* Right chevron icon */}
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                          </svg>
+                        </div>
+                      </div>
+
+                      {/* Record count badge */}
+                      <div className="flex items-center gap-1.5 mt-1.5 px-0.5">
+                        <span className="text-[9px] font-semibold text-[#466460] bg-[#e0eceb] px-2 py-0.5 rounded-full">
+                          {filteredPeople.length} record{filteredPeople.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-[9px] text-slate-400">in selected department</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1094,7 +1118,7 @@ export const Records = () => {
                         className="w-full pl-9 pr-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs outline-none focus:border-[#466460] focus:bg-white transition-all"
                       />
                     </div>
-                    {/* ── Sort button ── */}
+                    {/* Sort button */}
                     <button
                       onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                       style={{ minWidth: '38px', minHeight: '38px', flexShrink: 0 }}
@@ -1102,13 +1126,13 @@ export const Records = () => {
                       title={`Sort ${sortOrder === 'asc' ? 'Z → A' : 'A → Z'}`}
                     >
                       {sortOrder === 'asc' ? (
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                           <text x="1" y="7" fontSize="5" fontWeight="700" fill="currentColor">A</text>
                           <text x="1" y="13" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
                           <path d="M11 2v10M11 12l-2-2M11 12l2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       ) : (
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                           <text x="1" y="7" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
                           <text x="1" y="13" fontSize="5" fontWeight="700" fill="currentColor">A</text>
                           <path d="M11 14V4M11 4l-2 2M11 4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1120,7 +1144,7 @@ export const Records = () => {
                   {/* Filter row */}
                   <div className="flex items-center gap-2 mt-2 overflow-hidden">
                     <span className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                         <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                       </svg>
                     </span>
@@ -1128,10 +1152,6 @@ export const Records = () => {
                       <FilterSelects size="sm" />
                     </div>
                   </div>
-
-                  <p className="text-[9px] text-slate-400 mt-2 px-1">
-                    {filteredPeople.length} record{filteredPeople.length !== 1 ? 's' : ''} in {currentDept || '—'}
-                  </p>
                 </div>
 
                 {/* List */}
@@ -1184,7 +1204,7 @@ export const Records = () => {
                 </div>
               </div>
 
-              {/* ── DESKTOP layout ── */}
+              {/* ── DESKTOP layout — unchanged ── */}
               <div className="hidden lg:flex h-full bg-white overflow-hidden">
 
                 {/* Column 1 — Departments */}
@@ -1218,14 +1238,10 @@ export const Records = () => {
                 {/* Column 2 — People */}
                 <div className="flex-[1.5] border-r border-[#eef2f6] flex flex-col min-w-[200px] overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-4">
-
-                    {/* Header row */}
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="font-bold text-[11px] uppercase text-[#466460]">People</h3>
                       <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">{filteredPeople.length}</span>
                     </div>
-
-                    {/* ── Search + Sort row ── */}
                     <div className="flex items-center gap-2 mb-2">
                       <div className="relative flex-1">
                         <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
@@ -1237,7 +1253,6 @@ export const Records = () => {
                           className="w-full pl-8 pr-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] focus:bg-white transition-all"
                         />
                       </div>
-                      {/* Sort button — explicit dimensions so it never collapses */}
                       <button
                         onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                         style={{ minWidth: '34px', minHeight: '34px', flexShrink: 0 }}
@@ -1245,13 +1260,13 @@ export const Records = () => {
                         title={`Sort ${sortOrder === 'asc' ? 'Z → A' : 'A → Z'}`}
                       >
                         {sortOrder === 'asc' ? (
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                             <text x="1" y="7" fontSize="5" fontWeight="700" fill="currentColor">A</text>
                             <text x="1" y="13" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
                             <path d="M11 2v10M11 12l-2-2M11 12l2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         ) : (
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                             <text x="1" y="7" fontSize="7" fontWeight="700" fill="currentColor">Z</text>
                             <text x="1" y="13" fontSize="5" fontWeight="700" fill="currentColor">A</text>
                             <path d="M11 14V4M11 4l-2 2M11 4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1259,11 +1274,9 @@ export const Records = () => {
                         )}
                       </button>
                     </div>
-
-                    {/* ── Filter icon + selects row ── */}
                     <div className="flex items-center gap-1.5 mt-2 overflow-hidden">
                       <span className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400">
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                           <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                         </svg>
                       </span>
@@ -1271,10 +1284,8 @@ export const Records = () => {
                         <FilterSelects size="xs" />
                       </div>
                     </div>
-
                   </div>
 
-                  {/* People list */}
                   <div className="flex-1 min-h-0 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                     {filteredPeople.length === 0 ? (
                       <div className="text-center text-slate-400 text-sm py-12">No records found</div>
@@ -1335,7 +1346,6 @@ export const Records = () => {
               <div className="p-4 sm:p-6 lg:p-8 bg-white max-w-5xl">
                 <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-5">Create New User & Profile</h3>
 
-                {/* PERSONAL INFO */}
                 <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Personal Information</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
                   <div>
@@ -1398,7 +1408,6 @@ export const Records = () => {
                   </div>
                 </div>
 
-                {/* ACADEMIC / WORK */}
                 <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Academic / Work Detail</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
                   <div>
@@ -1475,7 +1484,6 @@ export const Records = () => {
                   )}
                 </div>
 
-                {/* ACCOUNT & CONTACT */}
                 <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Account & Contact</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
                   <div>

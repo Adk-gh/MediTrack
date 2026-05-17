@@ -297,7 +297,7 @@ const HomePageUsers = () => {
                 </div>
               </div>
               <button
-                onClick={() => navigate('/student/booking')}
+                onClick={() => navigate('/users/booking')}
                 className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-[#466460]"
               >
                 <span className="text-lg">→</span>
@@ -306,7 +306,7 @@ const HomePageUsers = () => {
           ) : (
             <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-4 flex flex-col items-center justify-center text-center">
                <span className="text-[11px] text-[#98a8a5] mb-2">No upcoming appointments</span>
-               <button onClick={() => navigate('/student/booking')} className="text-[10px] font-bold bg-white border border-[#cdd6d5] text-[#466460] px-4 py-1.5 rounded-full hover:bg-[#eef2f1] transition-colors shadow-sm">
+               <button onClick={() => navigate('/users/booking')} className="text-[10px] font-bold bg-white border border-[#cdd6d5] text-[#466460] px-4 py-1.5 rounded-full hover:bg-[#eef2f1] transition-colors shadow-sm">
                  Book Now
                </button>
             </div>

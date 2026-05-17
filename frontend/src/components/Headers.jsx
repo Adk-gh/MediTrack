@@ -7,6 +7,7 @@ import { useLoading } from '../context/LoadingContext.jsx';
 import DatePicker from './Datepicker.jsx';
 import { NotificationBell, NotificationPanel } from './Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
+import Settings from './Settings.jsx';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -198,7 +199,7 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
   const dh = { ...emptyDentalHistory(), ...dentalHistory };
   const [expanded,      setExpanded]      = React.useState(false);
   const [chartExpanded, setChartExpanded] = React.useState(false);
-  const [toothModal,    setToothModal]    = React.useState(null); // tooth number or null
+  const [toothModal,    setToothModal]    = React.useState(null);
 
   const update      = (partial) => onUpdate({ ...dh, ...partial });
   const updateIntra = (partial) => onUpdate({ ...dh, intraoral: { ...dh.intraoral, ...partial } });
@@ -215,7 +216,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
   const affectedCount = Object.values(dh.toothData || {}).filter(d => d?.condition).length;
   const yesCount      = Object.values(dh.procedures || {}).filter(v => v === 'Yes').length;
 
-  // Tooth chart rows
   const toothRows = [
     { label: 'Deciduous Upper', right: DECID_UPPER_RIGHT, left: DECID_UPPER_LEFT },
     { label: 'Deciduous Lower', right: DECID_LOWER_RIGHT, left: DECID_LOWER_LEFT },
@@ -244,8 +244,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
 
   return (
     <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
-
-      {/* Section header — collapse toggle */}
       <button type="button" onClick={() => setExpanded(p => !p)} className="w-full flex items-center justify-between mb-2 group">
         <div className="text-[9px] font-extrabold uppercase tracking-widest text-[#466460]">
           <i className="fa-solid fa-tooth mr-1.5 opacity-70"></i>Dental History
@@ -269,7 +267,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
 
       {expanded && (
         <div>
-          {/* ── Basic info ── */}
           <div className={rowCls}>
             <div className={lCls}><i className="fa-solid fa-calendar-day text-[#466460] w-4 opacity-70"></i><span>Last Visit</span></div>
             {isEditing
@@ -291,7 +288,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
               : <span className="font-semibold text-slate-800 text-xs text-right">{dh.physician ? `Dr. ${dh.physician}` : '—'}</span>}
           </div>
 
-          {/* ── Teeth count ── */}
           <div className={rowCls}>
             <div className={lCls}><i className="fa-solid fa-teeth text-[#466460] w-4 opacity-70"></i><span>Teeth Present</span></div>
             {isEditing ? (
@@ -310,7 +306,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
             )}
           </div>
 
-          {/* ── Procedures ── */}
           <div className="mt-3 mb-1">
             <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Dental Procedures</p>
             <div className="flex flex-col gap-0.5">
@@ -345,7 +340,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
             </div>
           </div>
 
-          {/* ── Intraoral findings ── */}
           <div className="mt-3">
             <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Intraoral Findings</p>
             <div className="flex flex-col gap-0.5">
@@ -370,7 +364,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
                 );
               })}
 
-              {/* TMJ */}
               <div className="flex items-center justify-between py-1.5">
                 <span className="text-[11px] text-slate-600">TMJ Examination</span>
                 {isEditing ? (
@@ -391,7 +384,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
             </div>
           </div>
 
-          {/* ── Dental Chart ── */}
           <div className="mt-3">
             <button
               type="button"
@@ -417,7 +409,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
                   </div>
                 ))}
 
-                {/* Read-only affected teeth list */}
                 {!isEditing && affectedCount > 0 && (
                   <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
                     {Object.entries(dh.toothData).filter(([,d]) => d?.condition).map(([num, d]) => (
@@ -436,7 +427,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
             )}
           </div>
 
-          {/* ── Notes ── */}
           <div className="mt-3">
             <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-1.5">Notes</p>
             {isEditing ? (
@@ -452,7 +442,6 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate }) {
         </div>
       )}
 
-      {/* Tooth modal */}
       {toothModal && isEditing && (
         <DrawerToothModal
           num={toothModal}
@@ -470,6 +459,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [isMounted, setIsMounted] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [formData, setFormData] = React.useState({});
+  const [showSettings, setShowSettings] = React.useState(false);  // ← NEW
 
   // ── Drag state ──────────────────────────────────────────────────────────────
   const [dragY, setDragY] = React.useState(0);
@@ -574,7 +564,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     }));
   };
 
-  // ── Dental history update handler ────────────────────────────────────────────
   const handleDentalHistoryUpdate = (newDh) => {
     setFormData(prev => ({ ...prev, dentalHistory: newDh }));
   };
@@ -928,7 +917,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
         </div>
 
-        {/* Footer Actions */}
+        {/* ── Footer Actions ── */}
         <div className="px-4 sm:px-6 py-6 border-t border-slate-100 bg-white flex-shrink-0">
           {isEditing ? (
             <div className="flex gap-3 animate-fadeIn">
@@ -952,6 +941,17 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 <span>MediTrack v2.4.1</span>
                 <span>Server: Online <span className="text-emerald-500 ml-1">✓</span></span>
               </div>
+
+              {/* ── Settings Button ── */}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="w-full py-3 mb-3 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
+              >
+                <i className="fa-solid fa-gear"></i>
+                Settings
+              </button>
+
+              {/* ── Sign Out Button ── */}
               <button
                 onClick={onLogout}
                 className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-red-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
@@ -963,6 +963,13 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
           )}
         </div>
       </div>
+
+      {/* ── Settings Overlay ── */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[3000]">
+          <Settings onLogout={onLogout} onClose={() => setShowSettings(false)} />
+        </div>
+      )}
     </>
   );
 }
@@ -1017,7 +1024,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         const token = localStorage.getItem('token');
         if (!token) { navigate('/login'); return; }
 
-        const response = await fetch(`${API_URL}/users/profile`, {
+        const response = await fetch(`${API_URL}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

@@ -49,9 +49,9 @@ const getProfile = async (req, res, next) => {
 
     if (!uid) {
       console.error(">>> Error: req.user.uid is undefined in getProfile");
-      return res.status(400).json({ 
-        success: false, 
-        message: "Identification error: User UID not found in token." 
+      return res.status(400).json({
+        success: false,
+        message: "Identification error: User UID not found in token."
       });
     }
 
@@ -74,23 +74,23 @@ const setupProfile = async (req, res, next) => {
 
     if (!uid) {
       console.error(">>> Error: req.user.uid is undefined in setupProfile");
-      return res.status(400).json({ 
-        success: false, 
-        message: "Identification error: User UID not found in token." 
+      return res.status(400).json({
+        success: false,
+        message: "Identification error: User UID not found in token."
       });
     }
 
     // Pass the UID and the form data to the service
     const result = await userService.setupProfile(uid, req.body);
-    
-    res.status(200).json({ 
-      success: true, 
+
+    res.status(200).json({
+      success: true,
       message: "Profile updated successfully",
-      data: result 
+      data: result
     });
   } catch (error) {
     console.error(">>> Controller Setup Error:", error.message);
-    
+
     // Catch the Firestore path error specifically to give a clean message
     if (error.message.includes("documentPath")) {
       return res.status(500).json({
@@ -98,9 +98,41 @@ const setupProfile = async (req, res, next) => {
         message: "Database Error: Invalid User Path. Please log in again."
       });
     }
-    
+
+    next(error);
+  }
+};
+const checkProfileSetup = async (req, res, next) => {
+  try {
+    const uid = req.user?.uid;
+
+    if (!uid) {
+      return res.status(400).json({ success: false, message: "User UID not found in token." });
+    }
+
+    // Use your existing user service to fetch the user
+    const user = await userService.getProfile(uid);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      isProfileSetup: user.isProfileSetup || false,
+      data: user
+    });
+  } catch (error) {
     next(error);
   }
 };
 
-module.exports = { register, login, firebaseAuth, getProfile, setupProfile };
+// DON'T FORGET to add it to your exports at the very bottom!
+module.exports = {
+  register,
+  login,
+  firebaseAuth,
+  getProfile,
+  setupProfile,
+  checkProfileSetup // <--- Add it here!
+};

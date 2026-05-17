@@ -1,12 +1,6 @@
 // frontend/src/features/users/MediTrack.jsx
-//
-// Root orchestrator for the student portal.
-// Manages: auth, active tab, record-preview state, onboarding guard, view map.
-// All layout chrome (topbar, sidebar, mobile pill nav, preview modal) is in
-// UserDashboardLayout.
-
 import React, { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import authService from "../../services/auth.service.js";
 import ProfileSetup from "../../components/ProfileSetup.jsx";
@@ -18,9 +12,34 @@ import AppointmentUsers  from "./Appointment-users.jsx";
 import ConsultationUsers from "./Consultation-users.jsx";
 import RecordsUsers      from "./Records-users.jsx";
 import ProfileUsers      from "./Profile-users.jsx";
-import Settings          from "./Settings.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+// ─── Tab config ───────────────────────────────────────────────────────────────
+// "profile" is intentionally excluded from PERSIST_TABS.
+// Refreshing on the profile page always returns you to "home".
+const VALID_TABS   = ["home", "booking", "consult", "records", "history", "profile"];
+const PERSIST_TABS = ["home", "booking", "consult", "records", "history", "profile"];
+
+// ─── Module-level cleanup ─────────────────────────────────────────────────────
+// Runs once when this JS module is first imported — before any React render.
+// If the stored tab is not in PERSIST_TABS (e.g. "profile"), wipe it immediately.
+try {
+  const _stored = localStorage.getItem("meditrack_activeTab");
+  if (_stored && !PERSIST_TABS.includes(_stored)) {
+    localStorage.removeItem("meditrack_activeTab");
+  }
+} catch (_) { /* localStorage unavailable — ignore */ }
+
+// ─── Tab resolver ─────────────────────────────────────────────────────────────
+function getSavedTab(locationStateTab) {
+  if (locationStateTab && VALID_TABS.includes(locationStateTab)) return locationStateTab;
+  try {
+    const stored = localStorage.getItem("meditrack_activeTab");
+    if (stored && PERSIST_TABS.includes(stored)) return stored;
+  } catch (_) { /* ignore */ }
+  return "home";
+}
 
 // ─── Icons for HistoryView ────────────────────────────────────────────────────
 const ShieldIcon = () => (
@@ -114,9 +133,12 @@ function HistoryView({ onPreview }) {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function MediTrack() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { showLoading, hideLoading } = useLoading();
 
-  const [activeTab,      setActiveTab]      = useState("home");
+  // getSavedTab reads from localStorage — by now the module-level cleanup above
+  // has already removed any "profile" (or other non-persistable) value.
+  const [activeTab,      setActiveTab]      = useState(() => getSavedTab(location.state?.activeTab));
   const [preview,        setPreview]        = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -125,6 +147,17 @@ export default function MediTrack() {
   const currentUser = authService.getCurrentUser();
   const userName    = currentUser?.name         || "Student";
   const userId      = currentUser?.universityId || "—";
+
+  // ── Persist tab — only save persistable tabs; remove key when on "profile" ──
+  useEffect(() => {
+    try {
+      if (PERSIST_TABS.includes(activeTab)) {
+        localStorage.setItem("meditrack_activeTab", activeTab);
+      } else {
+        localStorage.removeItem("meditrack_activeTab");
+      }
+    } catch (_) { /* ignore */ }
+  }, [activeTab]);
 
   // ── Onboarding guard ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -161,8 +194,10 @@ export default function MediTrack() {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [activeTab]);
 
+  // ── Logout — clear saved tab so next session starts at home ───────────────
   const handleLogout = () => {
     showLoading("Signing out", "light");
+    try { localStorage.removeItem("meditrack_activeTab"); } catch (_) { /* ignore */ }
     authService.logout();
     hideLoading();
     navigate("/login");
@@ -170,12 +205,12 @@ export default function MediTrack() {
 
   // ── View map ───────────────────────────────────────────────────────────────
   const VIEW = {
-    home:     <HomePageUsers     userName={userName} />,
-    booking:  <AppointmentUsers  />,
-    consult:  <ConsultationUsers />,
-    records:  <RecordsUsers      />,
-    history:  <HistoryView       onPreview={setPreview} />,
-    settings: <Settings          userName={userName} userId={userId} onLogout={handleLogout} />,
+    home:    <HomePageUsers     userName={userName} />,
+    booking: <AppointmentUsers  />,
+    consult: <ConsultationUsers />,
+    records: <RecordsUsers      />,
+    history: <HistoryView       onPreview={setPreview} />,
+    profile: <ProfileUsers      onLogout={handleLogout} />,
   };
 
   return (

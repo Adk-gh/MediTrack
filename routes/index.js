@@ -1,4 +1,4 @@
-//C:\Users\HP\MediTrack\routes\index.js
+// C:\Users\HP\MediTrack\routes\index.js
 require('dotenv').config();
 const express = require('express');
 const router = express.Router();
@@ -15,11 +15,14 @@ const examinationsRoutes = require('../features/examinations/examinations.route'
 const announcementsRoutes = require('../features/announcements/announcements.route');
 const notificationsRoutes = require('../features/notifications/notifications.route');
 
-const profileSetupRoutes = require('../features/user/profile-setup/profile-setup');
+// 🔴 FIX 1: Commented out the 'hijacker' route so it doesn't intercept our new code
+// const profileSetupRoutes = require('../features/user/profile-setup/profile-setup');
+// router.use('/user/profile-setup', profileSetupRoutes);
 
-router.use('/user/profile-setup', profileSetupRoutes);
+// 🟢 FIX 2: Changed '/users' to '/user' (singular)
+// Now, when the frontend calls /api/user/profile-setup, it goes straight to user.route.js!
+router.use('/user', userRoutes);
 
-router.use('/users', userRoutes);
 router.use('/records', recordsRoutes);
 router.use('/appointments', appointmentsRoutes);
 router.use('/examinations', examinationsRoutes);

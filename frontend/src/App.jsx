@@ -23,10 +23,12 @@ import Announcements from './features/admin-clinic/Announcements.jsx';
 import Consultations from './features/admin-clinic/Consultations.jsx';
 import UserManagement from './features/admin-clinic/User-Management.jsx';
 
-// Features - Students
+// Features - Students / Instructors / Staffs
 import Meditrack from './features/users/Meditrack.jsx';
+import Settings from './components/Settings';   // ← NEW
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 // ── Protected route guard ─────────────────────────────────────────────────────
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const token   = localStorage.getItem('token');
@@ -41,7 +43,6 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
 
   if (adminOnly) {
     const role = user.role?.toLowerCase().trim() || '';
-    // Staff roles that can access Dashboard (clinic/admin functions)
     const isStaffRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
     if (!isStaffRole) {
       console.log(`Access Denied to Dashboard. Role parsed as: "${role}"`);
@@ -82,10 +83,8 @@ const AdminLayoutWrapper = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Derive active tab from the current URL — keeps mobile nav in sync automatically
   const activeTab = ROUTE_TO_TAB[location.pathname] || 'dashboard';
 
-  // Mobile bottom-nav tap → navigate to the corresponding route
   const handleTabChange = (tabId) => {
     const route = TAB_TO_ROUTE[tabId];
     if (route) navigate(route);
@@ -95,12 +94,9 @@ const AdminLayoutWrapper = ({ children }) => {
     const fetchProfile = async () => {
       try {
         const token = localStorage.getItem('token');
-        if (!token) {
-          navigate('/login');
-          return;
-        }
+        if (!token) { navigate('/login'); return; }
 
-        const response = await fetch(`${API_URL}/users/profile`, {
+        const response = await fetch(`${API_URL}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -111,16 +107,13 @@ const AdminLayoutWrapper = ({ children }) => {
         }
 
         const result = await response.json();
-        if (result.success && result.data) {
-          setUserProfile(result.data);
-        }
+        if (result.success && result.data) setUserProfile(result.data);
       } catch (err) {
         console.error('Error fetching profile:', err);
       } finally {
         setLoading(false);
       }
     };
-
     fetchProfile();
   }, [navigate]);
 
@@ -143,8 +136,8 @@ const AdminLayoutWrapper = ({ children }) => {
       userId={userProfile?.universityId || userProfile?.employeeId || ''}
       userProfile={userProfile}
       onLogout={handleLogout}
-      activeTab={activeTab}         // ← derived from current URL
-      onTabChange={handleTabChange} // ← navigates on mobile tab tap
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
     >
       {children}
     </DashboardLayout>
@@ -164,13 +157,8 @@ const OnboardingPage = () => {
     localStorage.setItem('user', JSON.stringify(updatedUser));
 
     const role = user.role?.toLowerCase().trim() || '';
-    // Staff roles that can access Dashboard (clinic/admin functions)
     const isStaffRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
-    if (isStaffRole) {
-      navigate('/dashboard');
-    } else {
-      navigate('/student/meditrack');
-    }
+    navigate(isStaffRole ? '/dashboard' : '/student/meditrack');
   };
 
   return <ProfileSetup user={user} onComplete={handleComplete} />;
@@ -184,9 +172,7 @@ function RouteChangeHandler() {
 
   useEffect(() => {
     if (prevLocation !== location) {
-      if (loading.show) {
-        hideLoading();
-      }
+      if (loading.show) hideLoading();
       setPrevLocation(location);
     }
   }, [location, prevLocation, loading.show, hideLoading]);
@@ -197,9 +183,7 @@ function RouteChangeHandler() {
 // ── Global Loading Overlay ───────────────────────────────────────────────────
 function GlobalLoading() {
   const { loading } = useLoading();
-
   if (!loading.show) return null;
-
   return (
     <Loading
       variant="overlay"
@@ -229,43 +213,36 @@ function App() {
               <AdminLayoutWrapper><Dashboard /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/records" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Records /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/appointments" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Appointments /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/examinations" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/approvals" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/announcements" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Announcements /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/consultations" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Consultations /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
-
           <Route path="/users" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><UserManagement /></AdminLayoutWrapper>
@@ -276,6 +253,13 @@ function App() {
           <Route path="/student/meditrack" element={
             <ProtectedRoute adminOnly={false}>
               <Meditrack />
+            </ProtectedRoute>
+          } />
+
+          {/* ── Settings (student) ── */}
+          <Route path="/student/settings" element={
+            <ProtectedRoute adminOnly={false}>
+              <Settings onLogout={() => { authService.logout(); }} />
             </ProtectedRoute>
           } />
 

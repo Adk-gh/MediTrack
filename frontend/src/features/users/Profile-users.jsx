@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Profile-users.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../firebase';
@@ -18,6 +19,13 @@ const EditIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
     <path d="M12 20h9"></path>
     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+  </svg>
+);
+
+const SettingsGearIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 );
 
@@ -57,7 +65,12 @@ const FormGroup = ({ label, children }) => (
   </div>
 );
 
-const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #ddeee5', fontSize: 13, backgroundColor: '#f9fbfa', color: '#1a2e22', boxSizing: 'border-box', outline: 'none' };
+const inputStyle = {
+  width: '100%', padding: '12px 14px', borderRadius: 12,
+  border: '1px solid #ddeee5', fontSize: 13,
+  backgroundColor: '#f9fbfa', color: '#1a2e22',
+  boxSizing: 'border-box', outline: 'none',
+};
 
 const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 
@@ -72,27 +85,36 @@ const DENTAL_PROCEDURES = [
   'Pulp Therapy', 'Periodontal Therapy', 'Orthodontic Therapy', 'TMJ Treatment', 'Prosthodontic Therapy',
 ];
 
+const DOSE_LABELS = [
+  { key: 'dose1',    label: 'Dose 1' },
+  { key: 'dose2',    label: 'Dose 2' },
+  { key: 'booster1', label: 'Booster 1' },
+  { key: 'booster2', label: 'Booster 2' },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
-  const [loading, setLoading]           = useState(true);
-  const [logoutModal, setLogoutModal]   = useState(false);
-  const [toast, setToast]               = useState(null);
+  const navigate = useNavigate();
+
+  const [loading, setLoading]         = useState(true);
+  const [logoutModal, setLogoutModal] = useState(false);
+  const [toast, setToast]             = useState(null);
 
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData]             = useState({});
   const [isSaving, setIsSaving]             = useState(false);
 
-  const [xrayDate, setXrayDate]         = useState('April 22, 2026');
-  const [xrayFile, setXrayFile]         = useState('X-ray_Report_2026.pdf');
-  const [drugtestDate, setDrugtestDate] = useState('April 22, 2026');
-  const [drugtestFile, setDrugtestFile] = useState('Drug_Test_Result_2026.pdf');
+  const [xrayDate, setXrayDate]           = useState('April 22, 2026');
+  const [xrayFile, setXrayFile]           = useState('X-ray_Report_2026.pdf');
+  const [drugtestDate, setDrugtestDate]   = useState('April 22, 2026');
+  const [drugtestFile, setDrugtestFile]   = useState('Drug_Test_Result_2026.pdf');
   const [documentsNote, setDocumentsNote] = useState('Valid documents · last updated April 2026');
-  const [previewModal, setPreviewModal] = useState(false);
+  const [previewModal, setPreviewModal]       = useState(false);
   const [previewFileName, setPreviewFileName] = useState('');
   const [previewContent, setPreviewContent]   = useState(null);
-  const [pendingFile, setPendingFile]   = useState(null);
+  const [pendingFile, setPendingFile]         = useState(null);
   const [pendingDocType, setPendingDocType]   = useState(null);
-  const xrayInputRef    = useRef(null);
+  const xrayInputRef     = useRef(null);
   const drugtestInputRef = useRef(null);
 
   const [profile, setProfile] = useState({
@@ -183,7 +205,13 @@ export default function ProfileUsers({ onLogout }) {
     return () => unsubscribe();
   }, []);
 
-  const fullName = [profile.firstName, profile.middleInitial ? `${profile.middleInitial}.` : '', profile.lastName, profile.suffix].filter(Boolean).join(' ');
+  const fullName = [
+    profile.firstName,
+    profile.middleInitial ? `${profile.middleInitial}.` : '',
+    profile.lastName,
+    profile.suffix,
+  ].filter(Boolean).join(' ');
+
   const isStudent = profile.role?.toLowerCase() === 'student';
 
   const showToast = (msg) => {
@@ -191,48 +219,20 @@ export default function ProfileUsers({ onLogout }) {
     setTimeout(() => setToast(null), 2500);
   };
 
+  // ── Navigate to Settings page ────────────────────────────────────────────
+  const handleOpenSettings = () => {
+    navigate('/student/settings', { state: { activeTab: 'general' } });
+  };
+
   // ── Editing Handlers ─────────────────────────────────────────────────────
-  const openEdit = (section) => {
-    setEditData(JSON.parse(JSON.stringify(profile)));
-    setEditingSection(section);
-  };
+  const openEdit   = (section) => { setEditData(JSON.parse(JSON.stringify(profile))); setEditingSection(section); };
+  const closeEdit  = ()        => { setEditingSection(null); setEditData({}); };
 
-  const closeEdit = () => {
-    setEditingSection(null);
-    setEditData({});
-  };
-
-  const handleChange = (field, value) => {
-    setEditData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleNestedChange = (parent, field, value) => {
-    setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
-  };
-
-  const handleVaxChange = (dose, field, value) => {
-    setEditData(prev => ({
-      ...prev,
-      vaccinations: { ...prev.vaccinations, [dose]: { ...prev.vaccinations[dose], [field]: value } }
-    }));
-  };
-
-  const handleDentalChange = (field, value) => {
-    setEditData(prev => ({
-      ...prev,
-      dentalHistory: { ...prev.dentalHistory, [field]: value }
-    }));
-  };
-
-  const handleDentalProcChange = (proc, value) => {
-    setEditData(prev => ({
-      ...prev,
-      dentalHistory: {
-        ...prev.dentalHistory,
-        procedures: { ...(prev.dentalHistory.procedures || {}), [proc]: value }
-      }
-    }));
-  };
+  const handleChange           = (field, value)        => setEditData(prev => ({ ...prev, [field]: value }));
+  const handleNestedChange     = (parent, field, value) => setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
+  const handleVaxChange        = (dose, field, value)  => setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, [dose]: { ...prev.vaccinations[dose], [field]: value } } }));
+  const handleDentalChange     = (field, value)        => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, [field]: value } }));
+  const handleDentalProcChange = (proc, value)         => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, procedures: { ...(prev.dentalHistory.procedures || {}), [proc]: value } } }));
 
   const saveProfileEdits = async () => {
     setIsSaving(true);
@@ -259,7 +259,7 @@ export default function ProfileUsers({ onLogout }) {
     setPendingDocType(docType);
     setPreviewFileName(file.name);
     if (file.type.startsWith('image/')) {
-      setPreviewContent(<img src={URL.createObjectURL(file)} alt="Preview" className="max-w-full rounded-xl" />);
+      setPreviewContent(<img src={URL.createObjectURL(file)} alt="Preview" style={{ maxWidth: '100%', borderRadius: 12 }} />);
     } else if (file.type === 'application/pdf') {
       setPreviewContent(<iframe src={URL.createObjectURL(file)} title="PDF Preview" style={{ width: '100%', height: 300, border: 'none', borderRadius: 12 }} />);
     } else {
@@ -292,13 +292,6 @@ export default function ProfileUsers({ onLogout }) {
     closePreview();
   };
 
-  const DOSE_LABELS = [
-    { key: 'dose1',    label: 'Dose 1' },
-    { key: 'dose2',    label: 'Dose 2' },
-    { key: 'booster1', label: 'Booster 1' },
-    { key: 'booster2', label: 'Booster 2' },
-  ];
-
   if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1a5c3a', fontSize: 13, fontWeight: 600 }}>
@@ -307,7 +300,6 @@ export default function ProfileUsers({ onLogout }) {
     );
   }
 
-  // ── Classification badge colors ──────────────────────────────────────────
   const clsColors = classificationColors[profile.studentClassification] || classificationColors.Regular;
 
   return (
@@ -324,26 +316,16 @@ export default function ProfileUsers({ onLogout }) {
               {isStudent ? (profile.program || profile.department || 'Student') : (profile.jobTitle || profile.classification || 'Personnel')}
             </div>
           </div>
-
-          {/* ── Right-side badges ── */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-            {/* ID / classification badge */}
             <div style={{ background: '#e8f5ee', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#1a5c3a' }}>
               {isStudent ? `ID: ${profile.universityId}` : profile.classification}
             </div>
-             {/* ── Student Classification badge ── */}
             {isStudent && profile.studentClassification && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                background: clsColors.bg, padding: '3px 10px',
-                borderRadius: 40, fontSize: 10, fontWeight: 700,
-                color: clsColors.text,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: clsColors.bg, padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: clsColors.text }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: clsColors.dot, display: 'inline-block' }} />
                 {profile.studentClassification}
               </div>
             )}
-            {/* Role badge */}
             <div style={{ background: '#f4f7f5', padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 600, color: '#6b8577', textTransform: 'capitalize' }}>
               {profile.role || 'student'}
             </div>
@@ -369,12 +351,12 @@ export default function ProfileUsers({ onLogout }) {
         <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} />
         {isStudent ? (
           <>
-            <InfoRow label="Student No."       value={profile.universityId || profile.studentId} />
-            <InfoRow label="Department"         value={profile.department} />
-            <InfoRow label="Program"            value={profile.program} />
-            <InfoRow label="Year Level"         value={profile.yearLevel} />
-            <InfoRow label="Section"            value={profile.section} />
-            <InfoRow label="Classification"     value={profile.studentClassification} last />
+            <InfoRow label="Student No."    value={profile.universityId || profile.studentId} />
+            <InfoRow label="Department"     value={profile.department} />
+            <InfoRow label="Program"        value={profile.program} />
+            <InfoRow label="Year Level"     value={profile.yearLevel} />
+            <InfoRow label="Section"        value={profile.section} />
+            <InfoRow label="Classification" value={profile.studentClassification} last />
           </>
         ) : (
           <>
@@ -432,8 +414,8 @@ export default function ProfileUsers({ onLogout }) {
       <Card>
         <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} />
         <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} />
-        <InfoRow label="Previous Dentist" value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} />
-        <InfoRow label="Physician" value={profile.dentalHistory.physician ? `Dr. ${profile.dentalHistory.physician}` : ''} />
+        <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} />
+        <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} />
         <InfoRow
           label="Teeth Present"
           value={(profile.dentalHistory.teethUpper || profile.dentalHistory.teethLower)
@@ -472,23 +454,45 @@ export default function ProfileUsers({ onLogout }) {
         <div style={{ fontSize: 10, fontWeight: 600, color: '#2d7a52', background: '#e8f5ee', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
       </Card>
 
-      {/* ── Sign Out ── */}
-      <button onClick={() => setLogoutModal(true)} style={{ width: '100%', background: '#fff', border: '1px solid #ffdde1', color: '#e53e3e', padding: 14, borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>
+      {/* ── Settings Button → navigates to /settings ── */}
+      <button
+        onClick={handleOpenSettings}
+        style={{
+          width: '100%', background: '#fff',
+          border: '1px solid #ddeee5', color: '#466460',
+          padding: 14, borderRadius: 16,
+          fontSize: 12, fontWeight: 700,
+          cursor: 'pointer', marginTop: 4,
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'center', gap: 8,
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = '#edf4f2'}
+        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+      >
+        <SettingsGearIcon /> SETTINGS
+      </button>
+
+      {/* ── Sign Out Button ── */}
+      <button
+        onClick={() => setLogoutModal(true)}
+        style={{ width: '100%', background: '#fff', border: '1px solid #ffdde1', color: '#e53e3e', padding: 14, borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}
+      >
         SIGN OUT
       </button>
 
-      {/* ── Edit Profile Modal ── */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          ── Edit Profile Modal ──
+      ══════════════════════════════════════════════════════════════════════ */}
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 450, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* Modal Header */}
             <div style={{ background: '#1a5c3a', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 15, fontWeight: 700, textTransform: 'capitalize' }}>Edit {editingSection} Info</span>
               <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 18 }}>✕</button>
             </div>
 
-            {/* Modal Body (Scrollable) */}
             <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
 
               {/* ── Personal Section ── */}
@@ -499,28 +503,25 @@ export default function ProfileUsers({ onLogout }) {
                       <input style={inputStyle} value={editData.firstName} onChange={e => handleChange('firstName', e.target.value)} />
                     </FormGroup>
                     <FormGroup label="M.I.">
-                      <input style={{...inputStyle, width: 60}} value={editData.middleInitial} onChange={e => handleChange('middleInitial', e.target.value)} maxLength={2} />
+                      <input style={{ ...inputStyle, width: 60 }} value={editData.middleInitial} onChange={e => handleChange('middleInitial', e.target.value)} maxLength={2} />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <FormGroup label="Last Name">
-                      <input style={{...inputStyle, flex: 1}} value={editData.lastName} onChange={e => handleChange('lastName', e.target.value)} />
+                      <input style={{ ...inputStyle, flex: 1 }} value={editData.lastName} onChange={e => handleChange('lastName', e.target.value)} />
                     </FormGroup>
                     <FormGroup label="Suffix">
-                      <input style={{...inputStyle, width: 70}} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} />
+                      <input style={{ ...inputStyle, width: 70 }} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
                     <div style={{ flex: 1 }}>
                       <FormGroup label="Birthday">
-                        <BirthdayPicker
-                          value={editData.birthday || ''}
-                          onChange={(val) => handleChange('birthday', val)}
-                        />
+                        <BirthdayPicker value={editData.birthday || ''} onChange={val => handleChange('birthday', val)} />
                       </FormGroup>
                     </div>
                     <FormGroup label="Age">
-                      <input type="number" style={{...inputStyle, width: 70}} value={editData.age} onChange={e => handleChange('age', e.target.value)} />
+                      <input type="number" style={{ ...inputStyle, width: 70 }} value={editData.age} onChange={e => handleChange('age', e.target.value)} />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
@@ -531,13 +532,17 @@ export default function ProfileUsers({ onLogout }) {
                     </FormGroup>
                     <FormGroup label="Blood Type">
                       <select style={inputStyle} value={editData.bloodType} onChange={e => handleChange('bloodType', e.target.value)}>
-                        <option value="">Select</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="AB+">AB+</option><option value="AB-">AB-</option><option value="O+">O+</option><option value="O-">O-</option><option value="Unknown">Unknown</option>
+                        <option value="">Select</option><option value="A+">A+</option><option value="A-">A-</option>
+                        <option value="B+">B+</option><option value="B-">B-</option><option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option><option value="O+">O+</option><option value="O-">O-</option>
+                        <option value="Unknown">Unknown</option>
                       </select>
                     </FormGroup>
                   </div>
                   <FormGroup label="Civil Status">
                     <select style={inputStyle} value={editData.civilStatus} onChange={e => handleChange('civilStatus', e.target.value)}>
-                      <option value="">Select</option><option value="Single">Single</option><option value="Married">Married</option><option value="Widowed">Widowed</option>
+                      <option value="">Select</option><option value="Single">Single</option>
+                      <option value="Married">Married</option><option value="Widowed">Widowed</option>
                     </select>
                   </FormGroup>
                   <FormGroup label="Religion">
@@ -547,7 +552,7 @@ export default function ProfileUsers({ onLogout }) {
                     <input style={inputStyle} value={editData.nationality} onChange={e => handleChange('nationality', e.target.value)} />
                   </FormGroup>
                   <FormGroup label="Home Address">
-                    <textarea style={{...inputStyle, resize: 'vertical', minHeight: 80}} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} />
+                    <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} />
                   </FormGroup>
                 </>
               )}
@@ -572,8 +577,6 @@ export default function ProfileUsers({ onLogout }) {
                       <input style={inputStyle} value={editData.section} onChange={e => handleChange('section', e.target.value)} />
                     </FormGroup>
                   </div>
-
-                  {/* ── Student Classification picker ── */}
                   <FormGroup label="Student Classification">
                     <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
                       {STUDENT_CLASSIFICATIONS.map(cls => {
@@ -585,8 +588,7 @@ export default function ProfileUsers({ onLogout }) {
                             type="button"
                             onClick={() => handleChange('studentClassification', cls)}
                             style={{
-                              flex: 1,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               padding: '9px 6px', borderRadius: 11, fontSize: 12, fontWeight: 600,
                               border: `1.5px solid ${isActive ? colors.dot : '#ddeee5'}`,
                               background: isActive ? colors.bg : '#f9fbfa',
@@ -629,7 +631,7 @@ export default function ProfileUsers({ onLogout }) {
                   <FormGroup label="Contact Name"><input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', e.target.value)} /></FormGroup>
                   <FormGroup label="Relationship"><input style={inputStyle} value={editData.emergencyContact.relationship} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)} /></FormGroup>
                   <FormGroup label="Phone Number"><input style={inputStyle} value={editData.emergencyContact.phone} onChange={e => handleNestedChange('emergencyContact', 'phone', e.target.value)} /></FormGroup>
-                  <FormGroup label="Address"><textarea style={{...inputStyle, minHeight: 80}} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} /></FormGroup>
+                  <FormGroup label="Address"><textarea style={{ ...inputStyle, minHeight: 80 }} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} /></FormGroup>
                 </>
               )}
 
@@ -640,18 +642,10 @@ export default function ProfileUsers({ onLogout }) {
                     <div key={key} style={{ background: '#f4f7f5', padding: 12, borderRadius: 16, marginBottom: 12 }}>
                       <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '0 0 10px 0', textTransform: 'uppercase' }}>{label}</p>
                       <FormGroup label="Vaccine Brand">
-                        <input
-                          style={inputStyle}
-                          value={editData.vaccinations[key].vaccineName}
-                          onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)}
-                          placeholder="e.g. Pfizer, Moderna"
-                        />
+                        <input style={inputStyle} value={editData.vaccinations[key].vaccineName} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)} placeholder="e.g. Pfizer, Moderna" />
                       </FormGroup>
                       <FormGroup label="Date Given">
-                        <BirthdayPicker
-                          value={editData.vaccinations[key].date || ''}
-                          onChange={(val) => handleVaxChange(key, 'date', val)}
-                        />
+                        <BirthdayPicker value={editData.vaccinations[key].date || ''} onChange={val => handleVaxChange(key, 'date', val)} />
                       </FormGroup>
                     </div>
                   ))}
@@ -662,84 +656,45 @@ export default function ProfileUsers({ onLogout }) {
               {editingSection === 'dental' && (
                 <>
                   <FormGroup label="Last Dental Visit">
-                    <BirthdayPicker
-                      value={editData.dentalHistory.lastVisit || ''}
-                      onChange={(val) => handleDentalChange('lastVisit', val)}
-                    />
+                    <BirthdayPicker value={editData.dentalHistory.lastVisit || ''} onChange={val => handleDentalChange('lastVisit', val)} />
                   </FormGroup>
                   <FormGroup label="Previous Dentist (Dr.)">
-                    <input
-                      style={inputStyle}
-                      value={editData.dentalHistory.prevDentist}
-                      placeholder="e.g. Smith"
-                      onChange={e => handleDentalChange('prevDentist', e.target.value)}
-                    />
+                    <input style={inputStyle} value={editData.dentalHistory.prevDentist} placeholder="e.g. Smith" onChange={e => handleDentalChange('prevDentist', e.target.value)} />
                   </FormGroup>
                   <FormGroup label="Physician (Dr.)">
-                    <input
-                      style={inputStyle}
-                      value={editData.dentalHistory.physician}
-                      placeholder="e.g. Doe"
-                      onChange={e => handleDentalChange('physician', e.target.value)}
-                    />
+                    <input style={inputStyle} value={editData.dentalHistory.physician} placeholder="e.g. Doe" onChange={e => handleDentalChange('physician', e.target.value)} />
                   </FormGroup>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <FormGroup label="Teeth Present (Upper)">
-                      <input
-                        type="number"
-                        min="0" max="16"
-                        style={inputStyle}
-                        value={editData.dentalHistory.teethUpper}
-                        onChange={e => handleDentalChange('teethUpper', e.target.value)}
-                      />
+                      <input type="number" min="0" max="16" style={inputStyle} value={editData.dentalHistory.teethUpper} onChange={e => handleDentalChange('teethUpper', e.target.value)} />
                     </FormGroup>
                     <FormGroup label="Teeth Present (Lower)">
-                      <input
-                        type="number"
-                        min="0" max="16"
-                        style={inputStyle}
-                        value={editData.dentalHistory.teethLower}
-                        onChange={e => handleDentalChange('teethLower', e.target.value)}
-                      />
+                      <input type="number" min="0" max="16" style={inputStyle} value={editData.dentalHistory.teethLower} onChange={e => handleDentalChange('teethLower', e.target.value)} />
                     </FormGroup>
                   </div>
-
                   <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '16px 0 10px 0', textTransform: 'uppercase', borderTop: '1px solid #ddeee5', paddingTop: 16 }}>Procedures History</p>
                   {DENTAL_PROCEDURES.map(proc => {
                     const isYes = editData.dentalHistory.procedures?.[proc] === 'Yes';
-                    const isNo = editData.dentalHistory.procedures?.[proc] === 'No' || !editData.dentalHistory.procedures?.[proc];
+                    const isNo  = editData.dentalHistory.procedures?.[proc] === 'No' || !editData.dentalHistory.procedures?.[proc];
                     return (
                       <div key={proc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 12, color: '#1a2e22', background: '#f4f7f5', padding: '8px 12px', borderRadius: 8 }}>
                         <span style={{ fontWeight: 600 }}>{proc}</span>
                         <div style={{ display: 'flex', gap: 12 }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 600 }}>
-                            <input
-                              type="radio"
-                              name={`modal_dh_${proc}`}
-                              checked={isYes}
-                              onChange={() => handleDentalProcChange(proc, 'Yes')}
-                              style={{ accentColor: '#1a5c3a' }}
-                            /> Yes
+                            <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} style={{ accentColor: '#1a5c3a' }} /> Yes
                           </label>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 600 }}>
-                            <input
-                              type="radio"
-                              name={`modal_dh_${proc}`}
-                              checked={isNo}
-                              onChange={() => handleDentalProcChange(proc, 'No')}
-                              style={{ accentColor: '#1a5c3a' }}
-                            /> No
+                            <input type="radio" name={`modal_dh_${proc}`} checked={isNo}  onChange={() => handleDentalProcChange(proc, 'No')}  style={{ accentColor: '#1a5c3a' }} /> No
                           </label>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </>
               )}
 
             </div>
 
-            {/* Modal Footer */}
             <div style={{ padding: '16px 20px', borderTop: '1px solid #ddeee5', display: 'flex', gap: 12, background: '#fafcfb' }}>
               <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 40, border: '1.5px solid #ddeee5', background: 'transparent', cursor: 'pointer', fontWeight: 600, color: '#6b8577' }}>Cancel</button>
               <button onClick={saveProfileEdits} disabled={isSaving} style={{ flex: 1, padding: '12px', borderRadius: 40, border: 'none', background: '#1a5c3a', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1 }}>

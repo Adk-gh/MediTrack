@@ -198,13 +198,12 @@ export const Consultations = () => {
       const data = snap.val() || {};
       const list = Object.entries(data)
         .map(([id, msg]) => ({ id, ...msg }))
-        .filter(msg => !msg.isBot) // Hide bot triage messages from clinic
+        .filter(msg => !msg.isBot)
         .sort((a, b) => a.timestamp - b.timestamp);
 
       setMessages(list);
       setLoadingMsgs(false);
 
-      // Bulk update unread patient messages as read by clinic
       const unreadPatientMsgs = list.filter(msg => msg.sender === 'patient' && !msg.readByClinic);
       if (unreadPatientMsgs.length > 0) {
         const updates = {};
@@ -229,17 +228,17 @@ export const Consultations = () => {
       const msgsRef = ref(rtdb, `consultations/${selectedConvId}/messages`);
       await push(msgsRef, {
         text,
-        sender:       'clinic',
-        senderUid:    currentUser.uid,
-        senderName:   resolvedNameRef.current || 'Clinic Staff',
-        senderRole:   currentUser.role || 'staff',
-        timestamp:    Date.now(),
-        readByPatient: false, // Set false initially until patient opens the chat
-        isBot:        false,
+        sender:        'clinic',
+        senderUid:     currentUser.uid,
+        senderName:    resolvedNameRef.current || 'Clinic Staff',
+        senderRole:    currentUser.role || 'staff',
+        timestamp:     Date.now(),
+        readByPatient: false,
+        isBot:         false,
       });
       await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), {
-        lastMessage: text,
-        lastTimestamp: Date.now(),
+        lastMessage:    text,
+        lastTimestamp:  Date.now(),
         lastSenderRole: 'clinic'
       });
     } catch (err) {
@@ -252,9 +251,7 @@ export const Consultations = () => {
   const handleEndConsultation = async () => {
     if (!selectedConvId) return;
     try {
-      await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), {
-        status: 'ended'
-      });
+      await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), { status: 'ended' });
       await push(ref(rtdb, `consultations/${selectedConvId}/messages`), {
         text: "Consultation marked as complete by clinic staff.",
         isBot: true,
@@ -301,7 +298,6 @@ export const Consultations = () => {
       ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
     .map(([, p]) => p.name);
 
-  // Filter conversations for the active tab (only show active ones, or ended ones that have messages)
   const visibleConversations = conversations.filter(conv =>
     conv.consultType === activeTab &&
     (conv.hasMessages || conv.id === selectedConvId)
@@ -332,7 +328,19 @@ export const Consultations = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-140px)] bg-white overflow-hidden relative">
+    <div className="flex h-full bg-white overflow-hidden relative">
+
+      {/* ── MAGIC FIX: Hide hamburger when a chat is open on mobile ── */}
+      {selectedConvId && (
+        <style>{`
+          @media (max-width: 768px) {
+            #mobile-hamburger-btn,
+            #mobile-active-tab-chip {
+              display: none !important;
+            }
+          }
+        `}</style>
+      )}
 
       {/* ── Left: Sidebar ── */}
       <div className={`w-full md:w-[340px] border-r border-slate-200 flex-col flex-shrink-0 ${
@@ -350,6 +358,7 @@ export const Consultations = () => {
           )}
         </div>
 
+        {/* Tab switcher */}
         <div className="flex border-b border-slate-200 bg-white">
           {allowedTabs.map(tab => {
             const isActive = activeTab === tab.key;
@@ -389,6 +398,7 @@ export const Consultations = () => {
           </p>
         </div>
 
+        {/* Conversation list */}
         <div className="flex-1 overflow-y-auto">
           {visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 p-6 text-center">
@@ -416,16 +426,23 @@ export const Consultations = () => {
                 } ${isEnded ? 'opacity-70' : ''}`}
               >
                 <div className="relative flex-shrink-0">
-                  <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-base ${isEnded ? 'grayscale' : ''}`} style={{ backgroundColor: tab.light, color: tab.accent }}>
+                  <div
+                    className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-base ${isEnded ? 'grayscale' : ''}`}
+                    style={{ backgroundColor: tab.light, color: tab.accent }}
+                  >
                     {initial}
                   </div>
-                  {isOnline && !isEnded && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>}
+                  {isOnline && !isEnded && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
                     <p className="font-bold text-sm text-slate-800 truncate flex items-center gap-2">
                       {displayName}
-                      {isEnded && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>}
+                      {isEnded && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>
+                      )}
                     </p>
                     <span className="text-[9px] text-slate-400 flex-shrink-0 ml-2">
                       {conv.lastTimestamp ? formatTime(conv.lastTimestamp) : ''}
@@ -454,7 +471,7 @@ export const Consultations = () => {
         <div className="flex-1 flex flex-col min-w-0">
 
           {/* Chat Header */}
-          <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3">
+          <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3 flex-shrink-0">
             <button
               onClick={() => { setSelectedConvId(null); setShowPatientPanel(false); }}
               className="md:hidden w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors flex-shrink-0"
@@ -467,7 +484,10 @@ export const Consultations = () => {
                 {(() => {
                   const t = TABS.find(tab => tab.key === selectedConv.consultType) || TABS[0];
                   return (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold flex-shrink-0" style={{ backgroundColor: t.light, color: t.accent }}>
+                    <div
+                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold flex-shrink-0"
+                      style={{ backgroundColor: t.light, color: t.accent }}
+                    >
                       {t.icon(t.accent)}
                       {t.label}
                     </div>
@@ -478,37 +498,46 @@ export const Consultations = () => {
                   <div className="w-10 h-10 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460]">
                     {patientName.charAt(0).toUpperCase()}
                   </div>
-                  {isPatientOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white"></span>}
+                  {isPatientOnline && (
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white"></span>
+                  )}
                 </div>
+
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-slate-800 truncate">{patientName}</p>
                   <p className="text-[10px] text-slate-400 truncate">
-                    {isConvEnded ? <span className="text-slate-500 font-semibold">● Session Ended</span>
-                    : isPatientOnline ? <span className="text-emerald-500 font-semibold">● Online</span>
-                    : <span>● Offline</span>}
-                    {patientProfile.program    ? ` · ${patientProfile.program}`    : ''}
+                    {isConvEnded
+                      ? <span className="text-slate-500 font-semibold">● Session Ended</span>
+                      : isPatientOnline
+                        ? <span className="text-emerald-500 font-semibold">● Online</span>
+                        : <span>● Offline</span>}
+                    {patientProfile.program ? ` · ${patientProfile.program}` : ''}
                   </p>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                   {!isConvEnded && (
                     <button
                       onClick={handleEndConsultation}
-                      className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm"
+                      title="End Consultation"
+                      className="flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm"
                     >
-                      <i className="fa-solid fa-check-double text-[10px]"></i>
-                      End Consultation
+                      <i className="fa-solid fa-check-double text-[12px] md:text-[10px]"></i>
+                      <span className="hidden md:inline">End Consult</span>
                     </button>
                   )}
                   <button
                     onClick={() => setShowPatientPanel(v => !v)}
-                    className={`flex items-center gap-1.5 px-3 py-2 md:py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
-                      showPatientPanel ? 'bg-[#466460] text-white' : 'bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white'
+                    title={showPatientPanel ? 'Hide Records' : 'View Records'}
+                    className={`flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
+                      showPatientPanel
+                        ? 'bg-[#466460] text-white'
+                        : 'bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white'
                     }`}
                   >
-                    <i className="fa-solid fa-address-card text-[10px] md:mr-1"></i>
-                    <span className="hidden md:inline">{showPatientPanel ? 'Hide Records' : 'View Records'}</span>
+                    <i className="fa-solid fa-address-card text-[12px] md:text-[10px]"></i>
+                    <span className="hidden md:inline">{showPatientPanel ? 'Hide' : 'Records'}</span>
                   </button>
                 </div>
               </>
@@ -520,7 +549,7 @@ export const Consultations = () => {
             )}
           </div>
 
-          {/* Messages */}
+          {/* Messages — flex-1 so it fills remaining height, own scroll */}
           <div className="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col gap-3 bg-slate-50">
             {!selectedConvId ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
@@ -564,13 +593,14 @@ export const Consultations = () => {
                         </div>
                       )}
                       <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm ${
-                        isClinic ? 'bg-[#466460] text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
+                        isClinic
+                          ? 'bg-[#466460] text-white rounded-br-sm'
+                          : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
                       }`}>
                         {item.text}
                       </div>
                       <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
                         <span>{formatTime(item.timestamp)}</span>
-                        {/* ── Admin Side SEEN Indicator ── */}
                         {isClinic && (
                           <i className={`fa-solid ${item.readByPatient ? 'fa-check-double text-[#466460]' : 'fa-check text-slate-300'} text-[10px] ml-1`}></i>
                         )}
@@ -590,11 +620,17 @@ export const Consultations = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <div className="px-3 md:px-4 py-3 bg-white border-t border-slate-200 flex gap-2 md:gap-3 items-center">
+          {/* Input — flex-shrink-0 so it never gets squashed */}
+          <div className="px-3 md:px-4 py-3 bg-white border-t border-slate-200 flex gap-2 md:gap-3 items-center flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom,12px))]">
             <input
               type="text"
-              placeholder={!selectedConvId ? 'Select a conversation first' : isConvEnded ? 'Consultation has been ended.' : 'Type a reply…'}
+              placeholder={
+                !selectedConvId
+                  ? 'Select a conversation first'
+                  : isConvEnded
+                    ? 'Consultation has been ended.'
+                    : 'Type a reply…'
+              }
               value={messageInput}
               onChange={e => setMessageInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
@@ -614,12 +650,15 @@ export const Consultations = () => {
         {/* ── Patient Records Side Panel ── */}
         {showPatientPanel && selectedConv && (
           <div className="absolute inset-0 z-50 md:relative md:z-auto w-full md:w-[420px] flex-shrink-0 md:border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-            <div className="px-4 py-3 md:py-3.5 border-b border-slate-200 flex items-center justify-between bg-white shadow-sm md:shadow-none">
+            <div className="px-4 py-3 md:py-3.5 border-b border-slate-200 flex items-center justify-between bg-white shadow-sm md:shadow-none flex-shrink-0">
               <p className="text-xs font-extrabold text-[#466460] flex items-center gap-1.5">
                 <i className="fa-solid fa-address-card text-[11px]"></i>
                 Patient Records
               </p>
-              <button onClick={() => setShowPatientPanel(false)} className="text-slate-400 hover:text-slate-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100">
+              <button
+                onClick={() => setShowPatientPanel(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100"
+              >
                 <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
@@ -630,7 +669,9 @@ export const Consultations = () => {
                   <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-lg">
                     {patientName.charAt(0).toUpperCase()}
                   </div>
-                  {isPatientOnline && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>}
+                  {isPatientOnline && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm text-slate-800 leading-tight truncate">{patientName}</p>
@@ -686,7 +727,9 @@ export const Consultations = () => {
                     {patientProfile.yearLevel ? ` · ${patientProfile.yearLevel}` : ''}
                     {patientProfile.section   ? ` · Sec ${patientProfile.section}` : ''}
                   </p>
-                  {patientProfile.department && <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.department}</p>}
+                  {patientProfile.department && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.department}</p>
+                  )}
                 </div>
               )}
 
@@ -702,7 +745,8 @@ export const Consultations = () => {
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Emergency Contact</p>
                   <p className="text-[11px] font-semibold text-slate-700">
                     {patientProfile.emergencyContact.name}
-                    {patientProfile.emergencyContact.relationship ? ` (${patientProfile.emergencyContact.relationship})` : ''}
+                    {patientProfile.emergencyContact.relationship
+                      ? ` (${patientProfile.emergencyContact.relationship})` : ''}
                   </p>
                   {patientProfile.emergencyContact.phone && (
                     <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
@@ -729,22 +773,23 @@ export const Consultations = () => {
                   </div>
                 </div>
               )}
+            </div>
 
-              <div className="border-t border-slate-100 pt-1"></div>
-
+            {/* Sticky Action Footer */}
+            <div className="p-4 bg-white border-t border-slate-100 flex flex-col gap-2 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
               <button
                 onClick={handleOpenExamination}
-                className="w-full bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white text-[11px] font-bold py-3 md:py-2.5 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-sm"
+                className="w-full bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white text-[12px] font-bold py-3 md:py-2.5 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-sm"
               >
-                <i className="fa-solid fa-stethoscope text-[10px]"></i>
+                <i className="fa-solid fa-stethoscope text-[12px]"></i>
                 Open Full Examination
               </button>
 
               <button
                 onClick={() => navigate('/records')}
-                className="w-full bg-[#e0eceb] text-[#466460] text-[11px] font-bold py-3 md:py-2 rounded-xl hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
+                className="w-full bg-[#e0eceb] text-[#466460] text-[12px] font-bold py-3 md:py-2.5 rounded-xl hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
               >
-                <i className="fa-solid fa-folder-open text-[10px]"></i>
+                <i className="fa-solid fa-folder-open text-[12px]"></i>
                 Go to Records
               </button>
             </div>

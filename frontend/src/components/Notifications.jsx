@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\frontend\src\components\Notifications.jsx
 import React, { useState, useEffect } from 'react';
 import notificationsService from '../services/notifications.service.js';
 

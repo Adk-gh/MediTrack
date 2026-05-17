@@ -372,8 +372,8 @@ export default function AppointmentUsers() {
 
       {/* ── Modal ── */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[3000] flex items-center justify-center p-4 sm:p-6">
-          <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6">
+         <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[80vh] sm:max-h-[92vh]">
 
             {/* Header — fixed, never scrolls */}
             <div className="bg-[#466460] px-6 py-5 text-white flex-shrink-0">

@@ -37,12 +37,13 @@ Records:
 * [x] ~~add a filter for year level, section,~~
 * [x] ~~display prev records of the patients (medical and dental)~~
 * [x] ~~add filter for roles, year level and section. and ascending or decending order of reords.(the roles is not working properly) add filter for the program~~
-* [ ] make the previous records of patients be a modal?
+
+
 
 Records-user:
 
-* [ ] display the medical and dental examinations summary                                                                                                                                                                                            &#x20;
-* [ ] settings page idea: the settings page should include a                                                                                                                                                                                                               &#x20;
+* [x] display the medical and dental examinations summary                                                                                                                                                                                            &#x20;
+* [ ] settings page idea: the settings page should include a input for  the admin to set the current School year
 * [x] display their medical certificate.
 * [x] make the med cert be downloadable as pdf
 * [x] add plsp logo in the medical certificate
@@ -71,10 +72,11 @@ Announcements:
 
 * [x] ~~make this module better.~~
 * [x] ~~the storage for the image is still unknown. ; firebase storage~~
+* [x] change the layout of the cards square img the text is on the right side of the image
 
 User-management:
 
-* [ ] make the table scrollable.
+* [x] make the table scrollable.
 * [ ] add a functionality to delete or edit users informations, but it should be archived.
 
 Profile-user:
@@ -84,7 +86,7 @@ Profile-user:
 
 Settings:
 
-* [ ] make the content scrollable
+* [x] make the content scrollable
 
 Meditrack:
 
