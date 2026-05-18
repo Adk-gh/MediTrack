@@ -1,8 +1,17 @@
+// C:\Users\HP\MediTrack\frontend\src\services\auth.service.js
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+  return {
+    "Content-Type": "application/json",
+    Authorization: token ? `Bearer ${token}` : "",
+  };
+};
+
 const register = async (formData) => {
-  // FormData with image — do NOT set Content-Type, browser handles it
-  const res = await fetch(`${API_URL}/users/register`, {
+  // Uses FormData for the ID image. Browser sets the Content-Type automatically.
+  const res = await fetch(`${API_URL}/user/register`, {
     method: "POST",
     body: formData,
   });
@@ -12,7 +21,7 @@ const register = async (formData) => {
 };
 
 const login = async ({ email, password }) => {
-  const res = await fetch(`${API_URL}/users/login`, {
+  const res = await fetch(`${API_URL}/user/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -22,13 +31,11 @@ const login = async ({ email, password }) => {
 
   if (data.success && data.data) {
     const user = data.data;
-
-    // Save the user data to localStorage, including the fields needed for the Home Page checks
     localStorage.setItem(
       "user",
       JSON.stringify({
         uid:                user.id,
-        name:               user.name || `${user.firstName} ${user.lastName}`, // Added to ensure the Home Page greeting works
+        name:               user.name || `${user.firstName} ${user.lastName}`,
         firstName:          user.firstName,
         lastName:           user.lastName,
         middleInitial:      user.middleInitial || '',
@@ -36,10 +43,8 @@ const login = async ({ email, password }) => {
         role:               user.role,
         email:              user.email,
         universityId:       user.universityId,
-        department:         user.department || user.dept || '', // Helpful for UI
-        program:            user.program || user.classification || '', // Helpful for UI
-
-        // ── NEW FIELDS ADDED FOR PROFILE CHECKS ──
+        department:         user.department || user.dept || '',
+        program:            user.program || user.classification || '',
         vaccinationStatus:  user.vaccinationStatus,
         vaccinationHistory: user.vaccinationHistory,
         emergencyContact:   user.emergencyContact,
@@ -47,8 +52,27 @@ const login = async ({ email, password }) => {
     );
     localStorage.setItem("token", user.token);
   }
-
   return data;
+};
+
+const getProfile = async () => {
+  const res = await fetch(`${API_URL}/users/profile`, {
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Failed to fetch profile");
+  return data.data;
+};
+
+const firebaseAuth = async (idToken) => {
+  const res = await fetch(`${API_URL}/users/firebase-auth`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Firebase auth failed");
+  return data.data;
 };
 
 const getCurrentUser = () => {
@@ -62,4 +86,11 @@ const logout = () => {
   localStorage.removeItem("token");
 };
 
-export default { register, login, getCurrentUser, logout };
+export default {
+  register,
+  login,
+  getProfile,
+  firebaseAuth,
+  getCurrentUser,
+  logout
+};

@@ -1,3 +1,4 @@
+// C:\Users\HP\MediTrack\frontend\src\features\users\HomePageUsers.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../services/auth.service.js';
@@ -12,6 +13,27 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
+};
+
+// Map the 24hr string to the 12hr slot label
+const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
+  const startH = 7 + i;
+  const endH   = startH + 1;
+  const fmt = (h) => {
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hr     = h % 12 || 12;
+    return `${hr}:00 ${period}`;
+  };
+  return {
+    value: `${String(startH).padStart(2, '0')}:00`,
+    label: `${fmt(startH)} – ${fmt(endH)}`,
+  };
+});
+
+const formatApptTime = (timeValue) => {
+  if (!timeValue) return '';
+  const slot = HOUR_SLOTS.find(s => s.value === timeValue);
+  return slot ? slot.label : timeValue;
 };
 
 const CATEGORY_COLORS = {
@@ -291,7 +313,8 @@ const HomePageUsers = () => {
                     {upcomingAppt.status === 'pending' ? (
                       <><span className="text-[#f0c070] text-[12px]">⏳</span> Awaiting Schedule</>
                     ) : (
-                      <>{upcomingAppt.time} • University Clinic</>
+                      // Display the friendly 12-hour slot label
+                      <>{formatApptTime(upcomingAppt.time)} • University Clinic</>
                     )}
                   </p>
                 </div>

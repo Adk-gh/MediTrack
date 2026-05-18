@@ -12,17 +12,26 @@
 * [x] ~~add students classification (regular, irreg, and returning).~~
 * [ ] push notification
 * [ ] caching (redis/ sql lite)
-*
+* [ ] make it role based access.
+* [ ] add records management for the admin, logs,&#x20;
+* [ ] add ui for the meditrack
+
+Signup:
+
+* [ ] Validation by clinic staff
 
 Appointment:
 
 * [x] ~~fix the approved appointment sections where its appearing collapsed even though it shouldn't be collapsed by default.~~
 * [ ] add email notification for when an appointment gets approved stating the time and date of the appointment.
+* [ ] make it so it also filter the appointment for dentist to only see appointments with dental related concerns
+* [ ] Canceled - Missed Penalty for spam booking
 
 Appoinment-user:
 
 * [x] ~~only one appointment at a time users cannot send multiple appointment until the active appointment is not yet finished.~~
 * [ ] fix the modal for the request appointment.
+* [x] remove the calendar
 
 Consultation & Consultation-users:
 
@@ -37,8 +46,6 @@ Records:
 * [x] ~~add a filter for year level, section,~~
 * [x] ~~display prev records of the patients (medical and dental)~~
 * [x] ~~add filter for roles, year level and section. and ascending or decending order of reords.(the roles is not working properly) add filter for the program~~
-
-
 
 Records-user:
 
@@ -79,6 +86,14 @@ User-management:
 * [x] make the table scrollable.
 * [ ] add a functionality to delete or edit users informations, but it should be archived.
 
+Examination:
+
+* [ ] Add Time of examination
+
+Approval:
+
+* [ ] add medical history (consultation log (name, purpose, doctor, date and time)
+
 Profile-user:
 
 * [ ] the uploading of health documents is not working
@@ -101,4 +116,36 @@ For Future development:
 - [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employees)
 - [ ] Possible "settings" page.
 - [ ] sqlite for offline capabilities.
+-
 
+Role Management
+
+|                                     | admin    | doctor          | dentist        | nurse           | student/employee/staffs |
+| :---------------------------------- | :------- | :-------------- | :------------- | :-------------- | :---------------------- |
+| Dashboard                           |          |                 |                |                 | ❌                       |
+| User Management                     |          | ❌               | ❌              | ❌               | ❌                       |
+| Audit Logs                          |          | ❌               | ❌              | ❌               | ❌                       |
+| Record Management (All)             |          | ❌               | ❌              | ❌               | ❌                       |
+| Records                             | ❌        | (Medical Exams) | (Dental Exams) | (Medical Exams) | ❌                       |
+| Appointments / Queue                | ❌        |                 |                |                 | ❌                       |
+| Consultations / Triage              | ❌        |                 |                |                 | ❌                       |
+| Approvals (Clearances)              | ❌        |                 | ❌              | ❌               | ❌                       |
+| Announcement                        | (Manage) | (View Only)     | (View Only)    | (Manage)        | ❌                       |
+| Home(Dashboard w/ Annoucements)     | ❌        | ❌               | ❌              | ❌               |                         |
+| Booking(appoinment request)         | ❌        | ❌               | ❌              | ❌               |                         |
+| Consultations / Triage              | ❌        | ❌               | ❌              | ❌               |                         |
+| Records(med x den history/ med crt) | ❌        | ❌               | ❌              | ❌               |                         |
+| Profile(user info                   | ❌        | ❌               | ❌              | ❌               |                         |
+
+Accounts:
+
+<dekbermas@gmail.com> admin\
+<john.doe@example.com> doctor
+\
+<catherine@gmail.com> dentist
+\
+<ade@gmail.com> nurse
+
+<ly.jxnny@gmail.com> student
+
+password -1234567890

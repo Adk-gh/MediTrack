@@ -9,6 +9,8 @@ import {
 import { NotificationPanel } from '../components/Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 const NavHomeIcon = ({ active }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
@@ -76,14 +78,47 @@ const NavUsersIcon = ({ active }) => (
   </svg>
 );
 
+// ─── Role-based mobile nav items ──────────────────────────────────────────────
+const ROLE_MOBILE_NAV = {
+  admin: [
+    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
+    { id: 'recordManagement', label: 'Records', Icon: NavRecordsIcon },
+    { id: 'auditLogs', label: 'Audit', Icon: NavAnnounceIcon },
+    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
+    { id: 'users', label: 'Users', Icon: NavUsersIcon },
+  ],
+  doctor: [
+    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
+    { id: 'records', label: 'Records', Icon: NavRecordsIcon },
+    { id: 'appointments', label: 'Appointments', Icon: NavScheduleIcon },
+    { id: 'approvals', label: 'Approval', Icon: NavApprovalIcon },
+    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
+    { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
+  ],
+  dentist: [
+    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
+    { id: 'records', label: 'Records', Icon: NavRecordsIcon },
+    { id: 'appointments', label: 'Appointments', Icon: NavScheduleIcon },
+    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
+    { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
+  ],
+  nurse: [
+    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
+    { id: 'records', label: 'Records', Icon: NavRecordsIcon },
+    { id: 'appointments', label: 'Appointments', Icon: NavScheduleIcon },
+    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
+    { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
+  ],
+};
+
 // ─── Default mobile nav items ─────────────────────────────────────────────────
 const DEFAULT_MOBILE_NAV = [
   { id: 'dashboard',     label: 'Home',          Icon: NavHomeIcon },
   { id: 'records',       label: 'Records',       Icon: NavRecordsIcon },
-  { id: 'appointments',  label: 'Schedule',      Icon: NavScheduleIcon },
+  { id: 'appointments',  label: 'Appointments',  Icon: NavScheduleIcon },
   { id: 'examinations',  label: 'Exam',          Icon: NavExamIcon },
   { id: 'approvals',     label: 'Approval',      Icon: NavApprovalIcon },
-  { id: 'consultations', label: 'Consult',       Icon: NavConsultIcon },
+  { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
   { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
   { id: 'users',         label: 'Users',         Icon: NavUsersIcon },
 ];
@@ -316,7 +351,7 @@ export const DashboardLayout = ({
   onOpenQR,
   activeTab,
   onTabChange,
-  mobileNavItems = DEFAULT_MOBILE_NAV,
+  mobileNavItems: propMobileNavItems,
   userName = 'Admin User',
   userId   = '',
   onLogout,
@@ -333,6 +368,31 @@ export const DashboardLayout = ({
   const [showNotifications,   setShowNotifications]   = useState(false);
   const [showHamburger,       setShowHamburger]       = useState(false);
   const [notificationCount,   setNotificationCount]   = useState(0);
+  const [userRole, setUserRole] = useState('admin');
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (result.success && result.data?.role) {
+          setUserRole(result.data.role.toLowerCase());
+        }
+      } catch (err) {
+        console.error('Error fetching user role:', err);
+      }
+    };
+    fetchUserRole();
+  }, []);
+
+  const mobileNavItems = propMobileNavItems && propMobileNavItems.length > 0
+    ? propMobileNavItems
+    : (ROLE_MOBILE_NAV[userRole] || ROLE_MOBILE_NAV.admin);
 
   const handleProfileClick    = () => { setShowHamburger(false); setShowProfileDrawer(true); };
   const handleCloseProfile    = () => setShowProfileDrawer(false);

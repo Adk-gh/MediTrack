@@ -354,11 +354,11 @@ if (formData.suffix) data.append('suffix', formData.suffix);
         <div className="lf-hero">
           <div className="lf-brand">
             <div className="lf-brand lf-hero-brand">
-            <img 
-              src="/logo1.jpg" 
-              alt="MediTrack Logo" 
-              className="lf-brand-name" 
-              style={{ height: "40px" }} 
+            <img
+              src="/logo1.jpg"
+              alt="MediTrack Logo"
+              className="lf-brand-name"
+              style={{ height: "40px" }}
             />
           </div>
 

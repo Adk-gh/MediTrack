@@ -1145,8 +1145,63 @@ export const DesktopHeader = ({ onOpenQR }) => {
   );
 };
 
+// ─── Role-based Navigation Configuration ─────────────────────────────────────
+const ROLE_NAV_CONFIG = {
+  admin: [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/record-management', label: 'Record Management' },
+    { to: '/audit-logs', label: 'Audit Logs' },
+    { to: '/announcements', label: 'Announcement Management' },
+    { to: '/users', label: 'User Management' },
+  ],
+  doctor: [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/records', label: 'Records' },
+    { to: '/appointments', label: 'Appointments' },
+    { to: '/approvals', label: 'Approvals' },
+    { to: '/announcements', label: 'Announcements' },
+    { to: '/consultations', label: 'Consultation' },
+  ],
+  dentist: [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/records', label: 'Records' },
+    { to: '/appointments', label: 'Appointments' },
+    { to: '/announcements', label: 'Announcements' },
+    { to: '/consultations', label: 'Consultation' },
+  ],
+  nurse: [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/records', label: 'Records' },
+    { to: '/appointments', label: 'Appointments' },
+    { to: '/announcements', label: 'Announcements' },
+    { to: '/consultations', label: 'Consultation' },
+  ],
+};
+
 // ─── Desktop Navigation Bar ───────────────────────────────────────────────────
 export const DesktopNav = () => {
+  const [userRole, setUserRole] = useState('admin');
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (result.success && result.data?.role) {
+          setUserRole(result.data.role.toLowerCase());
+        }
+      } catch (err) {
+        console.error('Error fetching user role:', err);
+      }
+    };
+    fetchUserRole();
+  }, []);
+
   const navLinkClass = ({ isActive }) =>
     `relative font-bold tracking-[0.025em] transition-all pb-[4px] whitespace-nowrap flex-shrink-0
      text-[12px] sm:text-[13px] lg:text-[14px]
@@ -1155,6 +1210,8 @@ export const DesktopNav = () => {
         ? 'opacity-100 text-[#466460] after:content-[""] after:absolute after:-bottom-[13px] sm:after:-bottom-[17px] after:left-0 after:w-full after:h-[3px] after:bg-gradient-to-r after:from-[#466460] after:to-[#81b29a] after:rounded-full'
         : 'text-[#466460] opacity-60 hover:opacity-100 hover:text-[#e07a5f]'
     }`;
+
+  const navItems = ROLE_NAV_CONFIG[userRole] || ROLE_NAV_CONFIG.admin;
 
   return (
     <nav className="
@@ -1165,14 +1222,11 @@ export const DesktopNav = () => {
       z-10
       overflow-y-auto scrollbar-none
     ">
-      <NavLink to="/dashboard"     className={navLinkClass}>Dashboard</NavLink>
-      <NavLink to="/records"       className={navLinkClass}>Records</NavLink>
-      <NavLink to="/appointments"  className={navLinkClass}>Appointments</NavLink>
-      <NavLink to="/examinations"  className={navLinkClass}>Examination</NavLink>
-      <NavLink to="/approvals"     className={navLinkClass}>Approvals</NavLink>
-      <NavLink to="/announcements" className={navLinkClass}>Announcements</NavLink>
-      <NavLink to="/consultations" className={navLinkClass}>Consultation</NavLink>
-      <NavLink to="/users"         className={navLinkClass}>User Management</NavLink>
+      {navItems.map((item) => (
+        <NavLink key={item.to} to={item.to} className={navLinkClass}>
+          {item.label}
+        </NavLink>
+      ))}
     </nav>
   );
 };
@@ -1246,21 +1300,86 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
   );
 };
 
+// ─── Mobile Role-based Navigation Items ──────────────────────────────────────
+const ROLE_MOBILE_NAV_CONFIG = {
+  admin: [
+    { id: 'dashboard', label: 'Home', icon: HomeIcon },
+    { id: 'recordManagement', label: 'Records', icon: RecordsIcon },
+    { id: 'auditLogs', label: 'Audit', icon: AnnouncementIcon },
+    { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
+    { id: 'users', label: 'Users', icon: UsersIcon },
+  ],
+  doctor: [
+    { id: 'dashboard', label: 'Home', icon: HomeIcon },
+    { id: 'records', label: 'Records', icon: RecordsIcon },
+    { id: 'appointments', label: 'Appointments', icon: CalendarIcon },
+    { id: 'approvals', label: 'Approval', icon: ApprovalsIcon },
+    { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
+    { id: 'consultations', label: 'Consultations', icon: ConsultIcon },
+  ],
+  dentist: [
+    { id: 'dashboard', label: 'Home', icon: HomeIcon },
+    { id: 'records', label: 'Records', icon: RecordsIcon },
+    { id: 'appointments', label: 'Appointments', icon: CalendarIcon },
+    { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
+    { id: 'consultations', label: 'Consultations', icon: ConsultIcon },
+  ],
+  nurse: [
+    { id: 'dashboard', label: 'Home', icon: HomeIcon },
+    { id: 'records', label: 'Records', icon: RecordsIcon },
+    { id: 'appointments', label: 'Appointments', icon: CalendarIcon },
+    { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
+    { id: 'consultations', label: 'Consultations', icon: ConsultIcon },
+  ],
+};
+
+const DEFAULT_MOBILE_ITEMS = [
+  { id: 'dashboard', label: 'Home', icon: HomeIcon },
+  { id: 'records', label: 'Records', icon: RecordsIcon },
+  { id: 'appointments', label: 'Appointments', icon: CalendarIcon },
+  { id: 'examinations', label: 'Exam', icon: ExamIcon },
+  { id: 'approvals', label: 'Approval', icon: ApprovalsIcon },
+  { id: 'consultations', label: 'Consultations', icon: ConsultIcon },
+  { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
+  { id: 'users', label: 'Users', icon: UsersIcon },
+];
+
 // ─── Mobile Bottom Navigation ─────────────────────────────────────────────────
 export const MobileNav = ({
   active = 'dashboard',
   onSwitch,
-  items = [
-    { id: 'dashboard',     label: 'Home',     icon: HomeIcon         },
-    { id: 'records',       label: 'Records',  icon: RecordsIcon      },
-    { id: 'appointments',  label: 'Schedule', icon: CalendarIcon     },
-    { id: 'examinations',  label: 'Exam',     icon: ExamIcon         },
-    { id: 'approvals',     label: 'Approval', icon: ApprovalsIcon    },
-    { id: 'consultations', label: 'Consult',  icon: ConsultIcon      },
-    { id: 'announcements', label: 'Announce', icon: AnnouncementIcon },
-    { id: 'users',         label: 'Users',    icon: UsersIcon        },
-  ],
+  items: propItems,
+  useRoleBased = true,
 }) => {
+  const [userRole, setUserRole] = useState('admin');
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (result.success && result.data?.role) {
+          setUserRole(result.data.role.toLowerCase());
+        }
+      } catch (err) {
+        console.error('Error fetching user role:', err);
+      }
+    };
+    fetchUserRole();
+  }, []);
+
+  const getItems = () => {
+    if (propItems && propItems.length > 0) return propItems;
+    if (!useRoleBased) return DEFAULT_MOBILE_ITEMS;
+    return ROLE_MOBILE_NAV_CONFIG[userRole] || ROLE_MOBILE_NAV_CONFIG.admin;
+  };
+
+  const items = getItems();
   return (
     <nav className="
       absolute bottom-0 left-0 right-0

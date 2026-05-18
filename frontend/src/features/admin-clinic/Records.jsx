@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Records.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, collectionGroup, query, where, orderBy } from 'firebase/firestore';

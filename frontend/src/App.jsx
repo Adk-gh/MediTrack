@@ -22,6 +22,8 @@ import Approvals from './features/admin-clinic/Approvals.jsx';
 import Announcements from './features/admin-clinic/Announcements.jsx';
 import Consultations from './features/admin-clinic/Consultations.jsx';
 import UserManagement from './features/admin-clinic/User-Management.jsx';
+import RecordManagement from './features/admin-clinic/Record-Management.jsx';
+import AuditLogs from './features/admin-clinic/AuditLogs.jsx';
 
 // Features - Students / Instructors / Staffs
 import Meditrack from './features/users/Meditrack.jsx';
@@ -55,25 +57,29 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
 
 // ── Route ↔ Tab maps ──────────────────────────────────────────────────────────
 const ROUTE_TO_TAB = {
-  '/dashboard':     'dashboard',
-  '/records':       'records',
-  '/appointments':  'appointments',
-  '/examinations':  'examinations',
-  '/approvals':     'approvals',
-  '/consultations': 'consultations',
-  '/announcements': 'announcements',
-  '/users':         'users',
+  '/dashboard':        'dashboard',
+  '/records':          'records',
+  '/record-management':'recordManagement',
+  '/audit-logs':       'auditLogs',
+  '/appointments':    'appointments',
+  '/examinations':     'examinations',
+  '/approvals':        'approvals',
+  '/consultations':    'consultations',
+  '/announcements':   'announcements',
+  '/users':            'users',
 };
 
 const TAB_TO_ROUTE = {
-  'dashboard':     '/dashboard',
-  'records':       '/records',
-  'appointments':  '/appointments',
-  'examinations':  '/examinations',
-  'approvals':     '/approvals',
-  'consultations': '/consultations',
-  'announcements': '/announcements',
-  'users':         '/users',
+  'dashboard':        '/dashboard',
+  'records':          '/records',
+  'recordManagement': '/record-management',
+  'auditLogs':        '/audit-logs',
+  'appointments':     '/appointments',
+  'examinations':     '/examinations',
+  'approvals':        '/approvals',
+  'consultations':    '/consultations',
+  'announcements':   '/announcements',
+  'users':            '/users',
 };
 
 // ── Admin Layout Wrapper ───────────────────────────────────────────────────────
@@ -216,6 +222,16 @@ function App() {
           <Route path="/records" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Records /></AdminLayoutWrapper>
+            </ProtectedRoute>
+          } />
+          <Route path="/record-management" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminLayoutWrapper><RecordManagement /></AdminLayoutWrapper>
+            </ProtectedRoute>
+          } />
+          <Route path="/audit-logs" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminLayoutWrapper><AuditLogs /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
           <Route path="/appointments" element={

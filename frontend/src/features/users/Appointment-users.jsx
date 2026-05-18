@@ -19,14 +19,20 @@ const PURPOSES = [
   'Dental', 'Medical Clearance', 'Physical Exam', 'Other',
 ];
 
-const WEEKDAYS_SHORT = ['S','M','T','W','T','F','S'];
-
-function buildCalendarDays(year, month) {
-  return {
-    firstDay:    new Date(year, month - 1, 1).getDay(),
-    daysInMonth: new Date(year, month, 0).getDate(),
+// Exact same time slots from the Admin side
+const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
+  const startH = 7 + i;
+  const endH   = startH + 1;
+  const fmt = (h) => {
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hr     = h % 12 || 12;
+    return `${hr}:00 ${period}`;
   };
-}
+  return {
+    value: `${String(startH).padStart(2, '0')}:00`,
+    label: `${fmt(startH)} – ${fmt(endH)}`,
+  };
+});
 
 // ── Read the logged-in user from localStorage ─────────────────────────────────
 function useCurrentPatient() {
@@ -73,14 +79,6 @@ export default function AppointmentUsers() {
   const { submitRequest, getPatientAppointments, loadingAppts } = useAppointments();
   const currentPatient = useCurrentPatient();
 
-  // ── Calendar nav ──
-  const today = new Date();
-  const [calYear,  setCalYear]  = useState(today.getFullYear());
-  const [calMonth, setCalMonth] = useState(today.getMonth() + 1);
-
-  // ── Calendar tooltip hover state ──
-  const [hoveredDay, setHoveredDay] = useState(null);
-
   // ── Modal / form state ──
   const [showModal,   setShowModal]   = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
@@ -90,6 +88,10 @@ export default function AppointmentUsers() {
   // ── Multi-select purposes ──
   const [selectedPurposes, setSelectedPurposes] = useState([]);
   const [otherPurpose,     setOtherPurpose]     = useState('');
+
+  // ── Schedule selection ──
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState('');
 
   // ── Guard: if no logged-in user, show nothing useful ──
   if (!currentPatient) {
@@ -110,26 +112,6 @@ export default function AppointmentUsers() {
     (appt) => appt.status === 'pending' || appt.status === 'approved'
   );
 
-  // ── Calendar ──
-  const changeMonth = (dir) => {
-    let m = calMonth + dir, y = calYear;
-    if (m > 12) { m = 1;  y++; }
-    if (m < 1)  { m = 12; y--; }
-    setCalMonth(m); setCalYear(y);
-    setHoveredDay(null);
-  };
-
-  const { firstDay, daysInMonth } = buildCalendarDays(calYear, calMonth);
-
-  // Build a map: day → count of approved appointments on that day
-  const approvedCountByDay = useMemo(() => {
-    const map = {};
-    myAppointments
-      .filter(a => a.status === 'approved' && a.year === calYear && a.month === calMonth)
-      .forEach(a => { map[a.day] = (map[a.day] ?? 0) + 1; });
-    return map;
-  }, [myAppointments, calYear, calMonth]);
-
   // ── Checkbox toggle ──
   const togglePurpose = (purpose) => {
     setSelectedPurposes(prev =>
@@ -139,6 +121,30 @@ export default function AppointmentUsers() {
     );
   };
 
+  // ── Helpers ──
+  const getTodayString = () => {
+    const today = new Date();
+    const tzOffset = today.getTimezoneOffset() * 60000;
+    return new Date(today.getTime() - tzOffset).toISOString().split('T')[0];
+  };
+
+  const closeModal = () => {
+    if (submitting) return;
+    setShowModal(false);
+    setSubmitError('');
+    setSelectedPurposes([]);
+    setOtherPurpose('');
+    setSelectedDate('');
+    setSelectedTime('');
+  };
+
+  // Disable submit if fields are missing
+  const canSubmit =
+    selectedPurposes.length > 0 &&
+    !(selectedPurposes.includes('Other') && !otherPurpose.trim()) &&
+    selectedDate !== '' &&
+    selectedTime !== '';
+
   // ── Submit to Firestore ──────────────────────────────────────────────────
   const handleSubmit = async () => {
     const parts = selectedPurposes.map(p =>
@@ -146,25 +152,33 @@ export default function AppointmentUsers() {
     );
     const reason = parts.join(', ');
 
-    if (!reason) {
-      setSubmitError('Please select at least one purpose before submitting.');
+    if (!canSubmit) {
+      setSubmitError('Please complete all required fields.');
       return;
     }
 
     setSubmitting(true);
     setSubmitError('');
 
-    const payload = { ...currentPatient, reason };
-    console.log('[AppointmentUsers] submitRequest payload →', payload);
+    const [year, month, day] = selectedDate.split('-').map(Number);
+
+    const payload = {
+      ...currentPatient,
+      reason,
+      year,
+      month,
+      day,
+      time: selectedTime
+    };
 
     try {
-      const newId = await submitRequest(payload);
-      console.log('[AppointmentUsers] saved OK, Firestore ID →', newId);
-
+      await submitRequest(payload);
       setShowModal(false);
       setSubmitted(true);
       setSelectedPurposes([]);
       setOtherPurpose('');
+      setSelectedDate('');
+      setSelectedTime('');
       setTimeout(() => setSubmitted(false), 4000);
     } catch (err) {
       console.error('[AppointmentUsers] submitRequest threw →', err);
@@ -174,22 +188,17 @@ export default function AppointmentUsers() {
     }
   };
 
-  const closeModal = () => {
-    if (submitting) return;
-    setShowModal(false);
-    setSubmitError('');
-    setSelectedPurposes([]);
-    setOtherPurpose('');
-  };
-
-  // Disable submit if: no purposes selected, or "Other" selected but no text
-  const canSubmit =
-    selectedPurposes.length > 0 &&
-    !(selectedPurposes.includes('Other') && !otherPurpose.trim());
-
+  // ── Format the date label for the list view ──
   const formatApptDate = (appt) => {
-    if (appt.status === 'pending') return 'Awaiting schedule from clinic';
-    return `${MONTHS[appt.month - 1]} ${appt.day}, ${appt.year} at ${appt.time}`;
+    // If year/month/day/time exist, format them. Otherwise show pending generic text.
+    if (!appt.year || !appt.time) {
+       return 'Awaiting schedule from clinic';
+    }
+    const slotInfo = HOUR_SLOTS.find(s => s.value === appt.time);
+    const timeLabel = slotInfo ? slotInfo.label : appt.time;
+    const prefix = appt.status === 'pending' ? 'Requested for' : 'Scheduled for';
+
+    return `${prefix}: ${MONTHS[appt.month - 1]} ${appt.day}, ${appt.year} at ${timeLabel}`;
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -201,14 +210,14 @@ export default function AppointmentUsers() {
         <div className="shrink-0 mx-4 mt-3 px-4 py-2.5 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl
           text-[12px] font-semibold text-[#3B6D11] flex items-center gap-2">
           <i className="fa-solid fa-circle-check"></i>
-          Request submitted! The clinic will assign your schedule soon.
+          Request submitted! The clinic will review your preferred schedule.
         </div>
       )}
 
       {/* Content Wrapper */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        {/* Fixed Upper Section (Action Row, Calendar, Title) */}
+        {/* Fixed Upper Section (Action Row, Title) */}
         <div className="shrink-0 p-5 pb-3 flex flex-col gap-4">
 
           {/* Action row */}
@@ -232,92 +241,8 @@ export default function AppointmentUsers() {
             </button>
           </div>
 
-          {/* Calendar */}
-          <div className="bg-white border border-[#ddeee5] rounded-3xl p-3.5 relative z-10">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-bold text-[#1a2e22]">
-                {MONTHS[calMonth - 1]} {calYear}
-              </span>
-              <div className="flex gap-1.5">
-                <button onClick={() => changeMonth(-1)}
-                  className="w-6 h-6 border border-[#ddeee5] rounded-lg bg-white cursor-pointer text-[#6b8577] text-xs">
-                  &#8249;
-                </button>
-                <button onClick={() => changeMonth(1)}
-                  className="w-6 h-6 border border-[#ddeee5] rounded-lg bg-white cursor-pointer text-[#6b8577] text-xs">
-                  &#8250;
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-7 mb-1">
-              {WEEKDAYS_SHORT.map((d, i) => (
-                <span key={i} className="text-center text-[10px] font-bold text-[#9bb5a5] uppercase py-0.5">{d}</span>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-px">
-              {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
-              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                const isToday = today.getFullYear() === calYear
-                  && (today.getMonth() + 1) === calMonth
-                  && today.getDate() === day;
-                const apptCount = approvedCountByDay[day] ?? 0;
-                const hasAppt   = apptCount > 0;
-                const isHovered = hoveredDay === day;
-
-                return (
-                  <div
-                    key={day}
-                    className={`relative text-center py-1.5 text-xs font-medium rounded-2xl
-                      ${isToday ? 'bg-[#466460] text-white font-bold' : 'text-[#1a2e22] hover:bg-[#e8f5ee]'}
-                      ${hasAppt ? 'cursor-default' : ''}`}
-                    onMouseEnter={() => hasAppt && setHoveredDay(day)}
-                    onMouseLeave={() => setHoveredDay(null)}
-                  >
-                    {day}
-
-                    {/* Dot indicator */}
-                    {hasAppt && (
-                      <span className={`absolute bottom-[2px] left-1/2 -translate-x-1/2
-                        w-[5px] h-[5px] rounded-full ${isToday ? 'bg-white' : 'bg-[#466460]'}`} />
-                    )}
-
-                    {/* Hover tooltip */}
-                    {hasAppt && isHovered && (
-                      <div
-                        className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5
-                          bg-[#1a2e22] text-white text-[9.5px] font-semibold
-                          px-2 py-1 rounded-lg whitespace-nowrap shadow-lg
-                          pointer-events-none"
-                        style={{ minWidth: '80px' }}
-                      >
-                        <i className="fa-solid fa-calendar-check mr-1 text-[#4aab72]"></i>
-                        {apptCount} approved {apptCount === 1 ? 'appt' : 'appts'}
-                        <span
-                          className="absolute top-full left-1/2 -translate-x-1/2"
-                          style={{
-                            width: 0, height: 0,
-                            borderLeft: '5px solid transparent',
-                            borderRight: '5px solid transparent',
-                            borderTop: '5px solid #1a2e22',
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#9bb5a5]">
-              <span className="w-[7px] h-[7px] rounded-full bg-[#466460] inline-block"></span>
-              Approved appointment — hover to see count
-            </div>
-          </div>
-
           {/* Appointments list Header */}
-          <div className="text-[13px] font-bold text-[#1a2e22] mt-1">My Appointment Requests</div>
+          <div className="text-[13px] font-bold text-[#1a2e22]">My Appointment Requests</div>
         </div>
 
         {/* Scrollable Appointments List Section */}
@@ -352,13 +277,13 @@ export default function AppointmentUsers() {
                       </span>
                     </div>
                     <div className={`text-[11px] mt-1 font-medium
-                      ${isPending ? 'text-[#b07020] italic' : 'text-[#3B6D11]'}`}>
+                      ${isPending ? 'text-[#b07020]' : 'text-[#3B6D11]'}`}>
                       <i className={`mr-1 fa-solid ${isPending ? 'fa-hourglass-half' : 'fa-calendar-check'}`}></i>
                       {formatApptDate(appt)}
                     </div>
                     <div className="text-[10px] text-[#9bb5a5] mt-1">
                       <i className="fa-regular fa-clock mr-1"></i>
-                      Requested {new Date(appt.bookedAt).toLocaleString('en-PH', {
+                      Submitted {new Date(appt.bookedAt).toLocaleString('en-PH', {
                         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                       })}
                     </div>
@@ -373,13 +298,13 @@ export default function AppointmentUsers() {
       {/* ── Modal ── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6">
-         <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[80vh] sm:max-h-[92vh]">
+         <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]">
 
             {/* Header — fixed, never scrolls */}
             <div className="bg-[#466460] px-6 py-5 text-white flex-shrink-0">
               <h3 className="font-serif text-xl tracking-wide">Request Appointment</h3>
               <p className="text-[12px] opacity-80 mt-1">
-                The clinic will assign your date &amp; time after review.
+                Select your preferred date and time for the clinic to review.
               </p>
             </div>
 
@@ -397,8 +322,40 @@ export default function AppointmentUsers() {
                 </div>
               </div>
 
-              {/* Purpose — multi-select checkboxes */}
+              {/* Schedule Selection: Date and Time */}
               <div className="flex flex-col gap-2">
+                <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">
+                  Preferred Schedule <span className="normal-case font-normal text-[#9bb5a5]">*</span>
+                </label>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <input
+                      type="date"
+                      min={getTodayString()}
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      disabled={submitting}
+                      className="w-full border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none text-[#1a2e22] focus:border-[#466460] transition-colors disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <select
+                      value={selectedTime}
+                      onChange={(e) => setSelectedTime(e.target.value)}
+                      disabled={submitting}
+                      className="w-full border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none text-[#1a2e22] focus:border-[#466460] transition-colors disabled:opacity-50 appearance-none cursor-pointer"
+                    >
+                      <option value="" disabled>Select Time Slot</option>
+                      {HOUR_SLOTS.map((slot) => (
+                        <option key={slot.value} value={slot.value}>{slot.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Purpose — multi-select checkboxes */}
+              <div className="flex flex-col gap-2 mt-1">
                 <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">
                   Purpose <span className="normal-case font-normal text-[#9bb5a5]">* select all that apply</span>
                 </label>
@@ -459,18 +416,6 @@ export default function AppointmentUsers() {
                     rows="2"
                   />
                 )}
-
-                {/* Selected summary pills */}
-                {selectedPurposes.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {selectedPurposes.map(p => (
-                      <span key={p}
-                        className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#466460] text-white">
-                        {p === 'Other' && otherPurpose ? `Other: ${otherPurpose}` : p}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Info note */}
@@ -478,8 +423,7 @@ export default function AppointmentUsers() {
                 rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">
                 <i className="fa-solid fa-circle-info mt-[1px] shrink-0 text-[13px]"></i>
                 <span>
-                  You don't need to pick a date — the clinic will schedule you
-                  and you'll see the confirmed date &amp; time here once approved.
+                  The clinic must review your preferred schedule. If approved, you will see it confirmed here. If your slot is full, the clinic may adjust your time.
                 </span>
               </div>
 

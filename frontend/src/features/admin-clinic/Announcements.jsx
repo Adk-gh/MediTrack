@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as announcementsService from '../../services/announcements.service';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 // ============================================================
 // FALLBACK DATA & CONFIG
 // ============================================================
@@ -140,6 +142,34 @@ export const Announcements = () => {
 
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const snackbarTimer           = useRef(null);
+
+  // ── Role-based access control ───────────────────────────────────────────────
+  const [userRole, setUserRole] = useState('admin');
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await fetch(`${API_URL}/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (result.success && result.data?.role) {
+          setUserRole(result.data.role.toLowerCase());
+        }
+      } catch (err) {
+        console.error('Error fetching user role:', err);
+      }
+    };
+    fetchUserRole();
+  }, []);
+
+  // Permissions: canManage = admin, doctor, nurse; canView = dentist (read-only)
+  const canManage = ['admin', 'nurse'].includes(userRole);
+  const canEdit = canManage; // Same as canManage
+  const isReadOnly = userRole === 'dentist' || userRole === 'doctor';
 
   // ── CUSTOM HOOK FOR DRAGGING MOBILE DRAWERS ──
   const useDrawerDrag = (onCloseCallback) => {
@@ -309,7 +339,9 @@ export const Announcements = () => {
 
       {/* ── Header Bar ── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-5 pt-4 pb-3 border-b-2 border-[#e0eceb]">
-        <h3 className="font-bold text-base text-[#466460]">Announcements</h3>
+        <h3 className="font-bold text-base text-[#466460]">
+          {canManage ? 'Announcement Management' : 'Announcements'}
+        </h3>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <div className="flex gap-2 w-full sm:w-auto">
             <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="flex-1 sm:flex-none text-[11px] border border-[#e2e8f0] rounded-full px-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600">
@@ -323,9 +355,11 @@ export const Announcements = () => {
               <option value="normal">Normal</option>
             </select>
           </div>
-          <button onClick={() => handleOpenForm()} className="w-full sm:w-auto bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-4 py-2 sm:py-1.5 rounded-full font-semibold text-[11px] cursor-pointer hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5">
-            <i className="fa-solid fa-plus text-[10px]"></i> New Post
-          </button>
+          {canManage && (
+            <button onClick={() => handleOpenForm()} className="w-full sm:w-auto bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-4 py-2 sm:py-1.5 rounded-full font-semibold text-[11px] cursor-pointer hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5">
+              <i className="fa-solid fa-plus text-[10px]"></i> New Post
+            </button>
+          )}
         </div>
       </div>
 
@@ -354,18 +388,20 @@ export const Announcements = () => {
                 {/* ── Text Content (Right Side) ── */}
                 <div className={`flex-1 min-w-0 p-3 sm:p-4 relative flex flex-col justify-center ${!item.image ? 'ml-[3px] pl-4 sm:pl-5' : 'pl-3 sm:pl-4'}`}>
 
-                  {/* Dropdown Menu */}
-                  <div className="absolute top-2.5 right-2 sm:right-3" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)} className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm">
-                      <i className="fa-solid fa-ellipsis"></i>
-                    </button>
-                    {activeMenuId === item.id && (
-                      <div className="absolute right-0 top-9 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-28 py-1">
-                        <button onClick={() => handleOpenForm(item.id)} className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700 flex items-center gap-2"><i className="fa-solid fa-pen-to-square text-[10px]"></i> Edit</button>
-                        <button onClick={() => handleDelete(item.id)} className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600 flex items-center gap-2"><i className="fa-solid fa-trash-can text-[10px]"></i> Delete</button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Dropdown Menu - Only for managers */}
+                  {canManage && (
+                    <div className="absolute top-2.5 right-2 sm:right-3" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)} className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm">
+                        <i className="fa-solid fa-ellipsis"></i>
+                      </button>
+                      {activeMenuId === item.id && (
+                        <div className="absolute right-0 top-9 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-28 py-1">
+                          <button onClick={() => handleOpenForm(item.id)} className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700 flex items-center gap-2"><i className="fa-solid fa-pen-to-square text-[10px]"></i> Edit</button>
+                          <button onClick={() => handleDelete(item.id)} className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600 flex items-center gap-2"><i className="fa-solid fa-trash-can text-[10px]"></i> Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Badges */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-2 pr-8">
