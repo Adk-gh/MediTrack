@@ -1,18 +1,18 @@
-//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\OcrSettings.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
-// Change this to point to your Python Flask server port
-const OCR_SERVICE_URL = import.meta.env.VITE_OCR_SERVICE_URL ||'http://localhost:5001/';
+const OCR_SERVICE_URL = (import.meta.env.VITE_OCR_SERVICE_URL || 'http://localhost:5001').replace(/\/$/, '');
 
 export default function OcrSettings() {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newInstKeyword, setNewInstKeyword] = useState('');
-  // Controlled state for each role's "add keyword" input
   const [newRoleKeywords, setNewRoleKeywords] = useState({});
+  const hasFetched = useRef(false);  // ← stops the fetch loop
 
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
     fetchConfig();
   }, []);
 
@@ -45,8 +45,6 @@ export default function OcrSettings() {
     setSaving(false);
   };
 
-  // ── Institution Keywords ──
-
   const addInstitutionKeyword = () => {
     if (!newInstKeyword.trim()) return;
     setConfig(prev => ({
@@ -63,55 +61,39 @@ export default function OcrSettings() {
     }));
   };
 
-  // ── Role Keywords ──
-
   const addRoleKeyword = (mapIdx) => {
     const value = (newRoleKeywords[mapIdx] || '').trim();
     if (!value) return;
-
-    setConfig(prev => {
-      const newMappings = prev.role_mappings.map((mapping, i) => {
-        if (i !== mapIdx) return mapping;
-        return { ...mapping, keywords: [...mapping.keywords, value.toUpperCase()] };
-      });
-      return { ...prev, role_mappings: newMappings };
-    });
-
-    // Clear only this role's input
+    setConfig(prev => ({
+      ...prev,
+      role_mappings: prev.role_mappings.map((mapping, i) =>
+        i !== mapIdx ? mapping : { ...mapping, keywords: [...mapping.keywords, value.toUpperCase()] }
+      )
+    }));
     setNewRoleKeywords(prev => ({ ...prev, [mapIdx]: '' }));
   };
 
   const removeRoleKeyword = (mapIdx, kwIdx) => {
-    setConfig(prev => {
-      const newMappings = prev.role_mappings.map((mapping, i) => {
-        if (i !== mapIdx) return mapping;
-        return {
-          ...mapping,
-          // ✅ Fixed: filter instead of splice — no direct mutation
-          keywords: mapping.keywords.filter((_, j) => j !== kwIdx)
-        };
-      });
-      return { ...prev, role_mappings: newMappings };
-    });
+    setConfig(prev => ({
+      ...prev,
+      role_mappings: prev.role_mappings.map((mapping, i) =>
+        i !== mapIdx ? mapping : { ...mapping, keywords: mapping.keywords.filter((_, j) => j !== kwIdx) }
+      )
+    }));
   };
 
-  // ── Render ──
+  if (loading) return <div className="p-6 text-slate-500 text-sm">Loading OCR settings...</div>;
 
-  if (loading) return (
-    <div className="p-6 text-slate-500 text-sm">Loading OCR settings...</div>
-  );
-
- if (!config) return (
+  if (!config) return (
     <div className="p-6 text-red-500 text-sm">
-      Failed to connect to OCR Server at: {OCR_SERVICE_URL}
+      Failed to connect to OCR Server at: <strong>{OCR_SERVICE_URL}</strong>
+      <p className="mt-2 text-xs text-slate-500">Make sure the OCR server is running and CORS is enabled.</p>
     </div>
   );
 
-return (
+  return (
     <div className="p-4 sm:p-6 w-full h-full overflow-y-auto">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 max-w-3xl mx-auto">
-
-        {/* ── Header ── */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-bold text-slate-800">OCR Scanner Configuration</h2>
@@ -126,31 +108,19 @@ return (
           </button>
         </div>
 
-        {/* ── Institution Keywords ── */}
         <div className="mb-8">
           <h3 className="text-sm font-bold text-slate-700 mb-1">Institution Triggers</h3>
           <p className="text-xs text-slate-500 mb-3">
             If the ID contains any of these words, the scanner will capture the rest of the line as the school/company name.
           </p>
-
           <div className="flex flex-wrap gap-2 mb-3">
             {config.institution_keywords.map((kw, idx) => (
-              <span
-                key={idx}
-                className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2"
-              >
+              <span key={idx} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
                 {kw}
-                <button
-                  onClick={() => removeInstitutionKeyword(idx)}
-                  className="text-emerald-900 hover:text-red-500"
-                  title="Remove"
-                >
-                  ✕
-                </button>
+                <button onClick={() => removeInstitutionKeyword(idx)} className="text-emerald-900 hover:text-red-500">✕</button>
               </span>
             ))}
           </div>
-
           <div className="flex gap-2 max-w-sm">
             <input
               type="text"
@@ -160,71 +130,46 @@ return (
               placeholder="e.g. DALUBHASAAN"
               className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#466460]"
             />
-            <button
-              onClick={addInstitutionKeyword}
-              className="bg-slate-100 text-slate-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200"
-            >
-              Add
-            </button>
+            <button onClick={addInstitutionKeyword} className="bg-slate-100 text-slate-600 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-200">Add</button>
           </div>
         </div>
 
         <hr className="my-6 border-slate-100" />
 
-        {/* ── Role Mappings ── */}
         <div>
           <h3 className="text-sm font-bold text-slate-700 mb-1">Role Detection Keywords</h3>
           <p className="text-xs text-slate-500 mb-4">
             Keywords used to assign a role to the scanned ID (e.g. "BSIT" = Student). Order matters — first match wins.
           </p>
-
           <div className="grid gap-4">
             {config.role_mappings.map((mapping, mapIdx) => (
               <div key={mapIdx} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-
                 <div className="flex justify-between items-center mb-3">
                   <span className="font-bold text-[#466460] text-sm">
                     {mapping.name}
                     <span className="ml-2 text-xs font-normal text-slate-400">({mapping.id_type})</span>
                   </span>
                 </div>
-
                 <div className="flex flex-wrap gap-2 items-center">
-                  {/* Existing keywords */}
                   {mapping.keywords.map((kw, kwIdx) => (
-                    <span
-                      key={kwIdx}
-                      className="bg-white border border-slate-300 text-slate-600 px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5"
-                    >
+                    <span key={kwIdx} className="bg-white border border-slate-300 text-slate-600 px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5">
                       {kw}
-                      <button
-                        onClick={() => removeRoleKeyword(mapIdx, kwIdx)}
-                        className="hover:text-red-500"
-                        title="Remove"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => removeRoleKeyword(mapIdx, kwIdx)} className="hover:text-red-500">✕</button>
                     </span>
                   ))}
-
-                  {/* Controlled input per role row */}
                   <input
                     type="text"
                     value={newRoleKeywords[mapIdx] || ''}
-                    onChange={e =>
-                      setNewRoleKeywords(prev => ({ ...prev, [mapIdx]: e.target.value }))
-                    }
+                    onChange={e => setNewRoleKeywords(prev => ({ ...prev, [mapIdx]: e.target.value }))}
                     onKeyDown={e => e.key === 'Enter' && addRoleKeyword(mapIdx)}
                     placeholder="+ Add Keyword"
                     className="bg-transparent border border-dashed border-slate-300 rounded-md px-2 py-1 text-[11px] w-28 focus:outline-none focus:border-[#466460]"
                   />
                 </div>
-
               </div>
             ))}
           </div>
         </div>
-
       </div>
     </div>
   );

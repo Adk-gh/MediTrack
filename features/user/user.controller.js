@@ -102,6 +102,7 @@ const setupProfile = async (req, res, next) => {
     next(error);
   }
 };
+
 const checkProfileSetup = async (req, res, next) => {
   try {
     const uid = req.user?.uid;
@@ -127,6 +128,28 @@ const checkProfileSetup = async (req, res, next) => {
   }
 };
 
+/**
+ * CHECK ID EXISTS: Prevents duplicate university IDs during registration
+ */
+const checkIdExists = async (req, res, next) => {
+  try {
+    const { universityId } = req.query;
+
+    if (!universityId) {
+      return res.status(400).json({
+        success: false,
+        message: "University ID is required"
+      });
+    }
+
+    const exists = await userService.checkUniversityId(universityId);
+
+    return res.status(200).json({ exists });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // DON'T FORGET to add it to your exports at the very bottom!
 module.exports = {
   register,
@@ -134,5 +157,6 @@ module.exports = {
   firebaseAuth,
   getProfile,
   setupProfile,
-  checkProfileSetup // <--- Add it here!
+  checkProfileSetup,
+  checkIdExists // <--- Exported here
 };

@@ -17,6 +17,9 @@ const {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// ─── ADDED THIS LINE: Check if University ID exists ───
+router.get("/check-id", userController.checkIdExists);
+
 // Auth & Registration Routes
 router.post("/register", upload.single("image"), validateData(registerSchema), userController.register);
 router.post("/login", validateData(loginSchema), userController.login);
@@ -24,10 +27,7 @@ router.post("/firebase-auth", validateData(firebaseAuthSchema), userController.f
 
 // Profile Routes
 router.get("/profile", authorized, userController.getProfile);
-
-// ─── ADDED THIS LINE to fix the 404 Not Found error ───
 router.get("/profile-setup", authorized, userController.checkProfileSetup);
-
 router.post("/profile-setup", authorized, userController.setupProfile);
 
 // Get all users function

@@ -82,7 +82,13 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
 
   let ocrResponse;
   try {
-    const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
+    // 1. Use process.env for Node.js backend files
+    const baseUrl = process.env.VITE_OCR_SERVICE_URL || 'http://localhost:5001';
+
+    // 2. Explicitly add the /ocr route
+    const ocrUrl = `${baseUrl}/ocr`;
+
+    // 3. Keep .getHeaders() because Node.js requires it for FormData
     ocrResponse = await axios.post(ocrUrl, ocrForm, {
       headers: { ...ocrForm.getHeaders() },
       timeout: 120000,
@@ -107,7 +113,7 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
   }
 
   // ── 2. ID NUMBER MATCHING ────────────────────────────────────────────────
-  const { parsed, raw_text } = ocrData;   // ← raw_text is now pulled here
+  const { parsed, raw_text } = ocrData;
 
   const normalize = (id) => (id || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
   const normalizedInputId = normalize(universityId);
@@ -140,7 +146,7 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
   const role = resolveRole(parsed?.role, raw_text);
   console.log(`>>> [Role] Final role saved to DB: "${role}"`);
 
-  // ── 4. FIRESTORE DUPLICATE CHECK ─────────────────────────────────────────
+  // ── 4. FIRESTORE DUPLICATE CHECK (Double check) ──────────────────────────
   const usersRef = db.collection('users');
   const duplicateIdCheck = await usersRef.where('universityId', '==', ocrId).get();
   if (!duplicateIdCheck.empty) {
@@ -176,9 +182,8 @@ exports.registerUser = async ({ firstName, middleInitial, lastName, suffix, emai
     email: email.toLowerCase(),
     universityId: ocrId,
     isVerified: true,
-    role,               // ← dynamically resolved from OCR (no longer hardcoded)
+    role,               // ← dynamically resolved from OCR
     isProfileSetup: false,
-    // New students default to Regular; updated during profile setup
     studentClassification: role === 'student' ? 'Regular' : '',
     createdAt: new Date().toISOString(),
   };
@@ -238,7 +243,7 @@ exports.setupProfile = async (userId, profileData) => {
     birthday, age, sex, bloodType,
     homeAddress, religion, nationality, civilStatus,
     universityId, department, program, yearLevel, section,
-    studentClassification,  // ← NEW
+    studentClassification,
     classification, jobTitle,
     phoneNumber,
     emergencyContact,
@@ -368,4 +373,15 @@ exports.firebaseLogin = async (idToken) => {
     ...userData,
     token: idToken,
   };
+};
+
+/**
+ * NEW: Checks if a university ID is already registered in the system.
+ */
+exports.checkUniversityId = async (universityId) => {
+  const usersRef = db.collection('users');
+  const snapshot = await usersRef.where('universityId', '==', universityId).get();
+
+  // If the snapshot has documents, the ID is already taken
+  return !snapshot.empty;
 };

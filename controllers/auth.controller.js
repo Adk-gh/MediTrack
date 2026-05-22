@@ -88,10 +88,18 @@ exports.register = async (req, res) => {
 
         let ocrResponse;
         try {
-            const ocrUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001/ocr';
+            // 1. Grab the base URL (Node.js correctly uses process.env)
+            const baseUrl = process.env.VITE_OCR_SERVICE_URL || 'http://localhost:5001';
+
+            // 2. Add the specific route we need
+            const ocrUrl = `${baseUrl}/ocr`;
+
+            // 3. Send to Python (getHeaders is required in Node.js!)
             ocrResponse = await axios.post(ocrUrl, ocrForm, {
-                headers: { ...ocrForm.getHeaders() }
+                headers: { ...ocrForm.getHeaders() },
+                timeout: 120000 // Keeping your timeout is a great idea for cloud AI!
             });
+
         } catch (ocrErr) {
             console.error('OCR service error:', ocrErr.message);
             return res.status(502).json({ success: false, message: 'ID verification service is unavailable.' });

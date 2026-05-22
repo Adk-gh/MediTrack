@@ -14,7 +14,7 @@
 * [ ] caching (redis/ sql lite)
 * [ ] make it role based access.
 * [ ] add records management for the admin, logs,&#x20;
-* [ ] add ui for the meditrack
+* [ ] add ui for the meditrackocr
 
 Signup:
 
@@ -125,6 +125,7 @@ Role Management
 | Dashboard                           |          |                 |                |                 | ❌                       |
 | User Management                     |          | ❌               | ❌              | ❌               | ❌                       |
 | Audit Logs                          |          | ❌               | ❌              | ❌               | ❌                       |
+| Ocr Settings                        |          | ❌               | ❌              | ❌               | ❌                       |
 | Record Management (All)             |          | ❌               | ❌              | ❌               | ❌                       |
 | Records                             | ❌        | (Medical Exams) | (Dental Exams) | (Medical Exams) | ❌                       |
 | Appointments / Queue                | ❌        |                 |                |                 | ❌                       |
