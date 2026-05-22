@@ -86,11 +86,27 @@ const logout = () => {
   localStorage.removeItem("token");
 };
 
+// --- NEW FUNCTION TO CHECK IF ID EXISTS ---
+const checkIdExists = async (universityId) => {
+  try {
+    const response = await fetch(`${API_URL}/user/check-id?universityId=${universityId}`);
+    if (!response.ok) {
+      throw new Error("Network response was not ok");
+    }
+    const data = await response.json();
+    return data.exists; // Expects backend to return { exists: true/false }
+  } catch (error) {
+    console.error("Error checking ID:", error);
+    throw new Error("Failed to verify University ID with the server.");
+  }
+};
+
 export default {
   register,
   login,
   getProfile,
   firebaseAuth,
   getCurrentUser,
-  logout
+  logout,
+  checkIdExists // Don't forget to export it!
 };

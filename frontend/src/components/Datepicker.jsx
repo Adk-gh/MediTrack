@@ -133,7 +133,7 @@ export default function BirthdayPicker({ value, onChange, error }) {
 
   const displayLabel = value
     ? (() => { const p = parse(value); return `${MONTH_FULL[p.month-1]} ${p.day}, ${p.year}`; })()
-    : 'Select birthday';
+    : 'Select Date';
 
   const inputCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] outline-none focus:border-[#4a635d] bg-white transition-colors";
 
@@ -164,7 +164,7 @@ export default function BirthdayPicker({ value, onChange, error }) {
 
             {/* Header */}
             <div style={{ padding: '12px 16px 8px', textAlign: 'center', borderBottom: '1px solid #e2f0ea' }}>
-           
+
               <p style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: '#1a2e22' }}>
                 {MONTH_FULL[selMonth - 1]} {String(selDay).padStart(2,'0')}, {selYear}
               </p>

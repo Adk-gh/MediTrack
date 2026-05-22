@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, updateEmail } from 'firebase/auth';
 import { auth, db } from '../../firebase';
 import BirthdayPicker from '../../components/Datepicker.jsx';
 
@@ -134,7 +134,7 @@ export default function ProfileUsers({ onLogout }) {
       booster2: { vaccineName: '', date: '' },
     },
     dentalHistory: {
-      lastVisit: '', prevDentist: '', physician: '', teethUpper: '', teethLower: '',
+      lastVisit: '', prevDentist: '', physician: '',
       procedures: {}
     }
   });
@@ -188,8 +188,6 @@ export default function ProfileUsers({ onLogout }) {
                 lastVisit:   d.dentalHistory?.lastVisit   || '',
                 prevDentist: d.dentalHistory?.prevDentist || '',
                 physician:   d.dentalHistory?.physician   || '',
-                teethUpper:  d.dentalHistory?.teethUpper  || '',
-                teethLower:  d.dentalHistory?.teethLower  || '',
                 procedures:  d.dentalHistory?.procedures  || {},
               }
             });
@@ -216,7 +214,7 @@ export default function ProfileUsers({ onLogout }) {
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+    setTimeout(() => setToast(null), 3500);
   };
 
   // ── Navigate to Settings page ────────────────────────────────────────────
@@ -239,16 +237,35 @@ export default function ProfileUsers({ onLogout }) {
     try {
       const user = auth.currentUser;
       if (user) {
+
+        // 1. Update Email in Firebase Auth if it changed
+        if (editData.email && editData.email !== profile.email) {
+          try {
+            await updateEmail(user, editData.email);
+          } catch (emailErr) {
+            if (emailErr.code === 'auth/requires-recent-login') {
+              showToast('Security alert: Please sign out and sign back in to change your email.');
+              setIsSaving(false);
+              return;
+            } else {
+              showToast(`Error updating email: ${emailErr.message}`);
+              setIsSaving(false);
+              return;
+            }
+          }
+        }
+
+        // 2. Update Firestore
         await updateDoc(doc(db, 'users', user.uid), editData);
         setProfile(editData);
         showToast('Profile updated successfully!');
+        closeEdit();
       }
     } catch (err) {
       console.error('Error updating profile:', err);
       showToast('Error updating profile.');
     }
     setIsSaving(false);
-    closeEdit();
   };
 
   // ── Document upload handlers ─────────────────────────────────────────────
@@ -415,14 +432,7 @@ export default function ProfileUsers({ onLogout }) {
         <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} />
         <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} />
         <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} />
-        <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} />
-        <InfoRow
-          label="Teeth Present"
-          value={(profile.dentalHistory.teethUpper || profile.dentalHistory.teethLower)
-            ? `Upper: ${profile.dentalHistory.teethUpper || 0}, Lower: ${profile.dentalHistory.teethLower || 0}`
-            : ''}
-          last
-        />
+        <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} last />
       </Card>
 
       {/* ── Health Documents ── */}
@@ -618,10 +628,13 @@ export default function ProfileUsers({ onLogout }) {
               {/* ── Contact Section ── */}
               {editingSection === 'contact' && (
                 <>
+                  <FormGroup label="Email Address">
+                    <input style={inputStyle} type="email" value={editData.email} onChange={e => handleChange('email', e.target.value)} />
+                  </FormGroup>
                   <FormGroup label="Phone Number">
                     <input style={inputStyle} value={editData.phoneNumber} onChange={e => handleChange('phoneNumber', e.target.value)} />
                   </FormGroup>
-                  <p style={{ fontSize: 11, color: '#9bb5a5', marginTop: -4 }}>Email address can only be changed in account settings.</p>
+                  <p style={{ fontSize: 11, color: '#9bb5a5', marginTop: -4 }}>Note: Changing your email may require you to verify your identity by signing in again.</p>
                 </>
               )}
 
@@ -652,7 +665,7 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
-              {/* ── Dental History Section ── */}
+              {/* ── Dental History Section (EDITED) ── */}
               {editingSection === 'dental' && (
                 <>
                   <FormGroup label="Last Dental Visit">
@@ -664,14 +677,7 @@ export default function ProfileUsers({ onLogout }) {
                   <FormGroup label="Physician (Dr.)">
                     <input style={inputStyle} value={editData.dentalHistory.physician} placeholder="e.g. Doe" onChange={e => handleDentalChange('physician', e.target.value)} />
                   </FormGroup>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <FormGroup label="Teeth Present (Upper)">
-                      <input type="number" min="0" max="16" style={inputStyle} value={editData.dentalHistory.teethUpper} onChange={e => handleDentalChange('teethUpper', e.target.value)} />
-                    </FormGroup>
-                    <FormGroup label="Teeth Present (Lower)">
-                      <input type="number" min="0" max="16" style={inputStyle} value={editData.dentalHistory.teethLower} onChange={e => handleDentalChange('teethLower', e.target.value)} />
-                    </FormGroup>
-                  </div>
+
                   <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '16px 0 10px 0', textTransform: 'uppercase', borderTop: '1px solid #ddeee5', paddingTop: 16 }}>Procedures History</p>
                   {DENTAL_PROCEDURES.map(proc => {
                     const isYes = editData.dentalHistory.procedures?.[proc] === 'Yes';

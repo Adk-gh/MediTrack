@@ -1,4 +1,4 @@
-// C:\Users\HP\MediTrack\frontend\src\features\SignupForm.jsx
+// frontend/src/features/SignupForm.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
@@ -6,9 +6,9 @@ import authService from '../services/auth.service.js';
 import { registerSchema, getFieldErrors } from '../validation/schemas.js';
 import LoadingAnimation from '../components/LoadingAnimation.jsx';
 
-// Clean SVG to replace the ID card emoji
 const IdCardIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="32" height="32" style={{ marginBottom: 8 }}>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+    strokeLinecap="round" strokeLinejoin="round" width="28" height="28">
     <rect x="3" y="4" width="18" height="16" rx="3" ry="3" />
     <line x1="16" y1="2" x2="16" y2="4" />
     <line x1="8" y1="2" x2="8" y2="4" />
@@ -24,14 +24,8 @@ const SignupForm = () => {
   const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
-    firstName: '',
-    middleInitial: '',
-    lastName: '',
-    suffix: '',
-    email: '',
-    universityId: '',
-    password: '',
-    confirmPassword: '',
+    firstName: '', middleInitial: '', lastName: '', suffix: '',
+    email: '', universityId: '', password: '', confirmPassword: '',
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -54,29 +48,21 @@ const SignupForm = () => {
     }
   }, [formData, touched]);
 
-  const handleBlur = (field) => {
-    setTouched(prev => ({ ...prev, [field]: true }));
-  };
-
+  const handleBlur = (field) => setTouched(prev => ({ ...prev, [field]: true }));
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setSelectedFile(e.dataTransfer.files[0]);
-    }
+    e.preventDefault(); setIsDragging(false);
+    if (e.dataTransfer.files?.[0]) setSelectedFile(e.dataTransfer.files[0]);
   };
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) setSelectedFile(e.target.files[0]);
+    if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
   };
   const triggerFileInput = () => fileInputRef.current.click();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
-
+    setError(''); setSuccess('');
     const validation = registerSchema.safeParse(formData);
     if (!validation.success) {
       const errors = getFieldErrors(registerSchema, formData);
@@ -86,39 +72,27 @@ const SignupForm = () => {
       setError(firstError || "Please check your inputs. Some fields are invalid.");
       return;
     }
-
-    if (formData.password !== formData.confirmPassword) {
-      return setError('Passwords do not match!');
-    }
-    if (!selectedFile) {
-      return setError('Please upload a photo of your University ID.');
-    }
-
+    if (formData.password !== formData.confirmPassword) return setError('Passwords do not match!');
+    if (!selectedFile) return setError('Please upload a photo of your University ID.');
     setLoading(true);
-    setIsScanning(true);
-
     try {
-     // In handleSubmit — make sure ALL required fields are appended
-const data = new FormData();
-data.append('firstName', formData.firstName);
-data.append('lastName', formData.lastName);
-data.append('email', formData.email);
-data.append('password', formData.password);
-data.append('universityId', formData.universityId);
-data.append('image', selectedFile);
-if (formData.middleInitial) data.append('middleInitial', formData.middleInitial);
-if (formData.suffix) data.append('suffix', formData.suffix);
-
+      const isIdUsed = await authService.checkIdExists(formData.universityId);
+      if (isIdUsed) { setLoading(false); return setError('This University ID is already registered.'); }
+      setIsScanning(true);
+      const data = new FormData();
+      data.append('firstName', formData.firstName);
+      data.append('lastName', formData.lastName);
+      data.append('email', formData.email);
+      data.append('password', formData.password);
+      data.append('universityId', formData.universityId);
+      data.append('image', selectedFile);
+      if (formData.middleInitial) data.append('middleInitial', formData.middleInitial);
+      if (formData.suffix) data.append('suffix', formData.suffix);
       await authService.register(data);
       await new Promise(r => setTimeout(r, 1500));
-
       setIsScanning(false);
       setSuccess('Registration Successful! Your University ID has been verified. Redirecting...');
-
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
-
+      setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
       setIsScanning(false);
       setError(err.message || 'An error occurred during registration.');
@@ -133,28 +107,33 @@ if (formData.suffix) data.append('suffix', formData.suffix);
 
       <style>{`
         @keyframes lf-spin { to { transform: rotate(360deg); } }
+        @keyframes m-fadeUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes m-fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes m-slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
         .lf-spinner {
-          display: inline-block;
-          width: 15px; height: 15px;
+          display: inline-block; width: 15px; height: 15px;
           border: 2.5px solid rgba(255,255,255,0.35);
-          border-top-color: #fff;
-          border-radius: 50%;
+          border-top-color: #fff; border-radius: 50%;
           animation: lf-spin 0.7s linear infinite;
-          vertical-align: middle;
-          margin-right: 8px;
+          vertical-align: middle; margin-right: 8px;
         }
-        .lf-mobile-only  { display: none !important; }
-        .lf-desktop-only { display: block !important; }
+
+        /* ── Visibility ── */
+        .lf-desktop-wrapper { display: block; }
+        .lf-mobile-wrapper  { display: none; }
         @media (max-width: 640px) {
-          .lf-mobile-only  { display: flex !important; }
-          .lf-desktop-only { display: none  !important; }
-          .lf-desktop-wrapper { display: none  !important; }
-          .lf-mobile-wrapper  { display: flex  !important; }
+          .lf-desktop-wrapper { display: none !important; }
+          .lf-mobile-wrapper  { display: flex !important; }
         }
-        @media (min-width: 641px) {
-          .lf-desktop-wrapper { display: block !important; }
-          .lf-mobile-wrapper  { display: none  !important; }
-        }
+
+        /* ── Desktop (unchanged) ── */
         .lf-error {
           margin-bottom: 15px; padding: 8px;
           background: #fef2f2; border: 1px solid #fecaca;
@@ -180,13 +159,6 @@ if (formData.suffix) data.append('suffix', formData.suffix);
           transition: border-color 0.2s; font-family: inherit;
         }
         .lf-desktop-input:focus { border-color: #4a635d; }
-        .lf-desktop-select {
-          width: 100%; padding: 10px 15px;
-          border: 1.5px solid #cbd5d1; border-radius: 50px;
-          font-size: 13px; outline: none; background: white;
-          transition: border-color 0.2s; font-family: inherit; cursor: pointer;
-        }
-        .lf-desktop-select:focus { border-color: #4a635d; }
         .lf-desktop-row { display: flex; gap: 12px; margin-bottom: 10px; }
         .lf-desktop-row .lf-field { flex: 1; margin-bottom: 0; }
         .lf-desktop-actions {
@@ -211,66 +183,164 @@ if (formData.suffix) data.append('suffix', formData.suffix);
         }
         .lf-desktop-dropzone.dragging { border-color: #557a5b; background: #f0fdf4; transform: scale(1.02); }
         .lf-desktop-dropzone span { font-size: 13px; font-weight: 500; color: #557a5b; }
+
+        /* ════════════════════════════════════
+           MOBILE — redesigned native shell
+        ════════════════════════════════════ */
         @media (max-width: 640px) {
           .lf-mobile-wrapper {
-            position: fixed; inset: 0; flex-direction: column;
-            background: #f0f2f1; overflow-y: auto;
-            -webkit-overflow-scrolling: touch; z-index: 0;
+            position: fixed; inset: 0;
+            flex-direction: column;
+            background: #F2F4F3;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
           }
-          .lf-hero {
-            position: relative; background: #2d5a52;
-            padding: 56px 28px 40px; overflow: hidden; flex-shrink: 0;
+
+          /* ── Top bar ── */
+          .m-topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 20px 24px 0; flex-shrink: 0;
+            animation: m-fadeIn 0.4s ease both;
           }
-          .lf-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; position: relative; z-index: 1; }
-          .lf-brand-icon {
-            width: 34px; height: 34px; background: rgba(255,255,255,0.15);
-            border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff;
+          .m-logo-wrap { display: flex; align-items: center; gap: 10px; }
+          .m-logo-img { height: 32px; border-radius: 8px; }
+          .m-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
+          .m-step-badge {
+            background: #E4EFED; border-radius: 20px;
+            padding: 5px 12px; font-size: 12px;
+            font-weight: 600; color: #3D7A6F;
           }
-          .lf-brand-name { font-size: 17px; font-weight: 700; color: #fff; }
-          .lf-hero-title { font-size: 28px; font-weight: 700; color: #fff; line-height: 1.2; margin-bottom: 8px; position: relative; z-index: 1; }
-          .lf-hero-sub { font-size: 13px; color: rgba(255,255,255,0.7); position: relative; z-index: 1; }
-          .lf-card {
+
+          /* ── Hero ── */
+          .m-hero {
+            padding: 32px 28px 24px; flex-shrink: 0;
+            animation: m-fadeUp 0.5s ease 0.1s both;
+          }
+          .m-eyebrow {
+            font-size: 12px; font-weight: 600; color: #4A8C82;
+            letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 10px;
+          }
+          .m-title {
+            font-size: 30px; font-weight: 800; color: #1A2E2B;
+            line-height: 1.15; letter-spacing: -0.6px; margin-bottom: 8px;
+          }
+          .m-subtitle { font-size: 14px; color: #6B8580; line-height: 1.5; }
+
+          /* ── Card ── */
+          .m-card {
             background: #fff; border-radius: 28px 28px 0 0;
-            padding: 32px 24px 48px; flex: 1; margin-top: -8px;
-            box-shadow: 0 -4px 24px rgba(0,0,0,0.06);
+            padding: 32px 24px 56px; flex: 1;
+            box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
+            animation: m-fadeUp 0.5s ease 0.2s both;
           }
-          .lf-label-mobile {
-            display: block; font-size: 11px; font-weight: 700;
-            letter-spacing: 0.8px; text-transform: uppercase; color: #888; margin-bottom: 8px;
+
+          /* ── Section header inside card ── */
+          .m-section-title {
+            font-size: 11.5px; font-weight: 700; letter-spacing: 1px;
+            text-transform: uppercase; color: #A0B8B4;
+            margin: 0 0 14px; padding-bottom: 10px;
+            border-bottom: 1px solid #F0F4F3;
           }
-          .lf-input-wrap {
-            align-items: center; background: #f4f6f5; border-radius: 14px;
-            border: 1.5px solid transparent; transition: border-color 0.2s, background 0.2s; overflow: hidden;
-            margin-bottom: 16px; display: flex;
+          .m-section-title:not(:first-of-type) { margin-top: 24px; }
+
+          /* ── Alerts ── */
+          .m-error {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 14px; margin-bottom: 20px;
+            background: #FFF0F0; border-radius: 14px;
+            border: 1px solid #FFCCCC;
+            animation: m-slideDown 0.3s ease;
           }
-          .lf-input-wrap:focus-within { border-color: #2d5a52; background: #fff; }
-          .lf-input-mobile {
+          .m-error-icon {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: #FF4444; display: flex; align-items: center;
+            justify-content: center; flex-shrink: 0;
+          }
+          .m-error-text { font-size: 13.5px; color: #C0392B; font-weight: 500; line-height: 1.4; }
+          .m-success {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 14px; margin-bottom: 20px;
+            background: #EDFAF4; border-radius: 14px;
+            border: 1px solid #A7EED0;
+            animation: m-slideDown 0.3s ease;
+          }
+          .m-success-icon {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: #22C77A; display: flex; align-items: center;
+            justify-content: center; flex-shrink: 0;
+          }
+          .m-success-text { font-size: 13.5px; color: #0A7850; font-weight: 500; line-height: 1.4; }
+
+          /* ── Field ── */
+          .m-field { margin-bottom: 12px; }
+          .m-field-label {
+            font-size: 11.5px; font-weight: 700; letter-spacing: 0.7px;
+            text-transform: uppercase; color: #8AA09C; margin-bottom: 7px; display: block;
+          }
+
+          /* ── Input pill ── */
+          .m-input-pill {
+            display: flex; align-items: center;
+            background: #F4F7F6; border-radius: 14px;
+            border: 1.5px solid transparent;
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+          }
+          .m-input-pill:focus-within {
+            border-color: #3D7A6F; background: #fff;
+            box-shadow: 0 0 0 4px rgba(61,122,111,0.1);
+          }
+          .m-pill-input {
             flex: 1; border: none; background: transparent; outline: none;
-            font-size: 14px; font-family: inherit; color: #1a1a1a; padding: 14px 16px;
+            font-size: 15px; font-family: inherit; color: #1A2E2B;
+            padding: 13px 14px;
           }
-          .lf-input-mobile::placeholder { color: #b0b8b5; }
-          .lf-select-mobile {
-            flex: 1; border: none; background: transparent; outline: none;
-            font-size: 14px; font-family: inherit; color: #1a1a1a; padding: 14px 16px;
-            cursor: pointer;
+          .m-pill-input::placeholder { color: #B5C8C5; }
+          .m-pill-btn {
+            background: none; border: none; cursor: pointer;
+            padding: 0 14px; display: flex; align-items: center;
+            color: #A0B8B4; transition: color 0.2s; flex-shrink: 0;
           }
-          .lf-eye-btn { background: none; border: none; cursor: pointer; padding: 0 14px; display: flex; align-items: center; color: #aaa; }
-          .lf-dropzone-mobile {
-            background: #f4f6f5; border-radius: 14px; border: 1.5px dashed #cbd5d1;
-            padding: 20px 12px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 16px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+          .m-pill-btn:hover { color: #3D7A6F; }
+
+          /* ── Row layout ── */
+          .m-row { display: flex; gap: 10px; }
+          .m-row .m-field { flex: 1; }
+
+          /* ── Dropzone ── */
+          .m-dropzone {
+            background: #F4F7F6; border-radius: 16px;
+            border: 1.5px dashed #C5D5D2;
+            padding: 22px 16px; text-align: center;
+            cursor: pointer; transition: all 0.2s;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 6px;
           }
-          .lf-dropzone-mobile.dragging { border-color: #2d5a52; background: #ecfdf5; transform: scale(1.01); }
-          .lf-file-preview { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #2d5a52; }
-          .lf-btn-primary-mobile {
-            width: 100%; padding: 16px; border-radius: 50px; border: none;
-            background: #2d5a52; color: #fff; font-size: 15px; font-weight: 700; font-family: inherit;
-            cursor: pointer; transition: opacity 0.2s, transform 0.15s; margin-top: 8px; margin-bottom: 24px;
+          .m-dropzone.dragging { border-color: #3D7A6F; background: #EAF5F1; transform: scale(1.01); }
+          .m-dropzone-icon { color: #8AA09C; margin-bottom: 4px; }
+          .m-dropzone-title { font-size: 14px; font-weight: 600; color: #2D5C52; }
+          .m-dropzone-hint { font-size: 12px; color: #A0B8B4; }
+          .m-file-preview {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13.5px; font-weight: 600; color: #2D5C52;
           }
-          .lf-btn-primary-mobile:active:not(:disabled) { transform: scale(0.98); }
-          .lf-btn-primary-mobile:disabled { opacity: 0.6; cursor: not-allowed; }
-          .lf-footer-text { text-align: center; font-size: 13px; color: #888; }
-          .lf-footer-link { color: #2d5a52; font-weight: 700; text-decoration: none; }
+
+          /* ── Primary CTA ── */
+          .m-btn-primary {
+            width: 100%; padding: 17px; border-radius: 18px; border: none;
+            background: #2D5C52; color: #fff;
+            font-size: 16px; font-weight: 700; font-family: inherit;
+            cursor: pointer; letter-spacing: 0.1px;
+            transition: transform 0.15s, background 0.2s;
+            margin-top: 8px; margin-bottom: 24px;
+            -webkit-tap-highlight-color: transparent;
+          }
+          .m-btn-primary:active:not(:disabled) { transform: scale(0.97); }
+          .m-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+          /* ── Footer ── */
+          .m-footer { text-align: center; font-size: 13.5px; color: #8AA09C; }
+          .m-footer a { color: #2D5C52; font-weight: 700; text-decoration: none; }
         }
       `}</style>
 
@@ -280,8 +350,6 @@ if (formData.suffix) data.append('suffix', formData.suffix);
           <form onSubmit={handleSubmit}>
             {error && <div className="lf-error">{error}</div>}
             {success && <div className="lf-success">{success}</div>}
-
-            {/* Row 1: First Name | M.I. | Last Name */}
             <div className="lf-desktop-row" style={{ gap: '10px' }}>
               <div className="lf-field" style={{ flex: 4 }}>
                 <label htmlFor="firstName" className="lf-desktop-label">First Name</label>
@@ -296,8 +364,6 @@ if (formData.suffix) data.append('suffix', formData.suffix);
                 <input id="lastName" type="text" required disabled={loading} className="lf-desktop-input" placeholder="Last Name" value={formData.lastName} onChange={handleChange} />
               </div>
             </div>
-
-            {/* Row 2: Suffix + University ID side by side */}
             <div className="lf-desktop-row" style={{ gap: '10px' }}>
               <div className="lf-field" style={{ flex: 1 }}>
                 <label htmlFor="suffix" className="lf-desktop-label">Suffix <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
@@ -308,24 +374,17 @@ if (formData.suffix) data.append('suffix', formData.suffix);
                 <input id="universityId" type="text" required disabled={loading} className="lf-desktop-input" placeholder="University ID" value={formData.universityId} onChange={handleChange} />
               </div>
             </div>
-
             <div className="lf-field">
               <label htmlFor="email" className="lf-desktop-label">Email</label>
               <input id="email" type="email" required disabled={loading} className="lf-desktop-input" placeholder="you@gmail.com" value={formData.email} onChange={handleChange} />
             </div>
-
             <div className="lf-field">
               <label className="lf-desktop-label">Upload University ID (Photo)</label>
               <div onClick={triggerFileInput} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`lf-desktop-dropzone ${isDragging ? 'dragging' : ''}`}>
                 <input type="file" accept="image/*" required={!selectedFile} onChange={handleFileChange} ref={fileInputRef} className="hidden" />
-                {selectedFile ? (
-                  <span>✓ {selectedFile.name}</span>
-                ) : (
-                  <span><span className="text-[#557a5b] font-bold">Click to upload</span> or drag & drop your University ID photo</span>
-                )}
+                {selectedFile ? <span>✓ {selectedFile.name}</span> : <span><span className="text-[#557a5b] font-bold">Click to upload</span> or drag & drop your University ID photo</span>}
               </div>
             </div>
-
             <div className="lf-desktop-row">
               <div className="lf-field">
                 <input id="password" type="password" placeholder="Password" required disabled={loading} className="lf-desktop-input" value={formData.password} onChange={handleChange} />
@@ -334,7 +393,6 @@ if (formData.suffix) data.append('suffix', formData.suffix);
                 <input id="confirmPassword" type="password" placeholder="Confirm Password" required disabled={loading} className="lf-desktop-input" value={formData.confirmPassword} onChange={handleChange} />
               </div>
             </div>
-
             <div className="lf-desktop-actions">
               <button type="submit" disabled={loading} className="lf-btn-primary-desktop">
                 {loading && <span className="lf-spinner" />}
@@ -351,130 +409,178 @@ if (formData.suffix) data.append('suffix', formData.suffix);
 
       {/* ══════════════════════ MOBILE ══════════════════════ */}
       <div className="lf-mobile-wrapper">
-        <div className="lf-hero">
-          <div className="lf-brand">
-            <div className="lf-brand lf-hero-brand">
-            <img
-              src="/logo1.jpg"
-              alt="MediTrack Logo"
-              className="lf-brand-name"
-              style={{ height: "40px" }}
-            />
-          </div>
 
+        {/* Top bar */}
+        <div className="m-topbar">
+          <div className="m-logo-wrap">
+            {/* <img src="/logo1.jpg" alt="MediTrack" className="m-logo-img" /> */}
+            <span className="m-logo-name">MediTrack</span>
           </div>
-          <h1 className="lf-hero-title">Create account</h1>
-          <p className="lf-hero-sub">Register with your university credentials</p>
+          <span className="m-step-badge">New account</span>
         </div>
-        <div className="lf-card">
+
+        {/* Hero */}
+        <div className="m-hero">
+          <p className="m-eyebrow">Health Portal</p>
+          <h1 className="m-title">Create your<br />account.</h1>
+          <p className="m-subtitle">Register with your university credentials to get started.</p>
+        </div>
+
+        {/* Card */}
+        <div className="m-card">
           <form onSubmit={handleSubmit}>
-            {error && <div className="lf-error">{error}</div>}
-            {success && <div className="lf-success">{success}</div>}
+            {error && (
+              <div className="m-error">
+                <div className="m-error-icon">
+                  <svg viewBox="0 0 12 12" fill="none" width="10" height="10">
+                    <path d="M6 3v3M6 8.5v.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <p className="m-error-text">{error}</p>
+              </div>
+            )}
+            {success && (
+              <div className="m-success">
+                <div className="m-success-icon">
+                  <svg viewBox="0 0 12 12" fill="none" width="10" height="10">
+                    <path d="M2.5 6l2.5 2.5 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <p className="m-success-text">{success}</p>
+              </div>
+            )}
 
-            {/* First Name + M.I. */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div className="lf-field" style={{ flex: 3 }}>
-                <label className="lf-label-mobile">First Name</label>
-                <div className="lf-input-wrap">
-                  <input id="firstName" type="text" className="lf-input-mobile" placeholder="First Name" value={formData.firstName} onChange={handleChange} required autoComplete="given-name" />
+            {/* Personal info section */}
+            <p className="m-section-title">Personal info</p>
+
+            {/* First name + MI */}
+            <div className="m-row">
+              <div className="m-field" style={{ flex: 3 }}>
+                <label className="m-field-label">First name</label>
+                <div className="m-input-pill">
+                  <input id="firstName" type="text" className="m-pill-input" placeholder="First name"
+                    value={formData.firstName} onChange={handleChange} required autoComplete="given-name" />
                 </div>
               </div>
-              <div className="lf-field" style={{ flex: 1 }}>
-                <label className="lf-label-mobile" style={{ whiteSpace: 'nowrap' }}>M.I.</label>
-                <div className="lf-input-wrap">
-                  <input id="middleInitial" type="text" maxLength="1" className="lf-input-mobile text-center px-2" placeholder="A" value={formData.middleInitial} onChange={handleChange} />
+              <div className="m-field" style={{ flex: 1 }}>
+                <label className="m-field-label">M.I.</label>
+                <div className="m-input-pill">
+                  <input id="middleInitial" type="text" maxLength="1" className="m-pill-input"
+                    style={{ textAlign: 'center', paddingLeft: 8, paddingRight: 8 }}
+                    placeholder="A" value={formData.middleInitial} onChange={handleChange} />
                 </div>
               </div>
             </div>
 
-            {/* Last Name */}
-            <div className="lf-field">
-              <label className="lf-label-mobile">Last Name</label>
-              <div className="lf-input-wrap">
-                <input id="lastName" type="text" className="lf-input-mobile" placeholder="Last Name" value={formData.lastName} onChange={handleChange} required autoComplete="family-name" />
+            {/* Last name */}
+            <div className="m-field">
+              <label className="m-field-label">Last name</label>
+              <div className="m-input-pill">
+                <input id="lastName" type="text" className="m-pill-input" placeholder="Last name"
+                  value={formData.lastName} onChange={handleChange} required autoComplete="family-name" />
               </div>
             </div>
 
-            {/* Suffix + University ID side by side */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div className="lf-field" style={{ flex: 1 }}>
-                <label className="lf-label-mobile">Suffix <span style={{ fontSize: 10, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opt.)</span></label>
-                <div className="lf-input-wrap">
-                  <input id="suffix" type="text" className="lf-input-mobile" placeholder="e.g. Jr." value={formData.suffix} onChange={handleChange} autoComplete="honorific-suffix" />
+            {/* Suffix + University ID */}
+            <div className="m-row">
+              <div className="m-field" style={{ flex: 1 }}>
+                <label className="m-field-label">Suffix <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>(opt.)</span></label>
+                <div className="m-input-pill">
+                  <input id="suffix" type="text" className="m-pill-input" placeholder="Jr."
+                    value={formData.suffix} onChange={handleChange} />
                 </div>
               </div>
-              <div className="lf-field" style={{ flex: 2 }}>
-                <label className="lf-label-mobile">University ID</label>
-                <div className="lf-input-wrap">
-                  <input id="universityId" type="text" className="lf-input-mobile" placeholder="e.g. 2021-XXXXX" value={formData.universityId} onChange={handleChange} required autoComplete="off" />
+              <div className="m-field" style={{ flex: 2 }}>
+                <label className="m-field-label">University ID</label>
+                <div className="m-input-pill">
+                  <input id="universityId" type="text" className="m-pill-input" placeholder="2021-XXXXX"
+                    value={formData.universityId} onChange={handleChange} required autoComplete="off" />
                 </div>
               </div>
             </div>
+
+            {/* Account section */}
+            <p className="m-section-title">Account details</p>
 
             {/* Email */}
-            <div className="lf-field">
-              <label className="lf-label-mobile">Email</label>
-              <div className="lf-input-wrap">
-                <input id="email" type="email" className="lf-input-mobile" placeholder="you@plsp.edu.ph" value={formData.email} onChange={handleChange} required autoComplete="email" inputMode="email" />
+            <div className="m-field">
+              <label className="m-field-label">Email</label>
+              <div className="m-input-pill">
+                <input id="email" type="email" className="m-pill-input" placeholder="you@plsp.edu.ph"
+                  value={formData.email} onChange={handleChange} required
+                  autoComplete="email" inputMode="email" />
               </div>
             </div>
 
-            {/* University ID Photo */}
-            <div className="lf-field">
-              <label className="lf-label-mobile">University ID photo</label>
-              <div onClick={triggerFileInput} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`lf-dropzone-mobile ${isDragging ? 'dragging' : ''}`}>
-                <input type="file" accept="image/*" required={!selectedFile} onChange={handleFileChange} ref={fileInputRef} className="hidden" />
+            {/* Password */}
+            <div className="m-field">
+              <label className="m-field-label">Password</label>
+              <div className="m-input-pill">
+                <input id="password" type={showPassword ? 'text' : 'password'}
+                  className="m-pill-input" placeholder="Create a password"
+                  value={formData.password} onChange={handleChange} required autoComplete="new-password" />
+                <button type="button" className="m-pill-btn" onClick={() => setShowPassword(v => !v)}>
+                  {showPassword
+                    ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
+                    : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>
+                  }
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm password */}
+            <div className="m-field">
+              <label className="m-field-label">Confirm password</label>
+              <div className="m-input-pill">
+                <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'}
+                  className="m-pill-input" placeholder="Repeat your password"
+                  value={formData.confirmPassword} onChange={handleChange} required autoComplete="new-password" />
+                <button type="button" className="m-pill-btn" onClick={() => setShowConfirmPassword(v => !v)}>
+                  {showConfirmPassword
+                    ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
+                    : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>
+                  }
+                </button>
+              </div>
+            </div>
+
+            {/* Verification section */}
+            <p className="m-section-title">ID verification</p>
+
+            {/* Dropzone */}
+            <div className="m-field">
+              <div onClick={triggerFileInput} onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave} onDrop={handleDrop}
+                className={`m-dropzone ${isDragging ? 'dragging' : ''}`}>
+                <input type="file" accept="image/*" required={!selectedFile}
+                  onChange={handleFileChange} ref={fileInputRef} style={{ display: 'none' }} />
                 {selectedFile ? (
-                  <div className="lf-file-preview">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M20 6L9 17l-5-5" strokeLinecap="round" /></svg>
+                  <div className="m-file-preview">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="#22C77A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+                      <path d="M4 10.5l4 4 8-8"/>
+                    </svg>
                     <span>{selectedFile.name}</span>
                   </div>
                 ) : (
                   <>
-                    <IdCardIcon />
-                    <span><span className="font-bold">Tap to upload</span> or drag & drop</span>
-                    <span style={{ fontSize: 11, color: '#888', marginTop: 4, fontWeight: 400 }}>Your university-issued ID card</span>
+                    <div className="m-dropzone-icon">
+                      <IdCardIcon />
+                    </div>
+                    <p className="m-dropzone-title">Tap to upload ID photo</p>
+                    <p className="m-dropzone-hint">Your university-issued ID card</p>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Password */}
-            <div className="lf-field">
-              <label className="lf-label-mobile">Password</label>
-              <div className="lf-input-wrap">
-                <input id="password" type={showPassword ? 'text' : 'password'} className="lf-input-mobile" placeholder="Create a password" value={formData.password} onChange={handleChange} required autoComplete="new-password" />
-                <button type="button" className="lf-eye-btn" onClick={() => setShowPassword(v => !v)}>
-                  {showPassword
-                    ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
-                    : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                  }
-                </button>
-              </div>
-            </div>
-
-            {/* Confirm Password */}
-            <div className="lf-field">
-              <label className="lf-label-mobile">Confirm password</label>
-              <div className="lf-input-wrap">
-                <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} className="lf-input-mobile" placeholder="Confirm your password" value={formData.confirmPassword} onChange={handleChange} required autoComplete="new-password" />
-                <button type="button" className="lf-eye-btn" onClick={() => setShowConfirmPassword(v => !v)}>
-                  {showConfirmPassword
-                    ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
-                    : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                  }
-                </button>
-              </div>
-            </div>
-
-            <button type="submit" disabled={loading} className="lf-btn-primary-mobile">
+            <button type="submit" disabled={loading} className="m-btn-primary">
               {loading && <span className="lf-spinner" />}
-              {loading ? 'Creating account...' : 'Sign up'}
+              {loading ? 'Creating account…' : 'Sign up'}
             </button>
 
-            <p className="lf-footer-text">
+            <p className="m-footer">
               Already have an account?{' '}
-              <Link to="/login" className="lf-footer-link">Sign in</Link>
+              <Link to="/login">Sign in</Link>
             </p>
           </form>
         </div>

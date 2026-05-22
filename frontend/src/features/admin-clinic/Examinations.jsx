@@ -1,5 +1,5 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examinations.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -50,55 +50,83 @@ const normalizePatient = (uid, d) => {
   };
 };
 
-export const Examinations = () => {
+// Added currentUserRole prop (defaults to 'admin' so everything shows if not provided)
+export const Examinations = ({ currentUserRole = 'admin' }) => {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const patientId      = searchParams.get('patientId');
 
-  const [examTab, setExamTab]                 = useState('medical');
+  // Dynamically determine available tabs based on role
+  const availableTabs = useMemo(() => {
+    const role = String(currentUserRole).toLowerCase();
+
+    if (role === 'dentist') {
+      return [{ key: 'dental', icon: 'fa-tooth', label: 'Dental Examination' }];
+    }
+    if (role === 'nurse' || role === 'doctor') {
+      return [{ key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' }];
+    }
+
+    // Default (e.g., admin) sees both
+    return [
+      { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
+      { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Examination' },
+    ];
+  }, [currentUserRole]);
+
+  // Initialize state based on the first available tab for this user's role
+  const [examTab, setExamTab]                 = useState(availableTabs[0].key);
+
   const [message, setMessage]                 = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [loading, setLoading]                 = useState(true);
   const [examStarted, setExamStarted]         = useState(false);
   const [resetKey, setResetKey]               = useState(0);
 
-useEffect(() => {
-  const fetchPatient = async () => {
-    setLoading(true);
-    setExamStarted(false);
-    setResetKey(k => k + 1);
-
-    if (patientId) {
-      try {
-        const snap = await getDoc(doc(db, 'users', patientId));
-        if (snap.exists()) {
-          setSelectedPatient(normalizePatient(patientId, snap.data()));
-          setExamStarted(true);
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.error('[Examinations] Firestore fetch error:', err);
-      }
-
-      // Only fall back to localStorage if we had a patientId but Firestore failed
-      const cached = localStorage.getItem('selectedPatient');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setSelectedPatient(normalizePatient(parsed.uid || patientId || '', parsed._raw || parsed));
-          setExamStarted(true);
-        } catch { /* corrupted — ignore */ }
-      }
+  // If the available tabs change (e.g. user role switches), ensure the active tab is valid
+  useEffect(() => {
+    if (!availableTabs.find(t => t.key === examTab)) {
+      setExamTab(availableTabs[0].key);
     }
+  }, [availableTabs, examTab]);
 
-    // No patientId → stay blank, clear any stale patient
-    setSelectedPatient(null);
-    setLoading(false);
-  };
+  useEffect(() => {
+    const fetchPatient = async () => {
+      setLoading(true);
+      setExamStarted(false);
+      setResetKey(k => k + 1);
 
-  fetchPatient();
-}, [patientId]);
+      if (patientId) {
+        try {
+          const snap = await getDoc(doc(db, 'users', patientId));
+          if (snap.exists()) {
+            setSelectedPatient(normalizePatient(patientId, snap.data()));
+            setExamStarted(true);
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('[Examinations] Firestore fetch error:', err);
+        }
+
+        // Only fall back to localStorage if we had a patientId but Firestore failed
+        const cached = localStorage.getItem('selectedPatient');
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setSelectedPatient(normalizePatient(parsed.uid || patientId || '', parsed._raw || parsed));
+            setExamStarted(true);
+          } catch { /* corrupted — ignore */ }
+        }
+      }
+
+      // No patientId → stay blank, clear any stale patient
+      setSelectedPatient(null);
+      setLoading(false);
+    };
+
+    fetchPatient();
+  }, [patientId]);
 
   const showMessage = (msg) => {
     setMessage(msg);
@@ -111,16 +139,16 @@ useEffect(() => {
     setResetKey(k => k + 1);
   };
 
-const handleTabChange = (key) => {
-  setExamTab(key);
-};
+  const handleTabChange = (key) => {
+    setExamTab(key);
+  };
 
- const handleBack = () => {
-  setExamStarted(false);
-  setResetKey(k => k + 1);
-  localStorage.removeItem('selectedPatient'); // ← clear cache so tab nav stays blank
-  navigate('/records');
-};
+  const handleBack = () => {
+    setExamStarted(false);
+    setResetKey(k => k + 1);
+    localStorage.removeItem('selectedPatient');
+    navigate('/records');
+  };
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -157,10 +185,7 @@ const handleTabChange = (key) => {
 
         {/* Tabs (visible but inactive) */}
         <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
-          {[
-            { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
-            { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Examination'       },
-          ].map(({ key, icon, label }) => (
+          {availableTabs.map(({ key, icon, label }) => (
             <button
               key={key}
               onClick={() => setExamTab(key)}
@@ -187,7 +212,6 @@ const handleTabChange = (key) => {
               Select a patient from Records to begin a new examination.
             </p>
           </div>
-          {/* Redirects to Records tab instead of opening the form */}
           <button
             onClick={() => navigate('/records')}
             className="flex items-center gap-2 bg-[#466460] text-white px-7 py-3 rounded-xl font-bold text-sm hover:bg-[#3a524f] transition shadow-sm"
@@ -205,44 +229,49 @@ const handleTabChange = (key) => {
   return (
     <div className="bg-white min-h-[calc(100vh-140px)] p-6 md:p-8">
 
-      {/* Back button */}
-      <button
-        onClick={handleBack}
-        className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-[#466460] mb-5 transition-colors"
-      >
-        <i className="fa-solid fa-arrow-left"></i> Back to Records
-      </button>
+      {/* Header Section: Back Button + Compact Patient Banner */}
+      <div className="flex items-center gap-3 mb-6">
 
-      {/* Patient banner — only shown when exam is active */}
-      <div className="bg-gradient-to-r from-[#e0eceb] to-white rounded-xl px-5 py-4 mb-6 border border-[#d1e7e5] flex items-center gap-4">
-        <div className="w-11 h-11 rounded-full bg-[#466460] flex items-center justify-center shrink-0">
-          <i className="fa-solid fa-user text-white text-base"></i>
+        {/* Inline Back button (Icon only) */}
+        <button
+          onClick={handleBack}
+          title="Back to Records"
+          className="flex items-center justify-center w-9 h-9 rounded-full text-slate-500 hover:text-[#466460] hover:bg-[#e0eceb] transition-colors shrink-0"
+        >
+          <i className="fa-solid fa-arrow-left text-lg"></i>
+        </button>
+
+        {/* Patient banner — Compact */}
+        <div className="flex-1 bg-gradient-to-r from-[#e0eceb] to-white rounded-xl px-4 py-2 border border-[#d1e7e5] flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-[#466460] flex items-center justify-center shrink-0">
+            <i className="fa-solid fa-user text-white text-sm"></i>
+          </div>
+
+          <div>
+            <p className="font-bold text-sm text-slate-800 leading-tight">{selectedPatient.name}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {selectedPatient.id}
+              {selectedPatient.department ? ` • ${selectedPatient.department}` : ''}
+              {selectedPatient.prog       ? ` • ${selectedPatient.prog}`       : ''}
+              {selectedPatient.year       ? ` ${selectedPatient.year}`         : ''}
+            </p>
+          </div>
+
+          <div className="ml-auto flex flex-col items-end gap-0.5">
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#466460] text-white capitalize">
+              {selectedPatient.role || 'student'}
+            </span>
+            {selectedPatient.gender && (
+              <span className="text-[10px] text-slate-500">{selectedPatient.gender} · Age {selectedPatient.age || '—'}</span>
+            )}
+          </div>
         </div>
-        <div>
-          <p className="font-bold text-base text-slate-800 leading-tight">{selectedPatient.name}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            {selectedPatient.id}
-            {selectedPatient.department ? ` • ${selectedPatient.department}` : ''}
-            {selectedPatient.prog       ? ` • ${selectedPatient.prog}`       : ''}
-            {selectedPatient.year       ? ` ${selectedPatient.year}`         : ''}
-          </p>
-        </div>
-        <div className="ml-auto flex flex-col items-end gap-1">
-          <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-[#466460] text-white capitalize">
-            {selectedPatient.role || 'student'}
-          </span>
-          {selectedPatient.gender && (
-            <span className="text-[10px] text-slate-500">{selectedPatient.gender} · Age {selectedPatient.age || '—'}</span>
-          )}
-        </div>
+
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
-        {[
-          { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
-          { key: 'dental',  icon: 'fa-tooth',       label: 'Dental Examination'       },
-        ].map(({ key, icon, label }) => (
+        {availableTabs.map(({ key, icon, label }) => (
           <button
             key={key}
             onClick={() => handleTabChange(key)}

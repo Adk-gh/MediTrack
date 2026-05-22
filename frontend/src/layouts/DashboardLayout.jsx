@@ -78,6 +78,16 @@ const NavUsersIcon = ({ active }) => (
   </svg>
 );
 
+const NavOcrIcon = ({ active }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M7 7h.01" />
+    <path d="M11 7h.01" />
+    <path d="M7 11h10" />
+    <path d="M7 15h10" />
+  </svg>
+);
+
 // ─── Role-based mobile nav items ──────────────────────────────────────────────
 const ROLE_MOBILE_NAV = {
   admin: [
@@ -86,6 +96,7 @@ const ROLE_MOBILE_NAV = {
     { id: 'auditLogs', label: 'Audit', Icon: NavAnnounceIcon },
     { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
     { id: 'users', label: 'Users', Icon: NavUsersIcon },
+    { id: 'ocrSettings', label: 'OCR Settings', Icon: NavOcrIcon },
   ],
   doctor: [
     { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
@@ -121,13 +132,14 @@ const DEFAULT_MOBILE_NAV = [
   { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
   { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
   { id: 'users',         label: 'Users',         Icon: NavUsersIcon },
+  { id: 'ocrSettings',   label: 'OCR Settings',  Icon: NavOcrIcon },
 ];
 
 // ─── Floating Hamburger Button ────────────────────────────────────────────────
 function HamburgerButton({ isOpen, onClick }) {
   return (
     <button
-      id="mobile-hamburger-btn" // <--- ID ADDED HERE
+      id="mobile-hamburger-btn"
       data-hamburger="true"
       onClick={onClick}
       style={{
@@ -424,6 +436,14 @@ export const DashboardLayout = ({
 
   const activeItem = mobileNavItems.find(i => i.id === activeTab);
 
+  // Automatically pass the dynamic userRole prop down to any React page element rendering within children
+  const childrenWithProps = React.Children.map(children, child => {
+    if (React.isValidElement(child)) {
+      return React.cloneElement(child, { currentUserRole: userRole });
+    }
+    return child;
+  });
+
   return (
     <>
       <style>{`
@@ -444,7 +464,7 @@ export const DashboardLayout = ({
         <div className="shrink-0"><DesktopHeader onOpenQR={onOpenQR} /></div>
         <div className="shrink-0"><DesktopNav /></div>
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="dl-fade h-full">{children}</div>
+          <div className="dl-fade h-full">{childrenWithProps}</div>
         </main>
       </div>
 
@@ -469,7 +489,7 @@ export const DashboardLayout = ({
           style={{ paddingTop: '64px' }}
         >
           <div className="dl-fade h-full flex flex-col">
-            {children}
+            {childrenWithProps}
           </div>
         </div>
 
@@ -487,7 +507,7 @@ export const DashboardLayout = ({
         />
 
         <div
-          id="mobile-active-tab-chip" // <--- ID ADDED HERE
+          id="mobile-active-tab-chip"
           style={{
             position: 'fixed',
             bottom: 35,

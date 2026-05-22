@@ -9,6 +9,7 @@ import Loading from './components/loading.jsx';
 import authService from './services/auth.service.js';
 import './index.css';
 
+
 // Shared context
 import { AppointmentProvider } from './context/AppointmentContext.jsx';
 import { LoadingProvider, useLoading } from './context/LoadingContext.jsx';
@@ -24,6 +25,7 @@ import Consultations from './features/admin-clinic/Consultations.jsx';
 import UserManagement from './features/admin-clinic/User-Management.jsx';
 import RecordManagement from './features/admin-clinic/Record-Management.jsx';
 import AuditLogs from './features/admin-clinic/AuditLogs.jsx';
+import OcrSettings from './features/admin-clinic/OcrSettings.jsx';
 
 // Features - Students / Instructors / Staffs
 import Meditrack from './features/users/Meditrack.jsx';
@@ -67,6 +69,7 @@ const ROUTE_TO_TAB = {
   '/consultations':    'consultations',
   '/announcements':   'announcements',
   '/users':            'users',
+  '/ocr-settings':    'ocrSettings',
 };
 
 const TAB_TO_ROUTE = {
@@ -80,6 +83,7 @@ const TAB_TO_ROUTE = {
   'consultations':    '/consultations',
   'announcements':   '/announcements',
   'users':            '/users',
+  'ocrSettings':     '/ocr-settings',
 };
 
 // ── Admin Layout Wrapper ───────────────────────────────────────────────────────
@@ -262,6 +266,11 @@ function App() {
           <Route path="/users" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><UserManagement /></AdminLayoutWrapper>
+            </ProtectedRoute>
+          } />
+          <Route path="/ocr-settings" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminLayoutWrapper><OcrSettings /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
 
