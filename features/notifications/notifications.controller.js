@@ -1,6 +1,5 @@
 //C:\Users\HP\MediTrack\features\notifications\notifications.controller.js
 const notificationsService = require("./notifications.service");
-const { db } = require('../../configs/firebase-admin'); // Adjust the path if needed
 
 const getNotifications = async (req, res, next) => {
   try {

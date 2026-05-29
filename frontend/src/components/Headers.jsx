@@ -9,9 +9,7 @@ import { NotificationBell, NotificationPanel } from './Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
 import Settings from './Settings.jsx';
 
-import { doc, updateDoc } from 'firebase/firestore';
-import { updateEmail } from 'firebase/auth';
-import { auth, db } from '../firebase';
+import { supabase } from '../supabase';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -330,7 +328,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
   const nameParts = [
     formData.firstName,
-    formData.middleInitial ? `${formData.middleInitial}.` : '',
+    formData.middleName || '',
     formData.lastName,
     formData.suffix || '',
   ].filter(Boolean);
@@ -377,25 +375,48 @@ const handleSaveProfile = async () => {
       const user = auth.currentUser;
       if (!user) throw new Error("No authenticated user");
 
-      // 1. Update Email in Firebase Auth if it changed
+      // 1. Update Email in Supabase Auth if it changed
       if (formData.email && formData.email !== userProfile.email) {
         try {
-          await updateEmail(user, formData.email);
-        } catch (emailErr) {
-          if (emailErr.code === 'auth/requires-recent-login') {
-            alert('Security alert: Please sign out and sign back in to change your email.');
-            hideLoading();
-            return;
-          } else {
+          const { error: emailErr } = await supabase.auth.updateUser({ email: formData.email });
+          if (emailErr) {
             alert(`Error updating email: ${emailErr.message}`);
             hideLoading();
             return;
           }
+        } catch (emailErr) {
+          alert(`Error updating email: ${emailErr.message}`);
+          hideLoading();
+          return;
         }
       }
 
-      // 2. Update Firestore
-      await updateDoc(doc(db, 'users', user.uid), formData);
+      // 2. Update Supabase users table
+      const { error: updateErr } = await supabase.from('users').update({
+        first_name: formData.firstName,
+        middle_name: formData.middleName,
+        last_name: formData.lastName,
+        suffix: formData.suffix,
+        birthday: formData.birthday,
+        age: formData.age,
+        sex: formData.sex,
+        blood_type: formData.bloodType,
+        home_address: formData.homeAddress,
+        phone_number: formData.phoneNumber,
+        religion: formData.religion,
+        nationality: formData.nationality,
+        civil_status: formData.civilStatus,
+        department: formData.department,
+        program: formData.program,
+        year_level: formData.yearLevel,
+        section: formData.section,
+        classification: formData.classification,
+        job_title: formData.jobTitle,
+        emergency_contact: formData.emergencyContact,
+        vaccinations: formData.vaccinations,
+        updated_at: new Date().toISOString(),
+      }).eq('id', user.id);
+      if (updateErr) throw updateErr;
 
       setIsEditing(false);
       if (onProfileUpdate) onProfileUpdate(formData); // Syncs UI back to normal mode

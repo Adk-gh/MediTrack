@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/Adk-gh/MediTrack#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
     "axios": "^1.16.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

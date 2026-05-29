@@ -1,18 +1,41 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Records-users.jsx
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
+
+// ── Cache helpers ─────────────────────────────────────────────────────────────
+const CACHE_KEY_PREFIX = 'meditrack_records_';
+const CACHE_TTL_MS     = 5 * 60 * 1000; // 5 minutes
+
+const readCache = (userId) => {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_PREFIX + userId);
+    if (!raw) return null;
+    const { data, expiresAt } = JSON.parse(raw);
+    if (Date.now() > expiresAt) { localStorage.removeItem(CACHE_KEY_PREFIX + userId); return null; }
+    return data;
+  } catch { return null; }
+};
+
+const writeCache = (userId, data) => {
+  try {
+    localStorage.setItem(CACHE_KEY_PREFIX + userId, JSON.stringify({
+      data,
+      expiresAt: Date.now() + CACHE_TTL_MS,
+    }));
+  } catch { /* storage full — silently skip */ }
+};
+
+const clearCache = (userId) => {
+  try { localStorage.removeItem(CACHE_KEY_PREFIX + userId); } catch { /* ignore */ }
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v) => (!v || v === '') ? '—' : v;
 
 const formatDate = (raw) => {
   if (!raw) return '—';
-  // Handle Firestore Timestamp
   if (raw?.toDate) return raw.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  // Handle ISO string
   if (typeof raw === 'string') {
     const d = new Date(raw);
     if (!isNaN(d)) return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -42,7 +65,7 @@ const TagList = ({ items, color }) => {
     blue:   { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
     slate:  { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' },
   }[color] || { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' };
-  
+
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {items.map((item, i) => (
@@ -56,61 +79,179 @@ const TagList = ({ items, color }) => {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function RecordsUsers() {
-  const [loading, setLoading]           = useState(true);
-  const [records, setRecords]           = useState([]);
-  const [filter, setFilter]             = useState('All'); // 'All', 'Medical', 'Dental'
+  const [loading, setLoading]               = useState(true);
+  const [fromCache, setFromCache]           = useState(false);
+  const [records, setRecords]               = useState([]);
+  const [filter, setFilter]                 = useState('All');
   const [selectedRecord, setSelectedRecord] = useState(null);
-  const [view, setView]                 = useState('list'); // 'list' | 'summary' | 'certificate'
+  const [view, setView]                     = useState('list');
+  const [currentUserId, setCurrentUserId]   = useState(null);
 
-  // Fetch approved medical AND dental records
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) { setLoading(false); return; }
+    const fetchRecords = async (forceRefresh = false) => {
       try {
-        const medRef = collection(db, 'users', user.uid, 'medical_records');
-        const denRef = collection(db, 'users', user.uid, 'dental_records');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setLoading(false); return; }
 
-        // Fetch both concurrently without orderBy to bypass index requirements
-        const [medSnap, denSnap] = await Promise.all([
-          getDocs(query(medRef, where('status', '==', 'approved'))),
-          getDocs(query(denRef, where('status', '==', 'approved')))
+        setCurrentUserId(user.id);
+
+        // ── Try cache first ──────────────────────────────────────────────
+        if (!forceRefresh) {
+          const cached = readCache(user.id);
+          if (cached) {
+            setRecords(cached);
+            setFromCache(true);
+            setLoading(false);
+            return;
+          }
+        }
+
+        setFromCache(false);
+
+        // ── Cache miss: fetch from Supabase ──────────────────────────────
+        const { data: userRow, error: userErr } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, program, year_level, section, department, home_address, age, sex')
+          .eq('uid', user.id)
+          .single();
+
+        if (userErr || !userRow) {
+          console.error('[RecordsUsers] user lookup failed:', userErr);
+          setLoading(false);
+          return;
+        }
+
+        const internalUserId = userRow.id;
+
+        const [medRes, denRes] = await Promise.all([
+          supabase.from('medical_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
+          supabase.from('dental_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
         ]);
 
-        const medDocs = medSnap.docs.map(d => ({ id: d.id, recordType: 'medical', ...d.data() }));
-        const denDocs = denSnap.docs.map(d => ({ id: d.id, recordType: 'dental', ...d.data() }));
+        // ── Medical mapping ──────────────────────────────────────────────
+        const medDocs = (medRes.data || []).map(d => ({
+          recordType:      'medical',
+          id:              d.id,
+          approved_at:     d.approved_at || d.updated_at || d.created_at,
+          created_at:      d.created_at,
+          firstName:       d.first_name  || userRow.first_name,
+          lastName:        d.last_name   || userRow.last_name,
+          age:             d.age         || userRow.age,
+          sex:             d.sex         || userRow.sex,
+          address:         d.address     || userRow.home_address,
+          course:          userRow.program,
+          yearSection:     [userRow.year_level, userRow.section].filter(Boolean).join(' - '),
+          examDate:        d.exam_date,
+          physician:       d.physician,
+          nurseOnDuty:     d.nurse_on_duty,
+          height:          d.height,
+          weight:          d.weight,
+          bmi:             d.bmi,
+          waist:           d.waist,
+          lmp:             d.lmp,
+          vitalRecords:    d.vital_records   || [],
+          labCbc:          d.lab_cbc,
+          labCbcFacility:  d.lab_cbc_facility,
+          labCbcDate:      d.lab_cbc_date,
+          labUa:           d.lab_ua,
+          labUaFacility:   d.lab_ua_facility,
+          labUaDate:       d.lab_ua_date,
+          labXray:         d.lab_xray,
+          labXrayFacility: d.lab_xray_facility,
+          labXrayDate:     d.lab_xray_date,
+          checkedMedical:  d.checked_medical  || [],
+          checkedFamily:   d.checked_family   || [],
+          checkedHealth:   d.checked_health   || [],
+          smoking:         d.smoking,
+          smokingDetails:  d.smoking_details,
+          alcohol:         d.alcohol,
+          alcoholDetails:  d.alcohol_details,
+          drugs:           d.drugs,
+          drugsDetails:    d.drugs_details,
+          covidHistory:       d.covid_history,
+          otherMedHistory:    d.other_medical_history,
+          otherFamilyHistory: d.other_family_history,
+          surgicalHistory: [],
+          remarks:         d.remarks || d.other_medical_history || '',
+          finding1:        d.finding1 || '',
+          isFit:           d.is_fit,
+          isNormalFindings: d.is_normal_findings,
+        }));
 
-        // Combine and sort by date descending
+        // ── Dental mapping ───────────────────────────────────────────────
+        const denDocs = (denRes.data || []).map(d => ({
+          recordType:    'dental',
+          id:            d.id,
+          approved_at:   d.approved_at || d.created_at,
+          created_at:    d.created_at,
+          dFirstName:    d.first_name,
+          dLastName:     d.last_name,
+          dAge:          d.age,
+          dSex:          d.sex,
+          dCourseYear:   d.course_year,
+          dAddress:      d.address,
+          dLastVisit:    d.last_visit,
+          dPrevDentist:  d.prev_dentist,
+          dExaminedBy:   d.examined_by,
+          dSigDate:      d.sig_date,
+          dExamDate:     d.exam_date,
+          dentalHistory: d.dental_history || {},
+          toothData:     d.tooth_data     || {},
+          intraoral:     d.intraoral      || {},
+        }));
+
         const combined = [...medDocs, ...denDocs].sort((a, b) => {
-          const timeA = (a.approvedAt || a.createdAt)?.toMillis?.() || 0;
-          const timeB = (b.approvedAt || b.createdAt)?.toMillis?.() || 0;
+          const timeA = new Date(a.approved_at || a.created_at).getTime() || 0;
+          const timeB = new Date(b.approved_at || b.created_at).getTime() || 0;
           return timeB - timeA;
         });
 
+        // ── Save to cache ────────────────────────────────────────────────
+        writeCache(user.id, combined);
         setRecords(combined);
       } catch (err) {
         console.error('[RecordsUsers] fetch error:', err);
       }
       setLoading(false);
+    };
+
+    fetchRecords();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      // Clear cache on sign-out so stale data doesn't persist
+      if (event === 'SIGNED_OUT' && currentUserId) clearCache(currentUserId);
+      fetchRecords(true); // force refresh on auth change
     });
-    return () => unsub();
+    return () => subscription.unsubscribe();
   }, []);
+
+  const handleRefresh = () => {
+    if (currentUserId) clearCache(currentUserId);
+    setLoading(true);
+    setRecords([]);
+    // Re-trigger useEffect by forcing a re-fetch
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        clearCache(user.id);
+        window.location.reload(); // simplest way to re-run the effect cleanly
+      }
+    });
+  };
 
   const openRecord = (rec) => { setSelectedRecord(rec); setView('summary'); };
   const close      = ()    => { setSelectedRecord(null); setView('list'); };
 
-  // Filter logic
-  const filteredRecords = records.filter(r => 
+  const filteredRecords = records.filter(r =>
     filter === 'All' || r.recordType.toLowerCase() === filter.toLowerCase()
   );
 
-  // Build object for MedicalCertificate
   const buildExamination = (rec) => ({
     patientName:  `${rec.lastName || ''}, ${rec.firstName || ''}`,
     age:          rec.age,
-    sex:          rec.sex    || rec.gender,
-    address:      rec.address || rec.homeAddress || '',
-    course:       rec.course  || rec.program || '',
-    yearSection:  rec.yearSection || [rec.yearLevel || rec.year, rec.section].filter(Boolean).join(' - '),
+    sex:          rec.sex,
+    address:      rec.address || '',
+    course:       rec.course  || '',
+    yearSection:  rec.yearSection || '',
     examDate:     rec.examDate,
     remarks:      rec.remarks || '',
     ...rec,
@@ -129,19 +270,43 @@ export default function RecordsUsers() {
   if (view === 'list') {
     return (
       <div style={{ padding: '20px 16px 32px', overflowY: 'auto', scrollbarWidth: 'none' }}>
-        <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a2e22', margin: '0 0 4px' }}>Health Records</h2>
-        <p style={{ fontSize: 11, color: '#6b8577', margin: '0 0 16px' }}>Official records and health certifications issued by the clinic.</p>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a2e22', margin: 0 }}>Health Records</h2>
+            <p style={{ fontSize: 11, color: '#6b8577', margin: '2px 0 0' }}>Official records and health certifications issued by the clinic.</p>
+          </div>
+          {/* Refresh button + cache indicator */}
+          <button
+            onClick={handleRefresh}
+            title={fromCache ? 'Loaded from cache — tap to refresh' : 'Refresh records'}
+            style={{
+              background: fromCache ? '#fff8e1' : '#e8f5ee',
+              border: `1px solid ${fromCache ? '#fde68a' : '#b6e8c8'}`,
+              borderRadius: 10, padding: '6px 10px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke={fromCache ? '#b45309' : '#1a5c3a'} strokeWidth="2.5" width="13" height="13">
+              <path d="M1 4v6h6M23 20v-6h-6" /><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" />
+            </svg>
+            <span style={{ fontSize: 10, fontWeight: 700, color: fromCache ? '#b45309' : '#1a5c3a' }}>
+              {fromCache ? 'Cached' : 'Live'}
+            </span>
+          </button>
+        </div>
 
         {/* Filter Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, marginTop: 16 }}>
           {['All', 'Medical', 'Dental'].map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               style={{
-                padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+                padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                cursor: 'pointer', transition: 'all 0.2s', border: 'none',
                 background: filter === f ? '#1a5c3a' : '#e8f5ee',
-                color: filter === f ? '#fff' : '#1a5c3a',
+                color:      filter === f ? '#fff'     : '#1a5c3a',
               }}
             >
               {f}
@@ -171,14 +336,16 @@ export default function RecordsUsers() {
               >
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
-                    {formatDate(rec.approvedAt || rec.createdAt)}
+                    {formatDate(rec.approved_at || rec.created_at)}
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {rec.recordType === 'dental' ? <i className="fa-solid fa-tooth text-[#466460]"></i> : <i className="fa-solid fa-stethoscope text-[#466460]"></i>}
+                    {rec.recordType === 'dental'
+                      ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }}></i>
+                      : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }}></i>}
                     {rec.recordType === 'dental' ? 'Dental Examination' : 'Medical Examination'}
                   </div>
                   <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
-                    {fmt(rec.course || rec.dCourseYear || rec.program)}
+                    {fmt(rec.course || rec.dCourseYear)}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -199,28 +366,23 @@ export default function RecordsUsers() {
     );
   }
 
-  // ── Detail views (summary + certificate) ─────────────────────────────────
+  // ── Detail views ──────────────────────────────────────────────────────────
   const rec = selectedRecord;
   if (!rec) return null;
 
   const isMedical = rec.recordType === 'medical';
-  const vitals = rec.vitalRecords?.[0] || {};
-  
-  // Format dental procedures mapping to an array of "Yes" responses
+  const vitals    = rec.vitalRecords?.[0] || {};
+
   const dentalProceduresDone = isMedical ? [] : Object.entries(rec.dentalHistory || {})
-    .filter(([_, value]) => value === 'Yes')
+    .filter(([, value]) => value === 'Yes')
     .map(([key]) => key);
 
-  // Format affected teeth to an array
   const affectedTeeth = isMedical ? [] : Object.entries(rec.toothData || {})
-    .filter(([_, data]) => data.condition)
-    .map(([num, data]) => `Tooth ${num}: ${data.condition.toUpperCase()} ${data.operation ? `(${data.operation})` : ''}`);
+    .filter(([, data]) => data.condition)
+    .map(([num, data]) => `Tooth ${num}: ${data.condition.toUpperCase()}${data.operation ? ` (${data.operation})` : ''}`);
 
-  // Determine available tabs
   const tabs = [{ key: 'summary', label: 'Summary' }];
-  if (isMedical) {
-    tabs.push({ key: 'certificate', label: 'Certificate' });
-  }
+  if (isMedical) tabs.push({ key: 'certificate', label: 'Certificate' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -237,10 +399,11 @@ export default function RecordsUsers() {
           <div style={{ fontSize: 13, fontWeight: 800, color: '#1a2e22' }}>
             {isMedical ? 'Medical Examination' : 'Dental Examination'}
           </div>
-          <div style={{ fontSize: 10, color: '#6b8577' }}>{formatDate(rec.approvedAt || rec.createdAt)}</div>
+          <div style={{ fontSize: 10, color: '#6b8577' }}>
+            {formatDate(rec.approved_at || rec.created_at)}
+          </div>
         </div>
-        
-        {/* Tab toggle (Only show if there are multiple tabs) */}
+
         {tabs.length > 1 && (
           <div style={{ display: 'flex', background: '#f4f7f5', borderRadius: 12, padding: 3, gap: 2 }}>
             {tabs.map(({ key, label }) => (
@@ -251,7 +414,7 @@ export default function RecordsUsers() {
                   border: 'none', borderRadius: 9, padding: '6px 14px', fontSize: 11, fontWeight: 700,
                   cursor: 'pointer', transition: 'all 0.2s',
                   background: view === key ? '#1a5c3a' : 'transparent',
-                  color: view === key ? '#fff' : '#6b8577',
+                  color:      view === key ? '#fff'     : '#6b8577',
                 }}
               >
                 {label}
@@ -268,45 +431,46 @@ export default function RecordsUsers() {
         {view === 'summary' && (
           <div style={{ padding: '16px 16px 32px' }}>
 
-            {/* Status banner */}
             <div style={{ background: 'linear-gradient(135deg, #e8f5ee, #f0fbf4)', border: '1px solid #b6e8c8', borderRadius: 16, padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 36, height: 36, background: '#1a5c3a', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span style={{ color: '#fff', fontSize: 16 }}>✓</span>
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#1a2e22' }}>Examination Approved</div>
-                <div style={{ fontSize: 10, color: '#2d7a52', marginTop: 2 }}>Recorded on {formatDate(rec.approvedAt || rec.createdAt)}</div>
+                <div style={{ fontSize: 10, color: '#2d7a52', marginTop: 2 }}>
+                  Recorded on {formatDate(rec.approved_at || rec.created_at)}
+                </div>
               </div>
             </div>
 
             {/* ── MEDICAL SUMMARY ── */}
             {isMedical ? (
               <>
-                {/* Patient Info */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Patient Information" />
-                  <InfoRow label="Name"         value={`${rec.firstName || ''} ${rec.lastName || ''}`.trim()} />
-                  <InfoRow label="Age"          value={rec.age} />
-                  <InfoRow label="Sex"          value={rec.sex || rec.gender} />
-                  <InfoRow label="Address"      value={rec.address || rec.homeAddress} />
-                  <InfoRow label="Program"      value={rec.course || rec.program} />
-                  <InfoRow label="Year/Section" value={rec.yearSection || rec.yearLevel} />
-                  <InfoRow label="Exam Date"    value={formatDate(rec.examDate)} />
+                  <InfoRow label="Name"          value={`${rec.firstName || ''} ${rec.lastName || ''}`.trim()} />
+                  <InfoRow label="Age"           value={rec.age} />
+                  <InfoRow label="Sex"           value={rec.sex} />
+                  <InfoRow label="Address"       value={rec.address} />
+                  <InfoRow label="Program"       value={rec.course} />
+                  <InfoRow label="Year/Section"  value={rec.yearSection} />
+                  <InfoRow label="Exam Date"     value={formatDate(rec.examDate)} />
+                  <InfoRow label="Physician"     value={rec.physician} />
+                  <InfoRow label="Nurse on Duty" value={rec.nurseOnDuty} />
                 </div>
 
-                {/* Vitals */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Vital Signs" />
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                     {[
-                      { label: 'Blood Pressure', value: vitals.bp,   unit: 'mmHg' },
-                      { label: 'Pulse Rate',     value: vitals.pr,   unit: 'bpm'  },
-                      { label: 'Resp. Rate',     value: vitals.rr,   unit: 'cpm'  },
-                      { label: 'Temperature',    value: vitals.temp, unit: '°C'   },
-                      { label: 'Height',         value: rec.height,  unit: 'cm'   },
-                      { label: 'Weight',         value: rec.weight,  unit: 'kg'   },
-                      { label: 'BMI',            value: rec.bmi,     unit: 'kg/m²'},
-                      { label: 'Waist',          value: rec.waist,   unit: 'cm'   },
+                      { label: 'Blood Pressure', value: vitals.bp,   unit: 'mmHg'  },
+                      { label: 'Pulse Rate',     value: vitals.pr,   unit: 'bpm'   },
+                      { label: 'Resp. Rate',     value: vitals.rr,   unit: 'cpm'   },
+                      { label: 'Temperature',    value: vitals.temp, unit: '°C'    },
+                      { label: 'Height',         value: rec.height,  unit: 'cm'    },
+                      { label: 'Weight',         value: rec.weight,  unit: 'kg'    },
+                      { label: 'BMI',            value: rec.bmi,     unit: 'kg/m²' },
+                      { label: 'Waist',          value: rec.waist,   unit: 'cm'    },
                     ].map(({ label, value, unit }) => (
                       <div key={label} style={{ background: '#f4f7f5', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
                         <div style={{ fontSize: 9, color: '#9bb5a5', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
@@ -317,7 +481,6 @@ export default function RecordsUsers() {
                   </div>
                 </div>
 
-                {/* Lab Results */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Laboratory Results" />
                   {[
@@ -330,32 +493,81 @@ export default function RecordsUsers() {
                         <span style={{ fontSize: 11, fontWeight: 700, color: '#1a2e22' }}>{label}</span>
                         <span style={{ fontSize: 11, fontWeight: 600, color: result ? '#1a5c3a' : '#9bb5a5' }}>{result || '—'}</span>
                       </div>
-                      {facility && <div style={{ fontSize: 10, color: '#9bb5a5', marginTop: 2 }}>{facility}{date ? ` · ${formatDate(date)}` : ''}</div>}
+                      {facility && (
+                        <div style={{ fontSize: 10, color: '#9bb5a5', marginTop: 2 }}>
+                          {facility}{date ? ` · ${formatDate(date)}` : ''}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
 
-                {/* Medical History */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Past Medical History" />
                   <TagList items={rec.checkedMedical} color="amber" />
-
                   <SectionHead label="Family History" />
                   <TagList items={rec.checkedFamily} color="purple" />
-
-                  <SectionHead label="Surgical History" />
-                  <TagList items={rec.surgicalHistory?.map(s => `${s.operation} (${s.date})`)} color="blue" />
+                  <SectionHead label="Health History" />
+                  <TagList items={rec.checkedHealth} color="blue" />
                 </div>
 
-                {/* Remarks */}
-                {rec.remarks && (
+                <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
+                  <SectionHead label="Lifestyle & Habits" />
+                  <InfoRow label="Smoking" value={rec.smoking ? `${rec.smoking}${rec.smokingDetails ? ` — ${rec.smokingDetails}` : ''}` : null} />
+                  <InfoRow label="Alcohol"  value={rec.alcohol  ? `${rec.alcohol}${rec.alcoholDetails   ? ` — ${rec.alcoholDetails}`   : ''}` : null} />
+                  <InfoRow label="Drugs"    value={rec.drugs    ? `${rec.drugs}${rec.drugsDetails       ? ` — ${rec.drugsDetails}`     : ''}` : null} />
+                </div>
+
+                {(rec.covidHistory || rec.otherMedHistory || rec.otherFamilyHistory) && (
                   <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
-                    <SectionHead label="Remarks & Recommendations" />
-                    <p style={{ fontSize: 12, color: '#1a2e22', lineHeight: 1.7, margin: 0 }}>{rec.remarks}</p>
+                    <SectionHead label="Additional History" />
+                    {rec.covidHistory       && <InfoRow label="COVID History" value={rec.covidHistory} />}
+                    {rec.otherMedHistory    && <InfoRow label="Other Medical" value={rec.otherMedHistory} />}
+                    {rec.otherFamilyHistory && <InfoRow label="Other Family"  value={rec.otherFamilyHistory} />}
                   </div>
                 )}
 
-                {/* CTA to certificate */}
+                {/* Doctor's Note */}
+                {(rec.remarks || rec.finding1) && (
+                  <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
+                    <SectionHead label="Doctor's Note" />
+                    {rec.finding1 && (
+                      <>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', marginBottom: 4 }}>FINDINGS</div>
+                        <p style={{ fontSize: 12, color: '#1a2e22', lineHeight: 1.7, margin: '0 0 12px' }}>{rec.finding1}</p>
+                      </>
+                    )}
+                    {rec.remarks && (
+                      <>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', marginBottom: 4 }}>REMARKS & RECOMMENDATIONS</div>
+                        <p style={{ fontSize: 12, color: '#1a2e22', lineHeight: 1.7, margin: 0 }}>{rec.remarks}</p>
+                      </>
+                    )}
+                    {rec.isFit !== null && rec.isFit !== undefined && (
+                      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                        <span style={{
+                          background: rec.isFit ? '#e8f5ee' : '#fef2f2',
+                          color: rec.isFit ? '#1a5c3a' : '#dc2626',
+                          border: `1px solid ${rec.isFit ? '#b6e8c8' : '#fecaca'}`,
+                          borderRadius: 20, padding: '4px 12px', fontSize: 10, fontWeight: 800,
+                        }}>
+                          {rec.isFit ? '✓ Fit for School Activities' : '✗ Not Fit'}
+                        </span>
+                        {rec.isNormalFindings !== null && rec.isNormalFindings !== undefined && (
+                          <span style={{
+                            background: rec.isNormalFindings ? '#e8f5ee' : '#fff8e1',
+                            color: rec.isNormalFindings ? '#1a5c3a' : '#b45309',
+                            border: `1px solid ${rec.isNormalFindings ? '#b6e8c8' : '#fde68a'}`,
+                            borderRadius: 20, padding: '4px 12px', fontSize: 10, fontWeight: 800,
+                          }}>
+                            {rec.isNormalFindings ? '✓ Normal Findings' : '⚠ Abnormal Findings'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <button
                   onClick={() => setView('certificate')}
                   style={{ width: '100%', background: '#1a5c3a', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}
@@ -364,50 +576,44 @@ export default function RecordsUsers() {
                 </button>
               </>
             ) : (
-              
-            /* ── DENTAL SUMMARY ── */
+
+              /* ── DENTAL SUMMARY ── */
               <>
-                {/* Dental Patient Info */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Patient Information" />
                   <InfoRow label="Name"         value={`${rec.dFirstName || ''} ${rec.dLastName || ''}`.trim()} />
                   <InfoRow label="Age / Sex"    value={`${fmt(rec.dAge)} / ${fmt(rec.dSex)}`} />
                   <InfoRow label="Course/Year"  value={rec.dCourseYear} />
                   <InfoRow label="Address"      value={rec.dAddress} />
-                  <InfoRow label="Exam Date"    value={formatDate(rec.dSigDate)} />
+                  <InfoRow label="Exam Date"    value={formatDate(rec.dExamDate || rec.dSigDate)} />
                   <InfoRow label="Examined By"  value={rec.dExaminedBy} />
                 </div>
 
-                {/* Dental History & Procedures */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Dental History" />
                   <InfoRow label="Last Visit"       value={formatDate(rec.dLastVisit)} />
                   <InfoRow label="Previous Dentist" value={rec.dPrevDentist ? `Dr. ${rec.dPrevDentist}` : '—'} />
-                  
                   <SectionHead label="Procedures Done" />
                   <TagList items={dentalProceduresDone} color="blue" />
                 </div>
 
-                {/* Intraoral Findings */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Intraoral Findings" />
-                  <InfoRow label="Gingiva"       value={rec.intraoral?.gingiva} />
-                  <InfoRow label="Oral Hygiene"  value={rec.intraoral?.oralHygiene} />
+                  <InfoRow label="Gingiva"        value={rec.intraoral?.gingiva} />
+                  <InfoRow label="Oral Hygiene"   value={rec.intraoral?.oralHygiene} />
                   <InfoRow label="Gingival Color" value={rec.intraoral?.gingivalColor} />
-                  <InfoRow label="Occlusion"     value={rec.intraoral?.occlusion} />
-                  <InfoRow label="Lymph Nodes"   value={rec.intraoral?.lymph} />
-                  <InfoRow label="Status"        value={rec.intraoral?.status} />
-                  <InfoRow label="TMJ Exam"      value={rec.intraoral?.tmjExam ? 'Yes' : 'No'} />
+                  <InfoRow label="Occlusion"      value={rec.intraoral?.occlusion} />
+                  <InfoRow label="Lymph Nodes"    value={rec.intraoral?.lymph} />
+                  <InfoRow label="Status"         value={rec.intraoral?.status} />
+                  <InfoRow label="TMJ Exam"       value={rec.intraoral?.tmjExam ? 'Yes' : 'No'} />
                 </div>
 
-                {/* Affected Teeth */}
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Affected Teeth Chart" />
                   <TagList items={affectedTeeth} color="amber" />
                 </div>
               </>
             )}
-
           </div>
         )}
 

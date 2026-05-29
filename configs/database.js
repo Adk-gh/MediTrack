@@ -1,16 +1,17 @@
-// C:\Users\HP\University Clinic\configs\database.js
-const { db } = require('./firebase-admin');
+  // C:\Users\HP\MediTrack\configs/database.js
+  require('dotenv').config();
+  const { createClient } = require('@supabase/supabase-js');
 
-const connectDB = async () => {
-    try {
-        // With Firestore/Admin SDK, "connecting" is just verifying the DB instance
-        if (db) {
-            console.log("📂 Firestore Admin SDK Initialized...");
-        }
-    } catch (err) {
-        console.error("❌ Database Connection Error:", err.message);
-        process.exit(1);
-    }
-};
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.supabaseUrl;
+  const supabaserviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
-module.exports = connectDB;
+  if (!supabaseUrl || !supabaserviceKey) {
+    console.error('Missing Supabase configuration: SUPABASE_URL or SUPABASE_SERVICE_KEY');
+    process.exit(1);
+  }
+
+  const supabase = createClient(supabaseUrl, supabaserviceKey);
+
+  console.log('📂 Supabase client initialized...');
+
+  module.exports = supabase;

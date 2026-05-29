@@ -1,10 +1,8 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Profile-users.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { onAuthStateChanged, updateEmail } from 'firebase/auth';
-import { auth, db } from '../../firebase';
-import BirthdayPicker from '../../components/Datepicker.jsx';
+import { supabase } from '../../supabase';
+import DatePicker from '../../components/Datepicker.jsx';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const DocIcon = () => (
@@ -34,11 +32,11 @@ const fmt = (val) => (!val || val === '') ? '—' : val;
 
 const SectionHeader = ({ label, onEdit }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#2d7a52', borderLeft: '3px solid #34c472', paddingLeft: 8 }}>
+    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#466460', borderLeft: '3px solid #466460', paddingLeft: 8 }}>
       {label}
     </div>
     {onEdit && (
-      <button onClick={onEdit} style={{ background: 'none', border: 'none', color: '#1a5c3a', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6, backgroundColor: '#e8f5ee' }}>
+      <button onClick={onEdit} style={{ background: 'none', border: 'none', color: '#466460', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6, backgroundColor: '#e0eceb' }}>
         <EditIcon /> Edit
       </button>
     )}
@@ -46,36 +44,43 @@ const SectionHeader = ({ label, onEdit }) => (
 );
 
 const InfoRow = ({ label, value, last }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: last ? 'none' : '1px solid #e2f0ea' }}>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: last ? 'none' : '1px solid #edf3f0' }}>
     <span style={{ fontWeight: 600, fontSize: 12, color: '#6b8577', flexShrink: 0, marginRight: 12 }}>{label}</span>
     <span style={{ fontWeight: 600, fontSize: 13, color: '#1a2e22', textAlign: 'right' }}>{fmt(value)}</span>
   </div>
 );
 
 const Card = ({ children, style }) => (
-  <div style={{ background: '#fff', borderRadius: 20, padding: 16, border: '1px solid #ddeee5', ...style }}>
+  <div style={{ background: '#fff', borderRadius: 20, padding: 16, border: '1px solid #edf3f0', ...style }}>
     {children}
   </div>
 );
 
 const FormGroup = ({ label, children }) => (
-  <div style={{ marginBottom: 14 }}>
-    <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#6b8577', marginBottom: 6, textTransform: 'uppercase' }}>{label}</label>
+  <div style={{ marginBottom: 16 }}>
+    <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#6b8577', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</label>
     {children}
   </div>
 );
 
+// Cleaned up input style for the new color scheme
 const inputStyle = {
-  width: '100%', padding: '12px 14px', borderRadius: 12,
-  border: '1px solid #ddeee5', fontSize: 13,
-  backgroundColor: '#f9fbfa', color: '#1a2e22',
-  boxSizing: 'border-box', outline: 'none',
+  width: '100%',
+  padding: '12px 14px',
+  borderRadius: 10,
+  border: '1px solid #c4dbd8',
+  fontSize: 13,
+  backgroundColor: '#fbfcfc',
+  color: '#1a2e22',
+  boxSizing: 'border-box',
+  outline: 'none',
+  transition: 'border 0.2s',
 };
 
 const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 
 const classificationColors = {
-  Regular:   { bg: '#e8f5ef', text: '#1a5c3a', dot: '#2d7a52' },
+  Regular:   { bg: '#e0eceb', text: '#466460', dot: '#466460' },
   Irregular: { bg: '#fff7e6', text: '#92400e', dot: '#f59e0b' },
   Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
 };
@@ -118,7 +123,7 @@ export default function ProfileUsers({ onLogout }) {
   const drugtestInputRef = useRef(null);
 
   const [profile, setProfile] = useState({
-    firstName: '', middleInitial: '', lastName: '', suffix: '',
+    firstName: '', middleName: '', lastName: '', suffix: '',
     birthday: '', age: '', sex: '', bloodType: '',
     homeAddress: '', religion: '', nationality: '', civilStatus: '',
     universityId: '', role: '',
@@ -141,71 +146,109 @@ export default function ProfileUsers({ onLogout }) {
 
   // ── Fetch from Firestore on mount ────────────────────────────────────────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const snap = await getDoc(doc(db, 'users', user.uid));
-          if (snap.exists()) {
-            const d = snap.data();
-            setProfile({
-              firstName:              d.firstName              || '',
-              middleInitial:          d.middleInitial          || '',
-              lastName:               d.lastName               || '',
-              suffix:                 d.suffix                 || '',
-              birthday:               d.birthday               || '',
-              age:                    d.age                    || '',
-              sex:                    d.sex                    || '',
-              bloodType:              d.bloodType              || '',
-              homeAddress:            d.homeAddress            || '',
-              religion:               d.religion               || '',
-              nationality:            d.nationality            || '',
-              civilStatus:            d.civilStatus            || '',
-              universityId:           d.universityId           || user.uid.slice(0, 8).toUpperCase(),
-              role:                   d.role                   || '',
-              studentId:              d.studentId              || '',
-              department:             d.department             || '',
-              program:                d.program                || '',
-              yearLevel:              d.yearLevel              || '',
-              section:                d.section                || '',
-              studentClassification:  d.studentClassification  || 'Regular',
-              classification:         d.classification         || '',
-              jobTitle:               d.jobTitle               || '',
-              email:                  d.email                  || user.email || '',
-              phoneNumber:            d.phoneNumber            || '',
-              emergencyContact: {
-                name:         d.emergencyContact?.name         || '',
-                relationship: d.emergencyContact?.relationship || '',
-                phone:        d.emergencyContact?.phone        || '',
-                address:      d.emergencyContact?.address      || '',
-              },
-              vaccinations: {
-                dose1:    { vaccineName: d.vaccinations?.dose1?.vaccineName    || '', date: d.vaccinations?.dose1?.date    || '' },
-                dose2:    { vaccineName: d.vaccinations?.dose2?.vaccineName    || '', date: d.vaccinations?.dose2?.date    || '' },
-                booster1: { vaccineName: d.vaccinations?.booster1?.vaccineName || '', date: d.vaccinations?.booster1?.date || '' },
-                booster2: { vaccineName: d.vaccinations?.booster2?.vaccineName || '', date: d.vaccinations?.booster2?.date || '' },
-              },
-              dentalHistory: {
-                lastVisit:   d.dentalHistory?.lastVisit   || '',
-                prevDentist: d.dentalHistory?.prevDentist || '',
-                physician:   d.dentalHistory?.physician   || '',
-                procedures:  d.dentalHistory?.procedures  || {},
-              }
-            });
-          } else {
-            setProfile(prev => ({ ...prev, email: user.email || '' }));
-          }
-        } catch (err) {
-          console.error('[ProfileUsers] Fetch error:', err);
+    const fetchProfile = async () => {
+      try {
+        // 1. Restore the session using your Express token to bypass RLS
+        const accessToken = localStorage.getItem('token');
+        const refreshToken = localStorage.getItem('refresh_token') || '';
+
+        if (accessToken) {
+          await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
         }
+
+        // Get the auth user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // Fallback to localStorage UID if supabase auth hasn't fully synced
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const activeUid = user?.id || currentUser?.uid;
+
+        if (!activeUid) {
+          setLoading(false);
+          return;
+        }
+
+        // 2. Query by 'uid' (not 'id') and use .limit(1) to prevent 406 network errors
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('uid', activeUid)
+          .limit(1);
+
+        const profileData = data?.[0] || null;
+
+        if (error) throw error;
+
+        if (profileData) {
+          setProfile({
+            firstName:              profileData.first_name               || '',
+            middleName:          profileData.middle_name           || '',
+            lastName:               profileData.last_name                || '',
+            suffix:                 profileData.suffix                   || '',
+            birthday:               profileData.birthday                 || '',
+            age:                    profileData.age                      || '',
+            sex:                    profileData.sex                      || '',
+            bloodType:              profileData.blood_type               || '',
+            homeAddress:            profileData.home_address             || '',
+            religion:               profileData.religion                 || '',
+            nationality:            profileData.nationality              || '',
+            civilStatus:            profileData.civil_status             || '',
+            universityId:           profileData.university_id            || activeUid.slice(0, 8).toUpperCase(),
+            role:                   profileData.role                     || '',
+            studentId:              profileData.student_id               || '',
+            department:             profileData.department               || '',
+            program:                profileData.program                  || '',
+            yearLevel:              profileData.year_level               || '',
+            section:                profileData.section                  || '',
+            studentClassification:  profileData.student_classification   || 'Regular',
+            classification:         profileData.classification           || '',
+            jobTitle:               profileData.job_title                || '',
+            email:                  profileData.email                    || user?.email || currentUser?.email || '',
+            phoneNumber:            profileData.phone_number             || '',
+            emergencyContact: {
+              name:         profileData.emergency_contact?.name          || '',
+              relationship: profileData.emergency_contact?.relationship  || '',
+              phone:        profileData.emergency_contact?.phone         || '',
+              address:      profileData.emergency_contact?.address       || '',
+            },
+            vaccinations: {
+              dose1:    { vaccineName: profileData.vaccinations?.dose1?.vaccineName    || '', date: profileData.vaccinations?.dose1?.date    || '' },
+              dose2:    { vaccineName: profileData.vaccinations?.dose2?.vaccineName    || '', date: profileData.vaccinations?.dose2?.date    || '' },
+              booster1: { vaccineName: profileData.vaccinations?.booster1?.vaccineName || '', date: profileData.vaccinations?.booster1?.date || '' },
+              booster2: { vaccineName: profileData.vaccinations?.booster2?.vaccineName || '', date: profileData.vaccinations?.booster2?.date || '' },
+            },
+            dentalHistory: {
+              lastVisit:   profileData.dental_history?.lastVisit   || '',
+              prevDentist: profileData.dental_history?.prevDentist || '',
+              physician:   profileData.dental_history?.physician   || '',
+              procedures:  profileData.dental_history?.procedures  || {},
+            }
+          });
+        } else {
+          setProfile(prev => ({ ...prev, email: user?.email || currentUser?.email || '' }));
+        }
+      } catch (err) {
+        console.error('[ProfileUsers] Fetch error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
+    };
+
+    fetchProfile();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      fetchProfile();
     });
-    return () => unsubscribe();
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const fullName = [
     profile.firstName,
-    profile.middleInitial ? `${profile.middleInitial}.` : '',
+    profile.middleName || '',
     profile.lastName,
     profile.suffix,
   ].filter(Boolean).join(' ');
@@ -217,7 +260,6 @@ export default function ProfileUsers({ onLogout }) {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // ── Navigate to Settings page ────────────────────────────────────────────
   const handleOpenSettings = () => {
     navigate('/student/settings', { state: { activeTab: 'general' } });
   };
@@ -235,32 +277,21 @@ export default function ProfileUsers({ onLogout }) {
   const saveProfileEdits = async () => {
     setIsSaving(true);
     try {
-      const user = auth.currentUser;
-      if (user) {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update profile');
 
-        // 1. Update Email in Firebase Auth if it changed
-        if (editData.email && editData.email !== profile.email) {
-          try {
-            await updateEmail(user, editData.email);
-          } catch (emailErr) {
-            if (emailErr.code === 'auth/requires-recent-login') {
-              showToast('Security alert: Please sign out and sign back in to change your email.');
-              setIsSaving(false);
-              return;
-            } else {
-              showToast(`Error updating email: ${emailErr.message}`);
-              setIsSaving(false);
-              return;
-            }
-          }
-        }
-
-        // 2. Update Firestore
-        await updateDoc(doc(db, 'users', user.uid), editData);
-        setProfile(editData);
-        showToast('Profile updated successfully!');
-        closeEdit();
-      }
+      setProfile(data.data);
+      showToast('Profile updated successfully!');
+      closeEdit();
     } catch (err) {
       console.error('Error updating profile:', err);
       showToast('Error updating profile.');
@@ -311,7 +342,7 @@ export default function ProfileUsers({ onLogout }) {
 
   if (loading) {
     return (
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1a5c3a', fontSize: 13, fontWeight: 600 }}>
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#466460', fontSize: 13, fontWeight: 600 }}>
         Loading profile...
       </div>
     );
@@ -334,7 +365,7 @@ export default function ProfileUsers({ onLogout }) {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-            <div style={{ background: '#e8f5ee', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#1a5c3a' }}>
+            <div style={{ background: '#e0eceb', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#466460' }}>
               {isStudent ? `ID: ${profile.universityId}` : profile.classification}
             </div>
             {isStudent && profile.studentClassification && (
@@ -403,7 +434,7 @@ export default function ProfileUsers({ onLogout }) {
       {/* ── COVID-19 Vaccination History ── */}
       <Card>
         <SectionHeader label="COVID-19 Vaccination History" onEdit={() => openEdit('vaccinations')} />
-        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #e2f0ea' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #edf3f0' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Dose</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Vaccine Brand</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase', textAlign: 'right' }}>Date Given</span>
@@ -412,14 +443,14 @@ export default function ProfileUsers({ onLogout }) {
           const v = profile.vaccinations[key];
           const isEmpty = !v.vaccineName && !v.date;
           return (
-            <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #e2f0ea' : 'none', alignItems: 'center' }}>
-              <span style={{ background: '#e8f5ee', color: '#1a5c3a', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, textAlign: 'center', width: 'fit-content' }}>
+            <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #edf3f0' : 'none', alignItems: 'center' }}>
+              <span style={{ background: '#e0eceb', color: '#466460', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, textAlign: 'center', width: 'fit-content' }}>
                 {label}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: isEmpty ? '#c4d9ce' : '#1a2e22' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: isEmpty ? '#c4dbd8' : '#1a2e22' }}>
                 {isEmpty ? 'Not recorded' : fmt(v.vaccineName)}
               </span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isEmpty ? '#c4d9ce' : '#6b8577', textAlign: 'right' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: isEmpty ? '#c4dbd8' : '#6b8577', textAlign: 'right' }}>
                 {isEmpty ? '—' : fmt(v.date)}
               </span>
             </div>
@@ -438,30 +469,30 @@ export default function ProfileUsers({ onLogout }) {
       {/* ── Health Documents ── */}
       <Card>
         <SectionHeader label="Health Documents" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #e2f0ea' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #edf3f0' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#1a5c3a', background: '#e8f5ee', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{xrayDate}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{xrayDate}</span>
             <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{xrayFile}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#e8f5ee', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#1a5c3a' }}>X-RAY</span>
-            <button onClick={() => xrayInputRef.current?.click()} style={{ background: '#1a5c3a', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
+            <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>X-RAY</span>
+            <button onClick={() => xrayInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
             <input ref={xrayInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'xray')} />
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#1a5c3a', background: '#e8f5ee', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{drugtestDate}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{drugtestDate}</span>
             <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{drugtestFile}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#e8f5ee', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#1a5c3a' }}>Drug Test</span>
-            <button onClick={() => drugtestInputRef.current?.click()} style={{ background: '#1a5c3a', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
+            <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>Drug Test</span>
+            <button onClick={() => drugtestInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
             <input ref={drugtestInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'drugtest')} />
           </div>
         </div>
-        <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #ddeee5' }} />
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#2d7a52', background: '#e8f5ee', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
+        <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #c4dbd8' }} />
+        <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
       </Card>
 
       {/* ── Settings Button → navigates to /settings ── */}
@@ -469,7 +500,7 @@ export default function ProfileUsers({ onLogout }) {
         onClick={handleOpenSettings}
         style={{
           width: '100%', background: '#fff',
-          border: '1px solid #ddeee5', color: '#466460',
+          border: '1px solid #c4dbd8', color: '#466460',
           padding: 14, borderRadius: 16,
           fontSize: 12, fontWeight: 700,
           cursor: 'pointer', marginTop: 4,
@@ -477,7 +508,7 @@ export default function ProfileUsers({ onLogout }) {
           justifyContent: 'center', gap: 8,
           transition: 'background 0.15s',
         }}
-        onMouseEnter={e => e.currentTarget.style.background = '#edf4f2'}
+        onMouseEnter={e => e.currentTarget.style.background = '#f4f7f5'}
         onMouseLeave={e => e.currentTarget.style.background = '#fff'}
       >
         <SettingsGearIcon /> SETTINGS
@@ -492,49 +523,50 @@ export default function ProfileUsers({ onLogout }) {
       </button>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          ── Edit Profile Modal ──
+          ── Cleaned Edit Profile Modal ──
       ══════════════════════════════════════════════════════════════════════ */}
       {editingSection && (
-        <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 450, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
 
-            <div style={{ background: '#1a5c3a', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 15, fontWeight: 700, textTransform: 'capitalize' }}>Edit {editingSection} Info</span>
-              <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 18 }}>✕</button>
+            {/* Clean Header */}
+            <div style={{ background: '#fff', padding: '20px 24px', borderBottom: '1px solid #edf3f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: '#466460', textTransform: 'capitalize' }}>Edit {editingSection} Info</span>
+              <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#9bb5a5', cursor: 'pointer', fontSize: 18, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             </div>
 
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
 
               {/* ── Personal Section ── */}
               {editingSection === 'personal' && (
                 <>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="First Name">
                       <input style={inputStyle} value={editData.firstName} onChange={e => handleChange('firstName', e.target.value)} />
                     </FormGroup>
                     <FormGroup label="M.I.">
-                      <input style={{ ...inputStyle, width: 60 }} value={editData.middleInitial} onChange={e => handleChange('middleInitial', e.target.value)} maxLength={2} />
+                      <input style={{ ...inputStyle, width: 120 }} value={editData.middleName} onChange={e => handleChange('middleName', e.target.value)} />
                     </FormGroup>
                   </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Last Name">
                       <input style={{ ...inputStyle, flex: 1 }} value={editData.lastName} onChange={e => handleChange('lastName', e.target.value)} />
                     </FormGroup>
                     <FormGroup label="Suffix">
-                      <input style={{ ...inputStyle, width: 70 }} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} />
+                      <input style={{ ...inputStyle, width: 80 }} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} />
                     </FormGroup>
                   </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
                     <div style={{ flex: 1 }}>
                       <FormGroup label="Birthday">
-                        <BirthdayPicker value={editData.birthday || ''} onChange={val => handleChange('birthday', val)} />
+                        <DatePicker value={editData.birthday || ''} onChange={val => handleChange('birthday', val)} />
                       </FormGroup>
                     </div>
                     <FormGroup label="Age">
-                      <input type="number" style={{ ...inputStyle, width: 70 }} value={editData.age} onChange={e => handleChange('age', e.target.value)} />
+                      <input type="number" style={{ ...inputStyle, width: 80 }} value={editData.age} onChange={e => handleChange('age', e.target.value)} />
                     </FormGroup>
                   </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Sex">
                       <select style={inputStyle} value={editData.sex} onChange={e => handleChange('sex', e.target.value)}>
                         <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option>
@@ -579,7 +611,7 @@ export default function ProfileUsers({ onLogout }) {
                   <FormGroup label="Program">
                     <input style={inputStyle} value={editData.program} onChange={e => handleChange('program', e.target.value)} />
                   </FormGroup>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Year Level">
                       <input style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)} />
                     </FormGroup>
@@ -599,9 +631,9 @@ export default function ProfileUsers({ onLogout }) {
                             onClick={() => handleChange('studentClassification', cls)}
                             style={{
                               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                              padding: '9px 6px', borderRadius: 11, fontSize: 12, fontWeight: 600,
-                              border: `1.5px solid ${isActive ? colors.dot : '#ddeee5'}`,
-                              background: isActive ? colors.bg : '#f9fbfa',
+                              padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                              border: `1px solid ${isActive ? colors.dot : '#c4dbd8'}`,
+                              background: isActive ? colors.bg : '#fbfcfc',
                               color: isActive ? colors.text : '#94a3b8',
                               cursor: 'pointer', transition: 'all 0.15s',
                             }}
@@ -652,24 +684,24 @@ export default function ProfileUsers({ onLogout }) {
               {editingSection === 'vaccinations' && (
                 <>
                   {DOSE_LABELS.map(({ key, label }) => (
-                    <div key={key} style={{ background: '#f4f7f5', padding: 12, borderRadius: 16, marginBottom: 12 }}>
-                      <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '0 0 10px 0', textTransform: 'uppercase' }}>{label}</p>
+                    <div key={key} style={{ background: '#f4f7f5', padding: 16, borderRadius: 12, marginBottom: 16, border: '1px solid #edf3f0' }}>
+                      <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
                       <FormGroup label="Vaccine Brand">
-                        <input style={inputStyle} value={editData.vaccinations[key].vaccineName} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)} placeholder="e.g. Pfizer, Moderna" />
+                        <input style={{...inputStyle, backgroundColor: '#fff'}} value={editData.vaccinations[key].vaccineName} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)} placeholder="e.g. Pfizer, Moderna" />
                       </FormGroup>
                       <FormGroup label="Date Given">
-                        <BirthdayPicker value={editData.vaccinations[key].date || ''} onChange={val => handleVaxChange(key, 'date', val)} />
+                        <DatePicker value={editData.vaccinations[key].date || ''} onChange={val => handleVaxChange(key, 'date', val)} />
                       </FormGroup>
                     </div>
                   ))}
                 </>
               )}
 
-              {/* ── Dental History Section (EDITED) ── */}
+              {/* ── Dental History Section ── */}
               {editingSection === 'dental' && (
                 <>
                   <FormGroup label="Last Dental Visit">
-                    <BirthdayPicker value={editData.dentalHistory.lastVisit || ''} onChange={val => handleDentalChange('lastVisit', val)} />
+                    <DatePicker value={editData.dentalHistory.lastVisit || ''} onChange={val => handleDentalChange('lastVisit', val)} />
                   </FormGroup>
                   <FormGroup label="Previous Dentist (Dr.)">
                     <input style={inputStyle} value={editData.dentalHistory.prevDentist} placeholder="e.g. Smith" onChange={e => handleDentalChange('prevDentist', e.target.value)} />
@@ -678,19 +710,19 @@ export default function ProfileUsers({ onLogout }) {
                     <input style={inputStyle} value={editData.dentalHistory.physician} placeholder="e.g. Doe" onChange={e => handleDentalChange('physician', e.target.value)} />
                   </FormGroup>
 
-                  <p style={{ fontSize: 11, fontWeight: 800, color: '#1a5c3a', margin: '16px 0 10px 0', textTransform: 'uppercase', borderTop: '1px solid #ddeee5', paddingTop: 16 }}>Procedures History</p>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: '24px 0 12px 0', textTransform: 'uppercase', borderTop: '1px solid #edf3f0', paddingTop: 20, letterSpacing: 0.5 }}>Procedures History</p>
                   {DENTAL_PROCEDURES.map(proc => {
                     const isYes = editData.dentalHistory.procedures?.[proc] === 'Yes';
                     const isNo  = editData.dentalHistory.procedures?.[proc] === 'No' || !editData.dentalHistory.procedures?.[proc];
                     return (
-                      <div key={proc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 12, color: '#1a2e22', background: '#f4f7f5', padding: '8px 12px', borderRadius: 8 }}>
+                      <div key={proc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 12, color: '#1a2e22', background: '#fbfcfc', border: '1px solid #edf3f0', padding: '10px 14px', borderRadius: 10 }}>
                         <span style={{ fontWeight: 600 }}>{proc}</span>
-                        <div style={{ display: 'flex', gap: 12 }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 600 }}>
-                            <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} style={{ accentColor: '#1a5c3a' }} /> Yes
+                        <div style={{ display: 'flex', gap: 16 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
+                            <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} style={{ accentColor: '#466460' }} /> Yes
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 600 }}>
-                            <input type="radio" name={`modal_dh_${proc}`} checked={isNo}  onChange={() => handleDentalProcChange(proc, 'No')}  style={{ accentColor: '#1a5c3a' }} /> No
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
+                            <input type="radio" name={`modal_dh_${proc}`} checked={isNo}  onChange={() => handleDentalProcChange(proc, 'No')}  style={{ accentColor: '#466460' }} /> No
                           </label>
                         </div>
                       </div>
@@ -701,9 +733,10 @@ export default function ProfileUsers({ onLogout }) {
 
             </div>
 
-            <div style={{ padding: '16px 20px', borderTop: '1px solid #ddeee5', display: 'flex', gap: 12, background: '#fafcfb' }}>
-              <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 40, border: '1.5px solid #ddeee5', background: 'transparent', cursor: 'pointer', fontWeight: 600, color: '#6b8577' }}>Cancel</button>
-              <button onClick={saveProfileEdits} disabled={isSaving} style={{ flex: 1, padding: '12px', borderRadius: 40, border: 'none', background: '#1a5c3a', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1 }}>
+            {/* Clean Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #edf3f0', display: 'flex', gap: 12, background: '#fff' }}>
+              <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577', transition: 'background 0.2s' }}>Cancel</button>
+              <button onClick={saveProfileEdits} disabled={isSaving} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1, transition: 'background 0.2s' }}>
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
@@ -713,13 +746,13 @@ export default function ProfileUsers({ onLogout }) {
 
       {/* ── Logout Modal ── */}
       {logoutModal && (
-        <div onClick={e => e.target === e.currentTarget && setLogoutModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 24, width: 300, textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 8px', color: '#1a2e22', fontSize: 18 }}>Confirm Sign Out</h3>
+        <div onClick={e => e.target === e.currentTarget && setLogoutModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', padding: 32, borderRadius: 20, width: 320, textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
+            <h3 style={{ margin: '0 0 8px', color: '#1a2e22', fontSize: 18, fontWeight: 800 }}>Confirm Sign Out</h3>
             <p style={{ margin: '0 0 24px', color: '#6b8577', fontSize: 13 }}>Are you sure you want to log out?</p>
             <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => setLogoutModal(false)} style={{ flex: 1, padding: 12, borderRadius: 40, border: '1.5px solid #ddeee5', background: 'transparent', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={() => { setLogoutModal(false); if (onLogout) onLogout(); }} style={{ flex: 1, padding: 12, borderRadius: 40, border: 'none', background: '#e53e3e', color: '#fff', cursor: 'pointer' }}>Sign Out</button>
+              <button onClick={() => setLogoutModal(false)} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#f4f7f5', color: '#6b8577', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { setLogoutModal(false); if (onLogout) onLogout(); }} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#e53e3e', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>Sign Out</button>
             </div>
           </div>
         </div>
@@ -727,16 +760,16 @@ export default function ProfileUsers({ onLogout }) {
 
       {/* ── File Preview Modal ── */}
       {previewModal && (
-        <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 320, background: '#fff', borderRadius: 28, overflow: 'hidden' }}>
-            <div style={{ background: '#1a5c3a', padding: 16, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>Preview — {previewFileName}</span>
+        <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.8)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 340, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.15)' }}>
+            <div style={{ background: '#466460', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, truncate: true, maxWidth: '80%' }}>Preview — {previewFileName}</span>
               <button onClick={closePreview} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
-            <div style={{ padding: 16 }}>{previewContent}</div>
-            <div style={{ display: 'flex', gap: 12, padding: 16 }}>
-              <button onClick={closePreview} style={{ flex: 1, padding: 10, borderRadius: 40, border: '1.5px solid #ddeee5', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={confirmUpdate} style={{ flex: 1, background: '#1a5c3a', color: '#fff', border: 'none', padding: 10, borderRadius: 40, cursor: 'pointer' }}>Confirm</button>
+            <div style={{ padding: 20 }}>{previewContent}</div>
+            <div style={{ display: 'flex', gap: 12, padding: '0 20px 20px' }}>
+              <button onClick={closePreview} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#f4f7f5', color: '#6b8577', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+              <button onClick={confirmUpdate} style={{ flex: 1, background: '#466460', color: '#fff', border: 'none', padding: 12, borderRadius: 10, cursor: 'pointer', fontWeight: 700 }}>Confirm</button>
             </div>
           </div>
         </div>
@@ -744,7 +777,7 @@ export default function ProfileUsers({ onLogout }) {
 
       {/* ── Toast ── */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#1a5c3a', color: '#fff', padding: '10px 20px', borderRadius: 40, fontSize: 12, zIndex: 5000, whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#466460', color: '#fff', padding: '12px 24px', borderRadius: 40, fontSize: 13, fontWeight: 600, zIndex: 5000, whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
           {toast}
         </div>
       )}

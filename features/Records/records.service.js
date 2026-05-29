@@ -1,108 +1,146 @@
-// C:\Users\HP\MediTrack\features\Records\records.service.js
-const { db } = require('../../configs/firebase-admin');
-const admin = require('firebase-admin');
+// C:\Users\HP\MediTrack\features/Records/records.service.js
+const supabase = require('../../configs/database');
 const notificationsService = require('../notifications/notifications.service');
 
-// Modify retrieval to query from 'users' so it correctly feeds the Front-End Records tab.
 exports.getAllRecords = async () => {
-  const snapshot = await db.collection('users').get();
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data.map(doc => ({ id: doc.uid, ...doc }));
 };
 
 exports.getRecordById = async (id) => {
-  const doc = await db.collection('users').doc(id).get();
-  if (!doc.exists) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('uid', id)
+    .single();
+
+  if (error || !data) {
     const error = new Error('Record not found');
     error.statusCode = 404;
     throw error;
   }
-  return { id: doc.id, ...doc.data() };
+  return { id: data.uid, ...data };
 };
 
-// Refactored to act as an "Admin User Creation" Tool
 exports.createRecord = async (data) => {
   try {
-    // 1. Create User in Firebase Auth allowing them to log in later
-    const userRecord = await admin.auth().createUser({
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: data.email,
-      password: data.password || 'Plsp12345!', // Provide the manually typed password
-      displayName: `${data.firstName} ${data.lastName}`.trim(),
+      password: data.password || 'Plsp12345!',
+      email_confirm: true,
+      user_metadata: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        display_name: `${data.firstName} ${data.lastName}`.trim(),
+      },
     });
 
-    // 2. Structurally map the data to conform exactly with the unified User Profile Model.
+    if (authError) throw authError;
+    const user = authData.user;
+    if (!user) throw new Error('Failed to create auth user');
+
+    // snake_case to match your Supabase schema
     const newDoc = {
-  uid: userRecord.uid,
-  firstName: data.firstName || '',
-  lastName: data.lastName || '',
-  middleInitial: data.middleInitial || '',
-  suffix: data.suffix || '',
-  email: data.email || '',
-  universityId: data.universityId || '',
-  role: data.role || 'student',
-  sex: data.sex || '',           // ✅ was data.gender
-  birthday: data.birthday || '', // ✅ was data.birthdate
-  age: String(data.age || ''),
-  department: data.department || '',
-  phoneNumber: data.phoneNumber || '',
-  civilStatus: data.civilStatus || '',     // ✅ missing
-  nationality: data.nationality || '',     // ✅ missing
-  religion: data.religion || '',           // ✅ missing
-  bloodType: data.bloodType || '',
-  homeAddress: data.homeAddress || '',
-  emergencyContact: data.emergencyContact || {},
-  vaccinations: data.vaccinations || {},
-  isProfileSetup: true,
-  profileComplete: true,
+      id: user.id,                                    // PK = auth UUID, no separate uid
+      first_name: data.firstName || '',
+      last_name: data.lastName || '',
+      middle_name: data.middleName || '',
+      suffix: data.suffix || '',
+      email: data.email || '',
+      university_id: data.universityId || '',
+      role: data.role || 'student',
+      sex: data.sex || '',
+      birthday: data.birthday || null,
+      age: data.age ? parseInt(data.age) : null,
+      department: data.department || '',
+      phone_number: data.phoneNumber || '',
+      civil_status: data.civilStatus || '',
+      nationality: data.nationality || '',
+      religion: data.religion || '',
+      blood_type: data.bloodType || '',
+      home_address: data.homeAddress || '',
+      emergency_contact: data.emergencyContact || {},
+      vaccinations: data.vaccinations || {},
+      is_profile_setup: true,
+      profile_complete: true,
+      ...(data.role === 'student'
+        ? {
+            program: data.program || '',
+            year_level: data.yearLevel || '',
+            section: data.section || '',
+            student_classification: data.studentClassification || '',
+          }
+        : {
+            job_title: data.jobTitle || '',
+            classification: data.classification || '',
+          }),
+    };
 
-  ...(data.role === 'student' ? {
-    program: data.program || '',
-    yearLevel: data.yearLevel || '',
-    section: data.section || '',
-    studentClassification: data.studentClassification || '', // ✅ missing
-  } : {
-    jobTitle: data.jobTitle || '',
-    classification: data.classification || '',
-  }),
+    const { error: insertError } = await supabase.from('users').insert(newDoc);
 
-  createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-};
+    if (insertError) {
+      await supabase.auth.admin.deleteUser(user.id);
+      throw insertError;
+    }
 
-    // 3. Save the document inside the 'users' collection to maintain universal sync
-    await db.collection('users').doc(userRecord.uid).set(newDoc);
-
-    // Notify admins about new user/record creation
     await notificationsService.notifyAdmins({
       type: 'record_added',
       title: 'New User Record Created',
-      message: `New user: ${newDoc.firstName} ${newDoc.lastName} (${newDoc.role})`,
-      referenceId: userRecord.uid,
+      message: `New user: ${newDoc.first_name} ${newDoc.last_name} (${newDoc.role})`,
+      referenceId: user.id,
       referenceType: 'user',
     });
 
-    return { id: userRecord.uid, ...newDoc };
+    return { id: user.id, ...newDoc };
   } catch (error) {
-    // Catch common errors like "Email Already in use"
     throw new Error(error.message || 'Error executing admin account creation');
   }
 };
 
+exports.getAllRecords = async () => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data.map(doc => ({ id: doc.id, ...doc }));
+};
+
+exports.getRecordById = async (id) => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)           // was uid
+    .single();
+
+  if (error || !data) {
+    const err = new Error('Record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  return { id: data.id, ...data };
+};
+
 exports.updateRecord = async (id, data) => {
-  const updateData = {
-    ...data,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
-  await db.collection('users').doc(id).update(updateData);
+  const updateData = { ...data, updated_at: new Date().toISOString() };  // was updatedAt
+  const { error } = await supabase.from('users').update(updateData).eq('id', id);
+  if (error) throw error;
   return { id, ...updateData };
 };
 
 exports.deleteRecord = async (id) => {
-  // Optional: Remove from Auth in addition to the DB Document
   try {
-      await admin.auth().deleteUser(id);
-  } catch(e) {
-      console.log('User auth already deleted or mismatch');
+    await supabase.auth.admin.deleteUser(id);
+  } catch (e) {
+    console.log('Auth user already deleted or mismatch');
   }
-  await db.collection('users').doc(id).delete();
+  const { error } = await supabase.from('users').delete().eq('id', id);
+  if (error) throw error;
   return { id };
 };

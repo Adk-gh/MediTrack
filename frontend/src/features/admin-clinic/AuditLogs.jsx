@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  collection, getDocs, query, orderBy, limit, startAfter,
-} from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -32,7 +29,16 @@ const getActionStyle = (action) =>
 
 const formatDate = (timestamp) => {
   if (!timestamp) return '—';
-  if (typeof timestamp === 'string') return timestamp;
+  if (typeof timestamp === 'string') {
+    // Supabase returns ISO strings
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return timestamp;
+    return d.toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true
+    });
+  }
+  // Handle Firestore-style timestamps (legacy)
   if (timestamp?.toDate) {
     const d = timestamp.toDate();
     return d.toLocaleString('en-US', {
@@ -93,18 +99,17 @@ export const AuditLogs = () => {
         setLoading(true);
       }
 
-      const logsRef = collection(db, 'audit_logs');
-      let q = query(logsRef, orderBy('timestamp', 'desc'), limit(50));
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-      const snapshot = await getDocs(q);
-      const fetchedLogs = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data(),
-        timestamp: d.data().timestamp?.toDate?.() || d.data().timestamp,
-      }));
+      if (error) throw error;
 
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === 50);
+      const fetchedLogs = data || [];
+      setLastDoc(fetchedLogs[fetchedLogs.length - 1]);
+      setHasMore(fetchedLogs.length === 50);
       setLogs(fetchedLogs);
 
       calculateStats(fetchedLogs);
@@ -121,23 +126,19 @@ export const AuditLogs = () => {
 
     try {
       setLoadingMore(true);
-      const logsRef = collection(db, 'audit_logs');
-      const q = query(
-        logsRef,
-        orderBy('timestamp', 'desc'),
-        startAfter(lastDoc),
-        limit(50)
-      );
 
-      const snapshot = await getDocs(q);
-      const fetchedLogs = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data(),
-        timestamp: d.data().timestamp?.toDate?.() || d.data().timestamp,
-      }));
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .lt('created_at', lastDoc.created_at)
+        .limit(50);
 
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === 50);
+      if (error) throw error;
+
+      const fetchedLogs = data || [];
+      setLastDoc(fetchedLogs[fetchedLogs.length - 1]);
+      setHasMore(fetchedLogs.length === 50);
       setLogs(prev => [...prev, ...fetchedLogs]);
     } catch (err) {
       console.error('Error loading more logs:', err);

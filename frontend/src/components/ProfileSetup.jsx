@@ -193,7 +193,7 @@ const ProfileSetup = ({ user, onComplete }) => {
   const [formData, setFormData] = useState({
     // STEP 1 – Personal
     firstName:     user?.firstName     || '',
-    middleInitial: user?.middleInitial || '',
+    middleName: user?.middleName || '',
     lastName:      user?.lastName      || '',
     suffix:        user?.suffix        || '',
     birthday:      '',
@@ -433,7 +433,7 @@ const ProfileSetup = ({ user, onComplete }) => {
       const payload = {
         // Personal
         firstName:     formData.firstName,
-        middleInitial: formData.middleInitial,
+        middleName: formData.middleName,
         lastName:      formData.lastName,
         suffix:        formData.suffix,
         birthday:      formData.birthday,
@@ -589,7 +589,7 @@ const ProfileSetup = ({ user, onComplete }) => {
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>M.I.</label>
-                  <input id="middleInitial" type="text" maxLength="1" className={`${inputCls} text-center`} value={formData.middleInitial} onChange={handleChange} />
+                  <input id="middleName" type="text" className={`${inputCls}`} value={formData.middleName} onChange={handleChange} />
                 </div>
                 <div className="col-span-5">
                   <label className={labelCls}>Last Name <span className="text-red-400">*</span></label>

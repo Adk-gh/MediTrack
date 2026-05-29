@@ -6,7 +6,7 @@ import { z } from "zod";
 export const registerSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  middleInitial: z.string().max(1).optional(),
+  middleName: z.string().optional(),
   suffix: z.string().optional(),
   email: z.string().email("Invalid email format"),
   universityId: z.string().min(1, "University ID is required"),
@@ -35,7 +35,7 @@ export const profileSetupSchema = z.object({
   // Personal
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  middleInitial: z.string().max(1).optional(),
+  middleName: z.string().optional(),
   suffix: z.string().optional(),
   birthday: z.string().min(1, "Birthday is required"),
   age: z.union([z.string(), z.number()]).optional(),

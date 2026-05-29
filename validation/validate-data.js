@@ -5,7 +5,7 @@ const validateData = (schema) => (req, res, next) => {
   // but they come as strings — coerce optional fields
   const body = {
     ...req.body,
-    middleInitial: req.body.middleInitial || '',
+    middleName: req.body.middleName || '',
     suffix: req.body.suffix || '',
   };
 

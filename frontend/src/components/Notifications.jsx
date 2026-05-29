@@ -114,6 +114,15 @@ export function NotificationPanel({ isOpen, onClose }) {
     }
   }, [isOpen]);
 
+  // Normalize snake_case from Supabase to camelCase for frontend
+  const normalizeNotification = (n) => ({
+    ...n,
+    isRead: n.is_read ?? n.isRead ?? false,
+    userId: n.user_id ?? n.userId,
+    referenceId: n.reference_id ?? n.referenceId,
+    referenceType: n.reference_type ?? n.referenceType,
+  });
+
   const fetchNotifications = async () => {
     setLoading(true);
     try {
@@ -121,8 +130,8 @@ export function NotificationPanel({ isOpen, onClose }) {
         notificationsService.getNotifications(20),
         notificationsService.getUnreadCount(),
       ]);
-      setNotifications(notifs);
-      setUnreadCount(count);
+      setNotifications((notifs || []).map(normalizeNotification));
+      setUnreadCount(count || 0);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {

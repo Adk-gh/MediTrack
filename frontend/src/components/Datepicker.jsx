@@ -1,4 +1,4 @@
-//C:\Users\HP\MediTrack\frontend\src\components\Birthdaypicker.jsx
+// C:\Users\HP\MediTrack\frontend\src\components\Datepicker.jsx
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -16,15 +16,15 @@ function buildDays(month, year) {
 function buildYears() {
   const current = new Date().getFullYear();
   const years = [];
-  for (let y = current; y >= 1924; y--) years.push(String(y));
+  for (let y = current + 5; y >= 1924; y--) years.push(String(y));
   return years;
 }
 
 const ALL_YEARS = buildYears();
 
 // ─── Drum column ──────────────────────────────────────────────────────────────
-const ITEM_H  = 36; // compact row height
-const VISIBLE = 2;  // rows visible above & below the selected centre row
+const ITEM_H  = 36;
+const VISIBLE = 2;
 
 function DrumColumn({ items, selectedIndex, onSelect, width }) {
   const listRef    = useRef(null);
@@ -64,7 +64,7 @@ function DrumColumn({ items, selectedIndex, onSelect, width }) {
     return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); };
   }, [onMouseMove, onMouseUp]);
 
-  const totalH = ITEM_H * (VISIBLE * 2 + 1); // 5 rows total → 180px
+  const totalH = ITEM_H * (VISIBLE * 2 + 1);
 
   return (
     <div style={{ width, position: 'relative', userSelect: 'none' }}>
@@ -96,20 +96,50 @@ function DrumColumn({ items, selectedIndex, onSelect, width }) {
   );
 }
 
+// ─── Pure String Parser ───────────────────────────────────────────────────────
+const parseDateValue = (v) => {
+  if (!v) return null;
+
+  try {
+    // Force the value to a flat string immediately
+    const text = typeof v === 'string' ? v : String(v);
+
+    // 1. Look for YYYY-MM-DD
+    let match = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      const y = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const d = parseInt(match[3], 10);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+    }
+
+    // 2. Look for MM/DD/YYYY
+    match = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (match) {
+      const m = parseInt(match[1], 10);
+      const d = parseInt(match[2], 10);
+      const y = parseInt(match[3], 10);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+    }
+  } catch (err) {
+    // Silently catch to prevent crashes
+  }
+
+  return null;
+};
+
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function BirthdayPicker({ value, onChange, error }) {
+export default function DatePicker({ value, onChange, error, placeholder = 'Select Date' }) {
   const [open, setOpen] = useState(false);
 
-  const parse = (v) => {
-    if (!v) return { day: 1, month: 1, year: new Date().getFullYear() - 18 };
-    const [y, m, d] = v.split('-').map(Number);
-    return { day: d || 1, month: m || 1, year: y || new Date().getFullYear() - 18 };
-  };
+  // Initialize state
+  const parsedValue = parseDateValue(value);
+  const now = new Date();
+  const init = parsedValue || { d: now.getDate(), m: now.getMonth() + 1, y: now.getFullYear() };
 
-  const init = parse(value);
-  const [selDay,   setSelDay]   = useState(init.day);
-  const [selMonth, setSelMonth] = useState(init.month);
-  const [selYear,  setSelYear]  = useState(init.year);
+  const [selDay,   setSelDay]   = useState(init.d);
+  const [selMonth, setSelMonth] = useState(init.m);
+  const [selYear,  setSelYear]  = useState(init.y);
 
   const days  = buildDays(selMonth, selYear);
   const years = ALL_YEARS;
@@ -122,8 +152,14 @@ export default function BirthdayPicker({ value, onChange, error }) {
     if (selDay > max) setSelDay(max);
   }, [selMonth, selYear]);
 
+  // Sync state when external prop changes
   useEffect(() => {
-    if (value) { const p = parse(value); setSelDay(p.day); setSelMonth(p.month); setSelYear(p.year); }
+    const p = parseDateValue(value);
+    if (p) {
+      setSelDay(p.d);
+      setSelMonth(p.m);
+      setSelYear(p.y);
+    }
   }, [value]);
 
   const handleSubmit = () => {
@@ -131,21 +167,22 @@ export default function BirthdayPicker({ value, onChange, error }) {
     setOpen(false);
   };
 
-  const displayLabel = value
-    ? (() => { const p = parse(value); return `${MONTH_FULL[p.month-1]} ${p.day}, ${p.year}`; })()
-    : 'Select Date';
+  // Safe display label generator for MM/DD/YYYY
+  const displayLabel = parsedValue
+    ? `${String(parsedValue.m).padStart(2, '0')}/${String(parsedValue.d).padStart(2, '0')}/${parsedValue.y}`
+    : placeholder;
 
-  const inputCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] outline-none focus:border-[#4a635d] bg-white transition-colors";
+  const isValidDate = parsedValue !== null;
+
+  const inputCls = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
 
   return (
     <>
       <button type="button" onClick={() => setOpen(true)}
         className={`${inputCls} text-left flex items-center justify-between ${error ? 'border-red-400 bg-red-50' : ''}`}
         style={{ cursor: 'pointer' }}>
-        <span style={{ color: value ? '#1a2e22' : '#9bb5a5' }}>{displayLabel}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={value ? '#2d7a52' : '#9bb5a5'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-        </svg>
+        <span style={{ color: isValidDate ? '#334155' : '#94a3b8' }}>{displayLabel}</span>
+        <i className="fa-regular fa-calendar text-slate-500 text-sm"></i>
       </button>
 
       {error && (
@@ -155,45 +192,24 @@ export default function BirthdayPicker({ value, onChange, error }) {
       )}
 
       {open && (
-        <div
-          onClick={(e) => e.target === e.currentTarget && setOpen(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        >
-          {/* Modal — maxWidth 300px keeps it compact */}
+        <div onClick={(e) => e.target === e.currentTarget && setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 300, boxShadow: '0 20px 50px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
-
-            {/* Header */}
             <div style={{ padding: '12px 16px 8px', textAlign: 'center', borderBottom: '1px solid #e2f0ea' }}>
-
               <p style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: '#1a2e22' }}>
                 {MONTH_FULL[selMonth - 1]} {String(selDay).padStart(2,'0')}, {selYear}
               </p>
             </div>
-
-            {/* Column labels */}
             <div style={{ display: 'flex', padding: '6px 12px 0' }}>
-              {['Day', 'Month', 'Year'].map((h) => (
-                <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: 9, fontWeight: 800, color: '#2d7a52', textTransform: 'uppercase', letterSpacing: 1 }}>{h}</div>
-              ))}
+              {['Day', 'Month', 'Year'].map((h) => <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: 9, fontWeight: 800, color: '#2d7a52', textTransform: 'uppercase', letterSpacing: 1 }}>{h}</div>)}
             </div>
-
-            {/* Drum columns */}
             <div style={{ display: 'flex', padding: '0 12px' }}>
-              <DrumColumn items={days}   selectedIndex={dayIdx}                      onSelect={(i) => setSelDay(i + 1)}          width="33%" />
-              <DrumColumn items={MONTHS} selectedIndex={monthIdx}                    onSelect={(i) => setSelMonth(i + 1)}        width="34%" />
+              <DrumColumn items={days}   selectedIndex={dayIdx}                      onSelect={(i) => setSelDay(i + 1)}         width="33%" />
+              <DrumColumn items={MONTHS} selectedIndex={monthIdx}                    onSelect={(i) => setSelMonth(i + 1)}       width="34%" />
               <DrumColumn items={years}  selectedIndex={yearIdx < 0 ? 0 : yearIdx}   onSelect={(i) => setSelYear(Number(years[i]))} width="33%" />
             </div>
-
-            {/* Buttons */}
             <div style={{ display: 'flex', borderTop: '1px solid #e2f0ea', marginTop: 4 }}>
-              <button type="button" onClick={() => setOpen(false)}
-                style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontSize: 13, fontWeight: 700, color: '#6b8577', cursor: 'pointer', borderRight: '1px solid #e2f0ea' }}>
-                Cancel
-              </button>
-              <button type="button" onClick={handleSubmit}
-                style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontSize: 13, fontWeight: 700, color: '#2d7a52', cursor: 'pointer' }}>
-                Submit
-              </button>
+              <button type="button" onClick={() => setOpen(false)} style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontSize: 13, fontWeight: 700, color: '#6b8577', cursor: 'pointer', borderRight: '1px solid #e2f0ea' }}>Cancel</button>
+              <button type="button" onClick={handleSubmit} style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontSize: 13, fontWeight: 700, color: '#2d7a52', cursor: 'pointer' }}>Confirm</button>
             </div>
           </div>
         </div>

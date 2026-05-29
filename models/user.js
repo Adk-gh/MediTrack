@@ -6,7 +6,7 @@ const UserData = (data) => {
     // ── Basic Auth Info ────────────────────────────
     firstName: data.firstName,
     lastName: data.lastName,
-    middleInitial: data.middleInitial || '',
+    middleName: data.middleName || '',
     suffix: data.suffix || '',
     email: data.email.toLowerCase(),
     universityId: data.universityId,

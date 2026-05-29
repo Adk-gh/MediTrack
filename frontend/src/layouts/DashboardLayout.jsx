@@ -357,7 +357,7 @@ function HamburgerDrawerNav({ isOpen, activeTab, onTabChange, items, onClose }) 
   );
 }
 
-// ─── Layout Component ─────────────────────────────────────────────────────────
+// ─── Layout Component Refactored ──────────────────────────────────────────────
 export const DashboardLayout = ({
   children,
   onOpenQR,
@@ -436,7 +436,6 @@ export const DashboardLayout = ({
 
   const activeItem = mobileNavItems.find(i => i.id === activeTab);
 
-  // Automatically pass the dynamic userRole prop down to any React page element rendering within children
   const childrenWithProps = React.Children.map(children, child => {
     if (React.isValidElement(child)) {
       return React.cloneElement(child, { currentUserRole: userRole });
@@ -457,93 +456,91 @@ export const DashboardLayout = ({
         .dl-fade { animation: dl-fade 0.25s ease both; }
       `}</style>
 
-      {/* ════════════════════════════════════════════════════════════════
-          DESKTOP (md+)
-      ════════════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex h-screen flex-col overflow-hidden bg-gradient-to-br from-[#f4f7f6] to-[#eef2f0]">
-        <div className="shrink-0"><DesktopHeader onOpenQR={onOpenQR} /></div>
-        <div className="shrink-0"><DesktopNav /></div>
-        <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="dl-fade h-full">{childrenWithProps}</div>
-        </main>
-      </div>
+      {/* ── SINGLE UNIFIED LAYOUT CONTAINER ── */}
+      <div className="flex flex-col h-screen overflow-hidden bg-slate-50 md:bg-gradient-to-br md:from-[#f4f7f6] md:to-[#eef2f0]">
 
-      {/* ════════════════════════════════════════════════════════════════
-          MOBILE (<md)
-      ════════════════════════════════════════════════════════════════ */}
-      <div className="md:hidden relative flex flex-col h-screen overflow-hidden bg-slate-50">
+        {/* ── DESKTOP HEADERS (Hidden on Mobile) ── */}
+        <div className="hidden md:block shrink-0">
+          <DesktopHeader onOpenQR={onOpenQR} />
+          <DesktopNav />
+        </div>
 
-        <MobileHeader
-          userName={userName}
-          userId={userId}
-          initials={getInitials(userName)}
-          onLogout={onLogout}
-          onProfileClick={handleProfileClick}
-          onNotificationClick={handleNotificationClick}
-          notificationCount={notificationCount}
-          simple={false}
-        />
+        {/* ── MOBILE HEADER (Hidden on Desktop) ── */}
+        <div className="md:hidden shrink-0">
+          <MobileHeader
+            userName={userName}
+            userId={userId}
+            initials={getInitials(userName)}
+            onLogout={onLogout}
+            onProfileClick={handleProfileClick}
+            onNotificationClick={handleNotificationClick}
+            notificationCount={notificationCount}
+            simple={false}
+          />
+        </div>
 
-        <div
-          className="flex-1 min-h-0 overflow-hidden dl-scroll"
-          style={{ paddingTop: '64px' }}
-        >
-          <div className="dl-fade h-full flex flex-col">
+        {/* ── SINGLE MAIN CONTENT AREA (Prevents Double Fetching) ── */}
+        <main className="flex-1 min-h-0 overflow-hidden dl-scroll md:pt-0 pt-[64px]">
+          <div className="dl-fade h-full w-full flex flex-col">
             {childrenWithProps}
+          </div>
+        </main>
+
+        {/* ── MOBILE OVERLAYS & NAVIGATION (Hidden on Desktop) ── */}
+        <div className="md:hidden">
+          <HamburgerDrawerNav
+            isOpen={showHamburger}
+            activeTab={activeTab}
+            onTabChange={onTabChange}
+            items={mobileNavItems}
+            onClose={closeHamburger}
+          />
+
+          <HamburgerButton
+            isOpen={showHamburger}
+            onClick={toggleHamburger}
+          />
+
+          <div
+            id="mobile-active-tab-chip"
+            style={{
+              position: 'fixed',
+              bottom: 35,
+              right: 84,
+              zIndex: 49,
+              background: 'rgba(255, 255, 255, 0.78)',
+              backdropFilter: 'blur(16px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+              border: '1px solid rgba(255,255,255,0.6)',
+              borderRadius: 999,
+              padding: '6px 14px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              opacity: showHamburger ? 0 : 1,
+              transform: showHamburger ? 'translateX(6px) scale(0.95)' : 'translateX(0) scale(1)',
+              transition: 'all 0.22s ease',
+              pointerEvents: 'none',
+            }}
+          >
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: '#059669',
+              boxShadow: '0 0 6px rgba(5,150,105,0.55)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 12, fontWeight: 700,
+              color: '#1a2e22',
+              whiteSpace: 'nowrap',
+            }}>
+              {activeItem?.label || 'Menu'}
+            </span>
           </div>
         </div>
 
-        <HamburgerDrawerNav
-          isOpen={showHamburger}
-          activeTab={activeTab}
-          onTabChange={onTabChange}
-          items={mobileNavItems}
-          onClose={closeHamburger}
-        />
-
-        <HamburgerButton
-          isOpen={showHamburger}
-          onClick={toggleHamburger}
-        />
-
-        <div
-          id="mobile-active-tab-chip"
-          style={{
-            position: 'fixed',
-            bottom: 35,
-            right: 84,
-            zIndex: 49,
-            background: 'rgba(255, 255, 255, 0.78)',
-            backdropFilter: 'blur(16px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-            border: '1px solid rgba(255,255,255,0.6)',
-            borderRadius: 999,
-            padding: '6px 14px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 7,
-            opacity: showHamburger ? 0 : 1,
-            transform: showHamburger ? 'translateX(6px) scale(0.95)' : 'translateX(0) scale(1)',
-            transition: 'all 0.22s ease',
-            pointerEvents: 'none',
-          }}
-        >
-          <div style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: '#059669',
-            boxShadow: '0 0 6px rgba(5,150,105,0.55)',
-            flexShrink: 0,
-          }} />
-          <span style={{
-            fontSize: 12, fontWeight: 700,
-            color: '#1a2e22',
-            whiteSpace: 'nowrap',
-          }}>
-            {activeItem?.label || 'Menu'}
-          </span>
-        </div>
-
+        {/* ── SHARED DRAWERS ── */}
         <ProfileDrawer
           isOpen={showProfileDrawer}
           onClose={handleCloseProfile}

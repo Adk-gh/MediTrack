@@ -1,5 +1,5 @@
 // C:\Users\HP\MediTrack\middleware\authorized.js
-const { auth } = require('../configs/firebase-admin');
+const supabase = require('../configs/database');
 
 const authorized = async (req, res, next) => {
   try {
@@ -11,15 +11,24 @@ const authorized = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
 
-    // Verify the token using Firebase Admin SDK
-    const decodedToken = await auth.verifyIdToken(token);
-    
-    // Attach the decoded user object (uid, role, email) to the request
-    req.user = decodedToken;
-    
+    // Verify the token using Supabase Auth
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      console.error('>>> Supabase JWT Verification Failed:', error?.message || 'No user found');
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+
+    // Attach the decoded user object to the request
+    req.user = {
+      uid: user.id,
+      email: user.email,
+      role: user.user_metadata?.role || 'student',
+    };
+
     next();
   } catch (error) {
-    console.error('>>> Firebase JWT Verification Failed:', error.message);
+    console.error('>>> Auth Middleware Error:', error.message);
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 };

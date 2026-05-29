@@ -7,8 +7,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 // FALLBACK DATA & CONFIG
 // ============================================================
 const initialAnnouncements = [
-  { id: 1, title: "Flu Vaccination Drive",        dept: "All Departments",          date: "2026-04-20", content: "The University Clinic will be conducting a free flu vaccination drive for all students and faculty. Please bring your school ID and wear comfortable clothing.", category: "Vaccination", priority: "high",   image: null },
-  { id: 2, title: "Clinic Schedule Update",       dept: "College of Computing",     date: "2026-04-18", content: "The university clinic will now be open from 7:00 AM to 6:00 PM starting next week. Emergency services remain available 24/7.",                        category: "General",     priority: "normal", image: null },
+  { id: 1, title: "Flu Vaccination Drive",  dept: "All Departments",        date: "2026-04-20", content: "The University Clinic will be conducting a free flu vaccination drive for all students and faculty. Please bring your school ID and wear comfortable clothing.", category: "Vaccination", priority: "high",   image_url: null },
+  { id: 2, title: "Clinic Schedule Update", dept: "College of Computing",   date: "2026-04-18", content: "The university clinic will now be open from 7:00 AM to 6:00 PM starting next week. Emergency services remain available 24/7.",                        category: "General",     priority: "normal", image_url: null },
 ];
 
 const DEPARTMENTS = ['All Departments', 'College of Computing', 'College of Engineering', 'College of Arts & Sciences', 'College of Health Sciences', 'College of Education', 'College of Business', 'Faculty', 'Staff'];
@@ -59,8 +59,8 @@ const EMPTY_FORM = {
   location: '',
   contactPerson: '',
   contactEmail:  '',
-  image:    null,
-  imageFile: null,
+  image_url:     null, // For previewing Base64 or holding existing DB URL
+  imageFile:     null, // For the actual File to upload to Supabase
 };
 
 // ============================================================
@@ -85,7 +85,7 @@ const ImageDropZone = ({ value, onChange, onClear }) => {
     if (!file.type.startsWith('image/')) return alert('Please select an image file (JPG, PNG, GIF, WEBP).');
     if (file.size > 5 * 1024 * 1024) return alert('Image must be smaller than 5 MB.');
     const b64 = await toBase64(file);
-    onChange(b64, file);
+    onChange(b64, file); // Pass BOTH the preview and the actual file
   };
 
   const onDrop = (e) => {
@@ -166,9 +166,8 @@ export const Announcements = () => {
     fetchUserRole();
   }, []);
 
-  // Permissions: canManage = admin, doctor, nurse; canView = dentist (read-only)
   const canManage = ['admin', 'nurse'].includes(userRole);
-  const canEdit = canManage; // Same as canManage
+  const canEdit = canManage;
   const isReadOnly = userRole === 'dentist' || userRole === 'doctor';
 
   // ── CUSTOM HOOK FOR DRAGGING MOBILE DRAWERS ──
@@ -180,7 +179,7 @@ export const Announcements = () => {
     const sheetRef = useRef(null);
 
     const handleTouchStart = (e) => {
-      if (window.innerWidth >= 640) return; // Only apply on mobile screens
+      if (window.innerWidth >= 640) return;
       dragStartY.current = e.touches[0].clientY;
       dragStartTime.current = Date.now();
       setIsDragging(true);
@@ -190,7 +189,7 @@ export const Announcements = () => {
       if (window.innerWidth >= 640 || !isDragging) return;
       const delta = e.touches[0].clientY - dragStartY.current;
       if (delta > 0) setDragY(delta);
-      else setDragY(delta / 4); // Add resistance if dragging upward
+      else setDragY(delta / 4);
     };
 
     const handleTouchEnd = () => {
@@ -201,11 +200,10 @@ export const Announcements = () => {
       if (dragY > 150 || velocity > 0.5) {
         onCloseCallback();
       } else {
-        setDragY(0); // Snap back to top
+        setDragY(0);
       }
     };
 
-    // Reset drag state when modal opens
     useEffect(() => { setDragY(0); setIsDragging(false); }, [isFormModalOpen, isViewModalOpen]);
 
     return { dragY, isDragging, sheetRef, handleTouchStart, handleTouchMove, handleTouchEnd };
@@ -218,9 +216,10 @@ export const Announcements = () => {
     const load = async () => {
       try {
         const data = await announcementsService.getAllAnnouncements();
+        console.log('[Announcements Component] Received data:', data);
         setAnnouncements(data && data.length > 0 ? data : initialAnnouncements);
       } catch (err) {
-        console.log('Using fallback data:', err.message);
+        console.log('[Announcements Component] Error, using fallback:', err.message);
         setAnnouncements(initialAnnouncements);
       } finally {
         setLoading(false);
@@ -245,15 +244,15 @@ export const Announcements = () => {
     if (editId) {
       const target = announcements.find(a => a.id === editId);
       setFormData({
-        title:         target.title        || '',
-        content:       target.content      || '',
-        dept:          target.dept         || 'All Departments',
-        category:      target.category     || 'General',
-        priority:      target.priority     || 'normal',
-        location:      target.location     || '',
-        contactPerson: target.contactPerson|| '',
-        contactEmail:  target.contactEmail || '',
-        image:         target.image        || null,
+        title:         target.title         || '',
+        content:       target.content       || '',
+        dept:          target.dept          || 'All Departments',
+        category:      target.category      || 'General',
+        priority:      target.priority      || 'normal',
+        location:      target.location      || '',
+        contactPerson: target.contactPerson || '',
+        contactEmail:  target.contactEmail  || '',
+        image_url:     target.image_url     || null,
         imageFile:     null,
       });
       setCurrentEditId(editId);
@@ -272,20 +271,27 @@ export const Announcements = () => {
     }
     setFormSaving(true);
 
-    const payload = {
-      title:         formData.title.trim(),
-      content:       formData.content.trim(),
-      dept:          formData.dept          || 'All Departments',
-      category:      formData.category      || 'General',
-      priority:      formData.priority      || 'normal',
-      location:      formData.location.trim(),
-      contactPerson: formData.contactPerson.trim(),
-      contactEmail:  formData.contactEmail.trim(),
-      date:          todayIso(),
-      image:         formData.image || null,
-    };
-
     try {
+      let finalImageUrl = formData.image_url;
+
+      // Upload file to Supabase if a new file was dropped into the zone
+      if (formData.imageFile) {
+        finalImageUrl = await announcementsService.uploadImage(formData.imageFile);
+      }
+
+      const payload = {
+        title:         formData.title.trim(),
+        content:       formData.content.trim(),
+        dept:          formData.dept          || 'All Departments',
+        category:      formData.category      || 'General',
+        priority:      formData.priority      || 'normal',
+        location:      formData.location.trim(),
+        contactPerson: formData.contactPerson.trim(),
+        contactEmail:  formData.contactEmail.trim(),
+        date:          todayIso(),
+        image_url:     finalImageUrl || null,
+      };
+
       if (currentEditId) {
         const updatedDoc = await announcementsService.updateAnnouncement(currentEditId, payload);
         setAnnouncements(prev => prev.map(a => a.id === currentEditId ? updatedDoc : a));
@@ -331,7 +337,6 @@ export const Announcements = () => {
   return (
     <div className="bg-white min-h-[calc(100vh-120px)] animate-[fadeInSlide_0.4s_ease-out_forwards]">
 
-      {/* Add sliding animation keyframes for the mobile drawer */}
       <style>{`
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
@@ -379,16 +384,15 @@ export const Announcements = () => {
                 <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${pri.color} pointer-events-none z-10`}></div>
 
                 {/* ── Square Image Container (Left Side) ── */}
-                {item.image && (
+                {item.image_url && (
                   <div className="ml-[3px] shrink-0 w-28 h-28 sm:w-36 sm:h-36 overflow-hidden bg-slate-100 border-r border-[#e2e8f0]">
-                    <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                    <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                   </div>
                 )}
 
                 {/* ── Text Content (Right Side) ── */}
-                <div className={`flex-1 min-w-0 p-3 sm:p-4 relative flex flex-col justify-center ${!item.image ? 'ml-[3px] pl-4 sm:pl-5' : 'pl-3 sm:pl-4'}`}>
+                <div className={`flex-1 min-w-0 p-3 sm:p-4 relative flex flex-col justify-center ${!item.image_url ? 'ml-[3px] pl-4 sm:pl-5' : 'pl-3 sm:pl-4'}`}>
 
-                  {/* Dropdown Menu - Only for managers */}
                   {canManage && (
                     <div className="absolute top-2.5 right-2 sm:right-3" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)} className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm">
@@ -403,7 +407,6 @@ export const Announcements = () => {
                     </div>
                   )}
 
-                  {/* Badges */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-2 pr-8">
                     {item.priority !== 'normal' && (
                       <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full text-white ${pri.color} flex items-center gap-1`}>
@@ -430,17 +433,15 @@ export const Announcements = () => {
         )}
       </div>
 
-      {/* ── CREATE / EDIT MODAL (BOTTOM DRAWER ON MOBILE) ── */}
+      {/* ── CREATE / EDIT MODAL ── */}
       {isFormModalOpen && (
         <div className="fixed inset-0 z-[9999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsFormModalOpen(false)}>
 
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             style={{ opacity: formDrawer.isDragging ? Math.max(0, 1 - formDrawer.dragY / 500) : 1 }}
           />
 
-          {/* Drawer / Modal Container */}
           <div
             ref={formDrawer.sheetRef}
             className="relative bg-white w-full sm:max-w-lg flex flex-col shadow-2xl overflow-hidden rounded-t-[28px] sm:rounded-[24px] max-h-[92vh] sm:max-h-[90vh] animate-slideUp sm:animate-[fadeInSlide_0.2s_ease-out_forwards]"
@@ -450,7 +451,6 @@ export const Announcements = () => {
             }}
             onClick={e => e.stopPropagation()}
           >
-            {/* 1. DRAG HANDLE (Mobile Only) */}
             <div
               className="sm:hidden flex justify-center pt-4 pb-2 cursor-grab active:cursor-grabbing w-full bg-white shrink-0"
               onTouchStart={formDrawer.handleTouchStart}
@@ -460,7 +460,6 @@ export const Announcements = () => {
               <div className="w-12 h-1.5 rounded-full transition-colors" style={{ background: formDrawer.isDragging ? '#466460' : '#cbd5e1' }} />
             </div>
 
-            {/* 2. HEADER */}
             <div
               className="flex items-center justify-between px-5 sm:px-6 pb-4 sm:py-4 border-b border-slate-100 shrink-0 bg-white"
               onTouchStart={formDrawer.handleTouchStart}
@@ -474,7 +473,6 @@ export const Announcements = () => {
               <button onClick={() => setIsFormModalOpen(false)} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"><i className="fa-solid fa-xmark text-sm"></i></button>
             </div>
 
-            {/* 3. SCROLLABLE BODY */}
             <div className="px-5 sm:px-6 py-5 overflow-y-auto grow scrollbar-none">
               <label className={labelCls}>Title <span className="text-red-400">*</span></label>
               <input type="text" placeholder="Announcement title" className={inputCls} value={formData.title} onChange={e => setField('title', e.target.value)} />
@@ -512,10 +510,19 @@ export const Announcements = () => {
               </div>
 
               <label className={labelCls}><i className="fa-solid fa-image mr-1"></i>Infographic / Image <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
-              <ImageDropZone value={formData.image} onChange={(b64) => setField('image', b64)} onClear={() => setField('image', null)} />
+              <ImageDropZone
+                value={formData.image_url}
+                onChange={(b64, file) => {
+                  setField('image_url', b64);
+                  setField('imageFile', file);
+                }}
+                onClear={() => {
+                  setField('image_url', null);
+                  setField('imageFile', null);
+                }}
+              />
             </div>
 
-            {/* 4. FIXED FOOTER */}
             <div className="px-5 sm:px-6 py-4 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-2.5 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
               <button onClick={() => setIsFormModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Cancel</button>
               <button onClick={handleSave} disabled={formSaving} className="w-full sm:w-auto sm:flex-1 bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
@@ -527,7 +534,7 @@ export const Announcements = () => {
         </div>
       )}
 
-      {/* ── VIEW MODAL (BOTTOM DRAWER ON MOBILE) ── */}
+      {/* ── VIEW MODAL ── */}
       {isViewModalOpen && viewData && (
         <div className="fixed inset-0 z-[9999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsViewModalOpen(false)}>
 
@@ -546,10 +553,8 @@ export const Announcements = () => {
             onClick={e => e.stopPropagation()}
           >
 
-            {/* Header Image (Optional) */}
-            {viewData.image && (
+            {viewData.image_url && (
               <div className="relative h-48 sm:h-56 w-full shrink-0 overflow-hidden bg-slate-100 -mb-2 sm:mb-0">
-                {/* Drag handle OVER the image for mobile */}
                 <div
                   className="sm:hidden absolute top-0 left-0 right-0 flex justify-center pt-4 pb-4 cursor-grab active:cursor-grabbing z-20"
                   onTouchStart={viewDrawer.handleTouchStart}
@@ -558,7 +563,7 @@ export const Announcements = () => {
                 >
                   <div className="w-12 h-1.5 bg-white/70 shadow-sm rounded-full" />
                 </div>
-                <img src={viewData.image} alt={viewData.title} className="w-full h-full object-cover" />
+                <img src={viewData.image_url} alt={viewData.title} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
                 <button onClick={() => setIsViewModalOpen(false)} className="hidden sm:flex absolute top-4 right-4 w-8 h-8 rounded-full items-center justify-center bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-md z-20">
                   <i className="fa-solid fa-xmark text-sm"></i>
@@ -566,8 +571,7 @@ export const Announcements = () => {
               </div>
             )}
 
-            {/* Drag Handle & Header if NO image */}
-            {!viewData.image && (
+            {!viewData.image_url && (
               <>
                 <div
                   className="sm:hidden flex justify-center pt-4 pb-2 cursor-grab active:cursor-grabbing w-full bg-white shrink-0"
@@ -591,7 +595,6 @@ export const Announcements = () => {
               </>
             )}
 
-            {/* Scrollable Content */}
             <div className="px-5 sm:px-6 py-5 overflow-y-auto grow scrollbar-none bg-white relative z-10">
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {viewData.priority && viewData.priority !== 'normal' && <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_CONFIG[viewData.priority]?.color}`}><i className="fa-solid fa-circle-exclamation mr-0.5"></i>{PRIORITY_CONFIG[viewData.priority]?.label}</span>}
@@ -608,7 +611,6 @@ export const Announcements = () => {
               <div className="border-t border-slate-100 pt-4"><p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
             </div>
 
-            {/* Fixed Footer Buttons */}
             <div className="px-5 sm:px-6 py-4 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-2.5 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
               <button onClick={() => setIsViewModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Close</button>
               <button onClick={() => { setIsViewModalOpen(false); handleOpenForm(viewData.id); }} className="w-full sm:w-auto sm:flex-1 bg-[#e0eceb] text-[#466460] py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-pen-to-square text-[11px]"></i> Edit</button>

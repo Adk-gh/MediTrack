@@ -1,11 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Consultation-users.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { rtdb } from '../../firebase';
-import {
-  ref, onValue, push, update, set, serverTimestamp, onDisconnect, off
-} from 'firebase/database';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 
 const formatTime = (ts) => {
   if (!ts) return '';
@@ -27,9 +22,7 @@ function BotText({ text }) {
   const parts = text.split(/\*\*(.+?)\*\*/g);
   return (
     <span>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
-      )}
+      {parts.map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
     </span>
   );
 }
@@ -53,117 +46,229 @@ export default function ConsultationUsers() {
   const [isClinicOnline, setIsClinicOnline] = useState(false);
   const [isEnded, setIsEnded]               = useState(true);
   const [consultType, setConsultType]       = useState(null);
+  const [internalUserId, setInternalUserId] = useState(null);
+  const [internalName, setInternalName]     = useState('Patient');
+  const [sessionReady, setSessionReady]     = useState(false);
 
-  const messagesEndRef  = useRef(null);
-  const resolvedNameRef = useRef(currentUser.name || null);
-  const convId = currentUser.uid;
+  // 🔴 FIXED: Store the actual consultation Room ID separate from the User ID
+  const [activeRoomId, setActiveRoomId]     = useState(null);
 
-  // ── Presence ───────────────────────────────────────────────────────────
+  const messagesEndRef = useRef(null);
+
+  // ── 1. Restore Supabase session & fetch internal profile ─────────────
   useEffect(() => {
-    if (!currentUser?.uid) return;
-    const setPresence = async () => {
-      let resolvedName = currentUser.name || currentUser.displayName || null;
-      if (!resolvedName) {
-        try {
-          const snap = await getDoc(doc(db, 'users', currentUser.uid));
-          if (snap.exists()) {
-            const d = snap.data();
-            resolvedName = [d.firstName, d.middleInitial ? `${d.middleInitial}.` : '', d.lastName]
-              .filter(Boolean).join(' ').trim() || 'Unknown';
-            localStorage.setItem('user', JSON.stringify({ ...currentUser, name: resolvedName }));
-          }
-        } catch { resolvedName = 'Unknown'; }
-      }
-      resolvedNameRef.current = resolvedName || 'Unknown';
-      const presenceRef   = ref(rtdb, `presence/${currentUser.uid}`);
-      const presenceData  = { online: true, lastSeen: serverTimestamp(), name: resolvedNameRef.current, role: currentUser.role || 'student' };
-      set(presenceRef, presenceData);
-      onDisconnect(presenceRef).set({ ...presenceData, online: false });
+    const initializeChatSession = async () => {
+      if (!currentUser?.uid) return;
+
+      const accessToken  = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refresh_token') || '';
+
+      if (!accessToken) return;
+
+      await supabase.auth.setSession({
+        access_token:  accessToken,
+        refresh_token: refreshToken,
+      });
+
+      const { data: profiles, error: profileError } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, role')
+        .eq('uid', currentUser.uid)
+        .limit(1);
+
+      const profile = profiles?.[0] || null;
+
+      if (profileError || !profile) return;
+
+      setInternalUserId(profile.id);
+      setInternalName(`${profile.first_name} ${profile.last_name}`.trim());
+      setSessionReady(true);
+
+      await supabase.from('presence').upsert({
+        user_id:   profile.id,
+        status:    'online',
+        last_seen: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
     };
-    setPresence();
+
+    initializeChatSession();
+
+    return () => {
+      const storedId = localStorage.getItem('_internalUserId');
+      if (storedId) {
+        supabase.from('presence').upsert({
+          user_id:   storedId,
+          status:    'offline',
+          last_seen: new Date().toISOString(),
+        }, { onConflict: 'user_id' }).then();
+      }
+    };
   }, [currentUser?.uid]);
 
-  // ── DB Listener ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!convId) return;
-    const convRef = ref(rtdb, `consultations/${convId}`);
-    const unsub = onValue(convRef, (snap) => {
-      const data = snap.val() || {};
-      const meta = data.metadata || {};
-      setIsEnded(!meta.status || meta.status === 'ended');
-      setConsultType(meta.consultType || null);
+    if (internalUserId) localStorage.setItem('_internalUserId', internalUserId);
+  }, [internalUserId]);
 
-      const msgList = Object.entries(data.messages || {})
-        .map(([id, msg]) => ({ id, ...msg }))
-        .sort((a, b) => a.timestamp - b.timestamp);
-      setMessages(msgList);
+  // ── 2. Real-time DB Listeners ─────────────────────────────────────────
+  useEffect(() => {
+    if (!internalUserId || !sessionReady) return;
 
-      const unread = msgList.filter(m => m.sender === 'clinic' && !m.readByPatient && !m.isBot);
-      if (unread.length > 0) {
-        const updates = {};
-        unread.forEach(m => { updates[`messages/${m.id}/readByPatient`] = true; });
-        update(ref(rtdb, `consultations/${convId}`), updates);
+    let currentRoomId = null;
+
+    const fetchConsultation = async () => {
+      // 🔴 FIXED: Query by patient_id, grab the most recent one
+      const { data: consults } = await supabase
+        .from('consultations')
+        .select('*')
+        .eq('patient_id', internalUserId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const data = consults?.[0] || null;
+
+      if (data) {
+        currentRoomId = data.id;
+        setActiveRoomId(data.id);
+        setIsEnded(!data.status || data.status === 'ended');
+        setConsultType(data.consultation_type || null);
+        fetchMessages(data.id);
+      } else {
+        setIsEnded(true);
+        setConsultType(null);
       }
-    });
-    return () => off(convRef, 'value', unsub);
-  }, [convId]);
+    };
 
-  // ── Clinic Online ──────────────────────────────────────────────────────
+    const fetchMessages = async (roomId) => {
+      // 🔴 FIXED: Fetch messages using the real Room ID
+      const { data } = await supabase
+        .from('consultation_messages')
+        .select('*')
+        .eq('consultation_id', roomId)
+        .order('created_at', { ascending: true });
+
+      if (data) setMessages(data);
+    };
+
+    fetchConsultation();
+
+    const messagesChannel = supabase
+      .channel(`consultation-msgs-${internalUserId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'consultation_messages',
+      }, (payload) => {
+        // Only append if it belongs to the active room
+        setMessages((prev) => {
+          if (prev.some(m => m.id === payload.new.id)) return prev;
+          return [...prev, payload.new];
+        });
+      })
+      .subscribe();
+
+    const statusChannel = supabase
+      .channel(`consultation-status-${internalUserId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'consultations',
+        filter: `patient_id=eq.${internalUserId}`,
+      }, (payload) => {
+        setIsEnded(payload.new.status === 'ended');
+        setConsultType(payload.new.consultation_type || null);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(statusChannel);
+    };
+  }, [internalUserId, sessionReady]);
+
+  // ── 3. Presence Monitor ────────────────────────────────────────────────
   useEffect(() => {
-    const presRef = ref(rtdb, 'presence');
-    const unsub = onValue(presRef, (snap) => {
-      const data = snap.val() || {};
-      const anyOnline = Object.values(data).some(p =>
-        p.online && ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase())
+    const fetchPresence = async () => {
+      const { data } = await supabase.from('presence').select('*').eq('status', 'online');
+      const clinicOnline = (data || []).some(p =>
+        ['doctor', 'nurse', 'dentist', 'admin', 'administrator'].includes(p.role?.toLowerCase())
       );
-      setIsClinicOnline(anyOnline);
-    });
-    return () => off(presRef, 'value', unsub);
+      setIsClinicOnline(clinicOnline);
+    };
+
+    fetchPresence();
+
+    const presenceChannel = supabase
+      .channel(`presence-listener-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'presence' }, fetchPresence)
+      .subscribe();
+
+    return () => { supabase.removeChannel(presenceChannel); };
   }, []);
 
-  // ── Auto-scroll ────────────────────────────────────────────────────────
+  // ── 4. Auto-scroll ─────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isEnded]);
 
-  // ── Handlers ───────────────────────────────────────────────────────────
+  // ── 5. Chat Handlers ───────────────────────────────────────────────────
   const handleOptionSelect = async (option) => {
-    const metadataRef = ref(rtdb, `consultations/${convId}/metadata`);
-    const msgsRef     = ref(rtdb, `consultations/${convId}/messages`);
-    await update(metadataRef, {
-      patientUid: currentUser.uid,
-      patientName: resolvedNameRef.current || currentUser.name || 'Patient',
-      patientRole: currentUser.role || 'student',
-      status: 'active',
-      consultType: option.type,
-      lastMessage: `Started new ${option.type} consultation`,
-      lastTimestamp: Date.now(),
-      lastSenderRole: 'patient',
-      createdAt: Date.now(),
-    });
-    await push(msgsRef, { text: option.label, isBot: false, isTriageChoice: true, timestamp: Date.now() });
-    await push(msgsRef, {
-      text: `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
-      isBot: true,
-      timestamp: Date.now() + 1,
-    });
+    if (!internalUserId) return;
+
+    // 🔴 FIXED: Create a new room and let Supabase generate the random UUID
+    const { data: newConsult, error: consultError } = await supabase.from('consultations').insert({
+      patient_id:        internalUserId,
+      patient_name:      internalName,
+      consultation_type: option.type,
+      status:            'active',
+      created_at:        new Date().toISOString(),
+    }).select().single();
+
+    if (consultError || !newConsult) return;
+
+    const newRoomId = newConsult.id;
+    setActiveRoomId(newRoomId);
+
+    // 🔴 FIXED: Link messages to the newly generated Room ID
+    await supabase.from('consultation_messages').insert([
+      {
+        consultation_id: newRoomId,
+        sender_id:       internalUserId,
+        sender_name:     internalName,
+        sender_role:     currentUser.role || 'student',
+        message:         option.label,
+        created_at:      new Date().toISOString(),
+      },
+      {
+        consultation_id: newRoomId,
+        sender_id:       null,
+        sender_name:     'System',
+        sender_role:     'system',
+        message:         `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
+        created_at:      new Date().toISOString(),
+      }
+    ]);
+
+    setIsEnded(false);
+    setConsultType(option.type);
   };
 
   const handleSend = async () => {
-    if (!inputValue.trim() || !convId || isEnded) return;
+    if (!inputValue.trim() || !activeRoomId || isEnded) return;
     const text = inputValue.trim();
     setInputValue('');
+
     try {
-      const msgsRef = ref(rtdb, `consultations/${convId}/messages`);
-      await push(msgsRef, {
-        text, sender: 'patient', senderUid: currentUser.uid,
-        senderName: resolvedNameRef.current || 'Patient',
-        timestamp: Date.now(), readByClinic: false, isBot: false,
+      await supabase.from('consultation_messages').insert({
+        consultation_id: activeRoomId, // 🔴 FIXED
+        sender_id:       internalUserId,
+        sender_name:     internalName,
+        sender_role:     currentUser.role || 'student',
+        message:         text,
+        created_at:      new Date().toISOString(),
       });
-      await update(ref(rtdb, `consultations/${convId}/metadata`), {
-        lastMessage: text, lastTimestamp: Date.now(), lastSenderRole: 'patient',
-      });
-    } catch (err) { console.error('Send error:', err); }
+    } catch (err) {
+      console.error('Send error:', err);
+    }
   };
 
   // ── Group by date ──────────────────────────────────────────────────────
@@ -171,9 +276,9 @@ export default function ConsultationUsers() {
     const groups = [];
     let lastDate = null;
     messages.forEach(msg => {
-      const dateLabel = formatDate(msg.timestamp);
+      const dateLabel = formatDate(msg.created_at);
       if (dateLabel !== lastDate) {
-        groups.push({ type: 'date', label: dateLabel, key: `date-${msg.timestamp}` });
+        groups.push({ type: 'date', label: dateLabel, key: `date-${msg.created_at}` });
         lastDate = dateLabel;
       }
       groups.push(msg);
@@ -181,7 +286,6 @@ export default function ConsultationUsers() {
     return groups;
   };
 
-  // ── Style config ───────────────────────────────────────────────────────
   const typeConfig = {
     generic: { label: 'MediTrack', sublabel: 'Assistant',        accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
     medical: { label: 'Medical',   sublabel: 'Doctors & Nurses', accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
@@ -189,38 +293,12 @@ export default function ConsultationUsers() {
   };
   const cfg = (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic;
 
-  // ─────────────────────────────────────────────────────────────────────
-  //  Layout (works on both mobile & desktop):
-  //
-  //  The component fills the full height of whatever container mounts it.
-  //  It is a flex-column with three children:
-  //
-  //    1. HEADER  — position:sticky top:0    → always visible at top
-  //    2. MESSAGES — flex:1 overflow-y:auto  → scrollable middle
-  //    3. INPUT   — position:sticky bottom:0 → always visible at bottom
-  //
-  //  On MOBILE:  MobileShell is the scroll-port (overflow-y:auto).
-  //              paddingBottom:136px on MobileShell clears the pill nav.
-  //              sticky header/input stick to the top/bottom of the VIEWPORT,
-  //              which is what we want.
-  //
-  //  On DESKTOP: DesktopShell's inner div is the scroll-port (overflow-y:auto).
-  //              sticky header/input stick to the top/bottom of THAT div.
-  // ─────────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#f4f7f5' }}>
 
       {/* 1. STICKY HEADER */}
       <div
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 20,
-          background: '#ffffff',
-          borderBottom: '1px solid #edf3f0',
-          boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
-          flexShrink: 0,
-        }}
+        style={{ position: 'sticky', top: 0, zIndex: 20, background: '#ffffff', borderBottom: '1px solid #edf3f0', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', flexShrink: 0 }}
         className="px-5 py-4 flex items-center gap-3 transition-all duration-300"
       >
         <div
@@ -269,8 +347,19 @@ export default function ConsultationUsers() {
         style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
         className="px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5]"
       >
-        {groupedMessages().map((item, i) => {
+        {!sessionReady && (
+          <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col items-center gap-2 text-[#9bb5a5]">
+              <svg className="animate-spin w-6 h-6" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              <span className="text-[11px]">Connecting…</span>
+            </div>
+          </div>
+        )}
 
+        {sessionReady && groupedMessages().map((item, i) => {
           if (item.type === 'date') {
             return (
               <div key={item.key} className="flex justify-center my-2">
@@ -281,7 +370,7 @@ export default function ConsultationUsers() {
             );
           }
 
-          if (item.isBot) {
+          if (item.sender_role === 'system') {
             return (
               <div key={item.id || i} className="flex items-end gap-2 my-1">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
@@ -293,37 +382,30 @@ export default function ConsultationUsers() {
                   </svg>
                 </div>
                 <div className="max-w-[78%] px-4 py-2.5 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm break-words bg-white text-[#1a2e22] border border-[#c4dbd8]">
-                  <BotText text={item.text} />
+                  <BotText text={item.message} />
                 </div>
               </div>
             );
           }
 
-          if (item.isTriageChoice) {
-            return (
-              <div key={item.id || i} className="flex justify-end my-1">
-                <div className="max-w-[72%] px-4 py-2.5 text-[12px] font-medium leading-relaxed rounded-2xl rounded-br-sm break-words opacity-70 bg-[#e0eceb] text-[#466460] border border-[#c4dbd8]">
-                  {item.text}
-                </div>
-              </div>
-            );
-          }
-
-          const isPatient = item.sender === 'patient';
-          const msgCfg = isPatient ? cfg : (item.consultType === 'dental' ? typeConfig.dental : typeConfig.medical);
+          const isPatient = item.sender_id === internalUserId;
+          const msgCfg = isPatient ? cfg : (consultType === 'dental' ? typeConfig.dental : typeConfig.medical);
 
           return (
             <div key={item.id || i} className={`flex flex-col my-1 ${isPatient ? 'items-end' : 'items-start'}`}>
               {!isPatient && (
                 <div className="flex items-center gap-1.5 mb-0.5 ml-2">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: msgCfg.accentLight }}>
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: msgCfg.accentLight }}
+                  >
                     <svg viewBox="0 0 24 24" fill="none" stroke={msgCfg.accent} strokeWidth="2" className="w-3 h-3">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
                       <circle cx="12" cy="7" r="4" />
                     </svg>
                   </div>
                   <p className="text-[10px] font-bold" style={{ color: msgCfg.accent }}>
-                    {item.senderName || 'Clinic Staff'}
+                    {item.sender_name || 'Clinic Staff'}
                   </p>
                 </div>
               )}
@@ -334,22 +416,16 @@ export default function ConsultationUsers() {
                   : { backgroundColor: '#fff', color: '#1a2e22', border: `1px solid ${msgCfg.accentBorder}`, borderBottomLeftRadius: 4 }
                 }
               >
-                {item.text}
+                {item.message}
               </div>
               <div className={`text-[9px] text-[#9bb5a5] mt-1 mx-2 flex items-center gap-1 ${isPatient ? 'justify-end' : ''}`}>
-                <span>{formatTime(item.timestamp)}</span>
-                {isPatient && (
-                  <i
-                    className={`fa-solid ${item.readByClinic ? 'fa-check-double' : 'fa-check'} text-[10px] ml-0.5`}
-                    style={item.readByClinic ? { color: msgCfg.accent } : { color: '#9bb5a5' }}
-                  />
-                )}
+                <span>{formatTime(item.created_at)}</span>
               </div>
             </div>
           );
         })}
 
-        {isEnded && (
+        {sessionReady && isEnded && (
           <div className="mt-4 mb-2 flex flex-col gap-3">
             <div className="flex items-end gap-2">
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
@@ -384,15 +460,7 @@ export default function ConsultationUsers() {
 
       {/* 3. STICKY INPUT BAR */}
       <div
-        style={{
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 20,
-          background: '#ffffff',
-          borderTop: '1px solid #edf3f0',
-          boxShadow: '0 -4px 10px rgba(0,0,0,0.04)',
-          flexShrink: 0,
-        }}
+        style={{ position: 'sticky', bottom: 0, zIndex: 20, background: '#ffffff', borderTop: '1px solid #edf3f0', boxShadow: '0 -4px 10px rgba(0,0,0,0.04)', flexShrink: 0 }}
         className="px-4 py-3 flex gap-3 items-center transition-colors duration-300"
       >
         <input
@@ -401,7 +469,7 @@ export default function ConsultationUsers() {
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
-          disabled={isEnded}
+          disabled={isEnded || !sessionReady}
           className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
           style={{ borderColor: cfg.accentBorder }}
           onFocus={e => !isEnded && (e.target.style.borderColor = cfg.accent)}
@@ -409,7 +477,7 @@ export default function ConsultationUsers() {
         />
         <button
           onClick={handleSend}
-          disabled={!inputValue.trim() || isEnded}
+          disabled={!inputValue.trim() || isEnded || !sessionReady}
           className="w-11 h-11 rounded-full flex items-center justify-center text-white transition disabled:opacity-40 flex-shrink-0 shadow-md duration-300"
           style={{ backgroundColor: cfg.accent }}
         >

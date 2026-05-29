@@ -1,46 +1,51 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examinations.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
 
 const normalizePatient = (uid, d) => {
-  const firstName     = d.firstName    || '';
-  const lastName      = d.lastName     || '';
-  const middleInitial = d.middleInitial || '';
+  // Handle both camelCase (cached) and snake_case (Supabase direct)
+  const firstName     = d.firstName    || d.first_name    || '';
+  const lastName      = d.lastName     || d.last_name     || '';
+  const middleName = d.middleName || d.middle_name   || '';
   const suffix        = d.suffix       || '';
+  const universityId  = d.universityId || d.university_id || d.studentId || d.student_id || '';
+
   const name = lastName
-    ? `${lastName}, ${firstName}${middleInitial ? ` ${middleInitial}.` : ''}${suffix ? ` ${suffix}` : ''}`.trim()
+    ? `${lastName}, ${firstName} ${middleName} ${suffix}`.trim()
     : firstName || '—';
+
   return {
-    uid, name, firstName, lastName, middleInitial, suffix,
-    id:             d.universityId     || d.studentId || uid,
-    universityId:   d.universityId     || d.studentId || uid,
-    studentId:      d.studentId        || d.universityId || '',
-    role:           d.role             || '',
-    prog:           d.program          || d.course    || '',
-    program:        d.program          || d.course    || '',
-    year:           d.yearLevel        || '',
-    yearLevel:      d.yearLevel        || '',
-    section:        d.section          || '',
-    age:            d.age              || '',
-    gender:         d.gender           || d.sex       || '',
-    sex:            d.gender           || d.sex       || '',
-    birthdate:      d.birthday         || '',
-    birthday:       d.birthday         || '',
-    email:          d.email            || '',
-    phoneNumber:    d.phoneNumber      || '',
-    department:     d.department       || '',
-    jobTitle:       d.jobTitle         || '',
-    classification: d.classification   || '',
-    homeAddress:    d.homeAddress      || '',
-    religion:       d.religion         || '',
-    nationality:    d.nationality      || '',
-    civilStatus:    d.civilStatus      || '',
-    bloodType:      d.bloodType        || '',
-    emergencyContact: d.emergencyContact || { name: '', relationship: '', phone: '', address: '' },
+    uid, name, firstName, lastName, middleName, suffix,
+    id:             universityId || uid,
+    universityId,
+    studentId:      d.studentId  || d.student_id  || universityId || '',
+    role:           d.role       || '',
+    prog:           d.program    || d.course       || '',
+    program:        d.program    || d.course       || '',
+    year:           d.yearLevel  || d.year_level   || '',
+    yearLevel:      d.yearLevel  || d.year_level   || '',
+    section:        d.section    || '',
+    age:            d.age        || '',
+    gender:         d.gender     || d.sex          || '',
+    sex:            d.gender     || d.sex          || '',
+    birthdate:      d.birthday   || d.birthdate    || '',
+    birthday:       d.birthday   || d.birthdate    || '',
+    email:          d.email      || '',
+    phoneNumber:    d.phoneNumber || d.phone_number || d.contact_no || '',
+    department:     d.department || '',
+    jobTitle:       d.jobTitle   || d.job_title    || '',
+    classification: d.classification || '',
+    homeAddress:    d.homeAddress || d.home_address || d.address || '',
+    religion:       d.religion   || '',
+    nationality:    d.nationality || '',
+    civilStatus:    d.civilStatus || d.civil_status || '',
+    bloodType:      d.bloodType  || d.blood_type   || '',
+    emergencyContact: d.emergencyContact || d.emergency_contact || {
+      name: '', relationship: '', phone: '', address: ''
+    },
     vaccinations: d.vaccinations || {
       dose1:    { vaccineName: '', date: '' },
       dose2:    { vaccineName: '', date: '' },
@@ -98,18 +103,25 @@ export const Examinations = ({ currentUserRole = 'admin' }) => {
 
       if (patientId) {
         try {
-          const snap = await getDoc(doc(db, 'users', patientId));
-          if (snap.exists()) {
-            setSelectedPatient(normalizePatient(patientId, snap.data()));
+          // Try to find by id (UUID) or university_id
+          let { data, error } = await supabase.from('users').select('*').eq('id', patientId).single();
+
+          if (error || !data) {
+            // Try by university_id
+            ({ data, error } = await supabase.from('users').select('*').eq('university_id', patientId).single());
+          }
+
+          if (data) {
+            setSelectedPatient(normalizePatient(patientId, data));
             setExamStarted(true);
             setLoading(false);
             return;
           }
         } catch (err) {
-          console.error('[Examinations] Firestore fetch error:', err);
+          console.error('[Examinations] Supabase fetch error:', err);
         }
 
-        // Only fall back to localStorage if we had a patientId but Firestore failed
+        // Only fall back to localStorage if we had a patientId but Supabase failed
         const cached = localStorage.getItem('selectedPatient');
         if (cached) {
           try {

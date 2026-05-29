@@ -144,6 +144,15 @@ export default function MediTrack() {
 
   const scrollRef = useRef(null);
 
+  // ── Handle navigation with state to change tab ─────────────────────────────────
+  useEffect(() => {
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+      // Clear the state so back button works properly
+      navigate('.', { replace: true });
+    }
+  }, [location.state, navigate]);
+
   const currentUser = authService.getCurrentUser();
   const userName    = currentUser?.name         || "Student";
   const userId      = currentUser?.universityId || "—";

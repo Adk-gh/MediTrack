@@ -1,5 +1,5 @@
 // frontend/src/features/admin-clinic/Dashboard.jsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Chart as ChartJS,
@@ -8,8 +8,6 @@ import {
   PointElement, LineElement, Filler
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebase';
 import authService from '../../services/auth.service.js';
 import ProfileSetup from '../../components/ProfileSetup.jsx';
 import { useAppointments } from '../../context/AppointmentContext';
@@ -24,17 +22,18 @@ ChartJS.register(
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const TYPE_COLORS = {
-  student: '#466460',
-  faculty: '#e07a5f',
-  staff:   '#81b29a',
+  student:       '#466460',
+  faculty:       '#e07a5f',
+  staff:         '#81b29a',
+  doctor:        '#e9c46a',
+  nurse:         '#a8dadc',
+  administrator: '#f4a261',
+  lecturer:      '#2a9d8f',
+  professor:     '#264653',
+  guard:         '#e76f51',
 };
 
-const DISEASE_COLORS = [
-  '#466460','#e07a5f','#e9c46a','#81b29a',
-  '#f4a261','#2a9d8f','#e76f51','#264653','#a8dadc',
-];
-
-const RECORD_COLORS = ['#466460', '#e07a5f']; // Medical, Dental
+const RECORD_COLORS = ['#466460', '#e07a5f'];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -42,17 +41,17 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const normaliseRole = (raw = '') => {
   const r = raw.toLowerCase();
   if (r.includes('student')) return 'student';
-  if (['instructor', 'faculty', 'lecturer', 'professor', 'doctor', 'nurse'].some(k => r.includes(k))) return 'faculty';
+  if (['instructor', 'faculty', 'lecturer', 'professor'].some(k => r.includes(k))) return 'faculty';
+  if (['doctor', 'physician', 'nurse', 'dentist'].some(k => r.includes(k))) return 'staff';
   return 'staff';
 };
 
-const extractDiseases = (userData) => {
-  const diseases = [];
-  if (Array.isArray(userData.diseases)) diseases.push(...userData.diseases);
-  if (Array.isArray(userData.conditions)) diseases.push(...userData.conditions);
-  if (userData.chiefComplaint) diseases.push(userData.chiefComplaint);
-  if (userData.diagnosis) diseases.push(userData.diagnosis);
-  return diseases.length ? diseases : ['Routine Check-up'];
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    Authorization: token ? `Bearer ${token}` : '',
+  };
 };
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
@@ -85,234 +84,230 @@ const SectionLabel = ({ icon, children }) => (
 );
 
 // ============================================================
-// DASHBOARD CONTENT — consumes real Firestore data
+// DASHBOARD CONTENT
 // ============================================================
 function DashboardContent() {
   const navigate = useNavigate();
-
-  // ── Global Contexts ──────────────────────────────────────
   const { appointments } = useAppointments();
 
-  // ── Raw Firestore state ──────────────────────────────────
+  // ── State ─────────────────────────────────────────────────
   const [users,          setUsers]          = useState([]);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [dentalRecords,  setDentalRecords]  = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState(null);
+  const [filter,         setFilter]         = useState('all');
+  const [yearFilter,     setYearFilter]     = useState(String(new Date().getFullYear()));
 
-  // ── Filter state ─────────────────────────────────────────
-  const [filter,       setFilter]       = useState('all');
-  const [yearFilter,   setYearFilter]   = useState(String(new Date().getFullYear()));
+  // ── Fetch from Supabase API ───────────────────────────────
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-  // ── Load Firestore data ───────────────────────────────────
-  useEffect(() => {
-    let unsubUsers = () => {};
-    let unsubMed   = () => {};
-    let unsubDen   = () => {};
+      const headers = getAuthHeaders();
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+      // Fetch users (records), medical_records, dental_records in parallel
+      const [usersRes, medRes, denRes] = await Promise.all([
+        fetch(`${API_URL}/records`, { headers }),
+        fetch(`${API_URL}/examinations/medical`, { headers }).catch(() => null),
+        fetch(`${API_URL}/examinations/dental`, { headers }).catch(() => null),
+      ]);
 
-        // ── 1. users collection ──────────────────
-        const usersRef = collection(db, 'users');
-        unsubUsers = onSnapshot(usersRef, (snap) => {
-          const data = snap.docs.map(d => ({
-            uid:        d.id,
-            name:       [d.data().lastName, d.data().firstName].filter(Boolean).join(', ') || d.data().name || 'Unknown',
-            type:       normaliseRole(d.data().role || d.data().type || ''),
-            prog:       d.data().program || d.data().course || '',
-            year:       d.data().yearLevel || '',
-            section:    d.data().section || '',
-            diseases:   extractDiseases(d.data()),
-            email:      d.data().email || '',
-            department: d.data().department || '',
-            _raw:       d.data(),
-          }));
-          setUsers(data);
-        });
-
-        // ── 2. medical_records (Collection Group) ──────
-        const medRef = collectionGroup(db, 'medical_records');
-        unsubMed = onSnapshot(medRef, (snap) => {
-          const data = snap.docs.map(d => {
-            const raw = d.data();
-            let dateObj = new Date();
-            // Medical: Prioritize examDate, fallback to createdAt
-            if (raw.examDate) dateObj = new Date(raw.examDate);
-            else if (raw.createdAt?.toDate) dateObj = raw.createdAt.toDate();
-
-            return {
-              id: d.id,
-              userId: d.ref.parent.parent?.id,
-              kind: 'Medical',
-              dateObj,
-              ...raw
-            };
-          });
-          setMedicalRecords(data);
-        }, (err) => console.error("Medical records index error:", err));
-
-        // ── 3. dental_records (Collection Group) ──────
-        const denRef = collectionGroup(db, 'dental_records');
-        unsubDen = onSnapshot(denRef, (snap) => {
-          const data = snap.docs.map(d => {
-            const raw = d.data();
-            let dateObj = new Date();
-            // Dental: Prioritize createdAt, fallback to examDate
-            if (raw.createdAt?.toDate) dateObj = raw.createdAt.toDate();
-            else if (raw.examDate) dateObj = new Date(raw.examDate);
-
-            return {
-              id: d.id,
-              userId: d.ref.parent.parent?.id,
-              kind: 'Dental',
-              dateObj,
-              ...raw
-            };
-          });
-          setDentalRecords(data);
-        }, (err) => console.error("Dental records index error:", err));
-
-        setLoading(false);
-
-      } catch (err) {
-        console.error('Dashboard load error:', err);
-        setError('Could not connect to database.');
-        setLoading(false);
+      // ── Users / Patient Records ──────────────────────────
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        const raw = usersData.data || usersData || [];
+        setUsers(raw.map(u => ({
+          uid:        u.uid || u.id,
+          name:       `${u.last_name || u.lastName || ''}, ${u.first_name || u.firstName || ''}`.replace(/^,\s*/, '') || u.name || 'Unknown',
+          type:       normaliseRole(u.role || ''),
+          role:       u.role || 'student',
+          prog:       u.program || u.course || '',
+          year:       u.year_level || u.yearLevel || '',
+          section:    u.section || '',
+          email:      u.email || '',
+          department: u.department || '',
+          createdAt:  u.created_at ||  '',
+        })));
       }
-    };
 
-    load();
-    return () => { unsubUsers(); unsubMed(); unsubDen(); };
+      // ── Medical Records ──────────────────────────────────
+      // Try the examinations endpoint first, fallback to medical_records
+      let medData = [];
+      if (medRes && medRes.ok) {
+        const json = await medRes.json();
+        medData = json.data || json || [];
+      } else {
+        // Fallback: try medical_records directly
+        const fallback = await fetch(`${API_URL}/examinations`, { headers }).catch(() => null);
+        if (fallback && fallback.ok) {
+          const json = await fallback.json();
+          const all = json.data || json || [];
+          medData = all.filter(r => (r.type || r.record_type || '').toLowerCase().includes('medical') || r.examType === 'medical');
+        }
+      }
+      setMedicalRecords(medData.map(r => ({
+        ...r,
+        kind:    'Medical',
+        dateObj: r.exam_date || r.examDate || r.created_at || r.createdAt
+          ? new Date(r.exam_date || r.examDate || r.created_at || r.createdAt)
+          : new Date(),
+        userId: r.user_id || r.userId || r.uid,
+      })));
+
+      // ── Dental Records ────────────────────────────────────
+      let denData = [];
+      if (denRes && denRes.ok) {
+        const json = await denRes.json();
+        denData = json.data || json || [];
+      } else {
+        const fallback = await fetch(`${API_URL}/examinations`, { headers }).catch(() => null);
+        if (fallback && fallback.ok) {
+          const json = await fallback.json();
+          const all = json.data || json || [];
+          denData = all.filter(r => (r.type || r.record_type || '').toLowerCase().includes('dental') || r.examType === 'dental');
+        }
+      }
+      setDentalRecords(denData.map(r => ({
+        ...r,
+        kind:    'Dental',
+        dateObj: r.created_at || r.createdAt || r.exam_date || r.examDate
+          ? new Date(r.created_at || r.createdAt || r.exam_date || r.examDate)
+          : new Date(),
+        userId: r.user_id || r.userId || r.uid,
+      })));
+
+    } catch (err) {
+      console.error('Dashboard load error:', err);
+      setError('Could not connect to database.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // ── Derived Appointment Data (Synced with Context) ──────────
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // ── Appointment Derivations ───────────────────────────────
   const today = new Date();
 
-  // SAFELY parse pending appointments avoiding all undefined/crashing errors
   const pendingAppointments = useMemo(() => {
     return (appointments || [])
       .filter(a => String(a?.status || 'pending').toLowerCase() === 'pending')
       .sort((a, b) => {
-        const timeA = new Date(a?.bookedAt || a?.createdAt || a?.date || 0).getTime() || 0;
-        const timeB = new Date(b?.bookedAt || b?.createdAt || b?.date || 0).getTime() || 0;
-        return timeA - timeB; // Oldest first (FIFO Queue)
+        const tA = new Date(a?.bookedAt || a?.createdAt || a?.created_at || a?.date || 0).getTime() || 0;
+        const tB = new Date(b?.bookedAt || b?.createdAt || b?.created_at || b?.date || 0).getTime() || 0;
+        return tA - tB;
       });
   }, [appointments]);
 
   const pendingCount = pendingAppointments.length;
 
   const scheduledAppointments = useMemo(() => {
-    return (appointments || []).filter(a => a?.status === 'approved' || a?.status === 'done');
+    return (appointments || []).filter(a => {
+      const status = String(a?.status || '').toLowerCase();
+      return status === 'approved' || status === 'done';
+    });
   }, [appointments]);
 
-  const todayAppts = useMemo(() =>
-    scheduledAppointments.filter(a =>
-      a?.year === today.getFullYear() &&
-      a?.month === today.getMonth() + 1 &&
-      a?.day === today.getDate()
-    ),
-  [scheduledAppointments]);
+  const todayAppts = useMemo(() => {
+    return scheduledAppointments.filter(a => {
+      const dateString = a?.date || a?.bookedAt || a?.created_at || a?.createdAt;
+
+      if (a?.year && a?.month && a?.day) {
+        const d = new Date(a.year, a.month - 1, a.day);
+        return d.toDateString() === today.toDateString();
+      } else if (dateString) {
+        const d = new Date(dateString);
+        return d.toDateString() === today.toDateString();
+      }
+      return false;
+    });
+  }, [scheduledAppointments]);
 
   const weekFromNow = new Date(today);
   weekFromNow.setDate(today.getDate() + 7);
 
   const weekAppts = useMemo(() =>
     scheduledAppointments.filter(a => {
-      if (!a?.year) return false;
-      const d = new Date(a.year, a.month - 1, a.day);
+      const d = a.year
+        ? new Date(a.year, (a.month || 1) - 1, a.day || 1)
+        : new Date(a.date || a.created_at || 0);
       return d >= today && d <= weekFromNow;
     }),
   [scheduledAppointments]);
 
-  // Combine and sort all records for the "Recent Activity" feed & Chart
-  const allRecords = useMemo(() => {
-    return [...medicalRecords, ...dentalRecords].sort((a, b) => b.dateObj - a.dateObj);
-  }, [medicalRecords, dentalRecords]);
+  // ── Combined records ──────────────────────────────────────
+  const allRecords = useMemo(() =>
+    [...medicalRecords, ...dentalRecords].sort((a, b) => b.dateObj - a.dateObj),
+  [medicalRecords, dentalRecords]);
 
-  // ── User Filters ──────────────────────────────────────────
+  // ── Filtered users ────────────────────────────────────────
   const filteredUsers = useMemo(() =>
     filter === 'all' ? users : users.filter(u => u.type === filter),
   [users, filter]);
 
-  // Unique years present in actual medical/dental records
+  // ── Available years from records ──────────────────────────
   const availableYears = useMemo(() => {
-    const yrs = new Set(
-      allRecords.map(r => r.dateObj?.getFullYear()).filter(Boolean)
-    );
+    const yrs = new Set(allRecords.map(r => r.dateObj?.getFullYear()).filter(Boolean));
     return ['all', ...Array.from(yrs).sort((a, b) => b - a).map(String)];
   }, [allRecords]);
 
-  // ── Charts ────────────────────────────────────────────────
-
-  // Line chart: True medical & dental records over time grouped by month/year
+  // ── Line Chart: visits over time ──────────────────────────
   const trendData = useMemo(() => {
     const years = yearFilter === 'all'
-      ? availableYears.filter(y => y !== 'all').map(Number).sort((a,b) => a - b)
+      ? availableYears.filter(y => y !== 'all').map(Number).sort((a, b) => a - b)
       : [parseInt(yearFilter)];
-
     if (years.length === 0) years.push(new Date().getFullYear());
 
     const labels = [];
     years.forEach(yr => MONTHS.forEach(m => labels.push(`${m} ${yr}`)));
 
-    const types = filter === 'all'
-      ? ['student', 'faculty', 'staff']
-      : [filter];
-
+    const types = filter === 'all' ? ['student', 'faculty', 'staff'] : [filter];
     const borderDashes = { student: [], faculty: [6, 3], staff: [2, 3] };
 
-    // Pre-map users to records to optimize the loop
-    const recordsWithTypes = allRecords.map(r => {
-       const uType = users.find(u => u.uid === r.userId)?.type || 'staff';
-       const yr = r.dateObj?.getFullYear();
-       const mo = r.dateObj?.getMonth();
-       return { uType, yr, mo };
-    });
+    const recordsWithTypes = allRecords.map(r => ({
+      uType: users.find(u => u.uid === r.userId)?.type || 'staff',
+      yr:    r.dateObj?.getFullYear(),
+      mo:    r.dateObj?.getMonth(),
+    }));
 
-    const datasets = types.map(t => {
-      const data = labels.map(lbl => {
+    const datasets = types.map(t => ({
+      label:            t.charAt(0).toUpperCase() + t.slice(1),
+      data:             labels.map(lbl => {
         const [moName, yrStr] = lbl.split(' ');
         const mIdx = MONTHS.indexOf(moName);
         const yNum = parseInt(yrStr);
-        // Count all true records matching this type, month, and year
         return recordsWithTypes.filter(r => r.uType === t && r.yr === yNum && r.mo === mIdx).length;
-      });
-
-      return {
-        label:           t.charAt(0).toUpperCase() + t.slice(1),
-        data,
-        borderColor:     TYPE_COLORS[t],
-        backgroundColor: TYPE_COLORS[t] + '18',
-        borderWidth:     2,
-        pointRadius:     3,
-        pointHoverRadius: 5,
-        tension:         0.35,
-        fill:            false,
-        borderDash:      borderDashes[t],
-      };
-    });
+      }),
+      borderColor:      TYPE_COLORS[t],
+      backgroundColor:  TYPE_COLORS[t] + '18',
+      borderWidth:      2,
+      pointRadius:      3,
+      pointHoverRadius: 5,
+      tension:          0.35,
+      fill:             false,
+      borderDash:       borderDashes[t],
+    }));
 
     return { labels, datasets };
   }, [filter, yearFilter, allRecords, users, availableYears]);
 
-  // Doughnut: Record Type Distribution
-  const recordsChartData = useMemo(() => {
-    return {
-      config: {
-        labels: ['Medical Records', 'Dental Records'],
-        datasets: [{
-          data: [medicalRecords.length || 0, dentalRecords.length || 0],
-          backgroundColor: RECORD_COLORS,
-          borderWidth: 0,
-        }],
-      },
-    };
-  }, [medicalRecords, dentalRecords]);
+  // ── Doughnut: record type distribution ───────────────────
+  const recordsChartData = useMemo(() => ({
+    config: {
+      labels:   ['Medical Records', 'Dental Records'],
+      datasets: [{
+        data:            [medicalRecords.length || 0, dentalRecords.length || 0],
+        backgroundColor: RECORD_COLORS,
+        borderWidth:     0,
+      }],
+    },
+  }), [medicalRecords, dentalRecords]);
 
-  // Bar: patient type breakdown
+  // ── Bar: patient type breakdown ───────────────────────────
   const typeChartData = useMemo(() => {
     const counts = {};
     filteredUsers.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
@@ -327,7 +322,7 @@ function DashboardContent() {
     };
   }, [filteredUsers]);
 
-  // Alerts — derived from real data
+  // ── Alerts ────────────────────────────────────────────────
   const alerts = useMemo(() => [
     ...(pendingCount > 0
       ? [{ icon: 'fa-calendar-clock', text: `${pendingCount} appointment request${pendingCount > 1 ? 's' : ''} pending approval`, type: 'warning' }]
@@ -345,7 +340,7 @@ function DashboardContent() {
         <i className="fa-solid fa-triangle-exclamation text-4xl text-amber-400"></i>
         <p className="text-sm font-bold text-slate-600 text-center">{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={fetchDashboardData}
           className="px-4 py-2 rounded-full bg-[#466460] text-white text-xs font-bold hover:bg-[#3a524f] transition"
         >
           Retry
@@ -358,11 +353,9 @@ function DashboardContent() {
   return (
     <div className="flex-1 h-full min-h-0 overflow-y-auto bg-[#f4f7f6] px-4 md:px-6 py-4 md:py-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
 
-      {/* ── Patient Stats Row ── */}
+      {/* ── Stat Cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-5 md:mb-6">
-        {loading ? (
-          [1,2,3,4].map(i => <StatSkeleton key={i} />)
-        ) : (
+        {loading ? [1,2,3,4].map(i => <StatSkeleton key={i} />) : (
           <>
             <GlassCard className="p-4 md:p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Patients</p>
@@ -417,7 +410,7 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* Line chart */}
+        {/* Line Chart */}
         <div className="mb-5">
           <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
             <SectionLabel icon="fa-chart-line">Patient Visits Over Time</SectionLabel>
@@ -438,7 +431,6 @@ function DashboardContent() {
             </div>
           </div>
 
-          {/* Legend */}
           <div className="flex gap-4 mb-3 flex-wrap">
             {(filter === 'all' || filter === 'student') && (
               <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
@@ -484,7 +476,7 @@ function DashboardContent() {
 
         <hr className="border-slate-100 mb-5" />
 
-        {/* Doughnut + Bar row */}
+        {/* Doughnut + Bar */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <SectionLabel icon="fa-file-medical">Record Type Distribution</SectionLabel>
@@ -517,10 +509,7 @@ function DashboardContent() {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                      y: {
-                        beginAtZero: true,
-                        ticks: { font: { size: 10 }, stepSize: 1 },
-                      },
+                      y: { beginAtZero: true, ticks: { font: { size: 10 }, stepSize: 1 } },
                       x: { ticks: { font: { size: 10 } } },
                     },
                   }}
@@ -531,10 +520,10 @@ function DashboardContent() {
         </div>
       </GlassCard>
 
-      {/* ── Pending Appointments + Records & Alerts ── */}
+      {/* ── Pending Appointments + Recent Records + Alerts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-5 pb-6">
 
-        {/* Left Column (Spans 2): Pending Appointments */}
+        {/* Pending Appointments (spans 2 cols) */}
         <GlassCard className="p-0 overflow-hidden lg:col-span-2 flex flex-col h-[400px]">
           <div className="p-4 md:p-5 border-b border-[#eef2f6] shrink-0 bg-white flex justify-between items-center">
             <h3 className="font-bold text-sm text-[#466460]">
@@ -550,10 +539,13 @@ function DashboardContent() {
           <div className="flex-1 overflow-y-auto p-4 bg-[#f8fafc] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
             {loading ? (
               <div className="space-y-3">
-                {[1, 2, 3].map(i => (
+                {[1,2,3].map(i => (
                   <div key={i} className="flex gap-3 p-3 bg-white border border-slate-100 rounded-xl animate-pulse">
                     <div className="w-6 h-4 bg-slate-200 rounded" />
-                    <div className="flex-1 space-y-2"><div className="h-3 bg-slate-200 rounded w-1/2" /><div className="h-2 bg-slate-100 rounded w-1/3" /></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-slate-200 rounded w-1/2" />
+                      <div className="h-2 bg-slate-100 rounded w-1/3" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -566,21 +558,30 @@ function DashboardContent() {
             ) : (
               <div className="space-y-2">
                 {pendingAppointments.map((appt, i) => {
-                  const bTime = new Date(appt?.bookedAt || appt?.createdAt || appt?.date || Date.now()).toLocaleString('en-PH', {
-                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-                  });
+                  const bTime = new Date(
+                    appt?.bookedAt || appt?.created_at || appt?.created_at || appt?.date || Date.now()
+                  ).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+                  // Support both old Firebase shape and new Supabase shape
+                  const patientName = appt?.name || appt?.patientName || appt?.student_name || appt?.studentName || 'Unknown Patient';
+                  const patientId   = appt?.idno || appt?.university_id || appt?.universityId || 'No ID';
+                  const patientProg = appt?.prog || appt?.program || appt?.dept || appt?.department || 'N/A';
+                  const reason      = appt?.reason || appt?.consultation_type || appt?.type || 'Consultation';
+
                   return (
-                    <div key={appt?.id || i} onClick={() => navigate('/appointments')} className="flex items-start gap-3 p-3 bg-white border border-slate-100 rounded-xl cursor-pointer hover:border-[#8aacaa] hover:shadow-sm transition-all group">
+                    <div
+                      key={appt?.id || i}
+                      onClick={() => navigate('/appointments')}
+                      className="flex items-start gap-3 p-3 bg-white border border-slate-100 rounded-xl cursor-pointer hover:border-[#8aacaa] hover:shadow-sm transition-all group"
+                    >
                       <div className="font-['DM_Mono',monospace] text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-1.5 py-0.5 mt-0.5 shrink-0">
                         #{i + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">{appt?.name || 'Unknown Patient'}</div>
-                        <div className="text-[10px] text-[#64748b] mt-0.5 truncate">
-                          {appt?.idno || 'No ID'} &middot; {appt?.prog || appt?.dept || 'N/A'}
-                        </div>
+                        <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">{patientName}</div>
+                        <div className="text-[10px] text-[#64748b] mt-0.5 truncate">{patientId} &middot; {patientProg}</div>
                         <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2 py-0.5 rounded-full inline-block mt-1.5 font-medium truncate max-w-full">
-                          {appt?.reason || 'Consultation'}
+                          {reason}
                         </span>
                       </div>
                       <div className="text-right shrink-0">
@@ -608,10 +609,10 @@ function DashboardContent() {
           )}
         </GlassCard>
 
-        {/* Right Column: Recent Records & Alerts */}
+        {/* Right column: Recent Records + Alerts */}
         <div className="flex flex-col gap-4 md:gap-5 h-[400px]">
 
-          {/* Recent Records Activity */}
+          {/* Recent Records */}
           <GlassCard className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <div className="p-4 border-b border-[#eef2f6] shrink-0 bg-white">
               <h3 className="font-bold text-sm text-[#466460]">
@@ -624,7 +625,10 @@ function DashboardContent() {
                   {[1,2,3].map(i => (
                     <div key={i} className="flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-lg animate-pulse">
                       <div className="w-8 h-8 rounded-full bg-slate-200 shrink-0" />
-                      <div className="flex-1 space-y-1"><div className="h-2.5 bg-slate-200 rounded w-3/4" /><div className="h-2 bg-slate-100 rounded w-1/2" /></div>
+                      <div className="flex-1 space-y-1">
+                        <div className="h-2.5 bg-slate-200 rounded w-3/4" />
+                        <div className="h-2 bg-slate-100 rounded w-1/2" />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -686,9 +690,7 @@ function DashboardContent() {
                 <div className="space-y-2 max-h-[110px] overflow-y-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                   {alerts.map((alert, idx) => (
                     <div key={idx} className="flex items-center gap-3 p-2.5 bg-white border border-slate-100 rounded-lg">
-                      <i className={`fa-solid ${alert.icon} text-sm ${
-                        alert.type === 'warning' ? 'text-amber-500' : 'text-blue-500'
-                      }`}></i>
+                      <i className={`fa-solid ${alert.icon} text-sm ${alert.type === 'warning' ? 'text-amber-500' : 'text-blue-500'}`}></i>
                       <p className="text-[11px] font-medium text-slate-600 leading-tight">{alert.text}</p>
                     </div>
                   ))}
@@ -720,7 +722,7 @@ export const Dashboard = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         const result = await response.json();
-        if (result.success && !result.data.isProfileSetup) {
+        if (result.success && result.data && !result.data.isProfileSetup) {
           setShowOnboarding(true);
         }
       } catch (err) {

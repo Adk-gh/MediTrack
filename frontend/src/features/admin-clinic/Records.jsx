@@ -1,16 +1,12 @@
-//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Records.jsx
+// frontend/src/features/admin-clinic/Records.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, collectionGroup, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { rtdb } from '../../firebase';
-import { ref, get, push, set } from 'firebase/database';
-// Import your custom BirthdayPicker component
-import BirthdayPicker from '../../components/Datepicker';
+import { supabase } from '../../supabase';
+import DatePicker from '../../components/Datepicker';
 import recordsService from '../../services/records.service';
 
 // ============================================================
-// CONSTANTS FROM PROFILE SETUP
+// CONSTANTS
 // ============================================================
 const departmentsData = [
   {
@@ -87,23 +83,16 @@ const departmentsData = [
   {
     abbr: 'CNAHS',
     full: 'College of Nursing and Allied Health Sciences',
-    programs: [
-      'Bachelor of Science in Nursing',
-    ],
+    programs: ['Bachelor of Science in Nursing'],
   },
 ];
 
-const deptAbbrToFull      = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
-const programsByDeptAbbr  = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
+const deptAbbrToFull     = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
+const programsByDeptAbbr = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
 
 const NON_ACADEMIC_OFFICES = [
-  'Accounting Office',
-  'University Clinic',
-  'Human Resources',
-  'Library',
-  'Maintenance',
-  'Registrar Office',
-  'Security Services',
+  'Accounting Office', 'University Clinic', 'Human Resources',
+  'Library', 'Maintenance', 'Registrar Office', 'Security Services',
 ];
 
 const PLSP_OFFICES_FOR_STAFF = [
@@ -120,121 +109,94 @@ const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 
 function getDefaultClassification(role) {
   const classMap = {
-    'administrator': 'Administrator',
-    'admin':         'Administrator',
-    'nurse':         'Nurse Personnel',
-    'doctor':        'Physician / Doctor',
-    'staff':         'Non-Teaching Personnel',
-    'employee':      'Non-Teaching Personnel',
-    'guard':         'Security Personnel',
-    'technician':    'Non-Teaching Personnel',
-    'librarian':     'Non-Teaching Personnel',
-    'lecturer':      'Teaching Personnel',
-    'professor':     'Teaching Personnel',
-    'instructor':    'Teaching Personnel',
+    administrator: 'Administrator', admin: 'Administrator',
+    nurse: 'Nurse Personnel', doctor: 'Physician / Doctor',
+    staff: 'Non-Teaching Personnel', employee: 'Non-Teaching Personnel',
+    guard: 'Security Personnel', technician: 'Non-Teaching Personnel',
+    librarian: 'Non-Teaching Personnel', lecturer: 'Teaching Personnel',
+    professor: 'Teaching Personnel', instructor: 'Teaching Personnel',
   };
   return classMap[role] || 'Teaching Personnel';
 }
 
 function getDefaultJobTitle(role) {
   const titleMap = {
-    'nurse':         'Nurse',
-    'doctor':        'Physician',
-    'admin':         'Administrator',
-    'administrator': 'Administrator',
-    'lecturer':      'Lecturer',
-    'professor':     'Professor',
-    'instructor':    'Instructor',
-    'librarian':     'Librarian',
-    'technician':    'Technician',
-    'guard':         'Security Guard',
-    'staff':         'Staff',
+    nurse: 'Nurse', doctor: 'Physician', admin: 'Administrator',
+    administrator: 'Administrator', lecturer: 'Lecturer', professor: 'Professor',
+    instructor: 'Instructor', librarian: 'Librarian', technician: 'Technician',
+    guard: 'Security Guard', staff: 'Staff',
   };
   return titleMap[role] || '';
 }
 
 // ============================================================
-// SNACKBAR COMPONENT
+// SNACKBAR
 // ============================================================
 const Snackbar = ({ message, type, visible }) => (
-  <div
-    className={`fixed bottom-8 left-1/2 z-[9999] flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
-      ${visible
-        ? '-translate-x-1/2 translate-y-0 opacity-100'
-        : '-translate-x-1/2 translate-y-32 opacity-0 pointer-events-none'
-      }
-      ${type === 'success'
-        ? 'bg-gradient-to-r from-[#166534] to-[#15803d]'
-        : 'bg-gradient-to-r from-[#991b1b] to-[#dc2626]'
-      }`}
-  >
+  <div className={`fixed bottom-8 left-1/2 z-[9999] flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
+    ${visible ? '-translate-x-1/2 translate-y-0 opacity-100' : '-translate-x-1/2 translate-y-32 opacity-0 pointer-events-none'}
+    ${type === 'success' ? 'bg-gradient-to-r from-[#166534] to-[#15803d]' : 'bg-gradient-to-r from-[#991b1b] to-[#dc2626]'}`}>
     <i className={`fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
     {message}
   </div>
 );
 
 // ============================================================
-// TYPE BADGE COLORS
+// HELPERS
 // ============================================================
 const typeBadgeClass = (roleStr) => {
   const t = (roleStr || '').toLowerCase();
   if (t.includes('student')) return 'bg-blue-100 text-blue-600';
-  if (['instructor', 'faculty', 'lecturer', 'professor', 'doctor', 'nurse'].some(k => t.includes(k))) {
+  if (['instructor', 'faculty', 'lecturer', 'professor', 'doctor', 'nurse'].some(k => t.includes(k)))
     return 'bg-purple-100 text-purple-600';
-  }
   return 'bg-green-100 text-green-600';
 };
 
-// ============================================================
-// NORMALIZE — map a Firestore user doc → display shape
-// ============================================================
 const normalizeUser = (doc) => {
   const d = doc;
-  const firstName = d.firstName || '';
-  const lastName  = d.lastName  || '';
-  const middle    = d.middleInitial ? ` ${d.middleInitial}.` : '';
+  // Support both snake_case (from Supabase) and camelCase (legacy / optimistic inserts)
+  const firstName = d.first_name    || d.firstName    || '';
+  const lastName  = d.last_name     || d.lastName     || '';
+  const middle    = d.middle_name || '';
   const suffix    = d.suffix ? ` ${d.suffix}` : '';
-
   const name = lastName
-    ? `${lastName}, ${firstName}${middle}${suffix}`.trim()
-    : `${firstName}${middle}${suffix}`.trim() || '—';
+    ? `${lastName}, ${firstName} ${middle} ${suffix}`.trim()
+    : `${firstName} ${middle} ${suffix}`.trim() || '—';
 
   return {
-    uid: doc.uid || doc.id,
+    uid:          doc.id || doc.uid,                                // id is the PK now
     name,
     firstName,
     lastName,
-    middleInitial: d.middleInitial || '',
-    suffix:        d.suffix        || '',
-    id:         d.universityId  || d.studentId || doc.uid,
-    role:       d.role || d.type || 'staff',
-    prog:       d.program       || d.course    || '',
-    year:       d.yearLevel     || '',
-    section:    d.section       || '',
-    age:        d.age           || '',
-    gender:     d.gender        || d.sex       || '',
-    birthdate:  d.birthday      || '',
-    email:      d.email         || '',
-    phoneNumber: d.phoneNumber  || '',
-    department: d.department    || '',
-    jobTitle:   d.jobTitle      || '',
-    classification: d.classification || '',
-    emergencyContact: d.emergencyContact || {},
-    vaccinations: d.vaccinations || {},
-    history:  [],
-    diseases: [],
+    middleName: d.middle_name    || '',
+    suffix:        d.suffix            || '',
+    id:            d.university_id     || d.universityId     || doc.id,
+    role:          d.role || d.type    || 'staff',
+    prog:          d.program           || d.course           || '',
+    year:          d.year_level        || d.yearLevel        || '',
+    section:       d.section           || '',
+    age:           d.age               || '',
+    gender:        d.sex               || d.gender           || '',
+    birthdate:     d.birthday          || '',
+    email:         d.email             || '',
+    phoneNumber:   d.phone_number      || d.phoneNumber      || '',
+    department:    d.department        || '',
+    jobTitle:      d.job_title         || d.jobTitle         || '',
+    classification: d.classification   || '',
+    emergencyContact: d.emergency_contact || d.emergencyContact || {},
+    vaccinations:  d.vaccinations      || {},
     _raw: d,
   };
 };
 
 // ============================================================
-// RECORD HISTORY VIEWER
+// RECORD HISTORY VIEWER — Supabase version
 // ============================================================
 const RecordHistoryViewer = ({ person }) => {
-  const [records, setRecords]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [activeTab, setActiveTab]   = useState('medical');
-  const [expanded, setExpanded]     = useState(null);
+  const [records, setRecords]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [activeTab, setActiveTab] = useState('medical');
+  const [expanded, setExpanded]   = useState(null);
 
   useEffect(() => {
     if (!person?.uid) return;
@@ -243,24 +205,34 @@ const RecordHistoryViewer = ({ person }) => {
 
     const fetchRecords = async () => {
       try {
-        const medSnap = await getDocs(
-          collection(db, 'users', person.uid, 'medical_records')
-        );
-        const medRecords = medSnap.docs.map(d => ({
-          id: d.id,
+        // Fetch medical records
+        const { data: medData, error: medError } = await supabase
+          .from('medical_records')
+          .select('*')
+          .eq('user_id', person.uid)
+          .order('created_at', { ascending: false });
+
+        if (medError) console.error('Error fetching medical records:', medError);
+
+        // Fetch dental records
+        const { data: denData, error: denError } = await supabase
+          .from('dental_records')
+          .select('*')
+          .eq('user_id', person.uid)
+          .order('created_at', { ascending: false });
+
+        if (denError) console.error('Error fetching dental records:', denError);
+
+        const medRecords = (medData || []).map(r => ({
+          ...r,
           kind: 'medical',
-          ...d.data(),
-          _date: d.data().examDate || d.data().createdAt?.toDate?.()?.toISOString?.()?.split('T')[0] || '',
+          _date: r.exam_date || r.examDate || r.created_at?.split('T')[0] || '',
         }));
 
-        const denSnap = await getDocs(
-          collection(db, 'users', person.uid, 'dental_records')
-        );
-        const denRecords = denSnap.docs.map(d => ({
-          id: d.id,
+        const denRecords = (denData || []).map(r => ({
+          ...r,
           kind: 'dental',
-          ...d.data(),
-          _date: d.data().examDate || d.data().createdAt?.toDate?.()?.toISOString?.()?.split('T')[0] || '',
+          _date: r.exam_date || r.examDate || r.created_at?.split('T')[0] || '',
         }));
 
         const all = [...medRecords, ...denRecords].sort((a, b) =>
@@ -316,17 +288,17 @@ const RecordHistoryViewer = ({ person }) => {
   );
 
   const MedicalDetail = ({ r }) => {
-    const vitals = r.vitalRecords?.[0] || {};
-    const surgicalHistory = r.surgicalHistory?.map(s =>
+    const vitals = r.vitalRecords?.[0] || r.vital_records?.[0] || {};
+    const surgicalHistory = (r.surgicalHistory || r.surgical_history || []).map(s =>
       typeof s === 'object' ? `${s.operation || ''}${s.date ? ` (${s.date})` : ''}` : s
-    ) || [];
+    );
 
     return (
       <div className="mt-3 pt-4 border-t border-slate-100 space-y-4">
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: 'Exam Date',     value: r._date || r.examDate || '—' },
-            { label: 'Nurse on Duty', value: r.nurseOnDuty || '—' },
+            { label: 'Exam Date',     value: r._date || r.exam_date || '—' },
+            { label: 'Nurse on Duty', value: r.nurseOnDuty || r.nurse_on_duty || '—' },
             { label: 'Purpose',       value: r.purpose || r.reason || 'Medical Examination' },
             { label: 'Status',        value: null, custom: (
               <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${
@@ -348,11 +320,11 @@ const RecordHistoryViewer = ({ person }) => {
           <SectionHeading icon="fa-heart-pulse" label="Vital Signs" />
           <div className="grid grid-cols-5 gap-1.5">
             {[
-              { label: 'BP',     value: vitals.bp,               unit: 'mmHg' },
-              { label: 'PR',     value: vitals.pr,               unit: 'bpm'  },
-              { label: 'RR',     value: vitals.rr,               unit: 'cpm'  },
-              { label: 'Temp',   value: vitals.temp,             unit: '°C'   },
-              { label: 'O₂ Sat', value: vitals.o2sat || vitals.o2Sat, unit: '%' },
+              { label: 'BP',     value: vitals.bp,                    unit: 'mmHg' },
+              { label: 'PR',     value: vitals.pr,                    unit: 'bpm'  },
+              { label: 'RR',     value: vitals.rr,                    unit: 'cpm'  },
+              { label: 'Temp',   value: vitals.temp,                  unit: '°C'   },
+              { label: 'O₂ Sat', value: vitals.o2sat || vitals.o2Sat, unit: '%'    },
             ].map(v => (
               <div key={v.label} className="bg-slate-50 rounded-lg p-2 text-center border border-slate-100">
                 <p className="text-[7px] text-slate-400 uppercase">{v.label}</p>
@@ -383,7 +355,7 @@ const RecordHistoryViewer = ({ person }) => {
         <div className="grid grid-cols-1 gap-3">
           <div>
             <SectionHeading icon="fa-clock-rotate-left" label="Past Medical History" />
-            <TagList items={r.checkedMedical} color="bg-amber-50 text-amber-700 border-amber-100" />
+            <TagList items={r.checkedMedical || r.checked_medical} color="bg-amber-50 text-amber-700 border-amber-100" />
           </div>
           <div>
             <SectionHeading icon="fa-scissors" label="Surgical History" />
@@ -391,11 +363,11 @@ const RecordHistoryViewer = ({ person }) => {
           </div>
           <div>
             <SectionHeading icon="fa-dna" label="Family History" />
-            <TagList items={r.checkedFamily} color="bg-purple-50 text-purple-700 border-purple-100" />
+            <TagList items={r.checkedFamily || r.checked_family} color="bg-purple-50 text-purple-700 border-purple-100" />
           </div>
         </div>
 
-        {(r.labCbc || r.labUa || r.labXray) && (
+        {(r.labCbc || r.lab_cbc || r.labUa || r.lab_ua || r.labXray || r.lab_xray) && (
           <div>
             <SectionHeading icon="fa-flask" label="Laboratory Results" />
             <table className="w-full text-[10px] border border-slate-100 rounded-lg overflow-hidden">
@@ -408,9 +380,9 @@ const RecordHistoryViewer = ({ person }) => {
               </thead>
               <tbody>
                 {[
-                  { test: 'CBC',         result: r.labCbc,  facility: r.labCbcFacility  },
-                  { test: 'Urinalysis',  result: r.labUa,   facility: r.labUaFacility   },
-                  { test: 'Chest X-Ray', result: r.labXray, facility: r.labXrayFacility },
+                  { test: 'CBC',         result: r.labCbc  || r.lab_cbc,  facility: r.labCbcFacility  || r.lab_cbc_facility  },
+                  { test: 'Urinalysis',  result: r.labUa   || r.lab_ua,   facility: r.labUaFacility   || r.lab_ua_facility   },
+                  { test: 'Chest X-Ray', result: r.labXray || r.lab_xray, facility: r.labXrayFacility || r.lab_xray_facility },
                 ].filter(row => row.result).map((row, i, arr) => (
                   <tr key={row.test} className={i < arr.length - 1 ? 'border-b border-slate-100' : ''}>
                     <td className="p-2 text-slate-500">{row.test}</td>
@@ -420,43 +392,6 @@ const RecordHistoryViewer = ({ person }) => {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-
-        {(r.vax1 || r.vax2 || r.booster1) && (
-          <div>
-            <SectionHeading icon="fa-syringe" label="COVID-19 Vaccination" />
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { label: 'Dose 1',   name: r.vax1,     date: r.vax1Date     },
-                { label: 'Dose 2',   name: r.vax2,     date: r.vax2Date     },
-                { label: 'Booster',  name: r.booster1, date: r.booster1Date },
-              ].filter(v => v.name).map(v => (
-                <span key={v.label} className="text-[9px] bg-green-50 text-green-700 border border-green-100 px-2 py-1 rounded-full">
-                  {v.label}: {v.name}{v.date ? ` (${v.date})` : ''}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {(r.smoking !== undefined || r.alcohol !== undefined || r.drugs !== undefined) && (
-          <div>
-            <SectionHeading icon="fa-person" label="Personal / Social History" />
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'Smoking',       value: r.smoking },
-                { label: 'Alcohol',       value: r.alcohol },
-                { label: 'Illicit Drugs', value: r.drugs   },
-              ].map(s => (
-                <div key={s.label} className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                  <p className="text-[7px] text-slate-400 uppercase mb-0.5">{s.label}</p>
-                  <p className={`text-[11px] font-bold ${String(s.value).toLowerCase().includes('yes') ? 'text-red-600' : 'text-green-600'}`}>
-                    {s.value || 'No'}
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
@@ -497,10 +432,10 @@ const RecordHistoryViewer = ({ person }) => {
 
   const DentalDetail = ({ r }) => (
     <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
-      <Field label="Dentist"    value={r.dentistName} />
-      <Field label="Procedure"  value={r.procedure} />
-      <Field label="Tooth"      value={r.toothNumber} />
-      <Field label="Diagnosis"  value={r.diagnosis} />
+      <Field label="Dentist"   value={r.dentistName || r.dentist_name} />
+      <Field label="Procedure" value={r.procedure} />
+      <Field label="Tooth"     value={r.toothNumber || r.tooth_number} />
+      <Field label="Diagnosis" value={r.diagnosis} />
       {r.notes && (
         <div className="col-span-2">
           <p className="text-[8px] font-bold text-[#466460] uppercase mb-1">Notes</p>
@@ -520,9 +455,7 @@ const RecordHistoryViewer = ({ person }) => {
               key={tab}
               onClick={() => { setActiveTab(tab); setExpanded(null); }}
               className={`px-3 py-1 rounded-md text-[10px] font-semibold transition-all capitalize ${
-                activeTab === tab
-                  ? 'bg-white text-[#466460] shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                activeTab === tab ? 'bg-white text-[#466460] shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               <i className={`fa-solid ${tab === 'medical' ? 'fa-stethoscope' : 'fa-tooth'} mr-1`}></i>
@@ -558,7 +491,7 @@ const RecordHistoryViewer = ({ person }) => {
                     <p className="text-xs font-bold text-slate-700 truncate">{r._date || 'No date'}</p>
                     <p className="text-[9px] text-slate-400 truncate">
                       {activeTab === 'medical'
-                        ? (r.nurseOnDuty ? `Nurse: ${r.nurseOnDuty}` : 'Medical Examination')
+                        ? (r.nurseOnDuty || r.nurse_on_duty ? `Nurse: ${r.nurseOnDuty || r.nurse_on_duty}` : 'Medical Examination')
                         : (r.procedure || 'Dental Visit')
                       }
                     </p>
@@ -595,30 +528,34 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) =>
     try {
       localStorage.setItem('selectedPatient', JSON.stringify(person));
 
-      const convRef = ref(rtdb, 'consultations');
-      const snap = await get(convRef);
-      const data = snap.val() || {};
+      // Check for existing active consultation for this patient
+      const { data: existing, error: fetchError } = await supabase
+        .from('consultations')
+        .select('id')
+        .eq('patient_id', person.uid)
+        .eq('status', 'active')
+        .maybeSingle();
 
-      const existing = Object.entries(data).find(
-        ([, conv]) => conv.metadata?.patientUid === person.uid
-      );
+      if (fetchError) throw fetchError;
 
       if (existing) {
-        navigate(`/consultations?patientId=${person.uid}&convId=${existing[0]}`);
+        navigate(`/consultations?patientId=${person.uid}&convId=${existing.id}`);
       } else {
-        const newConvRef = push(ref(rtdb, 'consultations'));
-        await set(newConvRef, {
-          metadata: {
-            patientUid:    person.uid,
-            patientName:   person.name,
-            patientRole:   person.role || person.type || 'student',
-            lastMessage:   '',
-            lastTimestamp: Date.now(),
-            createdAt:     Date.now(),
-          },
-          messages: {},
-        });
-        navigate(`/consultations?patientId=${person.uid}&convId=${newConvRef.key}`);
+        // Create new consultation
+        const { data: newConsult, error: insertError } = await supabase
+          .from('consultations')
+          .insert({
+            consultation_type: 'medical',
+            patient_id: person.uid,
+            patient_name: person.name,
+            status: 'active',
+          })
+          .select('id')
+          .single();
+
+        if (insertError) throw insertError;
+
+        navigate(`/consultations?patientId=${person.uid}&convId=${newConsult.id}`);
       }
     } catch (err) {
       console.error('Consult error:', err);
@@ -651,9 +588,7 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) =>
           <h3 className="font-bold text-base text-slate-800 truncate">{person.name}</h3>
           <p className="text-xs text-slate-500">
             {person.id} •{' '}
-            {person.role
-              ? person.role.charAt(0).toUpperCase() + person.role.slice(1)
-              : person.type}
+            {person.role ? person.role.charAt(0).toUpperCase() + person.role.slice(1) : person.type}
           </p>
           <div className="flex gap-1.5 mt-1 flex-wrap">
             {person.department && (
@@ -775,8 +710,7 @@ export const Records = () => {
   const [filterProgram, setFilterProgram] = useState('All');
   const [filterRole, setFilterRole]       = useState('All');
   const [sortOrder, setSortOrder]         = useState('asc');
-
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileOpen, setProfileOpen]     = useState(false);
 
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const snackbarTimer = useRef(null);
@@ -784,44 +718,81 @@ export const Records = () => {
   const [form, setForm] = useState({
     surname: '', firstname: '', middlename: '', suffix: '', id: '',
     birthdate: '', age: '', gender: 'Male', type: 'student',
-    departmentAbbr: '',
-    department: '',
-    prog: '', year: '1st Year', section: '',
-    studentClassification: 'Regular',
-    jobTitle: '', classification: 'Teaching Personnel',
+    departmentAbbr: '', department: '', prog: '', year: '1st Year', section: '',
+    studentClassification: 'Regular', jobTitle: '', classification: 'Teaching Personnel',
     civilStatus: 'Single', nationality: 'Filipino', religion: '',
     email: '', phone: '', password: '',
   });
 
+  // Load users directly from Supabase
   const loadUsers = async () => {
-    try {
-      setLoading(true);
-      const snapshot = await getDocs(collection(db, 'users'));
-      const users = snapshot.docs.map(doc =>
-        normalizeUser({ uid: doc.id, ...doc.data() })
-      );
-      setPeopleData(users);
-    } catch (err) {
-      console.error('Failed to load users from Firestore:', err);
-      showSnackbar('Could not load users from database', 'error');
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+    console.log('[Records] Fetching users from Supabase...');
+    console.log('[Records] Supabase client:', supabase);
+    console.log('[Records] Supabase URL:', supabase.supabaseUrl);
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('*');
+      // .order('created_at', { ascending: false });
+
+    console.log('[Records] Supabase response:', { data, error });
+
+    if (error) {
+      console.error('[Records] Supabase error:', error);
+      console.error('[Records] Error details:', JSON.stringify(error, null, 2));
+      throw error;
     }
-  };
+
+    console.log('[Records] Raw data count:', data?.length || 0);
+
+    if (!data || data.length === 0) {
+      console.warn('[Records] No users found in database');
+      setPeopleData([]);
+      setLoading(false);
+      return;
+    }
+
+    const normalized = (data || []).map(doc => ({
+      ...normalizeUser(doc),
+      // fallback so null-department users still appear
+      department: doc.department || 'Unassigned',
+    }));
+
+    console.log('[Records] Loaded users:', normalized.length);
+    setPeopleData(normalized);
+  } catch (err) {
+    console.error('Failed to load users:', err);
+    showSnackbar('Could not load users from database', 'error');
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     loadUsers();
   }, []);
 
   const departments = [...new Set(peopleData.map(p => p.department).filter(Boolean))].sort();
-  const uniqueYears = ['All', ...new Set(peopleData.filter(p => p.department === currentDept && p.year).map(p => p.year))].sort();
-  const uniqueSections = ['All', ...new Set(peopleData.filter(p => p.department === currentDept && (filterYear === 'All' || p.year === filterYear) && p.section).map(p => p.section))].sort();
-  const uniquePrograms = ['All', ...new Set(
-    peopleData
-      .filter(p => p.department === currentDept && p.prog)
-      .map(p => p.prog)
+
+  const uniqueYears = ['All', ...new Set(
+    peopleData.filter(p => p.department === currentDept && p.year).map(p => p.year)
   )].sort();
-  const uniqueRoles = ['All', ...new Set(peopleData.filter(p => p.department === currentDept && p.role).map(p => p.role))].sort((a, b) => {
+
+  const uniqueSections = ['All', ...new Set(
+    peopleData
+      .filter(p => p.department === currentDept && (filterYear === 'All' || p.year === filterYear) && p.section)
+      .map(p => p.section)
+  )].sort();
+
+  const uniquePrograms = ['All', ...new Set(
+    peopleData.filter(p => p.department === currentDept && p.prog).map(p => p.prog)
+  )].sort();
+
+  const uniqueRoles = ['All', ...new Set(
+    peopleData.filter(p => p.department === currentDept && p.role).map(p => p.role)
+  )].sort((a, b) => {
     if (a === 'All') return -1;
     if (b === 'All') return 1;
     return a.localeCompare(b);
@@ -891,19 +862,14 @@ export const Records = () => {
         ...f,
         [name]: value,
         classification: getDefaultClassification(value),
-        jobTitle: getDefaultJobTitle(value)
+        jobTitle: getDefaultJobTitle(value),
       }));
       return;
     }
 
     if (name === 'departmentAbbr' && form.type === 'student') {
       const fullName = deptAbbrToFull[value] || value;
-      setForm(f => ({
-        ...f,
-        departmentAbbr: value,
-        department: fullName,
-        prog: '',
-      }));
+      setForm(f => ({ ...f, departmentAbbr: value, department: fullName, prog: '' }));
       return;
     }
 
@@ -931,12 +897,11 @@ export const Records = () => {
     }
 
     setIsSubmitting(true);
-
     try {
       const payload = {
         firstName: form.firstname || '',
         lastName: form.surname || '',
-        middleInitial: form.middlename || '',
+        middleName: form.middleName || '',
         suffix: form.suffix || '',
         universityId: form.id || '',
         email: form.email || '',
@@ -963,7 +928,7 @@ export const Records = () => {
           dose1: { vaccineName: '', date: '' },
           dose2: { vaccineName: '', date: '' },
           booster1: { vaccineName: '', date: '' },
-          booster2: { vaccineName: '', date: '' }
+          booster2: { vaccineName: '', date: '' },
         },
         isProfileSetup: true,
         profileComplete: true,
@@ -990,7 +955,7 @@ export const Records = () => {
       departmentAbbr: '', department: '', prog: '', year: '1st Year', section: '',
       studentClassification: 'Regular', jobTitle: '', classification: 'Teaching Personnel',
       civilStatus: 'Single', nationality: 'Filipino', religion: '',
-      email: '', phone: '', password: ''
+      email: '', phone: '', password: '',
     });
   };
 
@@ -998,9 +963,8 @@ export const Records = () => {
     const base = size === 'sm'
       ? 'px-2 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate'
       : 'px-1 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[10px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate';
-
-    const fixedCls  = `${base} w-[78px] shrink-0`;
-    const progCls   = `${base} flex-1 min-w-0 max-w-[160px]`;
+    const fixedCls = `${base} w-[78px] shrink-0`;
+    const progCls  = `${base} flex-1 min-w-0 max-w-[160px]`;
 
     return (
       <>
@@ -1023,13 +987,12 @@ export const Records = () => {
   const formSelectCls = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] bg-white";
   const formInputCls  = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460]";
   const formLabelCls  = "text-[10px] font-bold text-slate-500 uppercase block mb-1";
-
   const availablePrograms = form.departmentAbbr ? (programsByDeptAbbr[form.departmentAbbr] || []) : [];
 
   return (
     <>
       <div className="h-full flex flex-col bg-white overflow-hidden">
-        {/* ── TAB BAR ── */}
+        {/* TAB BAR */}
         <div className="shrink-0 border-b border-slate-200 px-4 sm:px-6 py-2 flex gap-2 bg-white">
           {['view', 'add'].map(tab => (
             <button
@@ -1046,15 +1009,11 @@ export const Records = () => {
 
         <div className="flex-1 min-h-0 overflow-hidden">
 
-          {/* ══════════════════════════════════════════
-              VIEW TAB
-          ══════════════════════════════════════════ */}
+          {/* VIEW TAB */}
           {activeSubTab === 'view' && (
             <>
-              {/* ── MOBILE layout ── */}
+              {/* MOBILE */}
               <div className="flex flex-col lg:hidden h-full bg-white overflow-hidden">
-
-                {/* ── Department Dropdown (mobile only) ── */}
                 <div className="shrink-0 border-b border-[#eef2f6] px-3 py-3">
                   {loading ? (
                     <div className="text-xs text-slate-400 py-1 px-1">
@@ -1062,19 +1021,14 @@ export const Records = () => {
                     </div>
                   ) : (
                     <div className="relative">
-                      {/* Label */}
                       <p className="text-[9px] font-bold uppercase text-[#466460] mb-1.5 px-0.5">Department</p>
-
-                      {/* Custom styled select wrapper */}
                       <div className="relative">
-                        {/* Left icon */}
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                             <polyline points="9 22 9 12 15 12 15 22"/>
                           </svg>
                         </div>
-
                         <select
                           value={currentDept || ''}
                           onChange={e => handleSelectDept(e.target.value)}
@@ -1085,16 +1039,12 @@ export const Records = () => {
                             <option key={dept} value={dept}>{dept}</option>
                           ))}
                         </select>
-
-                        {/* Right chevron icon */}
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="6 9 12 15 18 9"/>
                           </svg>
                         </div>
                       </div>
-
-                      {/* Record count badge */}
                       <div className="flex items-center gap-1.5 mt-1.5 px-0.5">
                         <span className="text-[9px] font-semibold text-[#466460] bg-[#e0eceb] px-2 py-0.5 rounded-full">
                           {filteredPeople.length} record{filteredPeople.length !== 1 ? 's' : ''}
@@ -1105,26 +1055,20 @@ export const Records = () => {
                   )}
                 </div>
 
-                {/* Search + sort + filters */}
                 <div className="shrink-0 px-3 py-3 border-b border-[#eef2f6]">
-                  {/* Search row */}
                   <div className="flex items-center gap-2 mb-2">
                     <div className="relative flex-1">
                       <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
                       <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
+                        type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search name or ID..."
                         className="w-full pl-9 pr-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs outline-none focus:border-[#466460] focus:bg-white transition-all"
                       />
                     </div>
-                    {/* Sort button */}
                     <button
                       onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                       style={{ minWidth: '38px', minHeight: '38px', flexShrink: 0 }}
-                      className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center gap-0.5 text-[10px] font-bold"
-                      title={`Sort ${sortOrder === 'asc' ? 'Z → A' : 'A → Z'}`}
+                      className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center text-[10px] font-bold"
                     >
                       {sortOrder === 'asc' ? (
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -1141,8 +1085,6 @@ export const Records = () => {
                       )}
                     </button>
                   </div>
-
-                  {/* Filter row */}
                   <div className="flex items-center gap-2 mt-2 overflow-hidden">
                     <span className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -1155,7 +1097,6 @@ export const Records = () => {
                   </div>
                 </div>
 
-                {/* List */}
                 <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                   {filteredPeople.length === 0 ? (
                     <div className="text-center text-slate-400 text-sm py-12">No records found</div>
@@ -1191,7 +1132,6 @@ export const Records = () => {
                   )}
                 </div>
 
-                {/* Mobile profile drawer */}
                 {profileOpen && (
                   <div className="fixed inset-0 bg-black/30 z-40 lg:hidden" onClick={() => setProfileOpen(false)} />
                 )}
@@ -1205,9 +1145,8 @@ export const Records = () => {
                 </div>
               </div>
 
-              {/* ── DESKTOP layout — unchanged ── */}
+              {/* DESKTOP */}
               <div className="hidden lg:flex h-full bg-white overflow-hidden">
-
                 {/* Column 1 — Departments */}
                 <div className="flex-[1.2] border-r border-[#eef2f6] flex flex-col min-w-[160px] overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
@@ -1247,9 +1186,7 @@ export const Records = () => {
                       <div className="relative flex-1">
                         <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
                         <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={e => setSearchQuery(e.target.value)}
+                          type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                           placeholder="Search name or ID..."
                           className="w-full pl-8 pr-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] focus:bg-white transition-all"
                         />
@@ -1258,7 +1195,6 @@ export const Records = () => {
                         onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                         style={{ minWidth: '34px', minHeight: '34px', flexShrink: 0 }}
                         className="bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center"
-                        title={`Sort ${sortOrder === 'asc' ? 'Z → A' : 'A → Z'}`}
                       >
                         {sortOrder === 'asc' ? (
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -1286,7 +1222,6 @@ export const Records = () => {
                       </div>
                     </div>
                   </div>
-
                   <div className="flex-1 min-h-0 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                     {filteredPeople.length === 0 ? (
                       <div className="text-center text-slate-400 text-sm py-12">No records found</div>
@@ -1334,14 +1269,11 @@ export const Records = () => {
                     )}
                   </div>
                 </div>
-
               </div>
             </>
           )}
 
-          {/* ══════════════════════════════════════════
-              ADD NEW RECORD TAB
-          ══════════════════════════════════════════ */}
+          {/* ADD NEW RECORD TAB */}
           {activeSubTab === 'add' && (
             <div className="h-full overflow-y-auto [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
               <div className="p-4 sm:p-6 lg:p-8 bg-white max-w-5xl">
@@ -1370,7 +1302,7 @@ export const Records = () => {
                   </div>
                   <div>
                     <label className={formLabelCls}>Birthdate</label>
-                    <BirthdayPicker
+                    <DatePicker
                       value={form.birthdate}
                       onChange={(dateStr) => handleBirthdateChange({ target: { value: dateStr } })}
                     />
@@ -1521,7 +1453,6 @@ export const Records = () => {
               </div>
             </div>
           )}
-
         </div>
       </div>
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />

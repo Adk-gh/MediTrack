@@ -7,6 +7,7 @@ const router = express.Router();
 const authRoutes = require('./auth.routes');
 router.use('/auth', authRoutes);
 
+
 // 2. Feature routes
 const userRoutes = require('../features/user/user.route');
 const recordsRoutes = require('../features/Records/records.route');
@@ -14,6 +15,7 @@ const appointmentsRoutes = require('../features/appointments/appointments.route'
 const examinationsRoutes = require('../features/examinations/examinations.route');
 const announcementsRoutes = require('../features/announcements/announcements.route');
 const notificationsRoutes = require('../features/notifications/notifications.route');
+const consultationsRoutes = require('../features/consultations/consultations.route');
 
 // 🔴 FIX 1: Commented out the 'hijacker' route so it doesn't intercept our new code
 // const profileSetupRoutes = require('../features/user/profile-setup/profile-setup');
@@ -28,5 +30,6 @@ router.use('/appointments', appointmentsRoutes);
 router.use('/examinations', examinationsRoutes);
 router.use('/announcements', announcementsRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/consultations', consultationsRoutes);
 
 module.exports = router;

@@ -7,9 +7,9 @@ const upload = require('../middleware/upload');
 
 
 // 1. Signup: Includes the 'image' upload middleware for OCR verification
-router.post('/signup', upload.single('image'), authController.register);
+router.post('/register', upload.single('image'), authController.register);
 
 // 2. Login: ADD THIS LINE. It maps the /login path to your controller logic
-router.post('/login', authController.login); 
+router.post('/login', authController.login);
 
 module.exports = router;

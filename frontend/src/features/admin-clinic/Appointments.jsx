@@ -2,8 +2,7 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppointments } from '../../context/AppointmentContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTHS = [
@@ -239,6 +238,15 @@ const IconUserClock = ({ size = 16, ...props }) => (
   </svg>
 );
 
+// ── NEW: Missed icon ──────────────────────────────────────────────────────────
+const IconBanCircle = ({ size = 14, color = "currentColor", ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="8" r="7"/>
+    <line x1="3.5" y1="3.5" x2="12.5" y2="12.5"/>
+  </svg>
+);
+
 // ── Drum Roll Picker ──────────────────────────────────────────────────────────
 const DrumColumn = ({ items, selIdx, onSelect }) => {
   const ITEM_H    = 44;
@@ -416,11 +424,15 @@ const Snackbar = ({ message, type, visible }) => (
     ${visible ? 'translate-x-[-50%] translate-y-0' : 'translate-x-[-50%] translate-y-[80px]'}
     ${type === 'success'
       ? 'bg-gradient-to-br from-[#166534] to-[#15803d]'
-      : 'bg-gradient-to-br from-[#991b1b] to-[#dc2626]'}`}
+      : type === 'warning'
+        ? 'bg-gradient-to-br from-[#92400e] to-[#b45309]'
+        : 'bg-gradient-to-br from-[#991b1b] to-[#dc2626]'}`}
   >
     {type === 'success'
       ? <IconCircleCheck size={14} color="white" />
-      : <IconCircleExclamation size={14} color="white" />
+      : type === 'warning'
+        ? <IconCircleExclamation size={14} color="white" />
+        : <IconCircleExclamation size={14} color="white" />
     }
     {message}
   </div>
@@ -440,7 +452,10 @@ export const Appointments = () => {
   const navigate = useNavigate();
   const today    = new Date();
 
-  const { appointments, approveAppointment, declineAppointment, markDone: ctxMarkDone } = useAppointments();
+  const { appointments, approveAppointment, declineAppointment, markDone: ctxMarkDone, markMissed: ctxMarkMissed } = useAppointments();
+
+  // ── Track which IDs we've already sent markMissed for (prevents infinite loop) ──
+  const missedRef = useRef(new Set());
 
   // ── Calendar state ──
   const [calYear,     setCalYear]     = useState(today.getFullYear());
@@ -478,6 +493,28 @@ export const Appointments = () => {
     );
   };
 
+  // ── Auto-mark missed appointments ─────────────────────────────────────────
+  // Runs whenever appointments list changes (on load and on any update).
+  // Marks any "approved" appointment whose date is strictly before today as "missed".
+  useEffect(() => {
+    if (!ctxMarkMissed) return;
+    const todayMidnight = new Date(
+      today.getFullYear(), today.getMonth(), today.getDate()
+    );
+
+    appointments.forEach(appt => {
+      if (appt.status !== 'approved') return;
+      if (!appt.year || !appt.month || !appt.day) return;
+      if (missedRef.current.has(appt.id)) return; // already processed this session
+
+      const apptDate = new Date(Number(appt.year), Number(appt.month) - 1, Number(appt.day));
+      if (apptDate < todayMidnight) {
+        missedRef.current.add(appt.id); // mark as handled before the async call
+        ctxMarkMissed(appt.id);
+      }
+    });
+  }, [appointments]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const changeMonth = (dir) => {
     let m = calMonth + dir, y = calYear;
     if (m > 12) { m = 1;  y++; }
@@ -500,18 +537,22 @@ export const Appointments = () => {
     (r.reason || '').toLowerCase().includes(searchTerm)
   );
 
+  // Include "missed" in the scheduled panel
   const scheduledAppts = appointments.filter(
-    a => a.status === 'approved' || a.status === 'done'
+    a => a.status === 'approved' || a.status === 'done' || a.status === 'missed'
   );
 
   const firstDayOfWeek = new Date(calYear, calMonth - 1, 1).getDay();
   const daysInMonth    = new Date(calYear, calMonth, 0).getDate();
 
   const selectedDayAppts = scheduledAppts
-    .filter(a => a.year === calYear && a.month === calMonth && a.day === selectedDay)
+    .filter(a => Number(a.year) === calYear && Number(a.month) === calMonth && Number(a.day) === selectedDay)
     .sort((a, b) => {
-      if (a.status === 'done' && b.status !== 'done') return 1;
-      if (a.status !== 'done' && b.status === 'done') return -1;
+      // Order: approved → missed → done
+      const order = { approved: 0, missed: 1, done: 2 };
+      const oa = order[a.status] ?? 3;
+      const ob = order[b.status] ?? 3;
+      if (oa !== ob) return oa - ob;
       return a.time.localeCompare(b.time);
     });
 
@@ -525,7 +566,7 @@ export const Appointments = () => {
   }, [selectedDayAppts]);
 
   const activeByTime = scheduledAppts
-    .filter(a => a.year === calYear && a.month === calMonth && a.day === selectedDay && a.status !== 'done')
+    .filter(a => Number(a.year) === calYear && Number(a.month) === calMonth && Number(a.day) === selectedDay && a.status === 'approved')
     .sort((a, b) => a.time.localeCompare(b.time));
 
   const selectedItems  = pendingRequests.filter(r => selectedIds.has(r.id));
@@ -743,51 +784,65 @@ export const Appointments = () => {
     </div>
   );
 
-  // ── Redirect to Examination ──
-  const handleExaminePatient = async (appt) => {
-    showSnackbar('Locating patient record...');
-    try {
-      const usersRef = collection(db, 'users');
-      let q = query(usersRef, where('universityId', '==', appt.idno));
-      let snapshot = await getDocs(q);
-      if (snapshot.empty) {
-        q = query(usersRef, where('studentId', '==', appt.idno));
-        snapshot = await getDocs(q);
-      }
-      if (!snapshot.empty) {
-        const actualUid = snapshot.docs[0].id;
-        setDetailModal(null);
-        showSnackbar('Patient found! Redirecting...');
-        setTimeout(() => navigate(`/examinations?patientId=${actualUid}`), 1000);
-      } else {
-        const nameParts = (appt.name || '').trim().split(' ');
-        const patientProfile = {
-          uid: `temp-${Date.now()}`,
-          name: appt.name,
-          firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
-          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
-          id: appt.idno,
-          universityId: appt.idno,
-          department: appt.dept,
-          prog: appt.prog,
-          section: appt.section,
-        };
-        localStorage.setItem('selectedPatient', JSON.stringify(patientProfile));
-        setDetailModal(null);
-        showSnackbar('Patient not in DB. Using appointment data...');
-        setTimeout(() => navigate(`/examinations?patientId=${patientProfile.uid}`), 1000);
-      }
-    } catch (error) {
-      console.error("Error looking up patient:", error);
-      showSnackbar('Database error occurred.', 'error');
-    }
-  };
+const handleExaminePatient = async (appt) => {
+  showSnackbar('Locating patient record...');
+  try {
+    let { data: users, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('universityId', appt.idno)
+      .limit(1);
 
+    if (error) throw error;
+
+    if (!users || users.length === 0) {
+      ({ data: users, error } = await supabase
+        .from('users')
+        .select('id')
+        .eq('studentId', appt.idno)
+        .limit(1));
+
+      if (error) throw error;
+    }
+
+    if (users && users.length > 0) {
+      const actualUid = users[0].id;
+      setDetailModal(null);
+      showSnackbar('Patient found! Redirecting...');
+      setTimeout(() => navigate(`/examinations?patientId=${actualUid}`), 1000);
+    } else {
+      const nameParts = (appt.name || '').trim().split(' ');
+      const patientProfile = {
+        uid: `temp-${Date.now()}`,
+        name: appt.name,
+        firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
+        lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
+        id: appt.idno,
+        universityId: appt.idno,
+        department: appt.dept,
+        prog: appt.prog,
+        section: appt.section,
+      };
+      localStorage.setItem('selectedPatient', JSON.stringify(patientProfile));
+      setDetailModal(null);
+      showSnackbar('Patient not in DB. Using appointment data...');
+      setTimeout(() => navigate(`/examinations?patientId=${patientProfile.uid}`), 1000);
+    }
+  } catch (error) {
+    console.error('Error looking up patient:', error);
+    showSnackbar('Database error occurred.', 'error');
+  }
+};
+console.log('ALL APPTS:', appointments.map(a => ({
+  id: a.id, name: a.name, status: a.status,
+  year: a.year, month: a.month, day: a.day,
+  yearType: typeof a.year, monthType: typeof a.month
+})));
   // ── Calendar Panel ────────────────────────────────────────────────────────
   const CalendarPanel = () => (
+
     <div className="flex flex-col h-full bg-[#fafbfc] overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
-        {/* ← Prev month */}
         <button
           onClick={() => changeMonth(-1)}
           className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
@@ -799,7 +854,6 @@ export const Appointments = () => {
 
         <span className="text-[14px] font-semibold text-[#1e293b]">{MONTHS[calMonth - 1]} {calYear}</span>
 
-        {/* → Next month */}
         <button
           onClick={() => changeMonth(1)}
           className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
@@ -810,8 +864,9 @@ export const Appointments = () => {
         </button>
       </div>
 
+      {/* Legend — now includes Missed */}
       <div className="flex gap-[14px] px-4 py-[7px] border-b border-[#eef2f6] bg-white shrink-0">
-        {[['#1D9E75','Approved'],['#94a3b8','Done']].map(([color, label]) => (
+        {[['#1D9E75','Approved'],['#f59e0b','Missed'],['#94a3b8','Done']].map(([color, label]) => (
           <div key={label} className="flex items-center gap-[5px] text-[10px] text-[#64748b]">
             <div className="w-[7px] h-[7px] rounded-full" style={{ background: color }}></div>
             <span>{label}</span>
@@ -833,29 +888,28 @@ export const Appointments = () => {
               && today.getDate() === day;
             const isSel = selectedDay === day;
 
-            // True if the day is strictly before today
             const isPast = (() => {
-              const cellDate     = new Date(calYear, calMonth - 1, day);
+              const cellDate      = new Date(calYear, calMonth - 1, day);
               const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
               return cellDate < todayMidnight;
             })();
 
             const dayAppts = scheduledAppts.filter(
-              a => a.year === calYear && a.month === calMonth && a.day === day
+              a => Number(a.year) === calYear && Number(a.month) === calMonth && Number(a.day) === day
             );
 
             return (
               <div
                 key={day}
-                onClick={() => !isPast && setSelectedDay(day)}
-                className={`min-h-[40px] sm:min-h-[46px] border px-1 py-1 rounded-[8px] transition-all
-                  ${isPast
-                    ? 'border-transparent cursor-default bg-[#e8edec]'
-                    : isSel
-                      ? 'bg-[#466460] border-[#466460] cursor-pointer'
-                      : isToday
-                        ? 'border-[#466460] hover:bg-[#E1F5EE] cursor-pointer'
-                        : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB] cursor-pointer'}`}
+                onClick={() => setSelectedDay(day)}
+                className={`min-h-[40px] sm:min-h-[46px] border px-1 py-1 rounded-[8px] transition-all cursor-pointer
+                  ${isSel
+                    ? 'bg-[#466460] border-[#466460]'
+                    : isToday
+                      ? 'border-[#466460] hover:bg-[#E1F5EE]'
+                      : isPast
+                        ? 'border-transparent hover:bg-[#f1f5f9]'
+                        : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB]'}`}
               >
                 <div className={`text-[11px] font-semibold
                   ${isSel
@@ -870,7 +924,12 @@ export const Appointments = () => {
                 <div className="flex gap-[2px] flex-wrap mt-[2px]">
                   {dayAppts.slice(0, 4).map((a, i) => (
                     <div key={i} className={`w-[5px] h-[5px] rounded-full
-                      ${a.status === 'done' ? 'bg-[#94a3b8]' : 'bg-[#1D9E75]'}`} />
+                      ${a.status === 'done'
+                        ? 'bg-[#94a3b8]'
+                        : a.status === 'missed'
+                          ? 'bg-[#f59e0b]'
+                          : 'bg-[#1D9E75]'}`}
+                    />
                   ))}
                 </div>
               </div>
@@ -908,6 +967,11 @@ export const Appointments = () => {
               <span className="text-[10px] text-[#64748b] font-normal">
                 {selectedDayAppts.length} appt{selectedDayAppts.length !== 1 ? 's' : ''}&nbsp;&middot;&nbsp;
                 {selectedDayAppts.filter(a => a.status === 'done').length} done
+                {selectedDayAppts.filter(a => a.status === 'missed').length > 0 && (
+                  <span className="text-[#b45309]">
+                    &nbsp;&middot;&nbsp;{selectedDayAppts.filter(a => a.status === 'missed').length} missed
+                  </span>
+                )}
               </span>
             </div>
             {groupedAppts.map(({ time, appts }) => {
@@ -936,6 +1000,7 @@ export const Appointments = () => {
                     <div className="flex flex-col gap-1 pl-[6px] border-l-2 border-[#eef2f6] ml-[10px]">
                       {appts.map(a => {
                         const isDone   = a.status === 'done';
+                        const isMissed = a.status === 'missed';
                         const queueIdx = activeByTime.findIndex(x => x.id === a.id);
                         return (
                           <div
@@ -945,29 +1010,43 @@ export const Appointments = () => {
                               text-[12px] bg-white transition-all cursor-pointer
                               ${isDone
                                 ? 'bg-[#f8fafc] opacity-[0.72] border-[#eef2f6] hover:border-[#cbd5e1]'
-                                : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
+                                : isMissed
+                                  ? 'bg-[#fffbeb] border-[#fde68a] hover:border-[#f59e0b]'
+                                  : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
                           >
+                            {/* Queue badge / status icon */}
                             <span className={`font-['DM_Mono',monospace] text-[10px] font-bold text-white
-                              rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0 leading-[1.6]
-                              ${isDone ? 'bg-[#94a3b8]' : 'bg-[#466460]'}`}>
+                              rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0 leading-[1.6] flex items-center justify-center
+                              ${isDone ? 'bg-[#94a3b8]' : isMissed ? 'bg-[#f59e0b]' : 'bg-[#466460]'}`}>
                               {isDone
                                 ? <IconCheck size={9} />
-                                : `#${queueIdx + 1}`
+                                : isMissed
+                                  ? <IconBanCircle size={10} color="white" />
+                                  : `#${queueIdx + 1}`
                               }
                             </span>
                             <div className="flex-1 min-w-0">
                               <div className={`font-semibold text-[12px] truncate
-                                ${isDone ? 'line-through text-[#94a3b8]' : 'text-[#1e293b]'}`}>{a.name}</div>
+                                ${isDone
+                                  ? 'line-through text-[#94a3b8]'
+                                  : isMissed
+                                    ? 'line-through text-[#b45309]'
+                                    : 'text-[#1e293b]'}`}>{a.name}</div>
                               <div className="text-[10px] text-[#64748b] mt-[1px] truncate">
                                 {a.reason} &middot; {a.prog}
                               </div>
                             </div>
                             <span className={`text-[9px] font-semibold px-[8px] py-[2px] rounded-[20px]
                               shrink-0 uppercase tracking-[0.03em] hidden sm:inline
-                              ${isDone ? 'bg-[#f1f5f9] text-[#64748b]' : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
-                              {isDone ? 'done' : 'approved'}
+                              ${isDone
+                                ? 'bg-[#f1f5f9] text-[#64748b]'
+                                : isMissed
+                                  ? 'bg-[#fef3c7] text-[#92400e]'
+                                  : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
+                              {isDone ? 'done' : isMissed ? 'missed' : 'approved'}
                             </span>
-                            {!isDone && (
+                            {/* Only show "Done" button for approved (not missed/done) */}
+                            {!isDone && !isMissed && (
                               <button
                                 onClick={(e) => handleMarkDone(e, a.id)}
                                 className="ml-1 px-[8px] py-[3px] text-[9px] font-bold rounded-[6px]
@@ -1238,7 +1317,9 @@ export const Appointments = () => {
                 <div key={label} className="flex items-center gap-[10px] py-[6px] text-[12px]">
                   <Icon size={14} style={{ color: '#0F6E56', flexShrink: 0 }} />
                   <span className="text-[#64748b] min-w-[100px]">{label}</span>
-                  <span className="font-medium text-[#1e293b]">{value}</span>
+                  <span className={`font-medium ${label === 'Status' && detailModal.status === 'missed' ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
+                    {value}
+                  </span>
                 </div>
               ))}
             </div>

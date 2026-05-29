@@ -1,13 +1,11 @@
-// C:\Users\HP\MediTrack\features\user\user.route.js
+// C:\Users\HP\MediTrack\features/user/user.route.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const userController = require("./user.controller");
 const { authorized } = require("../../middleware/authorized");
 const validateData = require("../../validation/validate-data");
-
-// FIX: Updated path to go up two directories
-const { db, auth } = require('../../configs/firebase-admin');
+const supabase = require('../../configs/database');
 
 const {
   registerSchema,
@@ -17,31 +15,31 @@ const {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// ─── ADDED THIS LINE: Check if University ID exists ───
 router.get("/check-id", userController.checkIdExists);
 
-// Auth & Registration Routes
 router.post("/register", upload.single("image"), validateData(registerSchema), userController.register);
-router.post("/login", validateData(loginSchema), userController.login);
-router.post("/firebase-auth", validateData(firebaseAuthSchema), userController.firebaseAuth);
+router.post("/login", /*validateData(loginSchema),*/ userController.login);
 
-// Profile Routes
 router.get("/profile", authorized, userController.getProfile);
 router.get("/profile-setup", authorized, userController.checkProfileSetup);
 router.post("/profile-setup", authorized, userController.setupProfile);
+router.put("/profile", authorized, userController.updateProfile);
 
-// Get all users function
 const getAllUsers = async (req, res) => {
   try {
-    const usersSnapshot = await db.collection('users').get();
-    const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('createdAt', { ascending: false });
+
+    if (error) throw error;
+    const users = data.map(doc => ({ id: doc.uid, ...doc }));
     res.status(200).json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// FIX: Added the "authorized" middleware to protect user data
 router.get("/users", authorized, getAllUsers);
 
 module.exports = router;

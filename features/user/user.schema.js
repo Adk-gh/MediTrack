@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\user\user.schema.js
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(

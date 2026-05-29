@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\layouts/UserDashboardLayout.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { UserNotificationBell, UserNotificationPanel } from "../components/UserNotifications.jsx";
 import notificationsService from "../services/notifications.service.js";
 
@@ -60,11 +61,11 @@ function DocumentPreviewIcon() {
 
 // ─── Nav configs ──────────────────────────────────────────────────────────────
 const DESKTOP_NAV = [
-  { id: "home",     label: "Home",     Icon: HomeIcon },
-  { id: "booking",  label: "Booking",  Icon: CalendarIcon },
-  { id: "consult",  label: "Consult",  Icon: ConsultIcon },
-  { id: "records",  label: "Records",  Icon: RecordsIcon },
-  { id: "profile",  label: "Profile",  Icon: ProfileIcon },
+  { id: "home",     label: "Home",    Icon: HomeIcon },
+  { id: "booking",  label: "Booking", Icon: CalendarIcon },
+  { id: "consult",  label: "Consult", Icon: ConsultIcon },
+  { id: "records",  label: "Records", Icon: RecordsIcon },
+  { id: "profile",  label: "Profile", Icon: ProfileIcon },
 ];
 
 // ─── Mobile pill nav icons ────────────────────────────────────────────────────
@@ -118,6 +119,72 @@ const MOBILE_NAV = [
   { id: "records",  label: "Records", Icon: NavRecordsIcon },
   { id: "profile",  label: "Profile", Icon: NavProfileIcon },
 ];
+
+// ─── Header Profile Dropdown ──────────────────────────────────────────────────
+function ProfileDropdown({ userName, onLogout }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const navigate = useNavigate();
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      {/* Sleek downward chevron button instead of the initials circle */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none flex items-center justify-center"
+        aria-label="Profile Menu"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M7 10l5 5 5-5z" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 py-2 z-50 animate-[fadeIn_0.15s_ease-out]">
+          <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Signed in as</p>
+            <p className="text-xs font-bold text-slate-800 truncate">{userName || 'Student'}</p>
+          </div>
+
+          {/* Settings Button */}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/student/settings');
+            }}
+            className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Settings
+          </button>
+
+          {/* Sign Out Button */}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              onLogout();
+            }}
+            className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            Sign Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Floating Pill Nav ────────────────────────────────────────────────────────
 function MobilePillNav({ activeTab, onTabChange }) {
@@ -294,12 +361,15 @@ export function PreviewModal({ record, onClose, isDesktop }) {
 }
 
 // ─── Desktop shell ─────────────────────────────────────────────────────────────
-function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick }) {
+function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout }) {
   return (
     <div className="min-h-screen bg-transparent flex flex-col">
       <header className="bg-transparent px-5 py-3 flex items-center justify-between sticky top-0 z-10">
         <img src="../logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
-        <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
+        <div className="flex items-center gap-1 sm:gap-2">
+          <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
+          <ProfileDropdown userName={userName} onLogout={onLogout} />
+        </div>
       </header>
 
       <div className="flex flex-1 max-w-7xl mx-auto w-full px-6 md:px-8 py-8 gap-8">
@@ -349,7 +419,7 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
 }
 
 // ─── Mobile shell ─────────────────────────────────────────────────────────────
-function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick }) {
+function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout }) {
   return (
     <div
       style={{
@@ -363,7 +433,10 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
     >
       <header className="bg-transparent px-5 py-3 flex items-center justify-between z-10 flex-shrink-0">
         <img src="/logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
-        <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
+        <div className="flex items-center gap-1">
+          <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
+          <ProfileDropdown userName={userName} onLogout={onLogout} />
+        </div>
       </header>
 
       <div

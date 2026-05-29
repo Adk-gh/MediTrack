@@ -1,41 +1,75 @@
-const { db } = require('../../configs/firebase-admin');
+// C:\Users\HP\MediTrack\features\examinations\examinations.service.js
+const supabase = require('../../configs/database');
 
-exports.getAllExaminations = async () => {
-  const snapshot = await db.collection('examinations').get();
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+// 1. Fetch from the actual medical_records table
+exports.getMedicalExaminations = async () => {
+  const { data, error } = await supabase
+    .from('medical_records')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
 };
 
+// 2. Fetch from the actual dental_records table
+exports.getDentalExaminations = async () => {
+  const { data, error } = await supabase
+    .from('dental_records')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+};
+
+// 3. Fallback: Combine both for the general "/" route to prevent crashes
+exports.getAllExaminations = async () => {
+  const [medical, dental] = await Promise.all([
+    supabase.from('medical_records').select('*'),
+    supabase.from('dental_records').select('*')
+  ]);
+
+  if (medical.error) throw medical.error;
+  if (dental.error) throw dental.error;
+
+  // Combine them and inject a 'type' property so the frontend can tell them apart
+  const combined = [
+    ...(medical.data || []).map(m => ({ ...m, type: 'medical' })),
+    ...(dental.data || []).map(d => ({ ...d, type: 'dental' }))
+  ];
+
+  // Sort the combined array by date (newest first)
+  return combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+};
+
+// --- CRUD Operations (You will need to update these later based on which table you are saving to) ---
 exports.getExaminationById = async (id) => {
-  const doc = await db.collection('examinations').doc(id).get();
-  if (!doc.exists) {
-    const error = new Error('Examination not found');
-    error.statusCode = 404;
-    throw error;
+  // Note: To make this work properly in the future, you'll need to check both tables
+  // or pass the record type from the frontend. For now, we will leave it pointing to the empty table to avoid crashes.
+  const { data, error } = await supabase.from('examinations').select('*').eq('id', id).single();
+  if (error || !data) {
+    const err = new Error('Examination not found');
+    err.statusCode = 404;
+    throw err;
   }
-  return { id: doc.id, ...doc.data() };
+  return data;
 };
 
 exports.createExamination = async (data) => {
-  const newDoc = {
-    ...data,
-    logs: data.logs || [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  const docRef = await db.collection('examinations').add(newDoc);
-  return { id: docRef.id, ...newDoc };
+  const { data: examination, error } = await supabase.from('examinations').insert(data).select().single();
+  if (error) throw error;
+  return examination;
 };
 
 exports.updateExamination = async (id, data) => {
-  const updateData = {
-    ...data,
-    updatedAt: new Date().toISOString(),
-  };
-  await db.collection('examinations').doc(id).update(updateData);
-  return { id, ...updateData };
+  const { error } = await supabase.from('examinations').update(data).eq('id', id);
+  if (error) throw error;
+  return { id, ...data };
 };
 
 exports.deleteExamination = async (id) => {
-  await db.collection('examinations').doc(id).delete();
+  const { error } = await supabase.from('examinations').delete().eq('id', id);
+  if (error) throw error;
   return { id };
 };

@@ -1,7 +1,7 @@
-// C:\Users\HP\MediTrack\frontend\src\components\MedicalCertificate.jsx
+// frontend/src/components/MedicalCertificate.jsx
 import React, { useState, useCallback, memo, useEffect } from 'react';
 import jsPDF from 'jspdf';
-import { getStorage, ref, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../supabase';
 
 // ── Stable input components (memoized so they never re-mount on parent re-render)
 const DoctorTextarea = memo(({ value, onChange, placeholder, readOnly }) => (
@@ -61,25 +61,24 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
   const [isFit,            setIsFit]           = useState(examination?.isFit           ?? true);
   const [isNormalFindings, setIsNormalFindings] = useState(examination?.isNormalFindings ?? true);
   const [downloading, setDownloading] = useState(false);
-  const [logoUrl, setLogoUrl] = useState(''); // State to hold Firebase Storage URL
+  const [logoUrl, setLogoUrl] = useState('');
 
-  // ── Fetch Logo from Firebase Storage ──────────────────────────────────────
+  // ── Fetch Logo from Supabase Storage ──────────────────────────────────────
   useEffect(() => {
     const fetchLogo = async () => {
       try {
-        const storage = getStorage();
-        // Assuming your Firebase app is already initialized in your project
-        const logoRef = ref(storage, 'plsp-logo.jpg');
-        const url = await getDownloadURL(logoRef);
-        setLogoUrl(url);
+        const { data, error } = await supabase.storage
+          .from('images')
+          .getPublicUrl('plsp-logo.jpg');
+        if (error) throw error;
+        setLogoUrl(data.publicUrl);
       } catch (error) {
-        console.error('[MedicalCertificate] Error fetching logo from Firebase:', error);
+        console.error('[MedicalCertificate] Error fetching logo:', error);
       }
     };
     fetchLogo();
   }, []);
 
-  // useCallback keeps these references stable so memoized children don't re-render
   const handleFinding1 = useCallback((v) => setFinding1(v), []);
   const handleRemarks  = useCallback((v) => setRemarks(v),  []);
 
@@ -169,10 +168,7 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         }
       };
 
-      // ── Header (compact) ────────────────────────────────────────────────
-      // Load the image asynchronously for the PDF
       const logo = new Image();
-      // Crucial: Set crossOrigin so jsPDF can draw the Firebase image to the canvas
       logo.crossOrigin = 'Anonymous';
       logo.src = logoUrl || '/plsp-logo.jpg';
 
@@ -180,20 +176,17 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         logo.onload = resolve;
         logo.onerror = () => {
           console.warn('Could not load logo for PDF generation');
-          resolve(); // Resolve anyway so PDF generation doesn't block entirely
+          resolve();
         };
       });
 
-      // Add the logo if loaded properly
       if (logo.complete && logo.naturalWidth > 0) {
-        // x, y, width, height (mm)
         doc.addImage(logo, 'JPEG', mar, y - 2, 16, 16);
       }
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(15, 23, 42);
-      // Shifted text 20mm right to accommodate the 16mm logo
       doc.text('PAMANTASAN NG LUNGSOD NG SAN PABLO', mar + 20, y + 1.5);
 
       doc.setFont('helvetica', 'bold');
@@ -212,7 +205,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       doc.line(mar, y, W - mar, y);
       ln(1, 7);
 
-      // Title
       doc.setFont('times', 'bolditalic');
       doc.setFontSize(15);
       doc.setTextColor(15, 23, 42);
@@ -223,22 +215,17 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       doc.line(W / 2 - 33, y, W / 2 + 33, y);
       ln(1, 9);
 
-      // To whom
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
       doc.text('To whom it May Concern:', mar, y);
       ln(1, 8);
 
-      // ── Body paragraph (compact line height) ────────────────────────────
       const sz    = 9;
       const lineH = 7.5;
-
       const nameW = Math.max(42, doc.getStringUnitWidth(fullName || 'XXXXXXXXXXXXXXXXX') * sz / doc.internal.scaleFactor + 6);
       const ageW  = Math.max(10, doc.getStringUnitWidth(age || 'XX') * sz / doc.internal.scaleFactor + 4);
-
       const tw = (txt, size = sz) => doc.getStringUnitWidth(txt) * size / doc.internal.scaleFactor;
-
       const genderSuffix  = '\u00A0(Gender),';
       const genderSuffixW = tw(genderSuffix);
       const yo            = '\u00A0y/o\u00A0';
@@ -270,6 +257,7 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       const ysW       = Math.max(22, tw(yearSection || 'XX') + 6);
       const progWfull = (W - mar) - mar - l3prefixW - ysW - l3suffixW - 2;
       const progWfinal = Math.max(progWfull, tw(program || 'XXXXXXXXXXXXXXXXXX') + 6);
+
       cx = mar;
       cx = itext(l3prefix, cx, y, 'normal', sz);
       field(program, cx, progWfinal, y); cx += progWfinal;
@@ -284,7 +272,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       field(examDate, cx, dateW, y);
       ln(1, 12);
 
-      // ── Pertinent Findings ──────────────────────────────────────────────
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
@@ -307,7 +294,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       doc.text('PHYSICALLY FIT / FIT TO JOIN OFF CAMPUS ACTIVITY', mar + 5.5, y, { baseline: 'bottom' });
       ln(1, 20);
 
-      // ── Remarks ─────────────────────────────────────────────────────────
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
@@ -316,7 +302,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       textBox(remarks, mar, cw, y, 2);
       ln(1, 18);
 
-      // ── Signature ───────────────────────────────────────────────────────
       const sigX = W - mar - 56;
       doc.setDrawColor(15, 23, 42);
       doc.setLineWidth(0.6);
@@ -338,14 +323,12 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       doc.text('PTR no. 9978569', (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
       ln(1, 11);
 
-      // ── Footer ──────────────────────────────────────────────────────────
       doc.setFont('times', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
       doc.text('"Primed to Lead and Serve for Progress"', W / 2, y, { align: 'center', baseline: 'bottom' });
       ln(1, 8);
 
-      // ── Metadata table ──────────────────────────────────────────────────
       const tH   = 6.5;
       const tY   = y;
       const cols = [mar, mar + 34, mar + 56, mar + 100, mar + 136, W - mar];
@@ -427,24 +410,17 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
   // ── Screen render ─────────────────────────────────────────────────────────
   return (
     <>
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '28px 32px', marginTop: 20, fontFamily: 'Georgia, serif', position: 'relative' }}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', fontFamily: 'Georgia, serif', position: 'relative' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #cbd5e1' }}>
-
-          {/* Logo dynamically loaded from Firebase */}
           <div style={{ width: 52, height: 52, flexShrink: 0 }}>
             {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt="PLSP Logo"
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+              <img src={logoUrl} alt="PLSP Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             ) : (
-              <div style={{ width: '100%', height: '100%', background: '#f1f5f9', borderRadius: '50%' }} /> // Simple skeleton loader
+              <div style={{ width: '100%', height: '100%', background: '#f1f5f9', borderRadius: '50%' }} />
             )}
           </div>
-
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, fontWeight: 700, fontFamily: 'helvetica, sans-serif', color: '#1a2e22', letterSpacing: 0.5 }}>PAMANTASAN NG LUNGSOD NG SAN PABLO</div>
             <div style={{ fontSize: 17, fontWeight: 900, fontFamily: 'helvetica, sans-serif', color: '#466460', lineHeight: 1.2 }}>HEALTH SERVICES OFFICE</div>
@@ -487,8 +463,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         {/* ── Pertinent Findings ── */}
         <div style={{ marginTop: 24 }}>
           <p style={sectionLabel}>Pertinent Finding:</p>
-
-          {/* Finding 1 — Normal Findings */}
           <div style={{ marginBottom: 18 }}>
             {checkRow(isNormalFindings, setIsNormalFindings, 'ESSENTIALLY NORMAL FINDINGS AT DATE AND TIME OF EXAMINATION')}
             <DoctorTextarea
@@ -498,8 +472,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
               readOnly={readOnly}
             />
           </div>
-
-          {/* Finding 2 — Physically Fit (checkbox only, no extra textarea) */}
           <div style={{ marginBottom: 8 }}>
             {checkRow(isFit, setIsFit, 'PHYSICALLY FIT / FIT TO JOIN OFF CAMPUS ACTIVITY')}
           </div>
@@ -546,54 +518,49 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
           </tbody>
         </table>
 
-        {/* Admin buttons */}
-        {!readOnly && (
-          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button
-              onClick={onEdit}
-              style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <i className="fa-solid fa-pen-to-square"></i> Edit Certificate
-            </button>
-            <button
-              onClick={handleSubmit}
-              style={{ background: 'linear-gradient(135deg, #e07a5f, #c96a4f)', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <i className="fa-solid fa-paper-plane"></i> Submit Approval
-            </button>
-          </div>
-        )}
-      </div>
+        {/* --- REFACTORED ACTION BUTTONS --- */}
+        <div style={{ marginTop: 36, paddingTop: 20, borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
 
-      {/* Download button */}
-      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={handleDownload}
-          disabled={downloading}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '10px 24px', borderRadius: 12, fontWeight: 700, fontSize: 13,
-            border: 'none', cursor: downloading ? 'not-allowed' : 'pointer',
-            background: downloading ? '#6b8577' : '#1a5c3a', color: '#fff',
-            opacity: downloading ? 0.7 : 1, transition: 'all 0.2s',
-          }}
-        >
-          {downloading ? (
-            <>
-              <svg style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24" fill="none">
-                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeOpacity="0.25" />
-                <path fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-              Generating PDF…
-            </>
-          ) : (
-            <>
-              <i className="fa-solid fa-file-arrow-down"></i>
-              Download as PDF
-            </>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 13,
+              border: '1px solid #cbd5e1', cursor: downloading ? 'not-allowed' : 'pointer',
+              background: '#fff', color: '#475569',
+              opacity: downloading ? 0.7 : 1, transition: 'all 0.2s',
+            }}
+          >
+            {downloading ? (
+              <>
+                <i className="fa-solid fa-spinner fa-spin"></i> Generating PDF...
+              </>
+            ) : (
+              <>
+                <i className="fa-solid fa-file-arrow-down"></i> Download PDF
+              </>
+            )}
+          </button>
+
+          {!readOnly && (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={onEdit}
+                style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '10px 20px', borderRadius: 10, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <i className="fa-solid fa-pen-to-square"></i> Edit
+              </button>
+              <button
+                onClick={handleSubmit}
+                style={{ background: 'linear-gradient(135deg, #e07a5f, #c96a4f)', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 4px rgba(224, 122, 95, 0.2)' }}
+              >
+                <i className="fa-solid fa-check-double"></i> Submit & Approve
+              </button>
+            </div>
           )}
-        </button>
+        </div>
+
       </div>
     </>
   );

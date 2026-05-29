@@ -1,7 +1,8 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Medical.jsx
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../../firebase'; // Adjusted path for the Examination folder
+import { supabase } from '../../../supabase';
+import DatePicker from '../../../components/Datepicker';
+import TimePicker from '../../../components/TimePicker';
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -54,48 +55,86 @@ const SumSection = ({ icon, title, children }) => (
   </div>
 );
 
+// ── Timezone Corrected Helpers ─────────────────────────────────────────────────
+const getLocalDate = () => {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().split('T');
+};
+
+const getLocalTime = () => {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(11, 16);
+};
+
 // ── Helper: build initial formData from selectedPatient ───────────────────────
 const buildInitialForm = (p) => {
-  if (!p) return defaultForm();
+  // Handle nested object or array safely
+  let u = p || {};
+  if (p?.users) {
+    u = Array.isArray(p.users) ? (p.users || {}) : p.users;
+  }
 
-  // vaccination rows
-  const vax = p.vaccinations || {};
+  const vax = p?.vaccinations || {};
   const dose = (key) => vax[key] || {};
 
+  // Safely parse emergency_contact (checks both snake_case and camelCase)
+  const rawEmergency = u.emergency_contact || u.emergencyContact;
+  let emergency = {};
+
+  if (rawEmergency) {
+    if (typeof rawEmergency === 'string') {
+      try {
+        emergency = JSON.parse(rawEmergency);
+      } catch (e) {
+        console.error("Could not parse emergency_contact JSON:", e);
+      }
+    } else if (typeof rawEmergency === 'object') {
+      emergency = rawEmergency;
+    }
+  }
+
   return {
-    lastName:    p.lastName    || (p.name ? p.name.split(', ')[0] : ''),
-    firstName:   p.firstName   || (p.name ? (p.name.split(', ')[1] || '') : ''),
-    middleName:  p.middleInitial || '',
-    schoolYear:  '',
-    studentId:   p.universityId || p.studentId || p.id || '',
-    course:      p.program      || p.prog  || '',
-    yearSection: [p.yearLevel || p.year || '', p.section || ''].filter(Boolean).join(' - '),
-    sex:         p.gender       || p.sex   || 'Male',
-    birthday:    p.birthday     || p.birthdate || '',
-    age:         p.age ? String(p.age) : '',
-     address:     p.homeAddress || p.address || '',
-    contactNo:   p.phoneNumber  || '',
-    landlineNo:  '',
-    religion:    p.religion     || '',
-    nationality: p.nationality  || '',
-    civilStatus: p.civilStatus  || 'Single',
-    emergencyName:     p.emergencyContact?.name         || '',
-    emergencyRelation: p.emergencyContact?.relationship || '',
-    emergencyAddress:  p.emergencyContact?.address      || '',
-    emergencyContact:  p.emergencyContact?.phone        || '',
-    // Vaccination pre-fill
-    vax1:         dose('dose1').vaccineName    || '',
-    vax1Date:     dose('dose1').date           || '',
-    vax1Remarks:  '',
-    vax2:         dose('dose2').vaccineName    || '',
-    vax2Date:     dose('dose2').date           || '',
-    vax2Remarks:  '',
-    booster1:     dose('booster1').vaccineName || '',
-    booster1Date: dose('booster1').date        || '',
+    lastName:      u.last_name || u.lastName || '',
+    firstName:     u.first_name || u.firstName || '',
+    middleName:    u.middle_name || u.middleName || '',
+    schoolYear:    '',
+    studentId:     u.university_id || u.universityId || u.student_id || '',
+
+    course:        u.program || u.course || '',
+    department:    u.department || '',
+    yearSection:   [u.year_level || u.yearLevel || '', u.section || ''].filter(Boolean).join(' - ') || '',
+
+    sex:           u.sex || u.gender || 'Male',
+    birthday:      u.birthday || u.birthdate || '',
+    age:           u.age ? String(u.age) : '',
+    address:       u.home_address || u.homeAddress || u.address || '',
+    contactNo:     u.phone_number || u.phoneNumber || u.contact_no || u.contactNo || '',
+    landlineNo:    '',
+    religion:      u.religion || '',
+    nationality:   u.nationality || '',
+    civilStatus:   u.civil_status || 'Single',
+
+    // Fallbacks check the JSON first, then direct camelCase properties
+    emergencyName:      emergency?.name || u.emergencyName || '',
+    emergencyRelation:  emergency?.relationship || u.emergencyRelation || '',
+    emergencyAddress:   emergency?.address || u.emergencyAddress || '',
+    emergencyContact:   emergency?.phone || u.emergencyPhone || '',
+
+    vax1:          dose('dose1').vaccineName || '',
+    vax1Date:      dose('dose1').date || '',
+    vax1Remarks:   '',
+    vax2:          dose('dose2').vaccineName || '',
+    vax2Date:      dose('dose2').date || '',
+    vax2Remarks:   '',
+    booster1:      dose('booster1').vaccineName || '',
+    booster1Date:  dose('booster1').date || '',
     booster1Remarks: '',
-    booster2:     dose('booster2').vaccineName || '',
-    booster2Date: dose('booster2').date        || '',
+    booster2:      dose('booster2').vaccineName || '',
+    booster2Date:  dose('booster2').date || '',
     booster2Remarks: '',
+
     covidHistory: '',
     otherMedicalHistory: '',
     otherFamilyHistory:  '',
@@ -103,7 +142,7 @@ const buildInitialForm = (p) => {
     alcohol: 'No', alcoholDetails: '',
     drugs:   'No', drugsDetails:   '',
     studentSignature: '',
-    dateSigned: new Date().toISOString().split('T')[0],
+    dateSigned: '',
     q1: 'Yes', q2: 'No', q2Details: '',
     q3: 'No',  q3Details: '',
     q4: 'No',  q4Details: '',
@@ -112,22 +151,19 @@ const buildInitialForm = (p) => {
     labCbc: '', labCbcFacility: '', labCbcDate: '',
     labUa:  '', labUaFacility:  '', labUaDate:  '',
     labXray:'', labXrayFacility:'', labXrayDate:'',
-    physician: '', examDate: new Date().toISOString().split('T')[0], nurseOnDuty: '',
+    physician: '', examDate: '', examTime: '', nurseOnDuty: '',
   };
 };
 
-const defaultForm = () => buildInitialForm(null) || {};
-const createDefaultVital = () => ({ date: new Date().toISOString().split('T')[0], bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
+const createDefaultVital = () => ({ date: '', bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 export const Medical = ({ selectedPatient, showMessage }) => {
   const [phase, setPhase]               = useState(1);
   const [showSummary, setShowSummary]   = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // DB Loading State
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [surgicalHistory, setSurgicalHistory] = useState([]);
-  
-  // Initialize vitalRecords as an array with exactly one default object
   const [vitalRecords, setVitalRecords] = useState([createDefaultVital()]);
 
   const [checkedMedical, setCheckedMedical] = useState([]);
@@ -136,16 +172,43 @@ export const Medical = ({ selectedPatient, showMessage }) => {
 
   const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient));
 
-  // Re-populate when selectedPatient changes (e.g. navigating between patients)
+  // ── Unified Database/Prop Sync Effect ──────────────────────────────────────
   useEffect(() => {
-    setFormData(buildInitialForm(selectedPatient));
-    setPhase(1);
-    setCheckedMedical([]);
-    setCheckedFamily([]);
-    setCheckedHealth([]);
-    setSurgicalHistory([]);
-    setVitalRecords([createDefaultVital()]); // Reset to a fresh single vital record
-  }, [selectedPatient?.uid]);
+    let isMounted = true;
+    const userId = selectedPatient?.uid || selectedPatient?.id;
+
+    const fetchFullProfile = async () => {
+      // 1. Reset component state first
+      setPhase(1);
+      setCheckedMedical([]);
+      setCheckedFamily([]);
+      setCheckedHealth([]);
+      setSurgicalHistory([]);
+      setVitalRecords([createDefaultVital()]);
+
+      // 2. Optimistically load data from the prop to prevent empty form flashes
+      setFormData(buildInitialForm(selectedPatient));
+
+      // 3. Fetch full profile from Supabase to guarantee fresh data
+      if (userId) {
+        const matchCol = selectedPatient?.uid ? 'uid' : 'id';
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq(matchCol, userId)
+          .maybeSingle();
+
+        // 4. Overwrite with complete DB data if the fetch was successful
+        if (isMounted && data && !error) {
+          setFormData(buildInitialForm(data));
+        }
+      }
+    };
+
+    fetchFullProfile();
+
+    return () => { isMounted = false; };
+  }, [selectedPatient?.uid, selectedPatient?.id]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleChange = (e) => {
@@ -153,10 +216,18 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     setFormData(prev => ({ ...prev, [id || name]: value }));
   };
 
-  const calculateAge = (e) => {
-    const dob = new Date(e.target.value);
+  const handleDateChange = (field, val) => {
+    setFormData(prev => ({ ...prev, [field]: val }));
+  };
+
+  const calculateAge = (val) => {
+    if (!val) {
+      setFormData(prev => ({ ...prev, birthday: '', age: '' }));
+      return;
+    }
+    const dob = new Date(val);
     const age = Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
-    setFormData(prev => ({ ...prev, birthday: e.target.value, age }));
+    setFormData(prev => ({ ...prev, birthday: val, age: isNaN(age) ? '' : String(age) }));
   };
 
   const calculateBMI = () => {
@@ -172,9 +243,8 @@ export const Medical = ({ selectedPatient, showMessage }) => {
   const removeSurgical = (id) => setSurgicalHistory(p => p.filter(i => i.id !== id));
   const updateSurgical = (id, field, value) => setSurgicalHistory(p => p.map(i => i.id === id ? { ...i, [field]: value } : i));
 
-  // Simplified vital update (always updates the single default item)
   const updateVital = (field, value) => {
-    setVitalRecords(prev => [{ ...prev[0], [field]: value }]);
+    setVitalRecords(prev => [{ ...prev, [field]: value }]);
   };
 
   const handlePhase1Next = () => {
@@ -197,7 +267,6 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     setIsSubmitting(true);
 
     try {
-      // 1. Bundle all the data from the different arrays and states
       const payload = {
         ...formData,
         checkedMedical,
@@ -205,21 +274,86 @@ export const Medical = ({ selectedPatient, showMessage }) => {
         checkedHealth,
         surgicalHistory,
         vitalRecords,
-        createdAt: serverTimestamp(), // Record the exact timestamp of submission
-        status: "pending",     // Marked pending for approval
+        createdAt: new Date().toISOString(),
+        status: "pending",
         isApproved: false,
       };
 
-      // 2. Point to the 'medical_records' subcollection inside this specific user
-      const medicalRecordsRef = collection(db, "users", selectedPatient.uid, "medical_records");
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id')
+        .eq('uid', selectedPatient.uid)
+        .maybeSingle();
 
-      // 3. Save as a new document (This will not overwrite past exams)
-      await addDoc(medicalRecordsRef, payload);
+      const userId = userData?.id || null;
 
-      // 4. Close the modal and show success toast
+      const combinedExamDate = (payload.examDate && payload.examTime)
+        ? `${payload.examDate}T${payload.examTime}:00`
+        : null;
+
+      const supabasePayload = {
+        user_id: userId,
+        university_id: payload.studentId,
+        last_name: payload.lastName,
+        first_name: payload.firstName,
+        middle_name: payload.middleName,
+        sex: payload.sex,
+        birthday: payload.birthday,
+        age: parseInt(payload.age) || null,
+        address: payload.address,
+        contact_no: payload.contactNo,
+        religion: payload.religion,
+        nationality: payload.nationality,
+        civil_status: payload.civilStatus,
+        emergency_name: payload.emergencyName,
+        emergency_relation: payload.emergencyRelation,
+        emergency_address: payload.emergencyAddress,
+        emergency_contact: payload.emergencyContact, // Stores Phone Number
+        vax1: payload.vax1?.vaccineName,
+        vax1_date: payload.vax1?.date,
+        vax1_remarks: payload.vax1?.remarks,
+        vax2: payload.vax2?.vaccineName,
+        vax2_date: payload.vax2?.date,
+        vax2_remarks: payload.vax2?.remarks,
+        booster1: payload.booster1?.vaccineName,
+        booster1_date: payload.booster1?.date,
+        booster1_remarks: payload.booster1?.remarks,
+        booster2: payload.booster2?.vaccineName,
+        booster2_date: payload.booster2?.date,
+        booster2_remarks: payload.booster2?.remarks,
+        covid_history: payload.covidHistory,
+        other_medical_history: payload.otherMedicalHistory,
+        other_family_history: payload.otherFamilyHistory,
+        smoking: payload.smoking,
+        smoking_details: payload.smokingDetails,
+        alcohol: payload.alcohol,
+        alcohol_details: payload.alcoholDetails,
+        drugs: payload.drugs,
+        drugs_details: payload.drugsDetails,
+        questionnaire: payload.questionnaire,
+        height: payload.height,
+        weight: payload.weight,
+        bmi: payload.bmi,
+        waist: payload.waist,
+        lmp: payload.lmp,
+        checked_medical: payload.checkedMedical,
+        checked_family: payload.checkedFamily,
+        checked_health: payload.checkedHealth,
+        vital_records: payload.vitalRecords,
+        physician: payload.physician,
+        exam_date: combinedExamDate,
+        nurse_on_duty: payload.nurseOnDuty,
+        status: "pending",
+        is_approved: false,
+        created_at: payload.createdAt,
+      };
+
+      const { error } = await supabase.from('medical_records').insert(supabasePayload);
+      if (error) throw error;
+
       setShowSummary(false);
       showMessage('Medical record saved to database successfully!');
-      
+
     } catch (error) {
       console.error("Error saving medical record: ", error);
       alert("Failed to save the record to the database. Check console for details.");
@@ -231,7 +365,7 @@ export const Medical = ({ selectedPatient, showMessage }) => {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      <form 
+      <form
         onSubmit={e => { e.preventDefault(); handleOpenSummary(); }}
         className="overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
           [&::-webkit-scrollbar]:w-[5px]
@@ -271,7 +405,10 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                 <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="sex" value="Female" checked={formData.sex === 'Female'} onChange={handleChange} /> Female</label>
               </div>
             </div>
-            <div className="col-span-2"><label className={labelClass}>Birthday</label><input type="date" id="birthday" className={inputClass} value={formData.birthday} onChange={calculateAge} /></div>
+            <div className="col-span-2">
+              <label className={labelClass}>Birthday</label>
+              <DatePicker value={formData.birthday} onChange={calculateAge} />
+            </div>
             <div className="col-span-2"><label className={labelClass}>Age</label><input type="number" id="age" className={`${inputClass} bg-slate-50`} value={formData.age} readOnly /></div>
             <div className="col-span-4"><label className={labelClass}>Address</label><input type="text" id="address" className={inputClass} placeholder="Home Address" value={formData.address} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Contact No.</label><input type="text" id="contactNo" className={inputClass} value={formData.contactNo} onChange={handleChange} /></div>
@@ -310,7 +447,9 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                   <tr key={id}>
                     <td className="border border-slate-300 p-2 font-semibold whitespace-nowrap">{label}</td>
                     <td className="border border-slate-300 p-2"><input type="text" id={id} className={inputClass} value={formData[id]} onChange={handleChange} /></td>
-                    <td className="border border-slate-300 p-2"><input type="date" id={`${id}Date`} className={inputClass} value={formData[`${id}Date`]} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2">
+                      <DatePicker value={formData[`${id}Date`]} onChange={(val) => handleDateChange(`${id}Date`, val)} />
+                    </td>
                     <td className="border border-slate-300 p-2"><input type="text" id={`${id}Remarks`} className={inputClass} value={formData[`${id}Remarks`]} onChange={handleChange} /></td>
                   </tr>
                 ))}
@@ -347,11 +486,14 @@ export const Medical = ({ selectedPatient, showMessage }) => {
           {surgicalHistory.length === 0 ? (
             <p className="text-xs text-slate-400 italic p-3 text-center">No surgical history recorded. Click "Add Operation" to add.</p>
           ) : surgicalHistory.map(s => (
-            <div key={s.id} className="grid grid-cols-12 gap-4 mb-3 p-3 bg-slate-50 rounded-lg relative border border-slate-200">
+            <div key={s.id} className="grid grid-cols-12 gap-4 mb-3 p-3 bg-slate-50 rounded-lg relative border border-slate-200 items-end">
               <button type="button" onClick={() => removeSurgical(s.id)} className="absolute top-2 right-2 bg-[#e07a5f] text-white px-2 py-1 rounded text-xs">×</button>
-              <div className="col-span-6"><input type="text" placeholder="Operation/Procedure Name" className={inputClass} value={s.operation} onChange={e => updateSurgical(s.id, 'operation', e.target.value)} /></div>
-              <div className="col-span-3"><input type="date" className={inputClass} value={s.date} onChange={e => updateSurgical(s.id, 'date', e.target.value)} /></div>
-              <div className="col-span-3"><input type="text" placeholder="Hospital / complications" className={inputClass} value={s.notes} onChange={e => updateSurgical(s.id, 'notes', e.target.value)} /></div>
+              <div className="col-span-6"><label className={labelClass}>Operation Name</label><input type="text" placeholder="Operation/Procedure Name" className={inputClass} value={s.operation} onChange={e => updateSurgical(s.id, 'operation', e.target.value)} /></div>
+              <div className="col-span-3">
+                <label className={labelClass}>Date</label>
+                <DatePicker value={s.date} onChange={(val) => updateSurgical(s.id, 'date', val)} />
+              </div>
+              <div className="col-span-3"><label className={labelClass}>Notes</label><input type="text" placeholder="Hospital / complications" className={inputClass} value={s.notes} onChange={e => updateSurgical(s.id, 'notes', e.target.value)} /></div>
             </div>
           ))}
 
@@ -401,7 +543,10 @@ export const Medical = ({ selectedPatient, showMessage }) => {
 
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6"><label className={labelClass}>Signature of Student</label><input type="text" id="studentSignature" className={inputClass} placeholder="Type full name as signature" value={formData.studentSignature} onChange={handleChange} /></div>
-            <div className="col-span-6"><label className={labelClass}>Date Signed</label><input type="date" id="dateSigned" className={inputClass} value={formData.dateSigned} onChange={handleChange} /></div>
+            <div className="col-span-6">
+              <label className={labelClass}>Date Signed</label>
+              <DatePicker value={formData.dateSigned} onChange={(val) => handleDateChange('dateSigned', val)} />
+            </div>
           </div>
 
           <div className="mt-8 flex justify-end">
@@ -427,12 +572,12 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               </thead>
               <tbody>
                 {[
-                  { q: '1. Are you in good health?',                                                                         name: 'q1',  detail: null        },
-                  { q: '2. Are you under medical treatment now?',                                                            name: 'q2',  detail: 'q2Details' },
+                  { q: '1. Are you in good health?',                                                                   name: 'q1',  detail: null        },
+                  { q: '2. Are you under medical treatment now?',                                                      name: 'q2',  detail: 'q2Details' },
                   { q: '3. Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?',  name: 'q3',  detail: 'q3Details' },
-                  { q: '4. Are you taking any medication?',                                                                  name: 'q4',  detail: 'q4Details' },
-                  { q: '5. For women only: Are you pregnant?',                                                               name: 'q5',  detail: null        },
-                  { q: 'Are you nursing?',                                                                                   name: 'q5b', detail: null        },
+                  { q: '4. Are you taking any medication?',                                                            name: 'q4',  detail: 'q4Details' },
+                  { q: '5. For women only: Are you pregnant?',                                                         name: 'q5',  detail: null        },
+                  { q: 'Are you nursing?',                                                                             name: 'q5b', detail: null        },
                 ].map(({ q, name, detail }) => (
                   <tr key={name}>
                     <td className="border border-slate-300 p-2">{q}</td>
@@ -476,7 +621,9 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                     <td className="border border-slate-300 p-2 font-semibold">{label}</td>
                     <td className="border border-slate-300 p-2"><input type="text" id={id} className={inputClass} value={formData[id]} onChange={handleChange} /></td>
                     <td className="border border-slate-300 p-2"><input type="text" id={`${id}Facility`} className={inputClass} value={formData[`${id}Facility`]} onChange={handleChange} /></td>
-                    <td className="border border-slate-300 p-2"><input type="date" id={`${id}Date`} className={inputClass} value={formData[`${id}Date`]} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2">
+                      <DatePicker value={formData[`${id}Date`]} onChange={(val) => handleDateChange(`${id}Date`, val)} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -487,14 +634,17 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             <span>Anthropometric Measurements & Vital Signs</span>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
-            <div className="grid grid-cols-12 gap-3">
-              <div className="col-span-2"><label className={labelClass}>Date</label><input type="date" className={inputClass} value={vitalRecords[0].date} onChange={e => updateVital('date', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={vitalRecords[0].bp} onChange={e => updateVital('bp', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={vitalRecords[0].pr} onChange={e => updateVital('pr', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={vitalRecords[0].rr} onChange={e => updateVital('rr', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={vitalRecords[0].temp} onChange={e => updateVital('temp', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>Nurse / Staff</label><input type="text" className={inputClass} placeholder="Nurse name" value={vitalRecords[0].nurse} onChange={e => updateVital('nurse', e.target.value)} /></div>
-              <div className="col-span-12"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords[0].remarks} onChange={e => updateVital('remarks', e.target.value)} /></div>
+            <div className="grid grid-cols-12 gap-3 items-end">
+              <div className="col-span-2">
+                <label className={labelClass}>Date</label>
+                <DatePicker value={vitalRecords.date} onChange={(val) => updateVital('date', val)} />
+              </div>
+              <div className="col-span-2"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={vitalRecords.bp} onChange={e => updateVital('bp', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={vitalRecords.pr} onChange={e => updateVital('pr', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={vitalRecords.rr} onChange={e => updateVital('rr', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={vitalRecords.temp} onChange={e => updateVital('temp', e.target.value)} /></div>
+              <div className="col-span-2"><label className={labelClass}>Nurse / Staff</label><input type="text" className={inputClass} placeholder="Nurse name" value={vitalRecords.nurse} onChange={e => updateVital('nurse', e.target.value)} /></div>
+              <div className="col-span-12"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords.remarks} onChange={e => updateVital('remarks', e.target.value)} /></div>
             </div>
           </div>
 
@@ -503,12 +653,22 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} onChange={handleChange} onBlur={calculateBMI} /></div>
             <div className="col-span-3"><label className={labelClass}>BMI (auto-calc)</label><input type="text" id="bmi" className={`${inputClass} bg-slate-50`} placeholder="kg/m²" value={formData.bmi} readOnly /></div>
             <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} onChange={handleChange} /></div>
-            <div className="col-span-6"><label className={labelClass}>Last Menstrual Period (LMP) — Females only</label><input type="date" id="lmp" className={inputClass} value={formData.lmp} onChange={handleChange} /></div>
+            <div className="col-span-6">
+              <label className={labelClass}>Last Menstrual Period (LMP) — Females only</label>
+              <DatePicker value={formData.lmp} onChange={(val) => handleDateChange('lmp', val)} />
+            </div>
           </div>
 
           <div className="grid grid-cols-12 gap-4 mt-6">
-            <div className="col-span-6"><label className={labelClass}>Examining Physician / LIC. No.</label><input type="text" id="physician" className={inputClass} placeholder="Full name and license number" value={formData.physician} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Examination Date</label><input type="date" id="examDate" className={inputClass} value={formData.examDate} onChange={handleChange} /></div>
+            <div className="col-span-5"><label className={labelClass}>Examining Physician / LIC. No.</label><input type="text" id="physician" className={inputClass} placeholder="Full name and license number" value={formData.physician} onChange={handleChange} /></div>
+            <div className="col-span-2">
+              <label className={labelClass}>Exam Date</label>
+              <DatePicker value={formData.examDate} onChange={(val) => handleDateChange('examDate', val)} />
+            </div>
+            <div className="col-span-2">
+              <label className={labelClass}>Exam Time</label>
+              <TimePicker value={formData.examTime} onChange={(val) => handleDateChange('examTime', val)} />
+            </div>
             <div className="col-span-3"><label className={labelClass}>Nurse on Duty</label><input type="text" id="nurseOnDuty" className={inputClass} placeholder="Nurse name" value={formData.nurseOnDuty} onChange={handleChange} /></div>
           </div>
 
@@ -522,7 +682,7 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                 className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-600 font-bold text-sm hover:bg-slate-100 transition disabled:opacity-70">
                 ← Previous
               </button>
-              
+
               <button type="submit" disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
                 <i className="fa-solid fa-paper-plane"></i> Review & Submit
@@ -649,12 +809,12 @@ export const Medical = ({ selectedPatient, showMessage }) => {
 
               <SumSection icon="fa-heart" title="Vital Signs">
                 <div className="grid grid-cols-3 gap-2">
-                  <SumItem label="Date"  value={vitalRecords[0].date}  />
-                  <SumItem label="BP"    value={vitalRecords[0].bp}    />
-                  <SumItem label="PR"    value={vitalRecords[0].pr}    />
-                  <SumItem label="RR"    value={vitalRecords[0].rr}    />
-                  <SumItem label="Temp"  value={vitalRecords[0].temp}  />
-                  <SumItem label="Nurse" value={vitalRecords[0].nurse} />
+                  <SumItem label="Date"  value={vitalRecords.date}  />
+                  <SumItem label="BP"    value={vitalRecords.bp}    />
+                  <SumItem label="PR"    value={vitalRecords.pr}    />
+                  <SumItem label="RR"    value={vitalRecords.rr}    />
+                  <SumItem label="Temp"  value={vitalRecords.temp}  />
+                  <SumItem label="Nurse" value={vitalRecords.nurse} />
                 </div>
               </SumSection>
 
@@ -672,6 +832,7 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                 <div className="grid grid-cols-3 gap-2">
                   <SumItem label="Physician"        value={formData.physician}    />
                   <SumItem label="Examination Date" value={formData.examDate}     />
+                  <SumItem label="Examination Time" value={formData.examTime}     />
                   <SumItem label="Nurse on Duty"    value={formData.nurseOnDuty} />
                 </div>
               </SumSection>
@@ -681,8 +842,8 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                 <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
               </button>
               <div className="flex-1" />
-              <button 
-                onClick={handleFinalSubmit} 
+              <button
+                onClick={handleFinalSubmit}
                 disabled={isSubmitting}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
               >

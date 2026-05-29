@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\Records\records.validation.js
 const { z } = require('zod');
 
 const createRecordSchema = z.object({
@@ -10,7 +11,7 @@ const createRecordSchema = z.object({
   role: z.string().min(1, "Role is required"),
 
   // EVERYTHING else must be optional so Zod doesn't throw the "undefined" error
-  middleInitial: z.string().optional(),
+  middleName: z.string().optional(),
   suffix: z.string().optional(),
   sex: z.string().optional(),
   birthday: z.string().optional(),

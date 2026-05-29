@@ -33,5 +33,6 @@ if (!admin.apps.length) {
 // Export the services you need for your backend routes
 const db = admin.firestore();
 const auth = admin.auth();
+const bucket = admin.storage().bucket();
 
-module.exports = { admin, db, auth };
+module.exports = { admin, db, auth, bucket };

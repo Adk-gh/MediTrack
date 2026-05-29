@@ -7,14 +7,16 @@
 * [x] ~~add aditional information in the profile setup. : Dose(1st, 2nd 3rd, booster1, booster2), Name of Vaccine, Date; emergency contact: relationship and address; for users: Home address, Religion, Nationality, Civil status~~
 * [x] ~~make the examinations and approvals page work.~~
 * [x] ~~fix the color mismatch of the logo.~~
-* [ ] Connect the dashboard to the database.
+* [x] Connect the dashboard to the database.
 * [x] ~~understand how to make sure that the records gets saved in the database and when another examination happened the old records becomes a read only and cannot be edited.~~
 * [x] ~~add students classification (regular, irreg, and returning).~~
 * [ ] push notification
 * [ ] caching (redis/ sql lite)
-* [ ] make it role based access.
-* [ ] add records management for the admin, logs,&#x20;
-* [ ] add ui for the meditrackocr
+* [x] make it role based access.
+* [x] add records management for the admin, logs,&#x20;
+* [x] add ui for the meditrackocr
+* [x] use the DentalExaminationReport for the dental
+* [ ] validation for the name in which number shouldn't be able to be typed in to, the ID shouldn'g have character asside from "-" and numbers.&#x20;
 
 Signup:
 

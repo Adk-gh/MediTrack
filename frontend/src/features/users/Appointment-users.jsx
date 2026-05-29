@@ -1,6 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Appointment-users.jsx
-import React, { useState, useMemo } from 'react';
-import { useAppointments } from '../../context/AppointmentContext';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import axios from 'axios';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTHS = [
@@ -9,9 +9,14 @@ const MONTHS = [
 ];
 
 const STATUS_STYLES = {
+  Pending:  { bg: 'bg-[#FAEEDA]', text: 'text-[#854F0B]', label: 'Pending'  },
+  Approved: { bg: 'bg-[#EAF3DE]', text: 'text-[#3B6D11]', label: 'Approved' },
+  Done:     { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', label: 'Done'     },
+  Missed:   { bg: 'bg-[#fef3c7]', text: 'text-[#92400e]', label: 'Missed'   },
   pending:  { bg: 'bg-[#FAEEDA]', text: 'text-[#854F0B]', label: 'Pending'  },
   approved: { bg: 'bg-[#EAF3DE]', text: 'text-[#3B6D11]', label: 'Approved' },
   done:     { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', label: 'Done'     },
+  missed:   { bg: 'bg-[#fef3c7]', text: 'text-[#92400e]', label: 'Missed'   },
 };
 
 const PURPOSES = [
@@ -19,7 +24,6 @@ const PURPOSES = [
   'Dental', 'Medical Clearance', 'Physical Exam', 'Other',
 ];
 
-// Exact same time slots from the Admin side
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
   const startH = 7 + i;
   const endH   = startH + 1;
@@ -46,27 +50,29 @@ function useCurrentPatient() {
         if (u.name && u.name !== '—')         return u.name;
         if (u.fullName && u.fullName !== '—') return u.fullName;
 
-        const first  = u.firstName ?? '';
-        const middle = u.middleName ?? u.middleInitial ?? '';
-        const last   = u.lastName ?? '';
+        const first  = u.first_name || u.firstName || '';
+        const middle = u.middle_name || u.middleName || '';
+        const last   = u.last_name || u.lastName || '';
 
-        const mi   = middle ? `${middle.charAt(0).toUpperCase()}.` : '';
-        const full = [first, mi, last].filter(Boolean).join(' ').trim();
+        const full = [first, middle, last].filter(Boolean).join(' ').trim();
         return full || '—';
       };
 
-      const role = user.role ?? user.type ?? 'student';
+      const role = user.role || user.type || 'student';
 
       return {
+        uid:           user.id || user.uid || null,
+        token:         user.token || localStorage.getItem('token') || null,
         name:          buildFullName(user),
-        firstName:     user.firstName ?? '',
-        lastName:      user.lastName ?? '',
-        middleInitial: user.middleInitial ?? user.middleName ?? '',
-        idno:          user.universityId ?? user.idno ?? user.idNumber ?? '—',
+
+        // Aggressively check every possible ID key
+        idno:          user.university_id || user.universityId || user.student_id || user.idno || user.idNumber || '—',
         type:          role,
-        dept:          user.department ?? user.dept ?? user.college ?? '—',
-        prog:          user.classification ?? user.program ?? user.course ?? user.prog ?? '—',
-        section:       user.section ?? user.yearSection ?? (role === 'lecturer' ? 'N/A' : '—'),
+
+        // Aggressively check the missing demographic keys
+        dept:          user.department || user.dept || user.college || '—',
+        prog:          user.program || user.classification || user.student_classification || user.course || '—',
+        section:       user.section || user.year_level || user.yearSection || '—',
       };
     } catch {
       return null;
@@ -76,24 +82,48 @@ function useCurrentPatient() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AppointmentUsers() {
-  const { submitRequest, getPatientAppointments, loadingAppts } = useAppointments();
   const currentPatient = useCurrentPatient();
 
-  // ── Modal / form state ──
+  // ── Database State ──
+  const [myAppointments, setMyAppointments] = useState([]);
+  const [loadingAppts, setLoadingAppts] = useState(true);
+
+  // ── Modal / Form State ──
   const [showModal,   setShowModal]   = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted,   setSubmitted]   = useState(false);
 
-  // ── Multi-select purposes ──
+  // ── Multi-select Purposes ──
   const [selectedPurposes, setSelectedPurposes] = useState([]);
   const [otherPurpose,     setOtherPurpose]     = useState('');
 
-  // ── Schedule selection ──
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
+  // ── Fetch Private Appointments from Express API ───────────────────────────
+  const fetchAppointments = useCallback(async () => {
+    if (!currentPatient?.uid) return;
+    try {
+      setLoadingAppts(true);
+      const response = await axios.get('http://localhost:5000/api/appointments/my-appointments', {
+        headers: {
+          'Authorization': `Bearer ${currentPatient.token}`,
+          'x-user-uid': currentPatient.uid
+        }
+      });
+      if (response.data.success) {
+        setMyAppointments(response.data.data);
+      }
+    } catch (err) {
+      console.error('[AppointmentUsers] Fetch error:', err);
+    } finally {
+      setLoadingAppts(false);
+    }
+  }, [currentPatient]);
 
-  // ── Guard: if no logged-in user, show nothing useful ──
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  // ── Guard: Profile check ──
   if (!currentPatient) {
     return (
       <div className="flex flex-col h-full bg-[#f7faf8] items-center justify-center text-[#9bb5a5] text-[12px]">
@@ -103,29 +133,15 @@ export default function AppointmentUsers() {
     );
   }
 
-  // ── Patient's own appointments ──
-  const myAppointments = getPatientAppointments(currentPatient.idno)
-    .sort((a, b) => new Date(b.bookedAt) - new Date(a.bookedAt));
-
-  // ── Check if patient already has an active appointment ──
+  // ── Guard constraint check ──
   const hasActiveAppointment = myAppointments.some(
-    (appt) => appt.status === 'pending' || appt.status === 'approved'
+    (appt) => appt.status?.toLowerCase() === 'pending' || appt.status?.toLowerCase() === 'approved'
   );
 
-  // ── Checkbox toggle ──
   const togglePurpose = (purpose) => {
     setSelectedPurposes(prev =>
-      prev.includes(purpose)
-        ? prev.filter(p => p !== purpose)
-        : [...prev, purpose]
+      prev.includes(purpose) ? prev.filter(p => p !== purpose) : [...prev, purpose]
     );
-  };
-
-  // ── Helpers ──
-  const getTodayString = () => {
-    const today = new Date();
-    const tzOffset = today.getTimezoneOffset() * 60000;
-    return new Date(today.getTime() - tzOffset).toISOString().split('T')[0];
   };
 
   const closeModal = () => {
@@ -134,18 +150,13 @@ export default function AppointmentUsers() {
     setSubmitError('');
     setSelectedPurposes([]);
     setOtherPurpose('');
-    setSelectedDate('');
-    setSelectedTime('');
   };
 
-  // Disable submit if fields are missing
   const canSubmit =
     selectedPurposes.length > 0 &&
-    !(selectedPurposes.includes('Other') && !otherPurpose.trim()) &&
-    selectedDate !== '' &&
-    selectedTime !== '';
+    !(selectedPurposes.includes('Other') && !otherPurpose.trim());
 
-  // ── Submit to Firestore ──────────────────────────────────────────────────
+  // ── Submit Request to Node/Express Backend ───────────────────────────────
   const handleSubmit = async () => {
     const parts = selectedPurposes.map(p =>
       p === 'Other' && otherPurpose.trim() ? `Other: ${otherPurpose.trim()}` : p
@@ -160,70 +171,78 @@ export default function AppointmentUsers() {
     setSubmitting(true);
     setSubmitError('');
 
-    const [year, month, day] = selectedDate.split('-').map(Number);
+    // Auto-resolve primary service categorizations
+    const serviceType = selectedPurposes.includes('Dental') ? 'Dental Examination' : 'Medical Consultation';
 
     const payload = {
-      ...currentPatient,
-      reason,
-      year,
-      month,
-      day,
-      time: selectedTime
+      patientName: currentPatient.name,
+      serviceType: serviceType,
+      reason: reason,
+      // Date and time are intentionally omitted for pending requests
     };
 
     try {
-      await submitRequest(payload);
-      setShowModal(false);
-      setSubmitted(true);
-      setSelectedPurposes([]);
-      setOtherPurpose('');
-      setSelectedDate('');
-      setSelectedTime('');
-      setTimeout(() => setSubmitted(false), 4000);
+      const response = await axios.post('http://localhost:5000/api/appointments', payload, {
+        headers: {
+          'Authorization': `Bearer ${currentPatient.token}`,
+          'x-user-uid': currentPatient.uid
+        }
+      });
+
+      if (response.data.success) {
+        setShowModal(false);
+        setSubmitted(true);
+        setSelectedPurposes([]);
+        setOtherPurpose('');
+        fetchAppointments(); // Instantly update view lists
+        setTimeout(() => setSubmitted(false), 4000);
+      }
     } catch (err) {
-      console.error('[AppointmentUsers] submitRequest threw →', err);
-      setSubmitError('Could not save your request. Please check your connection and try again.');
+      console.error('[AppointmentUsers] Request error:', err);
+      setSubmitError(err.response?.data?.message || 'Could not save your appointment request. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Format the date label for the list view ──
+  // Dynamically format the date label based on status
   const formatApptDate = (appt) => {
-    // If year/month/day/time exist, format them. Otherwise show pending generic text.
     if (!appt.year || !appt.time) {
        return 'Awaiting schedule from clinic';
     }
-    const slotInfo = HOUR_SLOTS.find(s => s.value === appt.time);
+    const slotInfo = HOUR_SLOTS.find(s => s.value === appt.time || s.label.includes(appt.time));
     const timeLabel = slotInfo ? slotInfo.label : appt.time;
-    const prefix = appt.status === 'pending' ? 'Requested for' : 'Scheduled for';
+
+    let prefix = 'Scheduled for';
+    const statusStr = appt.status?.toLowerCase();
+
+    if (statusStr === 'pending') prefix = 'Requested for';
+    if (statusStr === 'missed') prefix = 'Missed on';
+    if (statusStr === 'done') prefix = 'Completed on';
 
     return `${prefix}: ${MONTHS[appt.month - 1]} ${appt.day}, ${appt.year} at ${timeLabel}`;
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-[#f7faf8] overflow-hidden">
 
-      {/* Success flash */}
+      {/* Success alert element */}
       {submitted && (
         <div className="shrink-0 mx-4 mt-3 px-4 py-2.5 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl
-          text-[12px] font-semibold text-[#3B6D11] flex items-center gap-2">
+          text-[12px] font-semibold text-[#3B6D11] flex items-center gap-2 animate-fadeIn">
           <i className="fa-solid fa-circle-check"></i>
-          Request submitted! The clinic will review your preferred schedule.
+          Request submitted! The clinic will review and assign your schedule.
         </div>
       )}
 
       {/* Content Wrapper */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        {/* Fixed Upper Section (Action Row, Title) */}
+        {/* Upper Dashboard Actions Section */}
         <div className="shrink-0 p-5 pb-3 flex flex-col gap-4">
-
-          {/* Action row */}
           <div
             className="flex justify-end"
-            title={hasActiveAppointment ? "You can only have one active appointment at a time. Please wait for the clinic to complete your current appointment." : ""}
+            title={hasActiveAppointment ? "You can only have one active appointment request at a time." : ""}
           >
             <button
               onClick={() => !hasActiveAppointment && setShowModal(true)}
@@ -240,12 +259,10 @@ export default function AppointmentUsers() {
               Request Appointment
             </button>
           </div>
-
-          {/* Appointments list Header */}
           <div className="text-[13px] font-bold text-[#1a2e22]">My Appointment Requests</div>
         </div>
 
-        {/* Scrollable Appointments List Section */}
+        {/* Scrollable Content History list */}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-5">
           {loadingAppts ? (
             <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
@@ -260,30 +277,45 @@ export default function AppointmentUsers() {
           ) : (
             <div className="flex flex-col gap-2">
               {myAppointments.map((appt) => {
-                const style     = STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending;
-                const isPending = appt.status === 'pending';
+                const style      = STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending;
+                const statusStr  = appt.status?.toLowerCase();
+                const isPending  = statusStr === 'pending';
+                const isApproved = statusStr === 'approved';
+                const isMissed   = statusStr === 'missed';
+                const isDone     = statusStr === 'done';
+                const stampDate  = appt.created_at || appt.bookedAt || new Date();
+
+                // Dynamic Classes based on status
+                let cardClasses = 'bg-[#fffdf7] border-[#f0c070]'; // default pending
+                if (isApproved) cardClasses = 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]';
+                if (isMissed)   cardClasses = 'bg-[#fffbeb] border-[#fde68a]';
+                if (isDone)     cardClasses = 'bg-[#f8fafc] border-[#e2e8f0]';
+
+                let timeColor = 'text-[#b07020]'; // default pending
+                if (isApproved) timeColor = 'text-[#3B6D11]';
+                if (isMissed)   timeColor = 'text-[#b45309]';
+                if (isDone)     timeColor = 'text-[#64748b]';
+
+                let timeIcon = 'fa-hourglass-half';
+                if (isApproved) timeIcon = 'fa-calendar-check';
+                if (isMissed)   timeIcon = 'fa-calendar-xmark';
+                if (isDone)     timeIcon = 'fa-check-double';
 
                 return (
-                  <div key={appt.id}
-                    className={`border rounded-3xl p-3 transition-all shrink-0
-                      ${isPending
-                        ? 'bg-[#fffdf7] border-[#f0c070]'
-                        : 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]'}`}
-                  >
+                  <div key={appt.id} className={`border rounded-3xl p-3 transition-all shrink-0 ${cardClasses}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-bold text-[#1a2e22]">{appt.reason}</div>
+                      <div className="text-sm font-bold text-[#1a2e22]">{appt.reason || appt.service_type}</div>
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
                         {style.label}
                       </span>
                     </div>
-                    <div className={`text-[11px] mt-1 font-medium
-                      ${isPending ? 'text-[#b07020]' : 'text-[#3B6D11]'}`}>
-                      <i className={`mr-1 fa-solid ${isPending ? 'fa-hourglass-half' : 'fa-calendar-check'}`}></i>
+                    <div className={`text-[11px] mt-1 font-medium ${timeColor}`}>
+                      <i className={`mr-1 fa-solid ${timeIcon}`}></i>
                       {formatApptDate(appt)}
                     </div>
                     <div className="text-[10px] text-[#9bb5a5] mt-1">
                       <i className="fa-regular fa-clock mr-1"></i>
-                      Submitted {new Date(appt.bookedAt).toLocaleString('en-PH', {
+                      Submitted {new Date(stampDate).toLocaleString('en-PH', {
                         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                       })}
                     </div>
@@ -295,72 +327,44 @@ export default function AppointmentUsers() {
         </div>
       </div>
 
-      {/* ── Modal ── */}
+      {/* ── Submission Request Modal Dialog ── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6">
-         <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]">
+          <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]">
 
-            {/* Header — fixed, never scrolls */}
             <div className="bg-[#466460] px-6 py-5 text-white flex-shrink-0">
               <h3 className="font-serif text-xl tracking-wide">Request Appointment</h3>
-              <p className="text-[12px] opacity-80 mt-1">
-                Select your preferred date and time for the clinic to review.
-              </p>
+              <p className="text-[12px] opacity-80 mt-1">Submit your request and the clinic will assign a schedule for you.</p>
             </div>
 
-            {/* Scrollable body */}
             <div className="p-6 flex flex-col gap-5 overflow-y-auto flex-1">
-
-              {/* Patient info — read-only */}
+             {/* Profile Context Banner */}
               <div className="bg-[#f4f8f7] border border-[#d0dedd] rounded-2xl px-4 py-3">
                 <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">Booking as</div>
                 <div className="text-[13px] font-semibold text-[#1a2e22]">{currentPatient.name}</div>
-                <div className="text-[11px] text-[#6b8577] mt-0.5">
-                  {currentPatient.idno}
-                  {currentPatient.prog && currentPatient.prog !== '—' ? ` · ${currentPatient.prog}` : ''}
-                  {currentPatient.dept && currentPatient.dept !== '—' ? ` · ${currentPatient.dept}` : ''}
+
+                <div className="text-[11px] text-[#6b8577] mt-0.5 flex flex-wrap gap-1">
+                  <span className="font-medium">{currentPatient.idno !== '—' ? currentPatient.idno : 'ID Not Set'}</span>
+
+                  {currentPatient.prog && currentPatient.prog !== '—' && (
+                    <><span>·</span><span>{currentPatient.prog}</span></>
+                  )}
+
+                  {currentPatient.dept && currentPatient.dept !== '—' && (
+                    <><span>·</span><span>{currentPatient.dept}</span></>
+                  )}
+
+                  {currentPatient.section && currentPatient.section !== '—' && (
+                    <><span>·</span><span>Sec {currentPatient.section}</span></>
+                  )}
                 </div>
               </div>
 
-              {/* Schedule Selection: Date and Time */}
+              {/* Purpose Matrix Grid */}
               <div className="flex flex-col gap-2">
-                <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">
-                  Preferred Schedule <span className="normal-case font-normal text-[#9bb5a5]">*</span>
-                </label>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1">
-                    <input
-                      type="date"
-                      min={getTodayString()}
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      disabled={submitting}
-                      className="w-full border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none text-[#1a2e22] focus:border-[#466460] transition-colors disabled:opacity-50"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <select
-                      value={selectedTime}
-                      onChange={(e) => setSelectedTime(e.target.value)}
-                      disabled={submitting}
-                      className="w-full border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none text-[#1a2e22] focus:border-[#466460] transition-colors disabled:opacity-50 appearance-none cursor-pointer"
-                    >
-                      <option value="" disabled>Select Time Slot</option>
-                      {HOUR_SLOTS.map((slot) => (
-                        <option key={slot.value} value={slot.value}>{slot.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Purpose — multi-select checkboxes */}
-              <div className="flex flex-col gap-2 mt-1">
                 <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">
                   Purpose <span className="normal-case font-normal text-[#9bb5a5]">* select all that apply</span>
                 </label>
-
-                {/* Two-column grid on desktop, single column on mobile */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                   {PURPOSES.map(p => {
                     const checked = selectedPurposes.includes(p);
@@ -372,16 +376,10 @@ export default function AppointmentUsers() {
                           ${checked
                             ? 'bg-[#eef3f2] border-[#466460] text-[#466460]'
                             : 'bg-[#f7faf8] border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5] hover:bg-[#f0f5f4]'
-                          }
-                          ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          } ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        {/* Custom checkbox */}
-                        <span
-                          className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all
-                            ${checked
-                              ? 'bg-[#466460] border-[#466460]'
-                              : 'bg-white border-[#c6dfd0]'
-                            }`}
+                        <span className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all
+                          ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}
                         >
                           {checked && (
                             <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
@@ -403,64 +401,47 @@ export default function AppointmentUsers() {
                   })}
                 </div>
 
-                {/* "Other" textarea */}
                 {selectedPurposes.includes('Other') && (
                   <textarea
                     placeholder="Please elaborate here..."
                     value={otherPurpose}
                     onChange={e => setOtherPurpose(e.target.value)}
                     disabled={submitting}
-                    className="mt-1 border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px]
-                      bg-[#f7faf8] outline-none resize-none disabled:opacity-50
-                      focus:border-[#466460] transition-colors"
+                    className="mt-1 border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors"
                     rows="2"
                   />
                 )}
               </div>
 
-              {/* Info note */}
-              <div className="flex items-start gap-2.5 bg-[#FAEEDA] border border-[#f0c070]
-                rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">
+              {/* Informational Warning Block */}
+              <div className="flex items-start gap-2.5 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">
                 <i className="fa-solid fa-circle-info mt-[1px] shrink-0 text-[13px]"></i>
-                <span>
-                  The clinic must review your preferred schedule. If approved, you will see it confirmed here. If your slot is full, the clinic may adjust your time.
-                </span>
+                <span>After submitting, the clinic staff will review your request and assign an appointment date and time for you. You will see it confirmed here once approved.</span>
               </div>
 
-              {/* Firestore error */}
               {submitError && (
-                <div className="flex items-start gap-2.5 bg-[#fef2f2] border border-[#fecaca]
-                  rounded-2xl px-4 py-3 text-[11px] text-[#dc2626]">
+                <div className="flex items-start gap-2.5 bg-[#fef2f2] border border-[#fecaca] rounded-2xl px-4 py-3 text-[11px] text-[#dc2626]">
                   <i className="fa-solid fa-circle-exclamation mt-[1px] shrink-0 text-[13px]"></i>
                   <span>{submitError}</span>
                 </div>
               )}
             </div>
 
-            {/* Footer — fixed, never scrolls */}
+            {/* Modal Controls Actions Footer */}
             <div className="flex gap-3 px-6 py-4 border-t border-[#ddeee5] bg-white flex-shrink-0">
               <button
                 onClick={closeModal}
                 disabled={submitting}
-                className="flex-1 bg-transparent border border-[#ddeee5] py-2.5 rounded-[40px]
-                  font-bold text-[12px] text-[#6b8577] cursor-pointer hover:bg-[#f0f5f4]
-                  hover:border-[#9bb5a5] transition-colors
-                  disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 bg-transparent border border-[#ddeee5] py-2.5 rounded-[40px] font-bold text-[12px] text-[#6b8577] cursor-pointer hover:bg-[#f0f5f4] hover:border-[#9bb5a5] transition-colors disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={submitting || !canSubmit}
-                className="flex-1 bg-[#466460] border-none py-2.5 rounded-[40px] font-bold
-                  text-[12px] text-white cursor-pointer hover:bg-[#364e4a]
-                  disabled:opacity-40 disabled:cursor-not-allowed transition-all
-                  flex items-center justify-center gap-1.5"
+                className="flex-1 bg-[#466460] border-none py-2.5 rounded-[40px] font-bold text-[12px] text-white cursor-pointer hover:bg-[#364e4a] disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
               >
-                {submitting
-                  ? <><i className="fa-solid fa-spinner fa-spin text-[10px]"></i> Saving…</>
-                  : 'Submit Request'
-                }
+                {submitting ? <><i className="fa-solid fa-spinner fa-spin text-[10px]"></i> Saving…</> : 'Submit Request'}
               </button>
             </div>
 

@@ -1,8 +1,7 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Dental.jsx
 
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../../firebase'; // Adjusted path for the Examination folder
+import { supabase } from '../../../supabase'; // Adjusted path for the Examination folder
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -111,7 +110,7 @@ const buildDentalForm = (p) => {
   return {
     dLastName:   lastName,
     dFirstName:  firstName,
-    dMiddle:     p?.middleInitial || '',
+    dMiddle:     p?.middleName || '',
     dSex:        p?.gender || p?.sex || 'Male',
     dAge:        p?.age ? String(p.age) : '',
     dBirthday:   p?.birthday || p?.birthdate || '',
@@ -133,7 +132,8 @@ const buildDentalForm = (p) => {
     dVax2Date:      vaxDate('dose2'),
     dBoosterDate:   vaxDate('booster1'),
     dPatientSig: '',
-    dSigDate: new Date().toISOString().split('T')[0],
+    dExamDate: new Date().toISOString().slice(0, 16),
+    dSigDate: new Date().toISOString().slice(0, 16),
     dExaminedBy: '',
   };
 };
@@ -220,6 +220,7 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     .filter(([, d]) => d?.condition)
     .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
 
+    const toISO = (val) => val ? (val.length === 16 ? val + ':00' : val) : null;
   // ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
     if (!selectedPatient?.uid) {
@@ -235,14 +236,56 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         toothData,
         dentalHistory,
         intraoral,
-        createdAt: serverTimestamp(),
         status: "approved",
         isApproved: true,
-        approvedAt: serverTimestamp(),
       };
 
-      const dentalRecordsRef = collection(db, "users", selectedPatient.uid, "dental_records");
-      await addDoc(dentalRecordsRef, payload);
+      // Get the user's UUID from the users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id')
+        .eq('uid', selectedPatient.uid)
+        .single();
+
+      const userId = userData?.id;
+
+      // Convert camelCase to snake_case matching dental_records table schema
+      const supabasePayload = {
+        user_id: userId,
+        university_id: payload.studentId,
+        last_name: payload.lastName,
+        first_name: payload.firstName,
+        middle_name: payload.middleName,
+        sex: payload.sex,
+        age: payload.age,
+        birthday: payload.birthday,
+        address: payload.address,
+        cellphone: payload.cellphone,
+        course_year: payload.courseYear,
+        office_address: payload.officeAddress,
+        tel_no: payload.telNo,
+        nationality: payload.nationality,
+        last_visit: payload.lastVisit,
+        prev_dentist: payload.prevDentist,
+        physician: payload.physician,
+        vax1_date: payload.vax1Date,
+        vax2_date: payload.vax2Date,
+        booster_date: payload.boosterDate,
+        teeth_upper: payload.teethUpper,
+        teeth_lower: payload.teethLower,
+        tooth_data: payload.toothData,
+        dental_history: payload.dentalHistory,
+        intraoral: payload.intraoral,
+        examined_by: payload.physician,
+        exam_date: toISO(payload.examDate),
+        status: "approved",
+        is_approved: true,
+        created_at: new Date().toISOString(),
+        approved_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('dental_records').insert(supabasePayload);
+      if (error) throw error;
 
       setShowSummary(false);
       showMessage('Dental record saved and approved successfully!');
@@ -463,6 +506,7 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6"><label className={labelClass}>Patient Signature</label><input type="text" id="dPatientSig" className={inputClass} placeholder="Type full name as signature" value={dentalFormData.dPatientSig} onChange={handleDentalChange} /></div>
           <div className="col-span-3"><label className={labelClass}>Date</label><input type="date" id="dSigDate" className={inputClass} value={dentalFormData.dSigDate} onChange={handleDentalChange} /></div>
+          <div className="col-span-3"><label className={labelClass}>Examination Date & Time</label><input type="datetime-local" id="dExamDate" className={inputClass} value={dentalFormData.dExamDate} onChange={handleDentalChange} /></div>
           <div className="col-span-6"><label className={labelClass}>Examined By</label><input type="text" id="dExaminedBy" className={inputClass} placeholder="Dentist name and license number" value={dentalFormData.dExaminedBy} onChange={handleDentalChange} /></div>
         </div>
 

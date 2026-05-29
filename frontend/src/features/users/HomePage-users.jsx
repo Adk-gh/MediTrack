@@ -5,6 +5,31 @@ import authService from '../../services/auth.service.js';
 import * as announcementsService from '../../services/announcements.service';
 import { useAppointments } from '../../context/AppointmentContext';
 
+// Lucide React icons
+import {
+  // Outline — UI chrome
+  CalendarDays,
+  Clock,
+  MapPin,
+  User,
+  Megaphone,
+  ChevronRight,
+  CalendarX,
+  // Solid-style accents
+  BellRing,
+  Zap,
+  ShieldAlert,
+  Activity,
+  Droplets,
+  Salad,
+  PersonStanding,
+  Moon,
+  HandMetal,
+  ArrowRight,
+  Sparkles,
+  HeartPulse,
+} from 'lucide-react';
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const formatDate = (dateStr) => {
@@ -15,7 +40,6 @@ const formatDate = (dateStr) => {
   });
 };
 
-// Map the 24hr string to the 12hr slot label
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
   const startH = 7 + i;
   const endH   = startH + 1;
@@ -53,18 +77,134 @@ const PRIORITY_STRIPE = {
   normal: 'bg-[#466460]',
 };
 
+// Health tips
 const HEALTH_TIPS = [
-  { emoji: '💧', tip: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
-  { emoji: '🥦', tip: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
-  { emoji: '🏃', tip: 'Aim for at least 30 minutes of physical activity most days of the week.' },
-  { emoji: '😴', tip: 'Get 7–9 hours of quality sleep each night to support your immune system.' },
-  { emoji: '🧴', tip: 'Wash your hands regularly for at least 20 seconds to prevent the spread of illness.' },
+  { Icon: Droplets,  iconColor: 'text-sky-300',    tip: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
+  { Icon: Salad,     iconColor: 'text-emerald-300',tip: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
+  { Icon: Activity,  iconColor: 'text-lime-300',   tip: 'Aim for at least 30 minutes of physical activity most days of the week.' },
+  { Icon: Moon,      iconColor: 'text-indigo-300', tip: 'Get 7–9 hours of quality sleep each night to support your immune system.' },
+  { Icon: HandMetal, iconColor: 'text-teal-300',   tip: 'Wash your hands regularly for at least 20 seconds to prevent the spread of illness.' },
 ];
 
 const MONTHS_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
+
+// ── Micro-Animation Styles ─────────────────────────────────────────────────
+
+const microAnimStyles = `
+  @keyframes wave {
+    0%   { transform: rotate(0deg)   scale(1);    }
+    15%  { transform: rotate(18deg)  scale(1.15); }
+    30%  { transform: rotate(-10deg) scale(1.1);  }
+    45%  { transform: rotate(14deg)  scale(1.15); }
+    60%  { transform: rotate(-6deg)  scale(1.05); }
+    75%  { transform: rotate(8deg)   scale(1.1);  }
+    100% { transform: rotate(0deg)   scale(1);    }
+  }
+
+  @keyframes icon-pop {
+    0%   { transform: scale(0.7) rotate(-12deg); opacity: 0; }
+    60%  { transform: scale(1.2) rotate(6deg);   opacity: 1; }
+    100% { transform: scale(1)   rotate(0deg);   opacity: 1; }
+  }
+
+  @keyframes float-y {
+    0%, 100% { transform: translateY(0px);  }
+    50%       { transform: translateY(-4px); }
+  }
+
+  @keyframes shimmer-slide {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+  }
+
+  @keyframes badge-pulse {
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0   rgba(74,222,128,0.5); }
+    50%       { transform: scale(1.04); box-shadow: 0 0 0 5px rgba(74,222,128,0);   }
+  }
+
+  @keyframes card-rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0);    }
+  }
+
+  @keyframes tip-glow {
+    0%, 100% { box-shadow: 0 4px 20px rgba(70,100,96,0.25); }
+    50%       { box-shadow: 0 8px 32px rgba(70,100,96,0.45); }
+  }
+
+  @keyframes bell-ring {
+    0%,100% { transform: rotate(0deg);   }
+    15%      { transform: rotate(14deg);  }
+    30%      { transform: rotate(-10deg); }
+    45%      { transform: rotate(8deg);   }
+    60%      { transform: rotate(-4deg);  }
+    75%      { transform: rotate(2deg);   }
+  }
+
+  @keyframes heartbeat {
+    0%,100% { transform: scale(1);    }
+    14%      { transform: scale(1.18); }
+    28%      { transform: scale(1);    }
+    42%      { transform: scale(1.12); }
+    70%      { transform: scale(1);    }
+  }
+
+  .icon-wave {
+    display: inline-flex;
+    transform-origin: 70% 80%;
+    animation: wave 2.4s ease-in-out 0.4s 1 both;
+  }
+
+  .icon-pop {
+    display: inline-flex;
+    animation: icon-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.5s 1 both;
+  }
+
+  .icon-bell {
+    display: inline-flex;
+    transform-origin: 50% 0%;
+    animation: bell-ring 1.8s ease-in-out 0.6s 1 both;
+  }
+
+  .icon-heartbeat {
+    display: inline-flex;
+    animation: heartbeat 1.6s ease-in-out infinite;
+  }
+
+  .pinned-float {
+    animation: float-y 3.8s ease-in-out infinite;
+  }
+
+  .tip-banner {
+    animation: tip-glow 3s ease-in-out infinite;
+  }
+
+  .clinic-badge {
+    animation: badge-pulse 2.4s ease-in-out infinite;
+  }
+
+  .ann-card-rise {
+    animation: card-rise 0.4s ease both;
+  }
+
+  .shimmer-text {
+    background: linear-gradient(
+      90deg,
+      #79a39d 0%,
+      #c8e6e2 40%,
+      #79a39d 60%,
+      #79a39d 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer-slide 3s linear infinite;
+  }
+`;
 
 // ── Announcement Detail Modal ──────────────────────────────────────────────
 
@@ -86,9 +226,9 @@ const AnnouncementModal = ({ item, onClose }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto pb-5 flex flex-col">
-          {item.image && (
+          {item.image_url && (
             <div className="h-44 w-full overflow-hidden bg-slate-100 flex-shrink-0">
-              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+              <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
             </div>
           )}
 
@@ -96,8 +236,10 @@ const AnnouncementModal = ({ item, onClose }) => {
             <div>
               <div className="flex flex-wrap gap-1.5 mb-2.5">
                 {item.priority && item.priority !== 'normal' && (
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_STRIPE[item.priority]}`}>
-                    {item.priority === 'urgent' ? '⚡ Urgent' : '● High'}
+                  <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_STRIPE[item.priority]}`}>
+                    {item.priority === 'urgent'
+                      ? <><Zap size={9} fill="white" /> Urgent</>
+                      : <><ShieldAlert size={9} /> High</>}
                   </span>
                 )}
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
@@ -113,9 +255,9 @@ const AnnouncementModal = ({ item, onClose }) => {
               <h3 className="text-base font-bold text-[#1f2d2b] leading-snug mb-1">{item.title}</h3>
 
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[#98a8a5] mb-3">
-                <span>📅 {formatDate(item.date)}</span>
-                {item.location      && <span>📍 {item.location}</span>}
-                {item.contactPerson && <span>👤 {item.contactPerson}</span>}
+                <span className="inline-flex items-center gap-1"><CalendarDays size={10} /> {formatDate(item.date)}</span>
+                {item.location      && <span className="inline-flex items-center gap-1"><MapPin size={10} /> {item.location}</span>}
+                {item.contactPerson && <span className="inline-flex items-center gap-1"><User size={10} /> {item.contactPerson}</span>}
               </div>
 
               <div className="border-t border-slate-100 pt-3 mb-4">
@@ -140,20 +282,21 @@ const AnnouncementModal = ({ item, onClose }) => {
 
 // ── Announcement Card ──────────────────────────────────────────────────────
 
-const AnnouncementCard = ({ item, onClick }) => {
+const AnnouncementCard = ({ item, onClick, index = 0 }) => {
   const catStyle    = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.General;
   const stripeColor = PRIORITY_STRIPE[item.priority]  || PRIORITY_STRIPE.normal;
 
   return (
     <div
       onClick={() => onClick(item)}
-      className="bg-white border border-[#dfe6e5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.98] hover:shadow-md hover:border-[#466460] transition-all relative flex-shrink-0 w-[220px]"
+      className="ann-card-rise bg-white border border-[#dfe6e5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.98] hover:shadow-md hover:border-[#466460] transition-all relative flex-shrink-0 w-[220px]"
+      style={{ animationDelay: `${index * 0.07}s` }}
     >
       <div className={`absolute top-0 left-0 right-0 h-[3px] ${stripeColor}`}></div>
 
-      {item.image ? (
+      {item.image_url ? (
         <div className="h-28 w-full overflow-hidden bg-slate-100">
-          <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
         </div>
       ) : (
         <div className="h-10"></div>
@@ -165,15 +308,18 @@ const AnnouncementCard = ({ item, onClick }) => {
             {item.category || 'General'}
           </span>
           {item.priority && item.priority !== 'normal' && (
-            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full text-white ${stripeColor}`}>
-              {item.priority === 'urgent' ? '⚡' : '●'} {item.priority}
+            <span className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full text-white ${stripeColor}`}>
+              {item.priority === 'urgent' ? <Zap size={8} fill="white" /> : <ShieldAlert size={8} />}
+              {item.priority}
             </span>
           )}
         </div>
 
         <p className="text-xs font-bold text-[#1f2d2b] leading-snug line-clamp-2 mb-1">{item.title}</p>
         <p className="text-[10px] text-[#98a8a5] line-clamp-2 leading-relaxed">{item.content}</p>
-        <p className="text-[9px] text-[#b8c9c6] mt-1.5">{formatDate(item.date)}</p>
+        <p className="text-[9px] text-[#b8c9c6] mt-1.5 inline-flex items-center gap-1">
+          <CalendarDays size={9} />{formatDate(item.date)}
+        </p>
       </div>
     </div>
   );
@@ -187,8 +333,7 @@ const HomePageUsers = () => {
   const userName = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
   const studentId   = currentUser?.universityId ?? currentUser?.idno ?? currentUser?.idNumber;
 
-  // ── Missing Information Check ──
-  const isMissingVaccination = !currentUser?.vaccinationStatus && !currentUser?.vaccinationHistory;
+  const isMissingVaccination      = !currentUser?.vaccinationStatus && !currentUser?.vaccinationHistory;
   const isMissingEmergencyContact = !currentUser?.emergencyContact;
 
   let pendingAction = null;
@@ -208,16 +353,13 @@ const HomePageUsers = () => {
     };
   }
 
-  // Global Contexts
   const { getPatientAppointments, loadingAppts } = useAppointments();
 
-  // Local States
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnn, setLoadingAnn]       = useState(true);
   const [selectedAnn, setSelectedAnn]     = useState(null);
   const [tipIndex]                        = useState(() => Math.floor(Math.random() * HEALTH_TIPS.length));
 
-  // ── Fetch announcements ──
   useEffect(() => {
     const load = async () => {
       try {
@@ -235,14 +377,12 @@ const HomePageUsers = () => {
     load();
   }, []);
 
-  // ── Fetch dynamic user appointments ──
   const studentAppointments = studentId ? getPatientAppointments(studentId) : [];
   const upcomingAppt = studentAppointments.find(a => a.status === 'approved')
                     || studentAppointments.find(a => a.status === 'pending');
 
   const tip = HEALTH_TIPS[tipIndex];
 
-  // ── Pinned announcement logic ──
   const urgentAnn = announcements.find(a => a.priority === 'urgent');
   const latestAnn = announcements[0];
   const pinnedAnn = urgentAnn || latestAnn;
@@ -250,19 +390,29 @@ const HomePageUsers = () => {
   return (
     <div className="flex flex-col h-full bg-[#f7faf8] pb-16">
 
+      <style>{microAnimStyles}</style>
+
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
 
-        {/* ── Welcome Header & Clinic Status ── */}
+        {/* ── Welcome Header ── */}
         <div className="flex items-start justify-between mt-2 animate-[slideUp_0.3s_ease_both]">
           <div>
-            <h1 className="text-2xl font-bold text-[#1f2d2b]">
-              Hello, {userName} 👋
+            <h1 className="text-2xl font-bold text-[#1f2d2b] flex items-center gap-2">
+              Hello, {userName}
+              {/* Sparkles icon with wave animation */}
+              <span className="icon-wave text-[#466460]" aria-hidden="true">
+                <Sparkles size={22} fill="#466460" strokeWidth={1.5} />
+              </span>
             </h1>
-            <p className="text-xs text-[#98a8a5] mt-1">
+            <p className="text-xs text-[#98a8a5] mt-1 flex items-center gap-1.5">
+              <span className="icon-pop text-[#466460]">
+                <Activity size={11} strokeWidth={2.5} />
+              </span>
               Here is your health overview for today.
             </p>
           </div>
-          <div className="inline-flex items-center gap-1.5 bg-green-100 px-2.5 py-1 rounded-full mt-1">
+
+          <div className="clinic-badge inline-flex items-center gap-1.5 bg-green-100 px-2.5 py-1 rounded-full mt-1">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
@@ -271,17 +421,19 @@ const HomePageUsers = () => {
           </div>
         </div>
 
-        {/* ── Pending Actions (Dynamic) ── */}
+        {/* ── Pending Actions ── */}
         {pendingAction && (
           <div className="animate-[slideUp_0.35s_ease_both]">
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-start gap-3 shadow-sm">
-              <span className="text-amber-500 mt-0.5">⚠️</span>
+              <span className="icon-bell text-amber-500 mt-0.5">
+                <BellRing size={16} fill="#f59e0b" strokeWidth={1.5} />
+              </span>
               <div className="flex-1">
                 <h4 className="text-xs font-bold text-amber-900">{pendingAction.title}</h4>
                 <p className="text-[11px] text-amber-700 mt-0.5">{pendingAction.desc}</p>
               </div>
               <button
-                onClick={() => navigate('/student/account', { state: { activeTab: pendingAction.targetTab } })}
+                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'profile' } })}
                 className="text-[10px] font-bold bg-amber-200 text-amber-800 px-3 py-1.5 rounded-full hover:bg-amber-300 transition-colors flex-shrink-0 shadow-sm"
               >
                 {pendingAction.btnText}
@@ -290,7 +442,7 @@ const HomePageUsers = () => {
           </div>
         )}
 
-        {/* ── Dynamic Upcoming Appointment ── */}
+        {/* ── Upcoming Appointment ── */}
         <div className="animate-[slideUp_0.4s_ease_both]">
           <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">Up Next</div>
 
@@ -311,32 +463,35 @@ const HomePageUsers = () => {
                   <h4 className="text-[13px] font-bold text-[#1f2d2b] line-clamp-1">{upcomingAppt.reason}</h4>
                   <p className="text-[10px] text-[#98a8a5] mt-0.5 flex items-center gap-1">
                     {upcomingAppt.status === 'pending' ? (
-                      <><span className="text-[#f0c070] text-[12px]">⏳</span> Awaiting Schedule</>
+                      <><Clock size={11} className="text-[#f0c070]" strokeWidth={2} /> Awaiting Schedule</>
                     ) : (
-                      // Display the friendly 12-hour slot label
-                      <>{formatApptTime(upcomingAppt.time)} • University Clinic</>
+                      <><Clock size={11} strokeWidth={2} /> {formatApptTime(upcomingAppt.time)} · University Clinic</>
                     )}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => navigate('/users/booking')}
+                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
                 className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-[#466460]"
               >
-                <span className="text-lg">→</span>
+                <ArrowRight size={16} strokeWidth={2.5} />
               </button>
             </div>
           ) : (
-            <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-4 flex flex-col items-center justify-center text-center">
-               <span className="text-[11px] text-[#98a8a5] mb-2">No upcoming appointments</span>
-               <button onClick={() => navigate('/users/booking')} className="text-[10px] font-bold bg-white border border-[#cdd6d5] text-[#466460] px-4 py-1.5 rounded-full hover:bg-[#eef2f1] transition-colors shadow-sm">
-                 Book Now
-               </button>
+            <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2">
+              <CalendarX size={20} className="text-[#cdd6d5]" strokeWidth={1.5} />
+              <span className="text-[11px] text-[#98a8a5]">No upcoming appointments</span>
+              <button
+                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
+                className="text-[10px] font-bold bg-white border border-[#cdd6d5] text-[#466460] px-4 py-1.5 rounded-full hover:bg-[#eef2f1] transition-colors shadow-sm"
+              >
+                Book Now
+              </button>
             </div>
           )}
         </div>
 
-        {/* ── Pinned / Latest Announcement Banner ── */}
+        {/* ── Notice Board ── */}
         <div className="animate-[slideUp_0.45s_ease_both]">
           <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">Notice Board</div>
           {loadingAnn ? (
@@ -347,27 +502,28 @@ const HomePageUsers = () => {
             </div>
           ) : pinnedAnn ? (
             <div
-              className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition-transform shadow-sm"
+              className="pinned-float bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition-transform shadow-sm"
               onClick={() => setSelectedAnn(pinnedAnn)}
             >
-              {pinnedAnn.image && (
+              {pinnedAnn.image_url && (
                 <div className="h-32 w-full overflow-hidden">
-                  <img src={pinnedAnn.image} alt={pinnedAnn.title} className="w-full h-full object-cover" />
+                  <img src={pinnedAnn.image_url} alt={pinnedAnn.title} className="w-full h-full object-cover" />
                 </div>
               )}
-
               <div className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                      <path d="M18 8a3 3 0 010 8" />
-                      <path d="M14 8.5l4-3v9l-4-3H6a2 2 0 01-2-2v-1a2 2 0 012-2h8z" />
-                    </svg>
+                    {urgentAnn
+                      ? <Zap size={14} fill="#466460" strokeWidth={0} className="text-[#466460]" />
+                      : <Megaphone size={14} className="text-[#466460]" strokeWidth={2} />
+                    }
                     <span className="text-[10px] font-bold uppercase tracking-widest text-[#466460]">
-                      {urgentAnn ? '⚡ Urgent Notice' : 'Latest Announcement'}
+                      {urgentAnn ? 'Urgent Notice' : 'Latest Announcement'}
                     </span>
                   </div>
-                  <span className="text-[9px] text-[#98a8a5]">{formatDate(pinnedAnn.date)}</span>
+                  <span className="text-[9px] text-[#98a8a5] inline-flex items-center gap-1">
+                    <CalendarDays size={9} />{formatDate(pinnedAnn.date)}
+                  </span>
                 </div>
 
                 <div className="text-sm font-bold text-[#1f2d2b] mb-1 leading-snug">{pinnedAnn.title}</div>
@@ -375,8 +531,8 @@ const HomePageUsers = () => {
 
                 {(pinnedAnn.location || pinnedAnn.contactPerson) && (
                   <div className="flex gap-3 mt-2 text-[10px] text-[#98a8a5]">
-                    {pinnedAnn.location      && <span>📍 {pinnedAnn.location}</span>}
-                    {pinnedAnn.contactPerson && <span>👤 {pinnedAnn.contactPerson}</span>}
+                    {pinnedAnn.location      && <span className="inline-flex items-center gap-1"><MapPin size={9} />{pinnedAnn.location}</span>}
+                    {pinnedAnn.contactPerson && <span className="inline-flex items-center gap-1"><User size={9} />{pinnedAnn.contactPerson}</span>}
                   </div>
                 )}
 
@@ -384,7 +540,9 @@ const HomePageUsers = () => {
                   <span className={`text-[8px] font-semibold px-2 py-0.5 rounded-full ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).bg} ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).text}`}>
                     {pinnedAnn.category || 'General'}
                   </span>
-                  <span className="text-[10px] text-[#466460] font-semibold">Tap to read more →</span>
+                  <span className="text-[10px] text-[#466460] font-semibold inline-flex items-center gap-1">
+                    Tap to read more <ChevronRight size={11} strokeWidth={2.5} />
+                  </span>
                 </div>
               </div>
             </div>
@@ -395,20 +553,23 @@ const HomePageUsers = () => {
           )}
         </div>
 
-        {/* ── All Announcements Horizontal Scroll ── */}
+        {/* ── All Announcements Scroll ── */}
         {!loadingAnn && announcements.length > 1 && (
           <div className="animate-[slideUp_0.5s_ease_both]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">All Announcements</span>
               <span className="text-[10px] text-[#98a8a5]">{announcements.length} posts</span>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              {announcements.map(item => (
+            <div
+              className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {announcements.map((item, i) => (
                 <AnnouncementCard
                   key={item.id}
                   item={item}
                   onClick={setSelectedAnn}
+                  index={i}
                 />
               ))}
             </div>
@@ -416,17 +577,22 @@ const HomePageUsers = () => {
         )}
 
         {/* ── Health Tip Banner ── */}
-        <div className="bg-gradient-to-r from-[#2f4542] to-[#466460] rounded-2xl p-4 flex items-center gap-3 animate-[slideUp_0.55s_ease_both] shadow-md mt-1">
-          <span className="text-[28px] flex-shrink-0">{tip.emoji}</span>
+        <div className="tip-banner bg-gradient-to-r from-[#2f4542] to-[#466460] rounded-2xl p-4 flex items-center gap-3.5 animate-[slideUp_0.55s_ease_both] mt-1">
+          <span className="icon-heartbeat flex-shrink-0">
+            <tip.Icon size={26} className={tip.iconColor} strokeWidth={1.8} />
+          </span>
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[1px] text-[#79a39d] mb-0.5">Health Tip</div>
+            <div className="shimmer-text text-[10px] font-bold uppercase tracking-[1px] mb-0.5 flex items-center gap-1">
+              <HeartPulse size={10} strokeWidth={2.5} />
+              Health Tip
+            </div>
             <div className="text-[11px] text-white/90 leading-[1.45]">{tip.tip}</div>
           </div>
         </div>
 
       </div>
 
-      {/* ── Announcement Detail Modal ── */}
+      {/* ── Announcement Modal ── */}
       {selectedAnn && (
         <AnnouncementModal item={selectedAnn} onClose={() => setSelectedAnn(null)} />
       )}

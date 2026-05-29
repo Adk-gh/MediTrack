@@ -1,11 +1,8 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Consultations.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { rtdb, db } from '../../firebase';
-import {
-  ref, onValue, push, set, update, serverTimestamp, onDisconnect, off
-} from 'firebase/database';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { supabase } from '../../supabase';
+import * as consultationsService from '../../services/consultations.service';
 
 const formatTime = (ts) => {
   if (!ts) return '';
@@ -68,11 +65,10 @@ export const Consultations = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole    = (currentUser.role || '').toLowerCase();
 
-  // ── Determine Allowed Tabs based on Role ──────────────────────────────
   const allowedTabs = React.useMemo(() => {
     if (['doctor', 'nurse'].includes(userRole)) return TABS.filter(t => t.key === 'medical');
     if (userRole === 'dentist') return TABS.filter(t => t.key === 'dental');
-    return TABS; // Admins or unrecognized roles see both
+    return TABS;
   }, [userRole]);
 
   const [activeTab, setActiveTab]               = useState(allowedTabs[0]?.key || 'medical');
@@ -86,13 +82,63 @@ export const Consultations = () => {
   const [toast, setToast]                       = useState(null);
   const [showPatientPanel, setShowPatientPanel] = useState(false);
 
+  // 🔴 FIXED: Core internal tracking states for the staff member
+  const [internalStaffId, setInternalStaffId]   = useState(null);
+  const [sessionReady, setSessionReady]         = useState(false);
+
   const messagesEndRef  = useRef(null);
-  const msgListenerRef  = useRef(null);
-  const resolvedNameRef = useRef(currentUser.name || null);
+  const msgChannelRef   = useRef(null);
+  const convChannelRef  = useRef(null);
+  const presenceChannelRef = useRef(null);
 
   const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
 
-  // ── Auto-select conversation from URL ─────────────────────────────────
+  // ── 1. Secure Authentication & Fetch Internal Staff ID ───────────────
+  useEffect(() => {
+    const initAdminSession = async () => {
+      if (!currentUser?.uid) return;
+
+      const accessToken  = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refresh_token') || '';
+
+      if (accessToken) {
+        await supabase.auth.setSession({
+          access_token:  accessToken,
+          refresh_token: refreshToken,
+        });
+      }
+
+      // Resolve the internal users.id for the logged-in staff member
+      const { data: profiles, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, role')
+        .eq('uid', currentUser.uid)
+        .limit(1);
+
+      const profile = profiles?.[0];
+      if (profile) {
+        setInternalStaffId(profile.id);
+        // Set presence using the valid internal ID
+        consultationsService.setUserPresence(profile.id, 'online');
+      }
+      setSessionReady(true);
+    };
+
+    initAdminSession();
+
+    return () => {
+      const storedId = localStorage.getItem('_internalStaffId');
+      if (storedId) {
+        consultationsService.setUserPresence(storedId, 'offline').catch(() => {});
+      }
+    };
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (internalStaffId) localStorage.setItem('_internalStaffId', internalStaffId);
+  }, [internalStaffId]);
+
+  // ── 2. Auto-select conversation from URL ──────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const convIdToOpen = params.get('convId');
@@ -106,140 +152,144 @@ export const Consultations = () => {
     }
   }, [location.search, allowedTabs]);
 
-  // ── Doctor presence ───────────────────────────────────────────────────
+  // ── 3. Load patient profiles from Supabase ────────────────────────────
   useEffect(() => {
-    if (!currentUser?.uid) return;
-    const setPresence = async () => {
-      let resolvedName = currentUser.name || currentUser.displayName || null;
-      if (!resolvedName) {
-        try {
-          const snap = await getDoc(doc(db, 'users', currentUser.uid));
-          if (snap.exists()) {
-            const d = snap.data();
-            resolvedName = [
-              d.firstName,
-              d.middleInitial ? `${d.middleInitial}.` : '',
-              d.lastName,
-            ].filter(Boolean).join(' ').trim() || 'Clinic Staff';
-            localStorage.setItem('user', JSON.stringify({ ...currentUser, name: resolvedName }));
-          }
-        } catch { resolvedName = 'Clinic Staff'; }
-      }
-      resolvedNameRef.current = resolvedName || 'Clinic Staff';
-
-      const presenceRef = ref(rtdb, `presence/${currentUser.uid}`);
-      const presenceData = {
-        online: true, lastSeen: serverTimestamp(),
-        name: resolvedNameRef.current, role: currentUser.role || 'staff',
-      };
-      set(presenceRef, presenceData);
-      onDisconnect(presenceRef).set({ ...presenceData, online: false });
-    };
-    setPresence();
-  }, [currentUser?.uid]);
-
-  // ── Load Firestore profiles ───────────────────────────────────────────
-  useEffect(() => {
-    const load = async () => {
+    if (!sessionReady) return;
+    const loadProfiles = async () => {
       try {
-        const snap = await getDocs(collection(db, 'users'));
+        const { data, error } = await supabase.from('users').select('*');
+        if (error) throw error;
         const map = {};
-        snap.docs.forEach(d => { map[d.id] = { uid: d.id, ...d.data() }; });
+        data?.forEach(p => { map[p.id] = p; });
         setPatientProfiles(map);
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error('Failed to load profiles:', err); }
     };
-    load();
-  }, []);
+    loadProfiles();
+  }, [sessionReady]);
 
-  // ── Listen to ALL conversations ───────────────────────────────────────
+  // ── 4. Subscribe to consultations ─────────────────────────────────────
   useEffect(() => {
-    const convRef = ref(rtdb, 'consultations');
-    const unsub = onValue(convRef, (snap) => {
-      const data = snap.val() || {};
-      const list = Object.entries(data).map(([id, conv]) => {
-        const realMessages = Object.values(conv.messages || {}).filter(m => !m.isBot);
-        const hasRealMessages = realMessages.length > 0;
-        const consultType = conv.metadata?.consultType || 'medical';
+    if (!sessionReady) return;
+    const loadConsultations = async () => {
+      try {
+        const data = await consultationsService.getAllConsultations();
+        const consultationsWithLastMessage = await Promise.all(
+          (data || []).map(async (conv) => {
+            try {
+              const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
+              const lastMsg = msgs?.slice(-1)[0];
+              return {
+                ...conv,
+                last_message: lastMsg?.message || '',
+                last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
+              };
+            } catch {
+              return conv;
+            }
+          })
+        );
+        consultationsWithLastMessage.sort((a, b) => b.last_timestamp - a.last_timestamp);
+        setConversations(consultationsWithLastMessage);
+      } catch (err) {
+        console.error('Failed to load consultations:', err);
+      }
+    };
+    loadConsultations();
 
-        return {
-          id,
-          ...conv.metadata,
-          consultType,
-          hasMessages: hasRealMessages,
-          lastMessage:   conv.metadata?.lastMessage   || '',
-          lastTimestamp: conv.metadata?.lastTimestamp || 0,
-          status:        conv.metadata?.status || 'ended',
-          unreadCount: realMessages.filter(m => m.sender === 'patient' && !m.readByClinic).length,
-        };
-      });
-      list.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
-      setConversations(list);
-    });
-    return () => off(convRef, 'value', unsub);
-  }, []);
-
-  // ── Presence ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    const presRef = ref(rtdb, 'presence');
-    const unsub = onValue(presRef, (snap) => setOnlinePresence(snap.val() || {}));
-    return () => off(presRef, 'value', unsub);
-  }, []);
-
-  // ── Messages listener ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (msgListenerRef.current) { off(msgListenerRef.current); msgListenerRef.current = null; }
-    if (!selectedConvId) { setMessages([]); return; }
-
-    setLoadingMsgs(true);
-    const msgsRef = ref(rtdb, `consultations/${selectedConvId}/messages`);
-    msgListenerRef.current = msgsRef;
-
-    const unsub = onValue(msgsRef, (snap) => {
-      const data = snap.val() || {};
-      const list = Object.entries(data)
-        .map(([id, msg]) => ({ id, ...msg }))
-        .filter(msg => !msg.isBot)
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-      setMessages(list);
-      setLoadingMsgs(false);
-
-      const unreadPatientMsgs = list.filter(msg => msg.sender === 'patient' && !msg.readByClinic);
-      if (unreadPatientMsgs.length > 0) {
-        const updates = {};
-        unreadPatientMsgs.forEach(msg => {
-          updates[`${msg.id}/readByClinic`] = true;
-        });
-        update(ref(rtdb, `consultations/${selectedConvId}/messages`), updates);
+    convChannelRef.current = consultationsService.subscribeToConsultations((payload) => {
+      if (payload.eventType === 'INSERT') {
+        setConversations(prev => [{ ...payload.new, last_message: '', last_timestamp: 0 }, ...prev]);
+      } else if (payload.eventType === 'UPDATE') {
+        setConversations(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
       }
     });
-    return () => off(msgsRef, 'value', unsub);
-  }, [selectedConvId]);
+
+    return () => {
+      if (convChannelRef.current) convChannelRef.current();
+    };
+  }, [sessionReady]);
+
+  // ── 5. Subscribe to presence ──────────────────────────────────────────
+  useEffect(() => {
+    if (!sessionReady) return;
+    const loadPresence = async () => {
+      try {
+        const users = await consultationsService.getOnlineUsers();
+        const presenceMap = {};
+        users?.forEach(u => { presenceMap[u.user_id] = u; });
+        setOnlinePresence(presenceMap);
+      } catch (err) { console.error('Failed to load presence:', err); }
+    };
+    loadPresence();
+
+    presenceChannelRef.current = consultationsService.subscribeToPresence((payload) => {
+      if (payload.eventType === 'UPSERT') {
+        setOnlinePresence(prev => ({ ...prev, [payload.new.user_id]: payload.new }));
+      }
+    });
+
+    return () => {
+      if (presenceChannelRef.current) presenceChannelRef.current();
+    };
+  }, [sessionReady]);
+
+  // ── 6. Load and subscribe to messages ─────────────────────────────────
+  useEffect(() => {
+    if (!sessionReady) return;
+    const loadMessages = async () => {
+      if (!selectedConvId) { setMessages([]); return; }
+
+      setLoadingMsgs(true);
+      try {
+        const data = await consultationsService.getMessagesByConsultationId(selectedConvId);
+        // 🔴 FIXED: Classify styling based on the staff's internal ID, not the raw UID
+        const formatted = (data || []).map(msg => ({
+          ...msg,
+          text: msg.message,
+          timestamp: new Date(msg.created_at).getTime(),
+          sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+        }));
+        setMessages(formatted);
+      } catch (err) {
+        console.error('Failed to load messages:', err);
+      } finally {
+        setLoadingMsgs(false);
+      }
+    };
+    loadMessages();
+
+    if (selectedConvId) {
+      msgChannelRef.current = consultationsService.subscribeToMessages(selectedConvId, (newMessage) => {
+        const formatted = {
+          ...newMessage,
+          text: newMessage.message,
+          timestamp: new Date(newMessage.created_at).getTime(),
+          sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(newMessage.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+        };
+        setMessages(prev => [...prev, formatted]);
+      });
+    }
+
+    return () => {
+      if (msgChannelRef.current) msgChannelRef.current();
+    };
+  }, [selectedConvId, sessionReady]);
 
   useEffect(() => { setShowPatientPanel(false); }, [selectedConvId]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   // ── Send Message ──────────────────────────────────────────────────────
   const sendMessage = async () => {
-    if (!selectedConvId || !messageInput.trim()) return;
+    // 🔴 FIXED: Ensure the staff ID is fully loaded before allowing sends
+    if (!selectedConvId || !messageInput.trim() || !internalStaffId) return;
     const text = messageInput.trim();
     setMessageInput('');
     try {
-      const msgsRef = ref(rtdb, `consultations/${selectedConvId}/messages`);
-      await push(msgsRef, {
+      await consultationsService.sendMessage(selectedConvId, {
         text,
-        sender:        'clinic',
-        senderUid:     currentUser.uid,
-        senderName:    resolvedNameRef.current || 'Clinic Staff',
-        senderRole:    currentUser.role || 'staff',
-        timestamp:     Date.now(),
-        readByPatient: false,
-        isBot:         false,
-      });
-      await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), {
-        lastMessage:    text,
-        lastTimestamp:  Date.now(),
-        lastSenderRole: 'clinic'
+        sender_id: internalStaffId, // 🔴 FIXED: Injects the secure Postgres Internal Table ID
+        sender_name: currentUser.name || 'Clinic Staff',
+        sender_role: currentUser.role || 'staff',
       });
     } catch (err) {
       console.error('Send error:', err);
@@ -251,11 +301,12 @@ export const Consultations = () => {
   const handleEndConsultation = async () => {
     if (!selectedConvId) return;
     try {
-      await update(ref(rtdb, `consultations/${selectedConvId}/metadata`), { status: 'ended' });
-      await push(ref(rtdb, `consultations/${selectedConvId}/messages`), {
+      await consultationsService.endConsultation(selectedConvId);
+      await consultationsService.sendMessage(selectedConvId, {
         text: "Consultation marked as complete by clinic staff.",
-        isBot: true,
-        timestamp: Date.now()
+        sender_id: null,
+        sender_name: "System",
+        sender_role: "system",
       });
       showToast('Consultation ended');
     } catch (err) {
@@ -283,53 +334,50 @@ export const Consultations = () => {
     return groups;
   };
 
-  // ── Derived data ──────────────────────────────────────────────────────
+  // ── Derived data ─────────────────────────────────────────────────────
   const selectedConv   = conversations.find(c => c.id === selectedConvId);
   const isConvEnded    = selectedConv?.status === 'ended';
-  const patientUid     = selectedConv?.patientUid;
-  const patientProfile = patientProfiles[patientUid] || {};
-  const patientName    = patientProfile.firstName
-    ? `${patientProfile.lastName || ''}, ${patientProfile.firstName || ''}`.trim()
-    : selectedConv?.patientName || 'Unknown';
-  const isPatientOnline = onlinePresence[patientUid]?.online || false;
+  const patientId     = selectedConv?.patient_id;
+  const patientProfile = patientProfiles[patientId] || {};
+  const patientName    = patientProfile.first_name
+    ? `${patientProfile.last_name || ''}, ${patientProfile.first_name || ''}`.trim()
+    : selectedConv?.patient_name || 'Unknown';
+  const isPatientOnline = onlinePresence[patientId]?.status === 'online';
 
   const onlineClinicStaff = Object.entries(onlinePresence)
-    .filter(([uid, p]) => p.online && uid !== currentUser.uid &&
+    .filter(([uid, p]) => p.status === 'online' && uid !== internalStaffId && // 🔴 FIXED
       ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
-    .map(([, p]) => p.name);
+    .map(([, p]) => p.name || 'Staff');
 
   const visibleConversations = conversations.filter(conv =>
-    conv.consultType === activeTab &&
-    (conv.hasMessages || conv.id === selectedConvId)
+    conv.consultation_type === activeTab &&
+    (conv.last_message || conv.id === selectedConvId)
   );
 
   const unreadByTab = {};
   allowedTabs.forEach(tab => {
-    unreadByTab[tab.key] = conversations
-      .filter(c => c.consultType === tab.key && c.status === 'active')
-      .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    unreadByTab[tab.key] = 0;
   });
 
   const handleOpenExamination = () => {
-    if (!patientUid) return;
+    if (!patientId) return;
     const person = {
-      uid: patientUid, name: patientName,
-      firstName: patientProfile.firstName || '', lastName: patientProfile.lastName || '',
-      id: patientProfile.universityId || patientProfile.studentId || patientUid,
+      uid: patientId, name: patientName,
+      firstName: patientProfile.first_name || '', lastName: patientProfile.last_name || '',
+      id: patientProfile.university_id || patientProfile.student_id || patientId,
       role: patientProfile.role || '', prog: patientProfile.program || patientProfile.course || '',
-      year: patientProfile.yearLevel || '', section: patientProfile.section || '',
+      year: patientProfile.year_level || '', section: patientProfile.section || '',
       age: patientProfile.age || '', gender: patientProfile.gender || patientProfile.sex || '',
-      birthdate: patientProfile.birthday || '', email: patientProfile.email || '',
-      phoneNumber: patientProfile.phoneNumber || '', department: patientProfile.department || '',
+      birthdate: patientProfile.birthdate || '', email: patientProfile.email || '',
+      phoneNumber: patientProfile.phone_number || '', department: patientProfile.department || '',
       _raw: patientProfile,
     };
     localStorage.setItem('selectedPatient', JSON.stringify(person));
-    navigate(`/examinations?patientId=${patientUid}`);
+    navigate(`/examinations?patientId=${patientId}`);
   };
 
   return (
     <div className="flex h-full bg-white overflow-hidden relative">
-
       {/* ── MAGIC FIX: Hide hamburger when a chat is open on mobile ── */}
       {selectedConvId && (
         <style>{`
@@ -367,7 +415,7 @@ export const Consultations = () => {
                 key={tab.key}
                 onClick={() => {
                   setActiveTab(tab.key);
-                  if (selectedConv && selectedConv.consultType !== tab.key) setSelectedConvId(null);
+                  if (selectedConv && selectedConv.consultation_type !== tab.key) setSelectedConvId(null);
                 }}
                 className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 text-xs font-bold transition-all relative"
                 style={{ color: isActive ? tab.accent : '#94a3b8', backgroundColor: isActive ? tab.light : 'transparent' }}
@@ -407,14 +455,14 @@ export const Consultations = () => {
               <p className="text-xs">Patients will appear here when they send a message</p>
             </div>
           ) : visibleConversations.map(conv => {
-            const profile = patientProfiles[conv.patientUid] || {};
-            const displayName = profile.firstName
-              ? `${profile.lastName || ''}, ${profile.firstName || ''}`.trim()
-              : conv.patientName || 'Unknown';
+            const profile = patientProfiles[conv.patient_id] || {};
+            const displayName = profile.first_name
+              ? `${profile.last_name || ''}, ${profile.first_name || ''}`.trim()
+              : conv.patient_name || 'Unknown';
             const initial  = displayName.charAt(0).toUpperCase();
-            const isOnline = onlinePresence[conv.patientUid]?.online || false;
+            const isOnline = onlinePresence[conv.patient_id]?.status === 'online';
             const isActive = selectedConvId === conv.id;
-            const tab = TABS.find(t => t.key === conv.consultType) || TABS[0];
+            const tab = TABS.find(t => t.key === conv.consultation_type) || TABS[0];
             const isEnded = conv.status === 'ended';
 
             return (
@@ -445,21 +493,16 @@ export const Consultations = () => {
                       )}
                     </p>
                     <span className="text-[9px] text-slate-400 flex-shrink-0 ml-2">
-                      {conv.lastTimestamp ? formatTime(conv.lastTimestamp) : ''}
+                      {conv.last_timestamp ? formatTime(conv.last_timestamp) : ''}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 mt-0.5">
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patientRole)}`}>
-                      {conv.patientRole || 'patient'}
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patient_role)}`}>
+                      {conv.patient_role || 'patient'}
                     </span>
-                    <p className="text-[10px] text-slate-400 truncate">{conv.lastMessage || 'No messages'}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{conv.last_message || 'No messages'}</p>
                   </div>
                 </div>
-                {conv.unreadCount > 0 && !isEnded && (
-                  <span className="bg-[#e07a5f] text-white text-[9px] font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center flex-shrink-0">
-                    {conv.unreadCount}
-                  </span>
-                )}
               </div>
             );
           })}
@@ -482,7 +525,7 @@ export const Consultations = () => {
             {selectedConv ? (
               <>
                 {(() => {
-                  const t = TABS.find(tab => tab.key === selectedConv.consultType) || TABS[0];
+                  const t = TABS.find(tab => tab.key === selectedConv.consultation_type) || TABS[0];
                   return (
                     <div
                       className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold flex-shrink-0"
@@ -549,7 +592,7 @@ export const Consultations = () => {
             )}
           </div>
 
-          {/* Messages — flex-1 so it fills remaining height, own scroll */}
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col gap-3 bg-slate-50">
             {!selectedConvId ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
@@ -584,10 +627,10 @@ export const Consultations = () => {
                     <div key={item.id} className={`flex flex-col ${isClinic ? 'items-end' : 'items-start'}`}>
                       {isClinic && (
                         <div className="flex items-center gap-1.5 mb-0.5 mr-2">
-                          <p className="text-[9px] text-slate-400 font-semibold">{item.senderName || 'Clinic Staff'}</p>
-                          {item.senderRole && (
+                          <p className="text-[9px] text-slate-400 font-semibold">{item.sender_name || 'Clinic Staff'}</p>
+                          {item.sender_role && (
                             <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold capitalize">
-                              {item.senderRole}
+                              {item.sender_role}
                             </span>
                           )}
                         </div>
@@ -601,9 +644,6 @@ export const Consultations = () => {
                       </div>
                       <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
                         <span>{formatTime(item.timestamp)}</span>
-                        {isClinic && (
-                          <i className={`fa-solid ${item.readByPatient ? 'fa-check-double text-[#466460]' : 'fa-check text-slate-300'} text-[10px] ml-1`}></i>
-                        )}
                       </div>
                     </div>
                   );
@@ -620,7 +660,7 @@ export const Consultations = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input — flex-shrink-0 so it never gets squashed */}
+          {/* Input */}
           <div className="px-3 md:px-4 py-3 bg-white border-t border-slate-200 flex gap-2 md:gap-3 items-center flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom,12px))]">
             <input
               type="text"
@@ -634,12 +674,12 @@ export const Consultations = () => {
               value={messageInput}
               onChange={e => setMessageInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              disabled={!selectedConvId || isConvEnded}
+              disabled={!selectedConvId || isConvEnded || !sessionReady}
               className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendMessage}
-              disabled={!selectedConvId || !messageInput.trim() || isConvEnded}
+              disabled={!selectedConvId || !messageInput.trim() || isConvEnded || !sessionReady}
               className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               <i className="fa-regular fa-paper-plane"></i>
@@ -675,9 +715,9 @@ export const Consultations = () => {
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-sm text-slate-800 leading-tight truncate">{patientName}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.universityId || patientProfile.studentId || '—'}</p>
-                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patientRole)}`}>
-                    {patientProfile.role || selectedConv?.patientRole || 'patient'}
+                  <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.university_id || patientProfile.student_id || '—'}</p>
+                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patient_role)}`}>
+                    {patientProfile.role || selectedConv?.patient_role || 'patient'}
                   </span>
                 </div>
               </div>
@@ -686,8 +726,8 @@ export const Consultations = () => {
                 {[
                   { label: 'Age',    value: patientProfile.age    || '—' },
                   { label: 'Gender', value: patientProfile.gender || patientProfile.sex || '—' },
-                  { label: 'Blood',  value: patientProfile.bloodType || '—' },
-                  { label: 'Civil',  value: patientProfile.civilStatus || '—' },
+                  { label: 'Blood',  value: patientProfile.blood_type || '—' },
+                  { label: 'Civil',  value: patientProfile.civil_status || '—' },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-slate-50 rounded-lg p-2 border border-slate-100">
                     <p className="text-[8px] text-slate-400 uppercase tracking-wide">{label}</p>
@@ -696,10 +736,10 @@ export const Consultations = () => {
                 ))}
               </div>
 
-              {patientProfile.birthday && (
+              {patientProfile.birthdate && (
                 <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
                   <p className="text-[8px] text-slate-400 uppercase tracking-wide">Birthdate</p>
-                  <p className="text-xs font-bold text-slate-700 mt-0.5">{patientProfile.birthday}</p>
+                  <p className="text-xs font-bold text-slate-700 mt-0.5">{patientProfile.birthdate}</p>
                 </div>
               )}
 
@@ -710,10 +750,10 @@ export const Consultations = () => {
                     <i className="fa-solid fa-envelope text-[#466460] w-3"></i>
                     <span className="truncate">{patientProfile.email || '—'}</span>
                   </p>
-                  {patientProfile.phoneNumber && (
+                  {patientProfile.phone_number && (
                     <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
                       <i className="fa-solid fa-phone text-[#466460] w-3"></i>
-                      {patientProfile.phoneNumber}
+                      {patientProfile.phone_number}
                     </p>
                   )}
                 </div>
@@ -724,7 +764,7 @@ export const Consultations = () => {
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Program</p>
                   <p className="text-[11px] font-semibold text-slate-700">
                     {patientProfile.program || patientProfile.course || '—'}
-                    {patientProfile.yearLevel ? ` · ${patientProfile.yearLevel}` : ''}
+                    {patientProfile.year_level ? ` · ${patientProfile.year_level}` : ''}
                     {patientProfile.section   ? ` · Sec ${patientProfile.section}` : ''}
                   </p>
                   {patientProfile.department && (
@@ -733,44 +773,27 @@ export const Consultations = () => {
                 </div>
               )}
 
-              {patientProfile.homeAddress && (
+              {patientProfile.home_address && (
                 <div>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Address</p>
-                  <p className="text-[11px] text-slate-600">{patientProfile.homeAddress}</p>
+                  <p className="text-[11px] text-slate-600">{patientProfile.home_address}</p>
                 </div>
               )}
 
-              {patientProfile.emergencyContact?.name && (
+              {patientProfile.emergency_contact?.name && (
                 <div>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Emergency Contact</p>
                   <p className="text-[11px] font-semibold text-slate-700">
-                    {patientProfile.emergencyContact.name}
-                    {patientProfile.emergencyContact.relationship
-                      ? ` (${patientProfile.emergencyContact.relationship})` : ''}
+                    {patientProfile.emergency_contact.name}
+                    {patientProfile.emergency_contact.relationship
+                      ? ` (${patientProfile.emergency_contact.relationship})` : ''}
                   </p>
-                  {patientProfile.emergencyContact.phone && (
+                  {patientProfile.emergency_contact.phone && (
                     <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
                       <i className="fa-solid fa-phone text-[9px]"></i>
-                      {patientProfile.emergencyContact.phone}
+                      {patientProfile.emergency_contact.phone}
                     </p>
                   )}
-                </div>
-              )}
-
-              {patientProfile.vaccinations &&
-                Object.values(patientProfile.vaccinations).some(v => v?.vaccineName) && (
-                <div>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">COVID-19 Vaccination</p>
-                  <div className="flex flex-wrap gap-1">
-                    {Object.entries(patientProfile.vaccinations).map(([key, v]) =>
-                      v?.vaccineName ? (
-                        <div key={key} className="text-[8px] px-2 py-1 rounded-lg bg-green-50 border border-green-100 text-green-700">
-                          <span className="font-semibold">{key.replace('dose', 'Dose ').replace('booster', 'Booster ')}:</span>{' '}
-                          {v.vaccineName}{v.date ? ` · ${v.date}` : ''}
-                        </div>
-                      ) : null
-                    )}
-                  </div>
                 </div>
               )}
             </div>

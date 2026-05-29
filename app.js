@@ -1,7 +1,6 @@
 // C:\Users\HP\MediTrack\app.js
 require('dotenv').config();
 const express = require("express");
-const database = require("./configs/database");
 const globalErr = require("./middleware/global-err");
 const routes = require("./routes/index");
 const cors = require("cors");
@@ -29,19 +28,14 @@ app.use(globalErr);
 
 const PORT = process.env.PORT || 5000;
 
-database().then(() => {
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`
 =========================================
   MediTrack Node Server Running
   Port: ${PORT}
-  Database: Connected
+  Database: Supabase Connected
 =========================================
-    `);
-  });
-}).catch((err) => {
-  console.error("Failed to connect to database:", err.message);
-  process.exit(1);
+  `);
 });
 
 module.exports = app;
