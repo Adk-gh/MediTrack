@@ -1,0 +1,70 @@
+-- ============================================================
+-- CONSULTATIONS TABLE POLICIES
+-- Roles: admin, doctor, dentist, nurse (clinical staff)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (patients - own consultations only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Allow all consultations" ON public.consultations;
+DROP POLICY IF EXISTS "Staff can manage consultations" ON public.consultations;
+DROP POLICY IF EXISTS "View consultations by role" ON public.consultations;
+
+-- Patients can view their own consultations
+CREATE POLICY "Patients can view own consultations"
+ON public.consultations
+FOR SELECT
+TO authenticated
+USING (auth.uid() = patient_id);
+
+-- Staff can view all consultations
+CREATE POLICY "Staff can view consultations"
+ON public.consultations
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Patients can create consultations
+CREATE POLICY "Patients can create consultations"
+ON public.consultations
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  auth.uid() = patient_id
+  OR EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Staff can update consultations
+CREATE POLICY "Staff can update consultations"
+ON public.consultations
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Staff can delete consultations
+CREATE POLICY "Staff can delete consultations"
+ON public.consultations
+FOR DELETE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);

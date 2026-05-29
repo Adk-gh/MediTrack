@@ -1,0 +1,48 @@
+-- ============================================================
+-- USERS TABLE POLICIES
+-- Roles: admin, doctor, dentist, nurse (clinical staff)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (own profile only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Clinical staff can view all users" ON public.users;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can view own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can view profiles" ON public.users;
+
+-- Users can view their own profile
+CREATE POLICY "Users can view own profile"
+ON public.users FOR SELECT TO authenticated
+USING (auth.uid() = id);
+
+-- Users can update their own profile
+CREATE POLICY "Users can update own profile"
+ON public.users FOR UPDATE TO authenticated
+USING (auth.uid() = id);
+
+-- Anyone can insert (for registration - handled by Supabase Auth)
+CREATE POLICY "Users can insert their profile"
+ON public.users FOR INSERT TO authenticated
+WITH CHECK (auth.uid() = id);
+
+-- Clinical staff can view all users (admin, doctor, nurse, dentist)
+CREATE POLICY "Clinical staff can view all users"
+ON public.users FOR SELECT TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Clinical staff can update users
+CREATE POLICY "Clinical staff can update users"
+ON public.users FOR UPDATE TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);

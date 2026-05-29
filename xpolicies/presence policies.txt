@@ -1,0 +1,32 @@
+-- ============================================================
+-- PRESENCE TABLE POLICIES
+-- All authenticated users can view presence (for online status)
+-- Users can only update their own presence
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Allow all presence" ON public.presence;
+DROP POLICY IF EXISTS "Anyone can view presence" ON public.presence;
+DROP POLICY IF EXISTS "Users can insert presence" ON public.presence;
+DROP POLICY IF EXISTS "Users can update own presence" ON public.presence;
+
+-- Anyone authenticated can view presence
+CREATE POLICY "Anyone can view presence"
+ON public.presence
+FOR SELECT
+TO authenticated
+USING (true);
+
+-- Users can insert their own presence
+CREATE POLICY "Users can insert presence"
+ON public.presence
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+-- Users can update their own presence
+CREATE POLICY "Users can update own presence"
+ON public.presence
+FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id);

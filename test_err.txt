@@ -1,0 +1,30 @@
+make another page for admins only.
+Reports & Analytics 🆕
+
+Appointment trends
+Medical vs. dental statistics
+Export to PDF/Excel
+
+
+
+
+Audit Logs
+
+User activity logs
+OCR processing logs
+Exportable compliance reports
+
+
+
+
+
+
+for the dentist add a new page where in it shows the Examination history,
+where dentist can forward the C:\Users\HP\MediTrack\frontend\src\components\DentalExaminationReport.jsx
+also add that for when the dental examination is finished just like when the medical exam is finished it gives a prompt for whether it will include the medical cert or not,
+it should be the same for the dental, ask whether the dental exam report will be forwarded or not.
+
+
+
+polish the medical examinations. maybe add family hisory, past surgical records, past medical history
+fix the dental.

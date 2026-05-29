@@ -1,0 +1,49 @@
+-- ============================================================
+-- CONSULTATION_MESSAGES TABLE POLICIES
+-- Roles: admin, doctor, dentist, nurse (clinical staff)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (patients - own messages only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Allow all messages" ON public.consultation_messages;
+DROP POLICY IF EXISTS "Users can insert consultation messages" ON public.consultation_messages;
+DROP POLICY IF EXISTS "Users can view own consultation messages" ON public.consultation_messages;
+
+-- Users can view messages in their own consultations
+CREATE POLICY "Users can view consultation messages"
+ON public.consultation_messages
+FOR SELECT
+TO authenticated
+USING (
+  auth.uid() = sender_id
+  OR EXISTS (
+    SELECT 1 FROM consultations
+    WHERE id = consultation_id
+    AND patient_id = auth.uid()
+  )
+  OR EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Users can insert their own messages
+CREATE POLICY "Users can insert consultation messages"
+ON public.consultation_messages
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = sender_id);
+
+-- Staff can update messages (e.g., mark as read)
+CREATE POLICY "Staff can update consultation messages"
+ON public.consultation_messages
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);

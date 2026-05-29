@@ -1,0 +1,12 @@
+[
+  {
+    "schemaname": "public",
+    "tablename": "audit_logs",
+    "policyname": "Only admins can view audit logs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "operation": "SELECT",
+    "using_expression": "(EXISTS ( SELECT 1\n   FROM users\n  WHERE ((users.id = auth.uid()) AND ((users.role)::text = 'admin'::text))))",
+    "with_check_expression": null
+  }
+]

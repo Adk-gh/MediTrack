@@ -1,0 +1,56 @@
+-- ============================================================
+-- DENTAL_RECORDS TABLE POLICIES
+-- Roles: admin, dentist (clinical staff - dental)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (patients - own records only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Dentist staff can insert dental records" ON public.dental_records;
+DROP POLICY IF EXISTS "Dentist staff can update dental records" ON public.dental_records;
+DROP POLICY IF EXISTS "Dentist staff can view dental records" ON public.dental_records;
+
+-- Patients can view their own dental records
+CREATE POLICY "Patients can view own dental records"
+ON public.dental_records
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Dental staff can view all dental records (dentist, admin)
+CREATE POLICY "Dental staff can view dental records"
+ON public.dental_records
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'dentist')
+  )
+);
+
+-- Dental staff can insert dental records
+CREATE POLICY "Dental staff can insert dental records"
+ON public.dental_records
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'dentist')
+  )
+);
+
+-- Dental staff can update dental records
+CREATE POLICY "Dental staff can update dental records"
+ON public.dental_records
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'dentist')
+  )
+);

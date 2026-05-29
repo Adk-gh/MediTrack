@@ -1,0 +1,70 @@
+-- ============================================================
+-- APPOINTMENTS TABLE POLICIES
+-- Roles: admin, doctor, dentist, nurse (clinical staff)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (patients - own appointments only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Patients and staff can create appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Staff can update appointments" ON public.appointments;
+DROP POLICY IF EXISTS "View appointments by role" ON public.appointments;
+
+-- Patients can view their own appointments
+CREATE POLICY "Patients can view own appointments"
+ON public.appointments
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Staff can view all appointments
+CREATE POLICY "Staff can view appointments"
+ON public.appointments
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Patients and staff can create appointments
+CREATE POLICY "Patients and staff can create appointments"
+ON public.appointments
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  auth.uid() = user_id
+  OR EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Staff can update appointments
+CREATE POLICY "Staff can update appointments"
+ON public.appointments
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Staff can delete appointments
+CREATE POLICY "Staff can delete appointments"
+ON public.appointments
+FOR DELETE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);

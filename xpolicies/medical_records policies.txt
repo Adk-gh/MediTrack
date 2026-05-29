@@ -1,0 +1,56 @@
+-- ============================================================
+-- MEDICAL_RECORDS TABLE POLICIES
+-- Roles: admin, doctor, dentist, nurse (clinical staff)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (patients - own records only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Clinical staff can insert medical records" ON public.medical_records;
+DROP POLICY IF EXISTS "Clinical staff can update medical records" ON public.medical_records;
+DROP POLICY IF EXISTS "Clinical staff can view medical records" ON public.medical_records;
+
+-- Patients can view their own medical records
+CREATE POLICY "Patients can view own medical records"
+ON public.medical_records
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Clinical staff can view all medical records (doctor, nurse, dentist, admin)
+CREATE POLICY "Clinical staff can view medical records"
+ON public.medical_records
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Clinical staff can insert medical records
+CREATE POLICY "Clinical staff can insert medical records"
+ON public.medical_records
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
+
+-- Clinical staff can update medical records
+CREATE POLICY "Clinical staff can update medical records"
+ON public.medical_records
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);

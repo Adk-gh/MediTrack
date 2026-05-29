@@ -1,0 +1,54 @@
+-- ============================================================
+-- ANNOUNCEMENTS TABLE POLICIES
+-- Roles: admin, nurse (can manage)
+-- All roles: admin, doctor, dentist, nurse, student, lecturer, instructor, teacher, staff, employee (can view)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Admin and nurse can manage announcements" ON public.announcements;
+DROP POLICY IF EXISTS "All authenticated users can view announcements" ON public.announcements;
+DROP POLICY IF EXISTS "Allow public read" ON public.announcements;
+
+-- All authenticated users can view announcements
+CREATE POLICY "All authenticated users can view announcements"
+ON public.announcements
+FOR SELECT
+TO authenticated
+USING (true);
+
+-- Admin and nurse can create/update/delete announcements
+CREATE POLICY "Admin and nurse can manage announcements"
+ON public.announcements
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'nurse')
+  )
+);
+
+CREATE POLICY "Admin and nurse can update announcements"
+ON public.announcements
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'nurse')
+  )
+);
+
+CREATE POLICY "Admin and nurse can delete announcements"
+ON public.announcements
+FOR DELETE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'nurse')
+  )
+);

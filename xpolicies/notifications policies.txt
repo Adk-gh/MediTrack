@@ -1,0 +1,37 @@
+-- ============================================================
+-- NOTIFICATIONS TABLE POLICIES
+-- Roles: admin, doctor, dentist, nurse (clinical staff)
+-- Student/Lecturer/Instructor/Teacher/Staff/Employee (patients - own notifications only)
+-- ============================================================
+
+-- Drop existing policies
+DROP POLICY IF EXISTS "Staff can manage notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+
+-- Users can view their own notifications
+CREATE POLICY "Users can view own notifications"
+ON public.notifications
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Users can update their own notifications (mark as read)
+CREATE POLICY "Users can update own notifications"
+ON public.notifications
+FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Staff can manage all notifications
+CREATE POLICY "Staff can manage notifications"
+ON public.notifications
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE id = auth.uid()
+    AND role IN ('admin', 'doctor', 'nurse', 'dentist')
+  )
+);
