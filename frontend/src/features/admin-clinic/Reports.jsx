@@ -10,7 +10,7 @@ import {
 import { Bar, Doughnut, Line, PolarArea } from 'react-chartjs-2';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { supabase } from '../../supabase';
+// ✅ REMOVED: import { supabase } from '../../supabase'; — no longer needed here
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement,
@@ -54,6 +54,25 @@ const MEDICAL_CONDITIONS = [
   { id: 'allergy', name: 'Allergies', keywords: ['allergy', 'allergic'], category: 'Immune', color: '#ec4899' },
   { id: 'skin_rash', name: 'Skin Conditions', keywords: ['skin', 'rash', 'dermatitis', 'eczema'], category: 'Dermatological', color: '#14b8a6' },
   { id: 'gi', name: 'GI Problems', keywords: ['stomach', 'gastritis', 'nausea', 'abdominal'], category: 'Gastrointestinal', color: '#0ea5e9' },
+];
+
+// Dental conditions for tracking based on dental_records schema
+const DENTAL_CONDITIONS = [
+  { id: 'extraction', name: 'Tooth Extraction', keywords: ['extraction'], category: 'Treatment History', color: '#ef4444' },
+  { id: 'pulp_therapy', name: 'Pulp Therapy', keywords: ['pulp therapy'], category: 'Treatment History', color: '#f97316' },
+  { id: 'tmj', name: 'TMJ Treatment', keywords: ['tmj treatment'], category: 'Treatment History', color: '#eab308' },
+  { id: 'oral_prophylaxis', name: 'Oral Prophylaxis', keywords: ['oral prophylaxis'], category: 'Treatment History', color: '#84cc16' },
+  { id: 'orthodontic', name: 'Orthodontic Therapy', keywords: ['orthodontic therapy', 'orthodontic'], category: 'Treatment History', color: '#06b6d4' },
+  { id: 'periodontal', name: 'Periodontal Therapy', keywords: ['periodontal therapy', 'periodontal'], category: 'Treatment History', color: '#8b5cf6' },
+  { id: 'filling', name: 'Filling/Restoration', keywords: ['filling', 'restoration'], category: 'Treatment History', color: '#ec4899' },
+  { id: 'prosthodontic', name: 'Prosthodontic Therapy', keywords: ['prosthodontic therapy', 'prosthodontic'], category: 'Treatment History', color: '#14b8a6' },
+  { id: 'drug_allergy', name: 'Drug Allergy', keywords: ['drug sensitivity', 'allergy'], category: 'Conditions', color: '#f43f5e' },
+  { id: 'caries', name: 'Caries', keywords: ['caries', 'cavity'], category: 'Tooth Conditions', color: '#f59e0b' },
+  { id: 'filled', name: 'Filled Teeth', keywords: ['filled'], category: 'Tooth Conditions', color: '#22c55e' },
+  { id: 'missing', name: 'Missing Teeth', keywords: ['missing'], category: 'Tooth Conditions', color: '#94a3b8' },
+  { id: 'good_oral_hygiene', name: 'Good Oral Hygiene', keywords: ['good'], category: 'Oral Hygiene', color: '#10b981' },
+  { id: 'fair_oral_hygiene', name: 'Fair Oral Hygiene', keywords: ['fair'], category: 'Oral Hygiene', color: '#eab308' },
+  { id: 'poor_oral_hygiene', name: 'Poor Oral Hygiene', keywords: ['poor'], category: 'Oral Hygiene', color: '#ef4444' },
 ];
 
 // ─── Helper functions ────────────────────────────────────────────────────────
@@ -278,18 +297,16 @@ export const Reports = () => {
       }
       setAppointments(apptData);
 
-      // Fetch medical records directly from Supabase
-      const { data: medData, error: medError } = await supabase
-        .from('medical_records')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (medError) {
-        console.error('Error fetching medical records:', medError);
+      // ✅ FIX: Fetch medical records through backend (bypasses Supabase RLS)
+      const medRes = await fetch(`${API_URL}/examinations/medical`, { headers }).catch(() => null);
+      let medData = [];
+      if (medRes && medRes.ok) {
+        const json = await medRes.json();
+        medData = json.data || json || [];
       }
-      setMedicalRecords(medData || []);
+      setMedicalRecords(medData);
 
-      // Fetch dental records
+      // ✅ FIX: Fetch dental records through backend (bypasses Supabase RLS)
       const denRes = await fetch(`${API_URL}/examinations/dental`, { headers }).catch(() => null);
       let denData = [];
       if (denRes && denRes.ok) {
@@ -328,14 +345,20 @@ export const Reports = () => {
         break;
     }
 
-    // Filter appointments by date range
+    // Filter appointments by date range (for charts/stats only)
     const filteredAppts = appointments.filter(a => {
       if (!a.year || !a.month) return false;
       const d = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
       return d >= startDate;
     });
 
-    // Filter records by date range
+    // ALL medical records (no date filter) - for display
+    const allMedRecords = medicalRecords;
+
+    // ALL dental records (no date filter) - for display
+    const allDenRecords = dentalRecords;
+
+    // Filtered for stats only (charts)
     const filteredMed = medicalRecords.filter(r => {
       const d = new Date(r.exam_date || r.created_at || r.createdAt || 0);
       return d >= startDate;
@@ -369,16 +392,16 @@ export const Reports = () => {
       }
     });
 
-    // Calculate illness statistics from medical records using schema fields
+    // Calculate illness statistics from ALL medical records (no date filter)
     const conditionCounts = {};
     MEDICAL_CONDITIONS.forEach(condition => {
       conditionCounts[condition.id] = 0;
     });
 
-    // Also track individual findings (for the findings display)
+    // Track ALL individual findings (for the findings display - NO FILTER)
     const findingsList = [];
 
-    // Fitness and findings stats
+    // Fitness and findings stats - use ALL records
     let fitCount = 0;
     let notFitCount = 0;
     let normalFindingsCount = 0;
@@ -386,7 +409,8 @@ export const Reports = () => {
     let approvedCount = 0;
     let pendingCount = 0;
 
-    filteredMed.forEach(r => {
+    // Use ALL medical records, not filtered
+    allMedRecords.forEach(r => {
       // Count fitness status
       if (r.is_fit === true) fitCount++;
       else if (r.is_fit === false) notFitCount++;
@@ -422,23 +446,21 @@ export const Reports = () => {
         });
       });
 
-      // Collect the actual findings text for display
-      if (finding1 || checkedMedical || checkedHealth || otherHistory) {
-        const recordFindings = {
-          id: r.id,
-          name: `${r.last_name || ''}, ${r.first_name || ''}`.replace(/^, |, $/g, '') || 'Unknown',
-          finding1: r.finding1 || null,
-          checkedMedical: r.checked_medical || [],
-          checkedHealth: r.checked_health || [],
-          otherHistory: r.other_medical_history || null,
-          isFit: r.is_fit,
-          isNormal: r.is_normal_findings,
-          examDate: r.exam_date,
-        };
-        if (finding1 || checkedMedical.length || checkedHealth.length || otherHistory) {
-          findingsList.push(recordFindings);
-        }
-      }
+      // Collect ALL medical records for findings display (no filtering)
+      const recordFindings = {
+        id: r.id,
+        name: `${r.last_name || ''}, ${r.first_name || ''}`.replace(/^, |, $/g, '') || 'Unknown',
+        universityId: r.university_id || '',
+        finding1: r.finding1 || null,
+        checkedMedical: r.checked_medical || [],
+        checkedHealth: r.checked_health || [],
+        otherHistory: r.other_medical_history || null,
+        isFit: r.is_fit,
+        isNormal: r.is_normal_findings,
+        examDate: r.exam_date,
+        status: r.status,
+      };
+      findingsList.push(recordFindings);
     });
 
     // Calculate health trends by category
@@ -450,17 +472,68 @@ export const Reports = () => {
       categoryBreakdown[condition.category] += conditionCounts[condition.id];
     });
 
+    // Calculate dental condition counts from dental_records
+    const dentalConditionCounts = {};
+    DENTAL_CONDITIONS.forEach(condition => {
+      dentalConditionCounts[condition.id] = 0;
+    });
+
+    const dentalFindingsList = [];
+    // Use ALL dental records, not filtered
+    allDenRecords.forEach(r => {
+      const dentalHistory = typeof r.dental_history === 'string' ? JSON.parse(r.dental_history || '{}') : (r.dental_history || {});
+      const intraoral = typeof r.intraoral === 'string' ? JSON.parse(r.intraoral || '{}') : (r.intraoral || {});
+
+      // Track dental conditions
+      DENTAL_CONDITIONS.forEach(condition => {
+        condition.keywords.forEach(keyword => {
+          // Check dental history
+          Object.values(dentalHistory).forEach(val => {
+            if (String(val).toLowerCase().includes(keyword.toLowerCase()) && String(val).toLowerCase() !== 'no') {
+              dentalConditionCounts[condition.id]++;
+            }
+          });
+          // Check intraoral
+          Object.values(intraoral).forEach(val => {
+            if (String(val).toLowerCase().includes(keyword.toLowerCase()) && String(val).toLowerCase() !== 'no' && String(val).toLowerCase() !== 'false') {
+              dentalConditionCounts[condition.id]++;
+            }
+          });
+        });
+      });
+
+      // Add to dental findings list
+      dentalFindingsList.push({
+        id: r.id,
+        name: `${r.last_name || ''}, ${r.first_name || ''}`.replace(/^, |, $/g, '') || 'Unknown',
+        universityId: r.university_id || '',
+        dentalHistory: dentalHistory,
+        intraoral: intraoral,
+        status: r.status,
+        examDate: r.exam_date,
+      });
+    });
+
+    // Dental category breakdown
+    const dentalCategoryBreakdown = {};
+    DENTAL_CONDITIONS.forEach(condition => {
+      if (!dentalCategoryBreakdown[condition.category]) {
+        dentalCategoryBreakdown[condition.category] = 0;
+      }
+      dentalCategoryBreakdown[condition.category] += dentalConditionCounts[condition.id];
+    });
+
     return {
       appointments: filteredAppts,
-      medical: filteredMed,
-      dental: filteredDen,
+      medical: allMedRecords,  // ALL records
+      dental: allDenRecords,   // ALL records
       users: users,
       monthlyAppts,
       monthlyMed,
       monthlyDen,
       totalAppts: filteredAppts.length,
-      totalMed: filteredMed.length,
-      totalDen: filteredDen.length,
+      totalMed: allMedRecords.length,  // ALL records
+      totalDen: allDenRecords.length,  // ALL records
       totalUsers: users.length,
       completedAppts: filteredAppts.filter(a => a.status === 'done').length,
       pendingAppts: filteredAppts.filter(a => a.status === 'pending').length,
@@ -478,6 +551,11 @@ export const Reports = () => {
       medPendingCount: pendingCount,
       // All findings from records
       findingsList,
+      // Dental records data
+      dentalConditionCounts,
+      dentalCategoryBreakdown,
+      dentalFindingsList,
+      mostCommonDentalCondition: Object.entries(dentalConditionCounts).sort((a, b) => b[1] - a[1])[0],
     };
   }, [appointments, medicalRecords, dentalRecords, users, dateRange]);
 
@@ -584,6 +662,23 @@ export const Reports = () => {
       }],
     };
   }, [processedData.categoryBreakdown]);
+
+  // ── Chart Data: Dental Conditions Distribution (Bar) ─────────────────────
+  const dentalConditionData = useMemo(() => {
+    const labels = DENTAL_CONDITIONS.map(c => c.name);
+    const data = DENTAL_CONDITIONS.map(c => processedData.dentalConditionCounts[c.id]);
+    const colors = DENTAL_CONDITIONS.map(c => c.color);
+
+    return {
+      labels,
+      datasets: [{
+        label: 'Count',
+        data,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }],
+    };
+  }, [processedData.dentalConditionCounts]);
 
   // ── Chart Data: Patient Type Distribution ────────────────────────────────
   const patientTypeData = useMemo(() => {
@@ -1175,6 +1270,99 @@ export const Reports = () => {
             </div>
           </GlassCard>
         )}
+
+        {/* ── Dental Records Section ── */}
+        <GlassCard className="p-4 md:p-5 mb-6">
+          <h3 className="font-bold text-sm text-[#466460] mb-4">
+            <i className="fa-solid fa-tooth mr-2"></i>Dental Records Analytics
+          </h3>
+
+          {/* Dental Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-slate-50 rounded-lg p-3 text-center">
+              <p className="text-[10px] font-bold text-slate-400 uppercase">Total Dental</p>
+              <p className="text-xl font-bold text-slate-700">{processedData.totalDen}</p>
+            </div>
+            <div className="bg-green-50 rounded-lg p-3 text-center">
+              <p className="text-[10px] font-bold text-green-600 uppercase">Approved</p>
+              <p className="text-xl font-bold text-green-700">{processedData.dentalFindingsList.filter(d => d.status === 'approved').length}</p>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-3 text-center">
+              <p className="text-[10px] font-bold text-amber-600 uppercase">Pending</p>
+              <p className="text-xl font-bold text-amber-700">{processedData.dentalFindingsList.filter(d => d.status === 'pending').length}</p>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-3 text-center">
+              <p className="text-[10px] font-bold text-blue-600 uppercase">With Treatment</p>
+              <p className="text-xl font-bold text-blue-700">{processedData.dentalConditionCounts.oral_prophylaxis + processedData.dentalConditionCounts.filling}</p>
+            </div>
+          </div>
+
+          {/* Dental Conditions Chart */}
+          <div className="h-[250px] mb-4">
+            {loading ? <ChartSkeleton h="250px" /> : (
+              <Bar
+                id="dental-conditions"
+                data={dentalConditionData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  indexAxis: 'y',
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    x: { beginAtZero: true, ticks: { font: { size: 10 } } },
+                    y: { ticks: { font: { size: 9 } } },
+                  },
+                }}
+              />
+            )}
+          </div>
+
+          {/* Dental Findings Table */}
+          <div className="overflow-x-auto max-h-[300px]">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white">
+                <tr className="border-b border-[#eef2f6]">
+                  <th className="text-left font-semibold text-slate-500 py-2 pr-3">Patient</th>
+                  <th className="text-left font-semibold text-slate-500 py-2 pr-3">Dental History</th>
+                  <th className="text-left font-semibold text-slate-500 py-2 pr-3">Oral Hygiene</th>
+                  <th className="text-left font-semibold text-slate-500 py-2 pr-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {processedData.dentalFindingsList.slice(0, 15).map((dental, idx) => (
+                  <tr key={dental.id || idx} className="border-b border-[#f1f5f9]">
+                    <td className="py-2 pr-3 text-slate-700 font-medium">{dental.name}</td>
+                    <td className="py-2 pr-3 text-slate-600 max-w-[200px]">
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(dental.dentalHistory || {}).filter(([k, v]) => v === 'Yes').slice(0, 4).map(([key, val], i) => (
+                          <span key={i} className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded">{key}</span>
+                        ))}
+                        {Object.entries(dental.dentalHistory || {}).filter(([k, v]) => v === 'Yes').length === 0 && <span className="text-slate-400">None</span>}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 text-slate-600">
+                      <span className={`text-[10px] px-2 py-1 rounded-full ${
+                        dental.intraoral?.oralHygiene === 'Good' ? 'bg-green-100 text-green-700' :
+                        dental.intraoral?.oralHygiene === 'Fair' ? 'bg-yellow-100 text-yellow-700' :
+                        dental.intraoral?.oralHygiene === 'Poor' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {dental.intraoral?.oralHygiene || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${
+                        dental.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {dental.status || 'N/A'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
 
         {/* ── Condition Breakdown Table ── */}
         <GlassCard className="p-4 md:p-5">
