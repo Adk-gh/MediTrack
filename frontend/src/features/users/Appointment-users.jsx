@@ -2,6 +2,9 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
+// ── Define API URL from environment variables ─────────────────────────────────
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTHS = [
   "January","February","March","April","May","June",
@@ -103,7 +106,8 @@ export default function AppointmentUsers() {
     if (!currentPatient?.uid) return;
     try {
       setLoadingAppts(true);
-      const response = await axios.get('http://localhost:5000/api/appointments/my-appointments', {
+      // FIX: Use API_URL instead of localhost
+      const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
         headers: {
           'Authorization': `Bearer ${currentPatient.token}`,
           'x-user-uid': currentPatient.uid
@@ -182,7 +186,8 @@ export default function AppointmentUsers() {
     };
 
     try {
-      const response = await axios.post('http://localhost:5000/api/appointments', payload, {
+      // FIX: Use API_URL instead of localhost
+      const response = await axios.post(`${API_URL}/appointments`, payload, {
         headers: {
           'Authorization': `Bearer ${currentPatient.token}`,
           'x-user-uid': currentPatient.uid

@@ -122,23 +122,25 @@ For Future development:
 
 Role Management
 
-|                                     | admin    | doctor          | dentist        | nurse           | student/employee/staffs |
-| :---------------------------------- | :------- | :-------------- | :------------- | :-------------- | :---------------------- |
-| Dashboard                           |          |                 |                |                 | ❌                       |
-| User Management                     |          | ❌               | ❌              | ❌               | ❌                       |
-| Audit Logs                          |          | ❌               | ❌              | ❌               | ❌                       |
-| Ocr Settings                        |          | ❌               | ❌              | ❌               | ❌                       |
-| Record Management (All)             |          | ❌               | ❌              | ❌               | ❌                       |
-| Records                             | ❌        | (Medical Exams) | (Dental Exams) | (Medical Exams) | ❌                       |
-| Appointments / Queue                | ❌        |                 |                |                 | ❌                       |
-| Consultations / Triage              | ❌        |                 |                |                 | ❌                       |
-| Approvals (Clearances)              | ❌        |                 | ❌              | ❌               | ❌                       |
-| Announcement                        | (Manage) | (View Only)     | (View Only)    | (Manage)        | ❌                       |
-| Home(Dashboard w/ Annoucements)     | ❌        | ❌               | ❌              | ❌               |                         |
-| Booking(appoinment request)         | ❌        | ❌               | ❌              | ❌               |                         |
-| Consultations / Triage              | ❌        | ❌               | ❌              | ❌               |                         |
-| Records(med x den history/ med crt) | ❌        | ❌               | ❌              | ❌               |                         |
-| Profile(user info                   | ❌        | ❌               | ❌              | ❌               |                         |
+|                                     | admin                                       | doctor                               | dentist                              | nurse                                | student/employee/staffs             |
+| :---------------------------------- | :------------------------------------------ | :----------------------------------- | :----------------------------------- | :----------------------------------- | :---------------------------------- |
+| Dashboard                           |                                             |                                      |                                      |                                      | ❌                                   |
+| User Management                     |                                             | ❌                                    | ❌                                    | ❌                                    | ❌                                   |
+| Audit Logs                          |                                             | ❌                                    | ❌                                    | ❌                                    | ❌                                   |
+| Ocr Settings                        |                                             | ❌                                    | ❌                                    | ❌                                    | ❌                                   |
+| Record Management (All)             |                                             | ❌                                    | ❌                                    | ❌                                    | ❌                                   |
+| Records                             | ❌                                           | (Medical Exams)                      | (Dental Exams)                       | (Medical Exams)                      | ❌                                   |
+| Appointments / Queue                | ❌                                           |                                      |                                      |                                      | ❌                                   |
+| Consultations / Triage              | ❌                                           |                                      |                                      |                                      | ❌                                   |
+| Approvals (Clearances)              | ❌                                           |                                      | ❌                                    | ❌                                    | ❌                                   |
+| Announcement                        | (Manage)                                    | (View Only)                          | (View Only)                          | (Manage)                             | ❌                                   |
+| Home(Dashboard w/ Annoucements)     | ❌                                           | ❌                                    | ❌                                    | ❌                                    |                                     |
+| Booking(appoinment request)         | ❌                                           | ❌                                    | ❌                                    | ❌                                    |                                     |
+| Consultations / Triage              | ❌                                           | ❌                                    | ❌                                    | ❌                                    |                                     |
+| Records(med x den history/ med crt) | ❌                                           | ❌                                    | ❌                                    | ❌                                    |                                     |
+| Profile(user info                   | ❌                                           | ❌                                    | ❌                                    | ❌                                    |                                     |
+| Reports and Analytics               |                                             | ❌                                    | ❌                                    | ❌                                    | ❌                                   |
+| Settings                            | OCR Settings/Security/System Configurations | Notifications/Data & Privacy/General | Notifications/Data & Privacy/General | Notifications/Data & Privacy/General | General/Notifications/Support/About |
 
 Accounts:
 
