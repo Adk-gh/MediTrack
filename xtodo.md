@@ -146,10 +146,9 @@ Accounts:
 
 <dekbermas@gmail.com> admin\
 <john.doe@example.com> doctor
-\
+
+<smcrm521@gmail.com> nurse\
 <catherine@gmail.com> dentist
-\
-<ade@gmail.com> nurse
 
 <ly.jxnny@gmail.com> student
 

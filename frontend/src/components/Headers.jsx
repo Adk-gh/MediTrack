@@ -958,6 +958,7 @@ const ROLE_NAV_CONFIG = {
     { to: '/announcements', label: 'Announcement Management' },
     { to: '/users', label: 'User Management' },
     { to: '/ocr-settings', label: 'OCR Settings' },
+    { to: '/reports', label: 'Reports' },
   ],
   doctor: [
     { to: '/dashboard', label: 'Dashboard' },

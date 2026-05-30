@@ -88,6 +88,13 @@ const NavOcrIcon = ({ active }) => (
   </svg>
 );
 
+const NavReportsIcon = ({ active }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
+    <path d="M3 3v18h18" />
+    <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" />
+  </svg>
+);
+
 // ─── Role-based mobile nav items ──────────────────────────────────────────────
 const ROLE_MOBILE_NAV = {
   admin: [
@@ -97,6 +104,7 @@ const ROLE_MOBILE_NAV = {
     { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
     { id: 'users', label: 'Users', Icon: NavUsersIcon },
     { id: 'ocrSettings', label: 'OCR Settings', Icon: NavOcrIcon },
+    { id: 'reports', label: 'Reports', Icon: NavReportsIcon },
   ],
   doctor: [
     { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
@@ -133,6 +141,7 @@ const DEFAULT_MOBILE_NAV = [
   { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
   { id: 'users',         label: 'Users',         Icon: NavUsersIcon },
   { id: 'ocrSettings',   label: 'OCR Settings',  Icon: NavOcrIcon },
+  { id: 'reports',       label: 'Reports',       Icon: NavReportsIcon },
 ];
 
 // ─── Floating Hamburger Button ────────────────────────────────────────────────

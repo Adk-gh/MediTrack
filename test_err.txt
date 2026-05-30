@@ -5,8 +5,10 @@ Appointment trends
 Medical vs. dental statistics
 Export to PDF/Excel
 
+for the exporting of data or report make it so that every categories is separated.
 
-
+Archives
+where old records are stored.
 
 Audit Logs
 
@@ -28,3 +30,5 @@ it should be the same for the dental, ask whether the dental exam report will be
 
 polish the medical examinations. maybe add family hisory, past surgical records, past medical history
 fix the dental.
+
+

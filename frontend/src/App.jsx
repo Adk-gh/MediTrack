@@ -26,6 +26,7 @@ import UserManagement from './features/admin-clinic/User-Management.jsx';
 import RecordManagement from './features/admin-clinic/Record-Management.jsx';
 import AuditLogs from './features/admin-clinic/AuditLogs.jsx';
 import OcrSettings from './features/admin-clinic/OcrSettings.jsx';
+import Reports from './features/admin-clinic/Reports.jsx';
 
 // Features - Students / Instructors / Staffs
 import Meditrack from './features/users/Meditrack.jsx';
@@ -70,6 +71,7 @@ const ROUTE_TO_TAB = {
   '/announcements':   'announcements',
   '/users':            'users',
   '/ocr-settings':    'ocrSettings',
+  '/reports':          'reports',
 };
 
 const TAB_TO_ROUTE = {
@@ -84,6 +86,7 @@ const TAB_TO_ROUTE = {
   'announcements':   '/announcements',
   'users':            '/users',
   'ocrSettings':     '/ocr-settings',
+  'reports':          '/reports',
 };
 
 // ── Admin Layout Wrapper ───────────────────────────────────────────────────────
@@ -271,6 +274,11 @@ function App() {
           <Route path="/ocr-settings" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><OcrSettings /></AdminLayoutWrapper>
+            </ProtectedRoute>
+          } />
+          <Route path="/reports" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminLayoutWrapper><Reports /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
 
