@@ -32,7 +32,7 @@ Appointment:
 Appoinment-user:
 
 * [x] ~~only one appointment at a time users cannot send multiple appointment until the active appointment is not yet finished.~~
-* [ ] fix the modal for the request appointment.
+* [x] fix the modal for the request appointment.
 * [x] remove the calendar
 
 Consultation & Consultation-users:
@@ -90,16 +90,16 @@ User-management:
 
 Examination:
 
-* [ ] Add Time of examination
+* [x] Add Time of examination
 
 Approval:
 
-* [ ] add medical history (consultation log (name, purpose, doctor, date and time)
+* [x] add medical history (consultation log (name, purpose, doctor, date and time)
 
 Profile-user:
 
 * [ ] the uploading of health documents is not working
-* [ ] fix the edit modal for all the informations
+* [x] fix the edit modal for all the informations
 
 Settings:
 
@@ -113,7 +113,7 @@ Meditrack:
 For Future development:
 \-
 
-* [ ] Add Record management for admin only in which we can see all the records in the systems and be able to delete records.
+* [x] Add Record management for admin only in which we can see all the records in the systems and be able to delete records.
 
 - [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employees)
 - [ ] Possible "settings" page.

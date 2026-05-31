@@ -481,7 +481,6 @@ const HomePageUsers = () => {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        style={{ touchAction: 'pan-x' }}
       >
 
         {/* UPDATE: Pass isRefreshing to the indicator */}

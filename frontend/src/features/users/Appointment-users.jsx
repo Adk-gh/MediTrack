@@ -307,7 +307,6 @@ export default function AppointmentUsers() {
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
-          style={{ touchAction: 'pan-x' }}
         >
           {/* PTR indicator — must be first child */}
           <PullIndicator indicatorRef={indicatorRef} />
@@ -470,4 +469,4 @@ export default function AppointmentUsers() {
       )}
     </div>
   );
-} 
+}

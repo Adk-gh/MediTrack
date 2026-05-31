@@ -496,7 +496,13 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
             className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col"
             style={{ height: "calc(100vh - 140px)", minHeight: "600px" }}
           >
-            <div className="overflow-y-auto flex-1 flex flex-col">{children}</div>
+            <div
+              className="overflow-y-auto flex-1 flex flex-col"
+              style={{
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y'
+              }}
+            >{children}</div>
           </div>
         </main>
       </div>
@@ -540,6 +546,8 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
           overflowY: "auto",
           position: "relative",
           paddingBottom: "88px",
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-y',
         }}
       >
         {children}
