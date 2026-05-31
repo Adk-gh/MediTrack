@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as announcementsService from '../../services/announcements.service';
+import { supabase } from '../../supabase';
 
+// ============================================================
+// CONFIG & CONSTANTS
+// ============================================================
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-// ============================================================
-// FALLBACK DATA & CONFIG
-// ============================================================
-const initialAnnouncements = [
-  { id: 1, title: "Flu Vaccination Drive",  dept: "All Departments",        date: "2026-04-20", content: "The University Clinic will be conducting a free flu vaccination drive for all students and faculty. Please bring your school ID and wear comfortable clothing.", category: "Vaccination", priority: "high",   image_url: null },
-  { id: 2, title: "Clinic Schedule Update", dept: "College of Computing",   date: "2026-04-18", content: "The university clinic will now be open from 7:00 AM to 6:00 PM starting next week. Emergency services remain available 24/7.",                        category: "General",     priority: "normal", image_url: null },
-];
 
 const DEPARTMENTS = ['All Departments', 'College of Computing', 'College of Engineering', 'College of Arts & Sciences', 'College of Health Sciences', 'College of Education', 'College of Business', 'Faculty', 'Staff'];
 const CATEGORIES = ['General', 'Vaccination', 'Screening', 'Dental', 'Mental Health', 'Emergency', 'Schedule', 'Event'];
@@ -50,6 +45,20 @@ const toBase64 = (file) =>
     reader.readAsDataURL(file);
   });
 
+// ── Get role from localStorage (checks multiple possible keys) ──────────────
+const getRoleFromStorage = () => {
+  const direct = localStorage.getItem('role');
+  if (direct) return direct.toLowerCase();
+  try {
+    const userJson = localStorage.getItem('user');
+    if (userJson) {
+      const parsed = JSON.parse(userJson);
+      if (parsed?.role) return parsed.role.toLowerCase();
+    }
+  } catch (_) {}
+  return null;
+};
+
 const EMPTY_FORM = {
   title:    '',
   content:  '',
@@ -59,8 +68,8 @@ const EMPTY_FORM = {
   location: '',
   contactPerson: '',
   contactEmail:  '',
-  image_url:     null, // For previewing Base64 or holding existing DB URL
-  imageFile:     null, // For the actual File to upload to Supabase
+  image_url:     null,
+  imageFile:     null,
 };
 
 // ============================================================
@@ -85,7 +94,7 @@ const ImageDropZone = ({ value, onChange, onClear }) => {
     if (!file.type.startsWith('image/')) return alert('Please select an image file (JPG, PNG, GIF, WEBP).');
     if (file.size > 5 * 1024 * 1024) return alert('Image must be smaller than 5 MB.');
     const b64 = await toBase64(file);
-    onChange(b64, file); // Pass BOTH the preview and the actual file
+    onChange(b64, file);
   };
 
   const onDrop = (e) => {
@@ -144,11 +153,17 @@ export const Announcements = () => {
   const snackbarTimer           = useRef(null);
 
   // ── Role-based access control ───────────────────────────────────────────────
-  const [userRole, setUserRole] = useState('admin');
+  const [userRole, setUserRole] = useState('');
 
   useEffect(() => {
     const fetchUserRole = async () => {
       try {
+        const storedRole = getRoleFromStorage();
+        if (storedRole) {
+          setUserRole(storedRole);
+          return;
+        }
+
         const token = localStorage.getItem('token');
         if (!token) return;
 
@@ -161,14 +176,14 @@ export const Announcements = () => {
         }
       } catch (err) {
         console.error('Error fetching user role:', err);
+        const storedRole = getRoleFromStorage();
+        if (storedRole) setUserRole(storedRole);
       }
     };
     fetchUserRole();
   }, []);
 
-  const canManage = ['admin', 'nurse'].includes(userRole);
-  const canEdit = canManage;
-  const isReadOnly = userRole === 'dentist' || userRole === 'doctor';
+  const canManage = ['admin', 'administrator', 'nurse'].includes(userRole);
 
   // ── CUSTOM HOOK FOR DRAGGING MOBILE DRAWERS ──
   const useDrawerDrag = (onCloseCallback) => {
@@ -212,20 +227,26 @@ export const Announcements = () => {
   const formDrawer = useDrawerDrag(() => setIsFormModalOpen(false));
   const viewDrawer = useDrawerDrag(() => setIsViewModalOpen(false));
 
+  // ── Fetch Announcements via Supabase ──
   useEffect(() => {
-    const load = async () => {
+    const fetchAnnouncements = async () => {
+      setLoading(true);
       try {
-        const data = await announcementsService.getAllAnnouncements();
-        console.log('[Announcements Component] Received data:', data);
-        setAnnouncements(data && data.length > 0 ? data : initialAnnouncements);
+        const { data, error } = await supabase
+          .from('announcements')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setAnnouncements(data || []);
       } catch (err) {
-        console.log('[Announcements Component] Error, using fallback:', err.message);
-        setAnnouncements(initialAnnouncements);
+        console.error('[Announcements] Error fetching data:', err.message);
+        showSnackbar('Failed to load announcements', 'error');
       } finally {
         setLoading(false);
       }
     };
-    load();
+    fetchAnnouncements();
   }, []);
 
   useEffect(() => {
@@ -250,8 +271,8 @@ export const Announcements = () => {
         category:      target.category      || 'General',
         priority:      target.priority      || 'normal',
         location:      target.location      || '',
-        contactPerson: target.contactPerson || '',
-        contactEmail:  target.contactEmail  || '',
+        contactPerson: target.contact_person|| '',
+        contactEmail:  target.contact_email || '',
         image_url:     target.image_url     || null,
         imageFile:     null,
       });
@@ -264,6 +285,7 @@ export const Announcements = () => {
     setIsFormModalOpen(true);
   };
 
+  // ── Handle Save / Update via Supabase ──
   const handleSave = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
       showSnackbar('Title and content are required', 'error');
@@ -274,48 +296,91 @@ export const Announcements = () => {
     try {
       let finalImageUrl = formData.image_url;
 
-      // Upload file to Supabase if a new file was dropped into the zone
+      // Supabase Storage Image Upload
       if (formData.imageFile) {
-        finalImageUrl = await announcementsService.uploadImage(formData.imageFile);
+        const fileExt = formData.imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('announcements') // Ensure this bucket exists in Supabase
+          .upload(filePath, formData.imageFile);
+
+        if (uploadError) throw new Error('Image upload failed: ' + uploadError.message);
+
+        const { data: publicUrlData } = supabase.storage
+          .from('announcements')
+          .getPublicUrl(filePath);
+
+        finalImageUrl = publicUrlData.publicUrl;
       }
 
+      // Map JS camelCase back to DB snake_case
       const payload = {
-        title:         formData.title.trim(),
-        content:       formData.content.trim(),
-        dept:          formData.dept          || 'All Departments',
-        category:      formData.category      || 'General',
-        priority:      formData.priority      || 'normal',
-        location:      formData.location.trim(),
-        contactPerson: formData.contactPerson.trim(),
-        contactEmail:  formData.contactEmail.trim(),
-        date:          todayIso(),
-        image_url:     finalImageUrl || null,
+        title:          formData.title.trim(),
+        content:        formData.content.trim(),
+        dept:           formData.dept           || 'All Departments',
+        category:       formData.category       || 'General',
+        priority:       formData.priority       || 'normal',
+        location:       formData.location.trim(),
+        contact_person: formData.contactPerson.trim(),
+        contact_email:  formData.contactEmail.trim(),
+        date:           todayIso(),
+        image_url:      finalImageUrl || null,
       };
 
       if (currentEditId) {
-        const updatedDoc = await announcementsService.updateAnnouncement(currentEditId, payload);
-        setAnnouncements(prev => prev.map(a => a.id === currentEditId ? updatedDoc : a));
+        const { data, error } = await supabase
+          .from('announcements')
+          .update(payload)
+          .eq('id', currentEditId)
+          .select();
+
+        if (error) throw error;
+        setAnnouncements(prev => prev.map(a => a.id === currentEditId ? data[0] : a));
         showSnackbar('Announcement updated', 'success');
       } else {
-        const createdDoc = await announcementsService.createAnnouncement(payload);
-        setAnnouncements(prev => [createdDoc, ...prev]);
+        const { data, error } = await supabase
+          .from('announcements')
+          .insert([payload])
+          .select();
+
+        if (error) throw error;
+        setAnnouncements(prev => [data[0], ...prev]);
         showSnackbar('Announcement posted', 'success');
       }
       setIsFormModalOpen(false);
     } catch (error) {
       console.error("Failed to save announcement:", error);
-      showSnackbar(error.message || 'Failed to save announcement to database', 'error');
+      showSnackbar(error.message || 'Failed to save announcement', 'error');
     } finally {
       setFormSaving(false);
     }
   };
 
+  // ── Handle Delete via Supabase ──
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this announcement?')) { setActiveMenuId(null); return; }
-    try { await announcementsService.deleteAnnouncement(id); } catch (_) {}
-    setAnnouncements(prev => prev.filter(a => a.id !== id));
-    setActiveMenuId(null);
-    showSnackbar('Announcement deleted');
+    if (!window.confirm('Delete this announcement?')) {
+      setActiveMenuId(null);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setAnnouncements(prev => prev.filter(a => a.id !== id));
+      showSnackbar('Announcement deleted');
+    } catch (err) {
+      console.error("Failed to delete announcement:", err);
+      showSnackbar('Failed to delete announcement', 'error');
+    } finally {
+      setActiveMenuId(null);
+    }
   };
 
   const handleView = (item) => {
@@ -383,25 +448,37 @@ export const Announcements = () => {
               <div key={item.id} onClick={() => handleView(item)} className="bg-white rounded-xl border border-[#e2e8f0] relative cursor-pointer hover:shadow-md hover:border-[#8aacaa] transition-all overflow-hidden flex flex-row items-stretch">
                 <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${pri.color} pointer-events-none z-10`}></div>
 
-                {/* ── Square Image Container (Left Side) ── */}
                 {item.image_url && (
                   <div className="ml-[3px] shrink-0 w-28 h-28 sm:w-36 sm:h-36 overflow-hidden bg-slate-100 border-r border-[#e2e8f0]">
                     <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                   </div>
                 )}
 
-                {/* ── Text Content (Right Side) ── */}
                 <div className={`flex-1 min-w-0 p-3 sm:p-4 relative flex flex-col justify-center ${!item.image_url ? 'ml-[3px] pl-4 sm:pl-5' : 'pl-3 sm:pl-4'}`}>
 
+                  {/* ── Edit/Delete menu — only for admins/nurses ── */}
                   {canManage && (
                     <div className="absolute top-2.5 right-2 sm:right-3" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)} className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm">
-                        <i className="fa-solid fa-ellipsis"></i>
+                      <button
+                        onClick={() => setActiveMenuId(activeMenuId === item.id ? null : item.id)}
+                        className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm"
+                      >
+                        <span className="text-lg font-bold leading-none mb-1">&#8942;</span>
                       </button>
                       {activeMenuId === item.id && (
                         <div className="absolute right-0 top-9 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-28 py-1">
-                          <button onClick={() => handleOpenForm(item.id)} className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700 flex items-center gap-2"><i className="fa-solid fa-pen-to-square text-[10px]"></i> Edit</button>
-                          <button onClick={() => handleDelete(item.id)} className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600 flex items-center gap-2"><i className="fa-solid fa-trash-can text-[10px]"></i> Delete</button>
+                          <button
+                            onClick={() => handleOpenForm(item.id)}
+                            className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700 flex items-center gap-2"
+                          >
+                            <i className="fa-solid fa-pen-to-square text-[10px]"></i> Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600 flex items-center gap-2"
+                          >
+                            <i className="fa-solid fa-trash-can text-[10px]"></i> Delete
+                          </button>
                         </div>
                       )}
                     </div>
@@ -420,9 +497,9 @@ export const Announcements = () => {
                   <h3 className="text-[#466460] font-bold text-[13px] sm:text-[14px] mb-1 pr-8 leading-snug truncate sm:whitespace-normal sm:line-clamp-2">{item.title}</h3>
 
                   <div className="flex flex-wrap text-[10px] text-slate-400 mb-2 items-center gap-x-3 gap-y-1">
-                    <span><i className="fa-regular fa-calendar mr-1"></i>{formatDate(item.date)}</span>
+                    <span><i className="fa-regular fa-calendar mr-1"></i>{formatDate(item.created_at)}</span>
                     {item.location && <span className="truncate"><i className="fa-solid fa-location-dot mr-1"></i>{item.location}</span>}
-                    {item.contactPerson && <span className="truncate"><i className="fa-solid fa-user mr-1"></i>{item.contactPerson}</span>}
+                    {item.contact_person && <span className="truncate"><i className="fa-solid fa-user mr-1"></i>{item.contact_person}</span>}
                   </div>
 
                   <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.content}</p>
@@ -529,7 +606,6 @@ export const Announcements = () => {
                 {formSaving ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving…</> : <><i className="fa-solid fa-paper-plane"></i> {currentEditId ? 'Save Changes' : 'Post'}</>}
               </button>
             </div>
-
           </div>
         </div>
       )}
@@ -603,22 +679,30 @@ export const Announcements = () => {
               </div>
               <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-1 leading-snug">{viewData.title}</h3>
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-y-1.5 sm:gap-y-1 gap-x-4 text-[11px] sm:text-[10px] text-slate-400 mb-4">
-                <span><i className="fa-regular fa-calendar mr-1 w-3 text-center"></i>{formatDate(viewData.date)}</span>
+                <span><i className="fa-regular fa-calendar mr-1 w-3 text-center"></i>{formatDate(viewData.created_at)}</span>
                 {viewData.location && <span><i className="fa-solid fa-location-dot mr-1 w-3 text-center text-[#e07a5f]"></i>{viewData.location}</span>}
-                {viewData.contactPerson && <span><i className="fa-solid fa-user mr-1 w-3 text-center text-[#466460]"></i>{viewData.contactPerson}</span>}
-                {viewData.contactEmail && <span><i className="fa-solid fa-envelope mr-1 w-3 text-center text-[#466460]"></i>{viewData.contactEmail}</span>}
+                {viewData.contact_person && <span><i className="fa-solid fa-user mr-1 w-3 text-center text-[#466460]"></i>{viewData.contact_person}</span>}
+                {viewData.contact_email && <span><i className="fa-solid fa-envelope mr-1 w-3 text-center text-[#466460]"></i>{viewData.contact_email}</span>}
               </div>
               <div className="border-t border-slate-100 pt-4"><p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
             </div>
 
             <div className="px-5 sm:px-6 py-4 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-2.5 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
               <button onClick={() => setIsViewModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Close</button>
-              <button onClick={() => { setIsViewModalOpen(false); handleOpenForm(viewData.id); }} className="w-full sm:w-auto sm:flex-1 bg-[#e0eceb] text-[#466460] py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-pen-to-square text-[11px]"></i> Edit</button>
+              {/* Edit button in view modal — only for admins/nurses */}
+              {canManage && (
+                <button
+                  onClick={() => { setIsViewModalOpen(false); handleOpenForm(viewData.id); }}
+                  className="w-full sm:w-auto sm:flex-1 bg-[#e0eceb] text-[#466460] py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-pen-to-square text-[11px]"></i> Edit
+                </button>
+              )}
             </div>
-
           </div>
         </div>
       )}
+
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
     </div>
   );

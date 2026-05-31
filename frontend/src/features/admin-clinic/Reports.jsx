@@ -10,7 +10,7 @@ import {
 import { Bar, Doughnut, Line, PolarArea } from 'react-chartjs-2';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-// ✅ REMOVED: import { supabase } from '../../supabase'; — no longer needed here
+import authService from '../../services/auth.service.js';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement,
@@ -74,15 +74,6 @@ const DENTAL_CONDITIONS = [
   { id: 'fair_oral_hygiene', name: 'Fair Oral Hygiene', keywords: ['fair'], category: 'Oral Hygiene', color: '#eab308' },
   { id: 'poor_oral_hygiene', name: 'Poor Oral Hygiene', keywords: ['poor'], category: 'Oral Hygiene', color: '#ef4444' },
 ];
-
-// ─── Helper functions ────────────────────────────────────────────────────────
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    Authorization: token ? `Bearer ${token}` : '',
-  };
-};
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const IconDownload = ({ size = 16, ...props }) => (
@@ -277,7 +268,7 @@ export const Reports = () => {
       setLoading(true);
       setError(null);
 
-      const headers = getAuthHeaders();
+      const headers = await authService.getAuthHeaders();
 
       // Fetch users
       const usersRes = await fetch(`${API_URL}/records`, { headers }).catch(() => null);

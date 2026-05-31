@@ -1,13 +1,13 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\HomePageUsers.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../services/auth.service.js';
 import * as announcementsService from '../../services/announcements.service';
 import { useAppointments } from '../../context/AppointmentContext';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // Lucide React icons
 import {
-  // Outline — UI chrome
   CalendarDays,
   Clock,
   MapPin,
@@ -15,14 +15,12 @@ import {
   Megaphone,
   ChevronRight,
   CalendarX,
-  // Solid-style accents
   BellRing,
   Zap,
   ShieldAlert,
   Activity,
   Droplets,
   Salad,
-  PersonStanding,
   Moon,
   HandMetal,
   ArrowRight,
@@ -77,7 +75,6 @@ const PRIORITY_STRIPE = {
   normal: 'bg-[#466460]',
 };
 
-// Health tips
 const HEALTH_TIPS = [
   { Icon: Droplets,  iconColor: 'text-sky-300',    tip: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
   { Icon: Salad,     iconColor: 'text-emerald-300',tip: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
@@ -152,6 +149,19 @@ const microAnimStyles = `
     70%      { transform: scale(1);    }
   }
 
+  @keyframes ptr-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes loading-bar {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+  }
+
+  .loading-bar-anim {
+    animation: loading-bar 1.2s infinite ease-in-out;
+  }
+
   .icon-wave {
     display: inline-flex;
     transform-origin: 70% 80%;
@@ -204,7 +214,60 @@ const microAnimStyles = `
     background-clip: text;
     animation: shimmer-slide 3s linear infinite;
   }
+
+  [data-spin="true"]  [data-ptr-icon] { display: none;  }
+  [data-spin="true"]  [data-ptr-spin] { display: block; }
+  [data-spin="false"] [data-ptr-icon] { display: block; }
+  [data-spin="false"] [data-ptr-spin] { display: none;  }
 `;
+
+// ── Pull-to-Refresh Indicator ──────────────────────────────────────────────
+
+const PullIndicator = ({ indicatorRef, isRefreshing }) => (
+  <div
+    ref={indicatorRef}
+    data-spin={isRefreshing ? "true" : "false"}
+    style={{
+      overflow:        'hidden',
+      height:          0,
+      opacity:         0,
+      display:         'flex',
+      alignItems:      'center',
+      justifyContent:  'center',
+      flexShrink:      0,
+      transition:      'height 0.2s ease, opacity 0.2s ease',
+    }}
+  >
+    {/* Arrow — rotates 180° when past threshold */}
+    <svg
+      data-ptr-icon
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transition: 'transform 0.2s ease' }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+
+    {/* Spinner — shown while awaiting onRefresh() to resolve */}
+    <svg
+      data-ptr-spin
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      style={{ animation: 'ptr-spin 0.8s linear infinite' }}
+    >
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.2" />
+      <path d="M12 3 a9 9 0 0 1 9 9" />
+    </svg>
+  </div>
+);
 
 // ── Announcement Detail Modal ──────────────────────────────────────────────
 
@@ -330,7 +393,7 @@ const AnnouncementCard = ({ item, onClick, index = 0 }) => {
 const HomePageUsers = () => {
   const navigate    = useNavigate();
   const currentUser = authService.getCurrentUser();
-  const userName = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
+  const userName    = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
   const studentId   = currentUser?.universityId ?? currentUser?.idno ?? currentUser?.idNumber;
 
   const isMissingVaccination      = !currentUser?.vaccinationStatus && !currentUser?.vaccinationHistory;
@@ -339,67 +402,96 @@ const HomePageUsers = () => {
   let pendingAction = null;
   if (isMissingVaccination) {
     pendingAction = {
-      title: "Action Required",
-      desc: "Please update your vaccination history in your profile for campus safety compliance.",
-      btnText: "Update Profile",
-      targetTab: "profile"
+      title:     "Action Required",
+      desc:      "Please update your vaccination history in your profile for campus safety compliance.",
+      btnText:   "Update Profile",
+      targetTab: "profile",
     };
   } else if (isMissingEmergencyContact) {
     pendingAction = {
-      title: "Action Required",
-      desc: "Please add an emergency contact to your profile.",
-      btnText: "Add Contact",
-      targetTab: "profile"
+      title:     "Action Required",
+      desc:      "Please add an emergency contact to your profile.",
+      btnText:   "Add Contact",
+      targetTab: "profile",
     };
   }
 
   const { getPatientAppointments, loadingAppts } = useAppointments();
 
   const [announcements, setAnnouncements] = useState([]);
-  const [loadingAnn, setLoadingAnn]       = useState(true);
-  const [selectedAnn, setSelectedAnn]     = useState(null);
+  const [loadingAnn,    setLoadingAnn]    = useState(true);
+  const [selectedAnn,   setSelectedAnn]   = useState(null);
   const [tipIndex]                        = useState(() => Math.floor(Math.random() * HEALTH_TIPS.length));
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await announcementsService.getAllAnnouncements();
-        const sorted = (data || [])
-          .sort((a, b) => new Date(b.date) - new Date(a.date))
-          .slice(0, 10);
-        setAnnouncements(sorted);
-      } catch (err) {
-        console.error('Failed to load announcements:', err);
-      } finally {
-        setLoadingAnn(false);
-      }
-    };
-    load();
+  // NEW: State for pull-to-refresh
+  const [isRefreshing, setIsRefreshing]   = useState(false);
+
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      const data = await announcementsService.getAllAnnouncements();
+      const sorted = (data || [])
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10);
+      setAnnouncements(sorted);
+    } catch (err) {
+      console.error('Failed to load announcements:', err);
+    } finally {
+      setLoadingAnn(false);
+    }
   }, []);
+
+  useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
+
+  // NEW: Wrapper function to handle the refresh state timing
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadAnnouncements();
+    setIsRefreshing(false);
+  }, [loadAnnouncements]);
+
+  // UPDATE: Pass handleRefresh to the hook
+  const { scrollElRef, indicatorRef, onTouchStart, onTouchMove, onTouchEnd } =
+    usePullToRefresh(handleRefresh);
 
   const studentAppointments = studentId ? getPatientAppointments(studentId) : [];
   const upcomingAppt = studentAppointments.find(a => a.status === 'approved')
                     || studentAppointments.find(a => a.status === 'pending');
 
-  const tip = HEALTH_TIPS[tipIndex];
-
+  const tip       = HEALTH_TIPS[tipIndex];
   const urgentAnn = announcements.find(a => a.priority === 'urgent');
   const latestAnn = announcements[0];
   const pinnedAnn = urgentAnn || latestAnn;
 
   return (
-    <div className="flex flex-col h-full bg-[#f7faf8] pb-16">
+    <div className="flex flex-col h-full bg-[#f7faf8] pb-16 relative">
+
+      {/* NEW: Top linear loading bar indicating PTR is active */}
+      {isRefreshing && (
+        <div className="absolute top-0 left-0 right-0 h-1 z-50 bg-[#eef2f1] overflow-hidden">
+          <div className="h-full bg-[#466460] w-1/3 rounded-full loading-bar-anim"></div>
+        </div>
+      )}
 
       <style>{microAnimStyles}</style>
 
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      {/* ── Scrollable body — PTR listeners live here ── */}
+      <div
+        ref={scrollElRef}
+        className="flex-1 overflow-y-auto p-4 flex flex-col gap-4"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ touchAction: 'pan-x' }}
+      >
+
+        {/* UPDATE: Pass isRefreshing to the indicator */}
+        <PullIndicator indicatorRef={indicatorRef} isRefreshing={isRefreshing} />
 
         {/* ── Welcome Header ── */}
         <div className="flex items-start justify-between mt-2 animate-[slideUp_0.3s_ease_both]">
           <div>
             <h1 className="text-2xl font-bold text-[#1f2d2b] flex items-center gap-2">
               Hello, {userName}
-              {/* Sparkles icon with wave animation */}
               <span className="icon-wave text-[#466460]" aria-hidden="true">
                 <Sparkles size={22} fill="#466460" strokeWidth={1.5} />
               </span>

@@ -1,4 +1,4 @@
-//C:\Users\HP\MediTrack\features\consultations\consultations.service.js
+// C:\Users\HP\MediTrack\features\consultations\consultations.service.js
 const supabase = require('../../configs/database');
 
 exports.getAllConsultations = async (consultationType = null, role = null) => {
@@ -39,27 +39,96 @@ exports.getConsultationsByPatient = async (patientId) => {
 };
 
 exports.createConsultation = async (consultationData) => {
-  const newDoc = {
-    ...consultationData,
-    status: 'active',
-    created_at: new Date().toISOString(),
+  const { patient_id, consultation_type } = consultationData;
+
+  console.log('[createConsultation] Searching for:', { patient_id, consultation_type });
+
+  // ── STEP 1: Return existing active session immediately ────────────────
+  const { data: activeRows, error: activeError } = await supabase
+    .from('consultations')
+    .select('*')
+    .eq('patient_id', patient_id)
+    .eq('consultation_type', consultation_type)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (activeError) throw new Error(activeError.message);
+
+  if (activeRows?.[0]) {
+    console.log(`[createConsultation] Already active, returning: ${activeRows[0].id}`);
+    return activeRows[0];
+  }
+
+  // ── STEP 2: Reactivate the most recent ended session ──────────────────
+  const { data: endedRows, error: endedError } = await supabase
+    .from('consultations')
+    .select('*')
+    .eq('patient_id', patient_id)
+    .eq('consultation_type', consultation_type)
+    .eq('status', 'ended')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (endedError) throw new Error(endedError.message);
+
+  const existingChat = endedRows?.[0] || null;
+
+  if (existingChat) {
+    console.log(`[createConsultation] Reactivating ended session: ${existingChat.id}`);
+
+    const { data: updated, error: updateError } = await supabase
+      .from('consultations')
+      .update({
+        status:   'active',
+        ended_at: null,
+      })
+      .eq('id', existingChat.id)
+      .eq('status', 'ended')
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('[createConsultation] Update error:', updateError);
+      throw new Error(updateError.message);
+    }
+
+    return updated || existingChat;
+  }
+
+  // ── STEP 3: No history — create a brand new session ───────────────────
+  // FIX: Only insert columns that exist in public.consultations:
+  //   id (auto), consultation_type, created_by, patient_id,
+  //   patient_name, status, created_at, ended_at
+  // The frontend also sends patient_role — that column does NOT exist
+  // in the table, so spreading consultationData caused the 500.
+  console.log(`[createConsultation] Creating new thread for patient: ${patient_id}`);
+
+  const insertPayload = {
+    patient_id,
+    consultation_type,
+    patient_name: consultationData.patient_name || null,
+    created_by:   consultationData.created_by   || null,
+    status:       'active',
+    ended_at:     null,
+    created_at:   new Date().toISOString(),
   };
 
   const { data, error } = await supabase
     .from('consultations')
-    .insert(newDoc)
+    .insert(insertPayload)
     .select()
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[createConsultation] Insert error:', error);
+    throw new Error(error.message);
+  }
   return data;
 };
 
 exports.updateConsultation = async (id, data) => {
-  // Clone the data so we don't mutate the original request
   const updateData = { ...data };
-
-  // Remove updated_at if the frontend accidentally sends it, since it's not in the schema
   delete updateData.updated_at;
 
   const { data: result, error } = await supabase
@@ -74,11 +143,10 @@ exports.updateConsultation = async (id, data) => {
 };
 
 exports.endConsultation = async (id) => {
-  return this.updateConsultation(id, { status: 'ended', ended_at: new Date().toISOString() });
-};
-
-exports.endConsultation = async (id) => {
-  return this.updateConsultation(id, { status: 'ended', ended_at: new Date().toISOString() });
+  return exports.updateConsultation(id, {
+    status:   'ended',
+    ended_at: new Date().toISOString(),
+  });
 };
 
 exports.deleteConsultation = async (id) => {
@@ -106,12 +174,11 @@ exports.getMessagesByConsultationId = async (consultationId) => {
 exports.sendMessage = async (consultationId, messageData) => {
   const newMessage = {
     consultation_id: consultationId,
-    message: messageData.text || messageData.message,
-    sender_id: messageData.sender_id,
-    sender_name: messageData.sender_name,
-    sender_role: messageData.sender_role,
-    is_bot: messageData.is_bot || false,
-    created_at: new Date().toISOString(),
+    message:         messageData.text || messageData.message,
+    sender_id:       messageData.sender_id   || null,
+    sender_name:     messageData.sender_name || null,
+    sender_role:     messageData.sender_role || null,
+    created_at:      new Date().toISOString(),
   };
 
   const { data, error } = await supabase
@@ -125,12 +192,22 @@ exports.sendMessage = async (consultationId, messageData) => {
 };
 
 // Presence
-exports.setUserPresence = async (userId, status = 'online') => {
+exports.setUserPresence = async (authUid, status = 'online') => {
+  const { data: publicUser, error: lookupError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('uid', authUid)
+    .single();
+
+  if (lookupError || !publicUser) {
+    throw new Error(`User not found in public.users for uid: ${authUid}`);
+  }
+
   const { data, error } = await supabase
     .from('presence')
     .upsert({
-      user_id: userId,
-      status: status,
+      user_id:   publicUser.id,
+      status,
       last_seen: new Date().toISOString(),
     }, { onConflict: 'user_id' })
     .select()

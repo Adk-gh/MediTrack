@@ -239,11 +239,7 @@ export default function ProfileUsers({ onLogout }) {
 
     fetchProfile();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      fetchProfile();
-    });
-
-    return () => subscription.unsubscribe();
+  
   }, []);
 
   const fullName = [
@@ -467,7 +463,7 @@ export default function ProfileUsers({ onLogout }) {
       </Card>
 
       {/* ── Health Documents ── */}
-      <Card>
+      {!isStudent && <Card>
         <SectionHeader label="Health Documents" />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #edf3f0' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -493,7 +489,7 @@ export default function ProfileUsers({ onLogout }) {
         </div>
         <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #c4dbd8' }} />
         <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
-      </Card>
+      </Card>}
 
       {/* ── Settings Button → navigates to /settings ── */}
       <button

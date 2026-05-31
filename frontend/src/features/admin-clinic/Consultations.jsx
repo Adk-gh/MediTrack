@@ -622,6 +622,9 @@ export const Consultations = () => {
                       </div>
                     );
                   }
+                  if (['system', 'bot', 'triage'].includes(item.sender_role?.toLowerCase())) {
+                    return null;
+                  }
                   const isClinic = item.sender === 'clinic';
                   return (
                     <div key={item.id} className={`flex flex-col ${isClinic ? 'items-end' : 'items-start'}`}>

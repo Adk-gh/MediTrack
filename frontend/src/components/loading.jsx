@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\frontend\src\components\loading.jsx
 import React, { useEffect, useRef } from "react";
 
 const styles = `

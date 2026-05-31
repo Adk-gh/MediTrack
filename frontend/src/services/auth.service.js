@@ -1,8 +1,21 @@
 // C:\Users\HP\MediTrack\frontend\src\services\auth.service.js
+
+// Import your initialized Supabase client
+// (If your supabase.js uses 'export default supabase', change the brackets to: import supabase from '../supabase')
+import { supabase } from '../supabase';
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
+// 1. Made ASYNC: Asks Supabase for the active session (auto-refreshes if expired)
+const getAuthHeaders = async () => {
+  const { data: { session }, error } = await supabase.auth.getSession();
+
+  if (error) {
+    console.error("Error fetching Supabase session:", error.message);
+  }
+
+  const token = session?.access_token;
+
   return {
     "Content-Type": "application/json",
     Authorization: token ? `Bearer ${token}` : "",
@@ -20,11 +33,13 @@ const register = async (formData) => {
 };
 
 const login = async ({ email, password }) => {
+  // 1. Authenticate via your custom backend first
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
+
   const data = await res.json();
   console.log('Login response:', res.status, data);
   if (!res.ok) throw new Error(data.message);
@@ -39,10 +54,23 @@ const login = async ({ email, password }) => {
     const suffix = user.suffix || '';
     const name = user.name || `${firstName} ${lastName}`.trim();
 
+    // 2. Establish the Supabase session on the frontend
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: user.token || user.access_token,
+      refresh_token: user.refreshToken || user.refresh_token
+    });
+
+    if (sessionError) {
+      console.error("Failed to set Supabase session on frontend:", sessionError.message);
+    }
+
+    // 3. Save purely UI-related user data to localStorage
+    // Notice we no longer manually save the 'token' or 'refresh_token' to localStorage!
+    // Supabase handles secure token storage automatically behind the scenes.
     localStorage.setItem(
       "user",
       JSON.stringify({
-        uid:                user.id || user.uid, // Supabase PK is usually 'id'
+        uid:                user.id || user.uid,
         name:               name,
         firstName:          firstName,
         lastName:           lastName,
@@ -50,38 +78,26 @@ const login = async ({ email, password }) => {
         suffix:             suffix,
         role:               user.role,
         email:              user.email,
-
-        // Ensure we check for the new Supabase snake_case columns!
         universityId:       user.university_id || user.universityId || '',
         department:         user.department || user.dept || '',
         program:            user.program || user.classification || '',
-        section:            user.section || user.year_level || '', // Added section!
-
+        section:            user.section || user.year_level || '',
         vaccinationStatus:  user.vaccination_status || user.vaccinationStatus,
         vaccinationHistory: user.vaccination_history || user.vaccinationHistory,
         emergencyContact:   user.emergency_contact || user.emergencyContact,
         isProfileSetup:     user.is_profile_setup || user.isProfileSetup || false,
-
-        // Preserve tokens inside the object if other components rely on them
-        token:              user.token || user.access_token,
-        refreshToken:       user.refreshToken || user.refresh_token
       })
     );
-
-    // ✅ token is already the Supabase JWT — save it for session restore
-    localStorage.setItem("token", user.token || user.access_token);
-
-    // ✅ Save refresh token so Supabase can renew the session automatically
-    if (user.refreshToken || user.refresh_token) {
-      localStorage.setItem("refresh_token", user.refreshToken || user.refresh_token);
-    }
   }
   return data;
 };
 
 const getProfile = async () => {
+  // Await the headers to ensure we have a fresh, valid token from Supabase
+  const headers = await getAuthHeaders();
+
   const res = await fetch(`${API_URL}/users/profile`, {
-    headers: getAuthHeaders(),
+    headers: headers,
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || "Failed to fetch profile");
@@ -94,10 +110,15 @@ const getCurrentUser = () => {
   return null;
 };
 
-const logout = () => {
+const logout = async () => {
+  // Clear the custom user data from UI state
   localStorage.removeItem("user");
-  localStorage.removeItem("token");
-  localStorage.removeItem("refresh_token"); // ✅ clear refresh token on logout
+
+  // Have Supabase securely destroy the session tokens locally and on the server
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error("Error signing out of Supabase:", error.message);
+  }
 };
 
 const checkIdExists = async (universityId) => {
@@ -119,4 +140,5 @@ export default {
   getCurrentUser,
   logout,
   checkIdExists,
+  getAuthHeaders // Exported so other API services can use await authService.getAuthHeaders()
 };

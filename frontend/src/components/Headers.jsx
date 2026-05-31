@@ -957,7 +957,6 @@ const ROLE_NAV_CONFIG = {
     { to: '/audit-logs', label: 'Audit Logs' },
     { to: '/announcements', label: 'Announcement Management' },
     { to: '/users', label: 'User Management' },
-    { to: '/ocr-settings', label: 'OCR Settings' },
     { to: '/reports', label: 'Reports' },
   ],
   doctor: [
@@ -972,6 +971,7 @@ const ROLE_NAV_CONFIG = {
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/records', label: 'Records' },
     { to: '/appointments', label: 'Appointments' },
+    { to: '/dental-approvals', label: 'Approvals' },
     { to: '/announcements', label: 'Announcements' },
     { to: '/consultations', label: 'Consultation' },
   ],
@@ -1127,6 +1127,7 @@ const ROLE_MOBILE_NAV_CONFIG = {
     { id: 'dashboard', label: 'Home', icon: HomeIcon },
     { id: 'records', label: 'Records', icon: RecordsIcon },
     { id: 'appointments', label: 'Appointments', icon: CalendarIcon },
+    { id: 'dentalApprovals', label: 'Dental Exams', icon: CalendarIcon },
     { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
     { id: 'consultations', label: 'Consultations', icon: ConsultIcon },
   ],

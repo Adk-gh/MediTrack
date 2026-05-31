@@ -20,6 +20,11 @@ const AppointmentIcon = () => (
     <line x1="3" y1="10" x2="21" y2="10" />
   </svg>
 );
+const ConsultationIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
 
 const CheckIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
@@ -61,6 +66,10 @@ const getNotificationIcon = (type) => {
     case 'announcement':
       return AnnouncementIcon;
     case 'approval':
+      return CheckIcon;
+      case 'consultation':
+      return AppointmentIcon;
+    case 'consultation_ended':
       return CheckIcon;
     default:
       return BellIcon;

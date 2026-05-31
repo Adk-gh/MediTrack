@@ -140,7 +140,6 @@ const DEFAULT_MOBILE_NAV = [
   { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
   { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
   { id: 'users',         label: 'Users',         Icon: NavUsersIcon },
-  { id: 'ocrSettings',   label: 'OCR Settings',  Icon: NavOcrIcon },
   { id: 'reports',       label: 'Reports',       Icon: NavReportsIcon },
 ];
 

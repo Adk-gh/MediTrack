@@ -121,10 +121,16 @@ const MOBILE_NAV = [
 ];
 
 // ─── Header Profile Dropdown ──────────────────────────────────────────────────
-function ProfileDropdown({ userName, onLogout }) {
+function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+
+  // Notify parent whenever modal visibility changes
+  useEffect(() => {
+    if (onLogoutModalChange) onLogoutModalChange(showLogoutModal);
+  }, [showLogoutModal]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -138,56 +144,135 @@ function ProfileDropdown({ userName, onLogout }) {
   }, []);
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      {/* Sleek downward chevron button instead of the initials circle */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none flex items-center justify-center"
-        aria-label="Profile Menu"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M7 10l5 5 5-5z" />
-        </svg>
-      </button>
+    <>
+      <div className="relative" ref={dropdownRef}>
+        {/* Sleek downward chevron button */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none flex items-center justify-center"
+          aria-label="Profile Menu"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 10l5 5 5-5z" />
+          </svg>
+        </button>
 
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 py-2 z-50 animate-[fadeIn_0.15s_ease-out]">
-          <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Signed in as</p>
-            <p className="text-xs font-bold text-slate-800 truncate">{userName || 'Student'}</p>
+        {isOpen && (
+          <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 py-2 z-[10000] animate-[fadeIn_0.15s_ease-out]">
+            <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Signed in as</p>
+              <p className="text-xs font-bold text-slate-800 truncate">{userName || 'Student'}</p>
+            </div>
+
+            {/* Settings Button */}
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                navigate('/student/settings');
+              }}
+              className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              Settings
+            </button>
+
+            {/* Sign Out Button — opens confirmation modal */}
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setShowLogoutModal(true);
+              }}
+              className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              Sign Out
+            </button>
           </div>
+        )}
+      </div>
 
-          {/* Settings Button */}
-          <button
-            onClick={() => {
-              setIsOpen(false);
-              navigate('/student/settings');
+      {/* ── Sign Out Confirmation Modal ── */}
+      {showLogoutModal && (
+        <div
+          onClick={(e) => e.target === e.currentTarget && setShowLogoutModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(3px)',
+            zIndex: 999999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              padding: '36px 32px',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 320,
+              textAlign: 'center',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
             }}
-            className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            Settings
-          </button>
-
-          {/* Sign Out Button */}
-          <button
-            onClick={() => {
-              setIsOpen(false);
-              onLogout();
-            }}
-            className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            Sign Out
-          </button>
+            <h3 style={{ margin: '0 0 8px', color: '#1a1a1a', fontSize: 20, fontWeight: 800 }}>
+              Confirm Sign Out
+            </h3>
+            <p style={{ margin: '0 0 28px', color: '#6b7280', fontSize: 14 }}>
+              Are you sure you want to log out?
+            </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                style={{
+                  flex: 1,
+                  padding: '13px',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                onMouseLeave={e => e.currentTarget.style.background = '#f1f5f9'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowLogoutModal(false); onLogout(); }}
+                style={{
+                  flex: 1,
+                  padding: '13px',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: '#e53e3e',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#c53030'}
+                onMouseLeave={e => e.currentTarget.style.background = '#e53e3e'}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
 // ─── Floating Pill Nav ────────────────────────────────────────────────────────
-function MobilePillNav({ activeTab, onTabChange }) {
+function MobilePillNav({ activeTab, onTabChange, hidden }) {
   const [vw, setVw] = useState(window.innerWidth);
 
   useEffect(() => {
@@ -205,6 +290,9 @@ function MobilePillNav({ activeTab, onTabChange }) {
   const labelSz= Math.max(9, Math.round(10 * scale));
   const popUp  = Math.round(24 * scale);
   const bottomOffset = Math.round(20 * scale);
+
+  // When a modal is open, render nothing so the nav doesn't bleed through
+  if (hidden) return null;
 
   return (
     <nav
@@ -420,6 +508,8 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
 
 // ─── Mobile shell ─────────────────────────────────────────────────────────────
 function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout }) {
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+
   return (
     <div
       style={{
@@ -431,11 +521,15 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
         fontFamily: "sans-serif",
       }}
     >
-      <header className="bg-transparent px-5 py-3 flex items-center justify-between z-10 flex-shrink-0">
+      <header className="bg-transparent px-5 py-3 flex items-center justify-between relative z-[1000] flex-shrink-0">
         <img src="/logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
         <div className="flex items-center gap-1">
           <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
-          <ProfileDropdown userName={userName} onLogout={onLogout} />
+          <ProfileDropdown
+            userName={userName}
+            onLogout={onLogout}
+            onLogoutModalChange={setLogoutModalOpen}
+          />
         </div>
       </header>
 
@@ -452,7 +546,12 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
         <PreviewModal record={preview} onClose={onClosePreview} isDesktop={false} />
       </div>
 
-      <MobilePillNav activeTab={activeTab} onTabChange={onTabChange} />
+      {/* hidden prop unmounts the pill nav while the logout modal is open */}
+      <MobilePillNav
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+        hidden={logoutModalOpen}
+      />
     </div>
   );
 }

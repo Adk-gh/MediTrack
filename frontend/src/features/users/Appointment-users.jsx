@@ -1,6 +1,7 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Appointment-users.jsx
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ── Define API URL from environment variables ─────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -41,6 +42,62 @@ const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
   };
 });
 
+// ── PTR spinner keyframe (self-contained, injected once) ──────────────────────
+const ptrStyles = `
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+  [data-spin="true"]  [data-ptr-icon] { display: none;  }
+  [data-spin="true"]  [data-ptr-spin] { display: block; }
+  [data-spin="false"] [data-ptr-icon] { display: block; }
+  [data-spin="false"] [data-ptr-spin] { display: none;  }
+`;
+
+// ── Pull-to-Refresh Indicator ─────────────────────────────────────────────────
+const PullIndicator = ({ indicatorRef }) => (
+  <div
+    ref={indicatorRef}
+    data-spin="false"
+    style={{
+      overflow:       'hidden',
+      height:         0,
+      opacity:        0,
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'center',
+      flexShrink:     0,
+      transition:     'height 0.2s ease, opacity 0.2s ease',
+    }}
+  >
+    {/* Arrow — rotates 180° when past threshold */}
+    <svg
+      data-ptr-icon
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transition: 'transform 0.2s ease' }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+
+    {/* Spinner — shown while fetchAppointments() is awaiting */}
+    <svg
+      data-ptr-spin
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      style={{ animation: 'ptr-spin 0.8s linear infinite' }}
+    >
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.2" />
+      <path d="M12 3 a9 9 0 0 1 9 9" />
+    </svg>
+  </div>
+);
+
 // ── Read the logged-in user from localStorage ─────────────────────────────────
 function useCurrentPatient() {
   return useMemo(() => {
@@ -52,30 +109,24 @@ function useCurrentPatient() {
       const buildFullName = (u) => {
         if (u.name && u.name !== '—')         return u.name;
         if (u.fullName && u.fullName !== '—') return u.fullName;
-
-        const first  = u.first_name || u.firstName || '';
+        const first  = u.first_name  || u.firstName  || '';
         const middle = u.middle_name || u.middleName || '';
-        const last   = u.last_name || u.lastName || '';
-
-        const full = [first, middle, last].filter(Boolean).join(' ').trim();
+        const last   = u.last_name   || u.lastName   || '';
+        const full   = [first, middle, last].filter(Boolean).join(' ').trim();
         return full || '—';
       };
 
       const role = user.role || user.type || 'student';
 
       return {
-        uid:           user.id || user.uid || null,
-        token:         user.token || localStorage.getItem('token') || null,
-        name:          buildFullName(user),
-
-        // Aggressively check every possible ID key
-        idno:          user.university_id || user.universityId || user.student_id || user.idno || user.idNumber || '—',
-        type:          role,
-
-        // Aggressively check the missing demographic keys
-        dept:          user.department || user.dept || user.college || '—',
-        prog:          user.program || user.classification || user.student_classification || user.course || '—',
-        section:       user.section || user.year_level || user.yearSection || '—',
+        uid:     user.id || user.uid || null,
+        token:   user.token || localStorage.getItem('token') || null,
+        name:    buildFullName(user),
+        idno:    user.university_id || user.universityId || user.student_id || user.idno || user.idNumber || '—',
+        type:    role,
+        dept:    user.department || user.dept    || user.college || '—',
+        prog:    user.program    || user.classification || user.student_classification || user.course || '—',
+        section: user.section    || user.year_level     || user.yearSection || '—',
       };
     } catch {
       return null;
@@ -89,7 +140,7 @@ export default function AppointmentUsers() {
 
   // ── Database State ──
   const [myAppointments, setMyAppointments] = useState([]);
-  const [loadingAppts, setLoadingAppts] = useState(true);
+  const [loadingAppts,   setLoadingAppts]   = useState(true);
 
   // ── Modal / Form State ──
   const [showModal,   setShowModal]   = useState(false);
@@ -101,17 +152,16 @@ export default function AppointmentUsers() {
   const [selectedPurposes, setSelectedPurposes] = useState([]);
   const [otherPurpose,     setOtherPurpose]     = useState('');
 
-  // ── Fetch Private Appointments from Express API ───────────────────────────
+  // ── Fetch appointments — extracted so PTR can call it directly ────────────
   const fetchAppointments = useCallback(async () => {
     if (!currentPatient?.uid) return;
     try {
       setLoadingAppts(true);
-      // FIX: Use API_URL instead of localhost
       const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
         headers: {
           'Authorization': `Bearer ${currentPatient.token}`,
-          'x-user-uid': currentPatient.uid
-        }
+          'x-user-uid':    currentPatient.uid,
+        },
       });
       if (response.data.success) {
         setMyAppointments(response.data.data);
@@ -123,11 +173,13 @@ export default function AppointmentUsers() {
     }
   }, [currentPatient]);
 
-  useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
+  useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
 
-  // ── Guard: Profile check ──
+  // ── Pull-to-refresh — re-runs fetchAppointments on release ───────────────
+  const { scrollElRef, indicatorRef, onTouchStart, onTouchMove, onTouchEnd } =
+    usePullToRefresh(fetchAppointments);
+
+  // ── Guard: Profile check ──────────────────────────────────────────────────
   if (!currentPatient) {
     return (
       <div className="flex flex-col h-full bg-[#f7faf8] items-center justify-center text-[#9bb5a5] text-[12px]">
@@ -137,7 +189,6 @@ export default function AppointmentUsers() {
     );
   }
 
-  // ── Guard constraint check ──
   const hasActiveAppointment = myAppointments.some(
     (appt) => appt.status?.toLowerCase() === 'pending' || appt.status?.toLowerCase() === 'approved'
   );
@@ -160,38 +211,26 @@ export default function AppointmentUsers() {
     selectedPurposes.length > 0 &&
     !(selectedPurposes.includes('Other') && !otherPurpose.trim());
 
-  // ── Submit Request to Node/Express Backend ───────────────────────────────
   const handleSubmit = async () => {
     const parts = selectedPurposes.map(p =>
       p === 'Other' && otherPurpose.trim() ? `Other: ${otherPurpose.trim()}` : p
     );
     const reason = parts.join(', ');
 
-    if (!canSubmit) {
-      setSubmitError('Please complete all required fields.');
-      return;
-    }
+    if (!canSubmit) { setSubmitError('Please complete all required fields.'); return; }
 
     setSubmitting(true);
     setSubmitError('');
 
-    // Auto-resolve primary service categorizations
     const serviceType = selectedPurposes.includes('Dental') ? 'Dental Examination' : 'Medical Consultation';
-
-    const payload = {
-      patientName: currentPatient.name,
-      serviceType: serviceType,
-      reason: reason,
-      // Date and time are intentionally omitted for pending requests
-    };
+    const payload     = { patientName: currentPatient.name, serviceType, reason };
 
     try {
-      // FIX: Use API_URL instead of localhost
       const response = await axios.post(`${API_URL}/appointments`, payload, {
         headers: {
           'Authorization': `Bearer ${currentPatient.token}`,
-          'x-user-uid': currentPatient.uid
-        }
+          'x-user-uid':    currentPatient.uid,
+        },
       });
 
       if (response.data.success) {
@@ -199,7 +238,7 @@ export default function AppointmentUsers() {
         setSubmitted(true);
         setSelectedPurposes([]);
         setOtherPurpose('');
-        fetchAppointments(); // Instantly update view lists
+        fetchAppointments();
         setTimeout(() => setSubmitted(false), 4000);
       }
     } catch (err) {
@@ -210,28 +249,23 @@ export default function AppointmentUsers() {
     }
   };
 
-  // Dynamically format the date label based on status
   const formatApptDate = (appt) => {
-    if (!appt.year || !appt.time) {
-       return 'Awaiting schedule from clinic';
-    }
-    const slotInfo = HOUR_SLOTS.find(s => s.value === appt.time || s.label.includes(appt.time));
+    if (!appt.year || !appt.time) return 'Awaiting schedule from clinic';
+    const slotInfo  = HOUR_SLOTS.find(s => s.value === appt.time || s.label.includes(appt.time));
     const timeLabel = slotInfo ? slotInfo.label : appt.time;
-
-    let prefix = 'Scheduled for';
     const statusStr = appt.status?.toLowerCase();
-
+    let prefix = 'Scheduled for';
     if (statusStr === 'pending') prefix = 'Requested for';
-    if (statusStr === 'missed') prefix = 'Missed on';
-    if (statusStr === 'done') prefix = 'Completed on';
-
+    if (statusStr === 'missed')  prefix = 'Missed on';
+    if (statusStr === 'done')    prefix = 'Completed on';
     return `${prefix}: ${MONTHS[appt.month - 1]} ${appt.day}, ${appt.year} at ${timeLabel}`;
   };
 
   return (
     <div className="flex flex-col h-full bg-[#f7faf8] overflow-hidden">
+      <style>{ptrStyles}</style>
 
-      {/* Success alert element */}
+      {/* Success alert */}
       {submitted && (
         <div className="shrink-0 mx-4 mt-3 px-4 py-2.5 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl
           text-[12px] font-semibold text-[#3B6D11] flex items-center gap-2 animate-fadeIn">
@@ -240,10 +274,9 @@ export default function AppointmentUsers() {
         </div>
       )}
 
-      {/* Content Wrapper */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        {/* Upper Dashboard Actions Section */}
+        {/* Top action bar — not part of the scroll area, so PTR won't fire here */}
         <div className="shrink-0 p-5 pb-3 flex flex-col gap-4">
           <div
             className="flex justify-end"
@@ -267,8 +300,18 @@ export default function AppointmentUsers() {
           <div className="text-[13px] font-bold text-[#1a2e22]">My Appointment Requests</div>
         </div>
 
-        {/* Scrollable Content History list */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-5">
+        {/* ── Scrollable list — PTR listeners live here ── */}
+        <div
+          ref={scrollElRef}
+          className="flex-1 overflow-y-auto min-h-0 px-5 pb-5"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          style={{ touchAction: 'pan-x' }}
+        >
+          {/* PTR indicator — must be first child */}
+          <PullIndicator indicatorRef={indicatorRef} />
+
           {loadingAppts ? (
             <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
               <i className="fa-solid fa-spinner fa-spin block text-2xl mb-2 text-[#c6dfd0]"></i>
@@ -284,19 +327,17 @@ export default function AppointmentUsers() {
               {myAppointments.map((appt) => {
                 const style      = STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending;
                 const statusStr  = appt.status?.toLowerCase();
-                const isPending  = statusStr === 'pending';
                 const isApproved = statusStr === 'approved';
                 const isMissed   = statusStr === 'missed';
                 const isDone     = statusStr === 'done';
                 const stampDate  = appt.created_at || appt.bookedAt || new Date();
 
-                // Dynamic Classes based on status
-                let cardClasses = 'bg-[#fffdf7] border-[#f0c070]'; // default pending
+                let cardClasses = 'bg-[#fffdf7] border-[#f0c070]';
                 if (isApproved) cardClasses = 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]';
                 if (isMissed)   cardClasses = 'bg-[#fffbeb] border-[#fde68a]';
                 if (isDone)     cardClasses = 'bg-[#f8fafc] border-[#e2e8f0]';
 
-                let timeColor = 'text-[#b07020]'; // default pending
+                let timeColor = 'text-[#b07020]';
                 if (isApproved) timeColor = 'text-[#3B6D11]';
                 if (isMissed)   timeColor = 'text-[#b45309]';
                 if (isDone)     timeColor = 'text-[#64748b]';
@@ -332,7 +373,7 @@ export default function AppointmentUsers() {
         </div>
       </div>
 
-      {/* ── Submission Request Modal Dialog ── */}
+      {/* ── Submission Request Modal ── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6">
           <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]">
@@ -343,29 +384,17 @@ export default function AppointmentUsers() {
             </div>
 
             <div className="p-6 flex flex-col gap-5 overflow-y-auto flex-1">
-             {/* Profile Context Banner */}
               <div className="bg-[#f4f8f7] border border-[#d0dedd] rounded-2xl px-4 py-3">
                 <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">Booking as</div>
                 <div className="text-[13px] font-semibold text-[#1a2e22]">{currentPatient.name}</div>
-
                 <div className="text-[11px] text-[#6b8577] mt-0.5 flex flex-wrap gap-1">
                   <span className="font-medium">{currentPatient.idno !== '—' ? currentPatient.idno : 'ID Not Set'}</span>
-
-                  {currentPatient.prog && currentPatient.prog !== '—' && (
-                    <><span>·</span><span>{currentPatient.prog}</span></>
-                  )}
-
-                  {currentPatient.dept && currentPatient.dept !== '—' && (
-                    <><span>·</span><span>{currentPatient.dept}</span></>
-                  )}
-
-                  {currentPatient.section && currentPatient.section !== '—' && (
-                    <><span>·</span><span>Sec {currentPatient.section}</span></>
-                  )}
+                  {currentPatient.prog    && currentPatient.prog    !== '—' && <><span>·</span><span>{currentPatient.prog}</span></>}
+                  {currentPatient.dept    && currentPatient.dept    !== '—' && <><span>·</span><span>{currentPatient.dept}</span></>}
+                  {currentPatient.section && currentPatient.section !== '—' && <><span>·</span><span>Sec {currentPatient.section}</span></>}
                 </div>
               </div>
 
-              {/* Purpose Matrix Grid */}
               <div className="flex flex-col gap-2">
                 <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">
                   Purpose <span className="normal-case font-normal text-[#9bb5a5]">* select all that apply</span>
@@ -392,14 +421,8 @@ export default function AppointmentUsers() {
                             </svg>
                           )}
                         </span>
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          value={p}
-                          checked={checked}
-                          onChange={() => !submitting && togglePurpose(p)}
-                          disabled={submitting}
-                        />
+                        <input type="checkbox" className="sr-only" value={p} checked={checked}
+                          onChange={() => !submitting && togglePurpose(p)} disabled={submitting} />
                         {p}
                       </label>
                     );
@@ -418,7 +441,6 @@ export default function AppointmentUsers() {
                 )}
               </div>
 
-              {/* Informational Warning Block */}
               <div className="flex items-start gap-2.5 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">
                 <i className="fa-solid fa-circle-info mt-[1px] shrink-0 text-[13px]"></i>
                 <span>After submitting, the clinic staff will review your request and assign an appointment date and time for you. You will see it confirmed here once approved.</span>
@@ -432,20 +454,13 @@ export default function AppointmentUsers() {
               )}
             </div>
 
-            {/* Modal Controls Actions Footer */}
             <div className="flex gap-3 px-6 py-4 border-t border-[#ddeee5] bg-white flex-shrink-0">
-              <button
-                onClick={closeModal}
-                disabled={submitting}
-                className="flex-1 bg-transparent border border-[#ddeee5] py-2.5 rounded-[40px] font-bold text-[12px] text-[#6b8577] cursor-pointer hover:bg-[#f0f5f4] hover:border-[#9bb5a5] transition-colors disabled:opacity-40"
-              >
+              <button onClick={closeModal} disabled={submitting}
+                className="flex-1 bg-transparent border border-[#ddeee5] py-2.5 rounded-[40px] font-bold text-[12px] text-[#6b8577] cursor-pointer hover:bg-[#f0f5f4] hover:border-[#9bb5a5] transition-colors disabled:opacity-40">
                 Cancel
               </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !canSubmit}
-                className="flex-1 bg-[#466460] border-none py-2.5 rounded-[40px] font-bold text-[12px] text-white cursor-pointer hover:bg-[#364e4a] disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
-              >
+              <button onClick={handleSubmit} disabled={submitting || !canSubmit}
+                className="flex-1 bg-[#466460] border-none py-2.5 rounded-[40px] font-bold text-[12px] text-white cursor-pointer hover:bg-[#364e4a] disabled:opacity-40 transition-all flex items-center justify-center gap-1.5">
                 {submitting ? <><i className="fa-solid fa-spinner fa-spin text-[10px]"></i> Saving…</> : 'Submit Request'}
               </button>
             </div>
@@ -455,4 +470,4 @@ export default function AppointmentUsers() {
       )}
     </div>
   );
-}
+} 

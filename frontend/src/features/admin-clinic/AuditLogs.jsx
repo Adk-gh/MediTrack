@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabase';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ACTIVITY_TYPES = [
   { value: 'all', label: 'All Activities' },
@@ -10,18 +8,22 @@ const ACTIVITY_TYPES = [
   { value: 'user', label: 'User Management' },
   { value: 'appointment', label: 'Appointments' },
   { value: 'examination', label: 'Examinations' },
+  { value: 'ocr', label: 'OCR Processing' },
   { value: 'system', label: 'System' },
 ];
 
 const ACTION_COLORS = {
-  create:  { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'fa-plus' },
-  read:    { bg: 'bg-blue-100',   text: 'text-blue-700',   icon: 'fa-eye' },
-  update:  { bg: 'bg-amber-100',  text: 'text-amber-700',  icon: 'fa-pen' },
-  delete:  { bg: 'bg-red-100',    text: 'text-red-700',    icon: 'fa-trash' },
-  login:   { bg: 'bg-purple-100', text: 'text-purple-700', icon: 'fa-right-to-bracket' },
-  logout:  { bg: 'bg-slate-100',  text: 'text-slate-600',  icon: 'fa-right-from-bracket' },
-  approve: { bg: 'bg-teal-100',   text: 'text-teal-700',   icon: 'fa-check' },
-  reject:  { bg: 'bg-orange-100', text: 'text-orange-700', icon: 'fa-xmark' },
+  create:       { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'fa-plus' },
+  read:         { bg: 'bg-blue-100',   text: 'text-blue-700',   icon: 'fa-eye' },
+  update:       { bg: 'bg-amber-100',  text: 'text-amber-700',  icon: 'fa-pen' },
+  delete:       { bg: 'bg-red-100',    text: 'text-red-700',    icon: 'fa-trash' },
+  login:        { bg: 'bg-purple-100', text: 'text-purple-700', icon: 'fa-right-to-bracket' },
+  logout:       { bg: 'bg-slate-100',  text: 'text-slate-600',  icon: 'fa-right-from-bracket' },
+  approve:      { bg: 'bg-teal-100',   text: 'text-teal-700',   icon: 'fa-check' },
+  reject:       { bg: 'bg-orange-100', text: 'text-orange-700', icon: 'fa-xmark' },
+  ocr_start:    { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: 'fa-gear fa-spin' },
+  ocr_success:  { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'fa-file-circle-check' },
+  ocr_failed:   { bg: 'bg-rose-100',    text: 'text-rose-700',    icon: 'fa-file-circle-exclamation' },
 };
 
 const getActionStyle = (action) =>
@@ -29,24 +31,12 @@ const getActionStyle = (action) =>
 
 const formatDate = (timestamp) => {
   if (!timestamp) return '—';
-  if (typeof timestamp === 'string') {
-    // Supabase returns ISO strings
-    const d = new Date(timestamp);
-    if (isNaN(d.getTime())) return timestamp;
-    return d.toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true
-    });
-  }
-  // Handle Firestore-style timestamps (legacy)
-  if (timestamp?.toDate) {
-    const d = timestamp.toDate();
-    return d.toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true
-    });
-  }
-  return '—';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return timestamp;
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
 };
 
 const getInitials = (name = '') => {
@@ -61,7 +51,7 @@ const ActionPill = ({ action }) => {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${s.bg} ${s.text}`}>
       <i className={`fa-solid ${s.icon} text-[8px]`}></i>
-      {action || 'action'}
+      {action?.replace('_', ' ') || 'action'}
     </span>
   );
 };
@@ -81,8 +71,10 @@ export const AuditLogs = () => {
   const [lastDoc, setLastDoc] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [stats, setStats] = useState({ total: 0, today: 0, users: 0, actions: 0 });
-  const snackbarTimer = useRef(null);
   const [message, setMessage] = useState(null);
+
+  const snackbarTimer = useRef(null);
+  const searchTimeout = useRef(null);
 
   const showSnackbar = (msg, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -90,28 +82,47 @@ export const AuditLogs = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
-  const fetchLogs = async (isRefresh = false) => {
+  const calculateStats = useCallback((logData) => {
+    const todayStr = new Date().toDateString();
+    const uniqueUsers = new Set(logData.map(l => l.userId || l.userEmail)).size;
+    const uniqueActions = new Set(logData.map(l => l.action)).size;
+
+    setStats({
+      total: logData.length,
+      today: logData.filter(l => new Date(l.created_at || l.timestamp).toDateString() === todayStr).length,
+      users: uniqueUsers,
+      actions: uniqueActions,
+    });
+  }, []);
+
+  // Build query constraints dynamically for server-side processing
+  const buildQuery = useCallback((baseQuery) => {
+    let q = baseQuery;
+    if (typeFilter !== 'all') {
+      q = q.eq('type', typeFilter);
+    }
+    if (searchInput.trim()) {
+      const term = `%${searchInput.trim()}%`;
+      q = q.or(`userName.ilike.${term},userEmail.ilike.${term},description.ilike.${term},action.ilike.${term}`);
+    }
+    return q;
+  }, [typeFilter, searchInput]);
+
+  const fetchLogs = useCallback(async (isRefresh = false) => {
     try {
-      if (isRefresh) {
-        setLoading(true);
-        setLastDoc(null);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
+      let query = supabase.from('audit_logs').select('*');
 
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      query = buildQuery(query);
+      query = query.order('created_at', { ascending: false }).limit(50);
 
+      const { data, error } = await query;
       if (error) throw error;
 
       const fetchedLogs = data || [];
-      setLastDoc(fetchedLogs[fetchedLogs.length - 1]);
-      setHasMore(fetchedLogs.length === 50);
       setLogs(fetchedLogs);
-
+      setLastDoc(fetchedLogs[fetchedLogs.length - 1] || null);
+      setHasMore(fetchedLogs.length === 50);
       calculateStats(fetchedLogs);
     } catch (err) {
       console.error('Error fetching audit logs:', err);
@@ -119,27 +130,32 @@ export const AuditLogs = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [buildQuery, calculateStats]);
 
   const loadMore = async () => {
     if (!lastDoc || loadingMore || !hasMore) return;
 
     try {
       setLoadingMore(true);
+      let query = supabase.from('audit_logs').select('*');
 
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
+      query = buildQuery(query);
+      query = query
         .lt('created_at', lastDoc.created_at)
+        .order('created_at', { ascending: false })
         .limit(50);
 
+      const { data, error } = await query;
       if (error) throw error;
 
       const fetchedLogs = data || [];
-      setLastDoc(fetchedLogs[fetchedLogs.length - 1]);
+      setLogs(prev => {
+        const combined = [...prev, ...fetchedLogs];
+        calculateStats(combined);
+        return combined;
+      });
+      setLastDoc(fetchedLogs[fetchedLogs.length - 1] || null);
       setHasMore(fetchedLogs.length === 50);
-      setLogs(prev => [...prev, ...fetchedLogs]);
     } catch (err) {
       console.error('Error loading more logs:', err);
       showSnackbar('Failed to load more logs', 'error');
@@ -148,34 +164,53 @@ export const AuditLogs = () => {
     }
   };
 
-  const calculateStats = (logData) => {
-    const today = new Date().toDateString();
-    const uniqueUsers = new Set(logData.map(l => l.userId || l.userEmail)).size;
-    const uniqueActions = new Set(logData.map(l => l.action)).size;
-
-    setStats({
-      total: logData.length,
-      today: logData.filter(l => new Date(l.timestamp).toDateString() === today).length,
-      users: uniqueUsers,
-      actions: uniqueActions,
-    });
+  // Debounced search to prevent overwhelming Supabase on every keystroke
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      fetchLogs(true);
+    }, 400);
   };
 
-  useEffect(() => { fetchLogs(true); }, []);
+  // Trigger query refetch whenever filter adjustments occur
+  useEffect(() => {
+    fetchLogs(true);
+  }, [typeFilter]);
 
-  const filteredLogs = logs.filter(log => {
-    if (typeFilter !== 'all' && log.type !== typeFilter) return false;
-    if (searchInput) {
-      const s = searchInput.toLowerCase();
-      return (
-        log.userName?.toLowerCase().includes(s) ||
-        log.userEmail?.toLowerCase().includes(s) ||
-        log.description?.toLowerCase().includes(s) ||
-        log.action?.toLowerCase().includes(s)
-      );
+  // Clean layout array mapped directly to CSV strings for compliance reports
+  const exportComplianceReport = () => {
+    if (logs.length === 0) {
+      showSnackbar('No data available to export', 'error');
+      return;
     }
-    return true;
-  });
+
+    const headers = ['Timestamp', 'User Name', 'User Email', 'User ID', 'Action', 'Type', 'Description', 'Details'];
+    const csvRows = [
+      headers.join(','),
+      ...logs.map(log => [
+        `"${formatDate(log.created_at || log.timestamp)}"`,
+        `"${log.userName || ''}"`,
+        `"${log.userEmail || ''}"`,
+        `"${log.userId || ''}"`,
+        `"${log.action || ''}"`,
+        `"${log.type || ''}"`,
+        `"${(log.description || '').replace(/"/g, '""')}"`,
+        `"${(log.details || '').replace(/"/g, '""')}"`
+      ].join(','))
+    ];
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `compliance_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showSnackbar('Compliance report exported successfully!');
+  };
 
   const filterSelectCls = "px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
 
@@ -184,23 +219,33 @@ export const AuditLogs = () => {
 
       {/* Header */}
       <div className="flex-shrink-0">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <h2 className="text-xl md:text-2xl font-bold text-[#466460]">Audit Logs</h2>
-          <button
-            onClick={() => fetchLogs(true)}
-            className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 md:px-5 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              onClick={exportComplianceReport}
+              className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+              title="Export filtered records to CSV"
+            >
+              <i className="fa-solid fa-file-export text-slate-500"></i>
+              <span>Export Report</span>
+            </button>
+            <button
+              onClick={() => fetchLogs(true)}
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Total Logs</div>
+            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Loaded Logs</div>
             <div className="text-xl md:text-2xl font-extrabold text-[#466460]">{stats.total}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
@@ -239,9 +284,9 @@ export const AuditLogs = () => {
             </svg>
             <input
               type="text"
-              placeholder="Search user, action, description..."
+              placeholder="Search user, action, details..."
               value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
+              onChange={handleSearchChange}
               className="pl-9 pr-4 py-2 w-full border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
             />
           </div>
@@ -275,26 +320,22 @@ export const AuditLogs = () => {
                     </div>
                   </td>
                 </tr>
-              ) : filteredLogs.length === 0 ? (
+              ) : logs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-slate-400 text-sm">
-                    {logs.length === 0 ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <i className="fa-solid fa-clipboard-list text-3xl text-slate-300"></i>
-                        <p>No audit logs found</p>
-                        <p className="text-xs text-slate-400">System activities will appear here once recorded</p>
-                      </div>
-                    ) : (
-                      <p>No logs match your filters</p>
-                    )}
+                    <div className="flex flex-col items-center gap-2">
+                      <i className="fa-solid fa-clipboard-list text-3xl text-slate-300"></i>
+                      <p>No audit logs found</p>
+                      <p className="text-xs text-slate-400">Activities matching filters will appear here once recorded</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map(log => (
+                logs.map(log => (
                   <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                     {/* Timestamp */}
                     <td className="p-3 whitespace-nowrap">
-                      <div className="text-xs text-slate-600 font-medium">{formatDate(log.timestamp)}</div>
+                      <div className="text-xs text-slate-600 font-medium">{formatDate(log.created_at || log.timestamp)}</div>
                     </td>
 
                     {/* User */}
@@ -322,12 +363,12 @@ export const AuditLogs = () => {
 
                     {/* Description */}
                     <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[200px]">
-                      <span className="truncate block">{log.description || '—'}</span>
+                      <span className="truncate block" title={log.description}>{log.description || '—'}</span>
                     </td>
 
                     {/* Details */}
                     <td className="p-3 text-xs text-slate-500 hidden lg:table-cell max-w-[150px]">
-                      <span className="truncate block">{log.details || '—'}</span>
+                      <span className="truncate block" title={log.details}>{log.details || '—'}</span>
                     </td>
                   </tr>
                 ))
@@ -363,7 +404,7 @@ export const AuditLogs = () => {
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success' ? (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+            <svg xmlns="http://www.w3.org/2000/xl" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           ) : (

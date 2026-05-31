@@ -20,6 +20,7 @@ import Appointments from './features/admin-clinic/Appointments.jsx';
 import { Dashboard } from './features/admin-clinic/Dashboard.jsx';
 import Examination from './features/admin-clinic/Examinations.jsx';
 import Approvals from './features/admin-clinic/Approvals.jsx';
+import DentalApprovals from './features/admin-clinic/DentalApprovals.jsx';
 import Announcements from './features/admin-clinic/Announcements.jsx';
 import Consultations from './features/admin-clinic/Consultations.jsx';
 import UserManagement from './features/admin-clinic/User-Management.jsx';
@@ -67,6 +68,7 @@ const ROUTE_TO_TAB = {
   '/appointments':    'appointments',
   '/examinations':     'examinations',
   '/approvals':        'approvals',
+  '/dental-approvals': 'dentalApprovals',
   '/consultations':    'consultations',
   '/announcements':   'announcements',
   '/users':            'users',
@@ -81,7 +83,8 @@ const TAB_TO_ROUTE = {
   'auditLogs':        '/audit-logs',
   'appointments':     '/appointments',
   'examinations':     '/examinations',
-  'approvals':        '/approvals',
+  'approvals':         '/approvals',
+  'dentalApprovals':  '/dental-approvals',
   'consultations':    '/consultations',
   'announcements':   '/announcements',
   'users':            '/users',
@@ -256,6 +259,11 @@ function App() {
               <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
             </ProtectedRoute>
           } />
+          <Route path="/dental-approvals" element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminLayoutWrapper><DentalApprovals /></AdminLayoutWrapper>
+            </ProtectedRoute>
+          } />
           <Route path="/announcements" element={
             <ProtectedRoute adminOnly={true}>
               <AdminLayoutWrapper><Announcements /></AdminLayoutWrapper>
@@ -289,10 +297,13 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* ── Settings (student) ── */}
+          {/* ── Settings (Global) ── */}
           <Route path="/student/settings" element={
             <ProtectedRoute adminOnly={false}>
-              <Settings onLogout={() => { authService.logout(); }} />
+              <Settings
+                userRole={JSON.parse(localStorage.getItem('user'))?.role || 'student'}
+                onLogout={() => { authService.logout(); }}
+              />
             </ProtectedRoute>
           } />
 
