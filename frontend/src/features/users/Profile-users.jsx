@@ -1,8 +1,9 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Profile-users.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const DocIcon = () => (
@@ -63,7 +64,6 @@ const FormGroup = ({ label, children }) => (
   </div>
 );
 
-// Cleaned up input style for the new color scheme
 const inputStyle = {
   width: '100%',
   padding: '12px 14px',
@@ -96,6 +96,108 @@ const DOSE_LABELS = [
   { key: 'booster1', label: 'Booster 1' },
   { key: 'booster2', label: 'Booster 2' },
 ];
+
+// ── PTR spinner keyframe ──────────────────────────────────────────────────────
+const ptrStyles = `
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+  [data-spin="true"]  [data-ptr-icon] { display: none;  }
+  [data-spin="true"]  [data-ptr-spin] { display: block; }
+  [data-spin="false"] [data-ptr-icon] { display: block; }
+  [data-spin="false"] [data-ptr-spin] { display: none;  }
+`;
+
+// ── Pull-to-Refresh Indicator ─────────────────────────────────────────────────
+const PullIndicator = ({ indicatorRef }) => (
+  <div
+    ref={indicatorRef}
+    data-spin="false"
+    style={{
+      overflow:       'hidden',
+      height:         0,
+      opacity:        0,
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'center',
+      flexShrink:     0,
+      transition:     'height 0.2s ease, opacity 0.2s ease',
+    }}
+  >
+    {/* Arrow */}
+    <svg
+      data-ptr-icon
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transition: 'transform 0.2s ease' }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+
+    {/* Spinner */}
+    <svg
+      data-ptr-spin
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      style={{ animation: 'ptr-spin 0.8s linear infinite' }}
+    >
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.2" />
+      <path d="M12 3 a9 9 0 0 1 9 9" />
+    </svg>
+  </div>
+);
+
+// ─── DB → component shape mapper (used in both fetch and save) ────────────────
+const mapDbToProfile = (profileData, fallbackEmail = '') => ({
+  firstName:             profileData.first_name              || '',
+  middleName:            profileData.middle_name             || '',
+  lastName:              profileData.last_name               || '',
+  suffix:                profileData.suffix                  || '',
+  birthday:              profileData.birthday                || '',
+  age:                   profileData.age                     || '',
+  sex:                   profileData.sex                     || '',
+  bloodType:             profileData.blood_type              || '',
+  homeAddress:           profileData.home_address            || '',
+  religion:              profileData.religion                || '',
+  nationality:           profileData.nationality             || '',
+  civilStatus:           profileData.civil_status            || '',
+  universityId:          profileData.university_id           || '',
+  role:                  profileData.role                    || '',
+  studentId:             profileData.student_id              || '',
+  department:            profileData.department              || '',
+  program:               profileData.program                 || '',
+  yearLevel:             profileData.year_level              || '',
+  section:               profileData.section                 || '',
+  studentClassification: profileData.student_classification  || 'Regular',
+  classification:        profileData.classification          || '',
+  jobTitle:              profileData.job_title               || '',
+  email:                 profileData.email                   || fallbackEmail,
+  phoneNumber:           profileData.phone_number            || '',
+  emergencyContact: {
+    name:         profileData.emergency_contact?.name         || '',
+    relationship: profileData.emergency_contact?.relationship || '',
+    phone:        profileData.emergency_contact?.phone        || '',
+    address:      profileData.emergency_contact?.address      || '',
+  },
+  vaccinations: {
+    dose1:    { vaccineName: profileData.vaccinations?.dose1?.vaccineName    || '', date: profileData.vaccinations?.dose1?.date    || '' },
+    dose2:    { vaccineName: profileData.vaccinations?.dose2?.vaccineName    || '', date: profileData.vaccinations?.dose2?.date    || '' },
+    booster1: { vaccineName: profileData.vaccinations?.booster1?.vaccineName || '', date: profileData.vaccinations?.booster1?.date || '' },
+    booster2: { vaccineName: profileData.vaccinations?.booster2?.vaccineName || '', date: profileData.vaccinations?.booster2?.date || '' },
+  },
+  dentalHistory: {
+    lastVisit:   profileData.dental_history?.lastVisit   || '',
+    prevDentist: profileData.dental_history?.prevDentist || '',
+    physician:   profileData.dental_history?.physician   || '',
+    procedures:  profileData.dental_history?.procedures  || {},
+  },
+});
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
@@ -144,103 +246,54 @@ export default function ProfileUsers({ onLogout }) {
     }
   });
 
-  // ── Fetch from Firestore on mount ────────────────────────────────────────
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        // 1. Restore the session using your Express token to bypass RLS
-        const accessToken = localStorage.getItem('token');
-        const refreshToken = localStorage.getItem('refresh_token') || '';
+  // ── Fetch Profile Extracted for PTR ──────────────────────────────────────
+  const fetchProfile = useCallback(async () => {
+    try {
+      const accessToken  = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refresh_token') || '';
 
-        if (accessToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-        }
-
-        // Get the auth user
-        const { data: { user } } = await supabase.auth.getUser();
-
-        // Fallback to localStorage UID if supabase auth hasn't fully synced
-        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const activeUid = user?.id || currentUser?.uid;
-
-        if (!activeUid) {
-          setLoading(false);
-          return;
-        }
-
-        // 2. Query by 'uid' (not 'id') and use .limit(1) to prevent 406 network errors
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('uid', activeUid)
-          .limit(1);
-
-        const profileData = data?.[0] || null;
-
-        if (error) throw error;
-
-        if (profileData) {
-          setProfile({
-            firstName:              profileData.first_name               || '',
-            middleName:          profileData.middle_name           || '',
-            lastName:               profileData.last_name                || '',
-            suffix:                 profileData.suffix                   || '',
-            birthday:               profileData.birthday                 || '',
-            age:                    profileData.age                      || '',
-            sex:                    profileData.sex                      || '',
-            bloodType:              profileData.blood_type               || '',
-            homeAddress:            profileData.home_address             || '',
-            religion:               profileData.religion                 || '',
-            nationality:            profileData.nationality              || '',
-            civilStatus:            profileData.civil_status             || '',
-            universityId:           profileData.university_id            || activeUid.slice(0, 8).toUpperCase(),
-            role:                   profileData.role                     || '',
-            studentId:              profileData.student_id               || '',
-            department:             profileData.department               || '',
-            program:                profileData.program                  || '',
-            yearLevel:              profileData.year_level               || '',
-            section:                profileData.section                  || '',
-            studentClassification:  profileData.student_classification   || 'Regular',
-            classification:         profileData.classification           || '',
-            jobTitle:               profileData.job_title                || '',
-            email:                  profileData.email                    || user?.email || currentUser?.email || '',
-            phoneNumber:            profileData.phone_number             || '',
-            emergencyContact: {
-              name:         profileData.emergency_contact?.name          || '',
-              relationship: profileData.emergency_contact?.relationship  || '',
-              phone:        profileData.emergency_contact?.phone         || '',
-              address:      profileData.emergency_contact?.address       || '',
-            },
-            vaccinations: {
-              dose1:    { vaccineName: profileData.vaccinations?.dose1?.vaccineName    || '', date: profileData.vaccinations?.dose1?.date    || '' },
-              dose2:    { vaccineName: profileData.vaccinations?.dose2?.vaccineName    || '', date: profileData.vaccinations?.dose2?.date    || '' },
-              booster1: { vaccineName: profileData.vaccinations?.booster1?.vaccineName || '', date: profileData.vaccinations?.booster1?.date || '' },
-              booster2: { vaccineName: profileData.vaccinations?.booster2?.vaccineName || '', date: profileData.vaccinations?.booster2?.date || '' },
-            },
-            dentalHistory: {
-              lastVisit:   profileData.dental_history?.lastVisit   || '',
-              prevDentist: profileData.dental_history?.prevDentist || '',
-              physician:   profileData.dental_history?.physician   || '',
-              procedures:  profileData.dental_history?.procedures  || {},
-            }
-          });
-        } else {
-          setProfile(prev => ({ ...prev, email: user?.email || currentUser?.email || '' }));
-        }
-      } catch (err) {
-        console.error('[ProfileUsers] Fetch error:', err);
-      } finally {
-        setLoading(false);
+      if (accessToken) {
+        await supabase.auth.setSession({
+          access_token:  accessToken,
+          refresh_token: refreshToken,
+        });
       }
-    };
 
-    fetchProfile();
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const activeUid   = user?.id || currentUser?.uid;
 
-  
+      if (!activeUid) { setLoading(false); return; }
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('uid', activeUid)
+        .limit(1);
+
+      const profileData = data?.[0] || null;
+      if (error) throw error;
+
+      if (profileData) {
+        setProfile(mapDbToProfile(profileData, user?.email || currentUser?.email || ''));
+      } else {
+        setProfile(prev => ({ ...prev, email: user?.email || currentUser?.email || '' }));
+      }
+    } catch (err) {
+      console.error('[ProfileUsers] Fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // ── Pull-to-refresh hook ────────────────────────────────────────────────────
+  const { scrollElRef, indicatorRef } = usePullToRefresh(async () => {
+    await fetchProfile();
+  });
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   const fullName = [
     profile.firstName,
@@ -285,7 +338,8 @@ export default function ProfileUsers({ onLogout }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to update profile');
 
-      setProfile(data.data);
+      setProfile(mapDbToProfile(data.data, profile.email));
+
       showToast('Profile updated successfully!');
       closeEdit();
     } catch (err) {
@@ -336,7 +390,7 @@ export default function ProfileUsers({ onLogout }) {
     closePreview();
   };
 
-  if (loading) {
+  if (loading && !profile.email) {
     return (
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#466460', fontSize: 13, fontWeight: 600 }}>
         Loading profile...
@@ -347,7 +401,12 @@ export default function ProfileUsers({ onLogout }) {
   const clsColors = classificationColors[profile.studentClassification] || classificationColors.Regular;
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none' }}>
+    <div
+      ref={scrollElRef}
+      style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none' }}
+    >
+      <style>{ptrStyles}</style>
+      <PullIndicator indicatorRef={indicatorRef} />
 
       {/* ── Profile Header ── */}
       <Card>
@@ -491,7 +550,7 @@ export default function ProfileUsers({ onLogout }) {
         <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
       </Card>}
 
-      {/* ── Settings Button → navigates to /settings ── */}
+      {/* ── Settings Button ── */}
       <button
         onClick={handleOpenSettings}
         style={{
@@ -518,14 +577,11 @@ export default function ProfileUsers({ onLogout }) {
         SIGN OUT
       </button>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          ── Cleaned Edit Profile Modal ──
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Edit Profile Modal ── */}
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
 
-            {/* Clean Header */}
             <div style={{ background: '#fff', padding: '20px 24px', borderBottom: '1px solid #edf3f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 15, fontWeight: 800, color: '#466460', textTransform: 'capitalize' }}>Edit {editingSection} Info</span>
               <button onClick={closeEdit} style={{ background: 'none', border: 'none', color: '#9bb5a5', cursor: 'pointer', fontSize: 18, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
@@ -729,7 +785,6 @@ export default function ProfileUsers({ onLogout }) {
 
             </div>
 
-            {/* Clean Footer */}
             <div style={{ padding: '16px 24px', borderTop: '1px solid #edf3f0', display: 'flex', gap: 12, background: '#fff' }}>
               <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577', transition: 'background 0.2s' }}>Cancel</button>
               <button onClick={saveProfileEdits} disabled={isSaving} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1, transition: 'background 0.2s' }}>

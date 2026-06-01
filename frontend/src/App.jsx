@@ -1,10 +1,6 @@
 // frontend/src/App.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import SignupForm from './features/SignupForm.jsx';
-import LoginForm from './features/LoginForm.jsx';
-import { DashboardLayout } from './layouts/DashboardLayout.jsx';
-import ProfileSetup from './components/ProfileSetup.jsx';
 import Loading from './components/loading.jsx';
 import authService from './services/auth.service.js';
 import './index.css';
@@ -14,24 +10,36 @@ import './index.css';
 import { AppointmentProvider } from './context/AppointmentContext.jsx';
 import { LoadingProvider, useLoading } from './context/LoadingContext.jsx';
 
-// Features - Admin/Clinic
+// ── Lazy Loading ───────────────────────────────────────────────────────────────
+// Common pages (loaded immediately)
+import LoginForm from './features/LoginForm.jsx';
+import { DashboardLayout } from './layouts/DashboardLayout.jsx';
 import Records from './features/admin-clinic/Records.jsx';
 import Appointments from './features/admin-clinic/Appointments.jsx';
 import { Dashboard } from './features/admin-clinic/Dashboard.jsx';
-import Examination from './features/admin-clinic/Examinations.jsx';
-import Approvals from './features/admin-clinic/Approvals.jsx';
-import DentalApprovals from './features/admin-clinic/DentalApprovals.jsx';
 import Announcements from './features/admin-clinic/Announcements.jsx';
 import Consultations from './features/admin-clinic/Consultations.jsx';
-import UserManagement from './features/admin-clinic/User-Management.jsx';
-import RecordManagement from './features/admin-clinic/Record-Management.jsx';
-import AuditLogs from './features/admin-clinic/AuditLogs.jsx';
-import OcrSettings from './features/admin-clinic/OcrSettings.jsx';
-import Reports from './features/admin-clinic/Reports.jsx';
-
-// Features - Students / Instructors / Staffs
 import Meditrack from './features/users/Meditrack.jsx';
-import Settings from './components/Settings';   // ← NEW
+
+// Rarely used pages (lazy loaded)
+const SignupForm = lazy(() => import('./features/SignupForm.jsx'));
+const ProfileSetup = lazy(() => import('./components/ProfileSetup.jsx'));
+const Examination = lazy(() => import('./features/admin-clinic/Examinations.jsx'));
+const Approvals = lazy(() => import('./features/admin-clinic/Approvals.jsx'));
+const DentalApprovals = lazy(() => import('./features/admin-clinic/DentalApprovals.jsx'));
+const UserManagement = lazy(() => import('./features/admin-clinic/User-Management.jsx'));
+const RecordManagement = lazy(() => import('./features/admin-clinic/Record-Management.jsx'));
+const AuditLogs = lazy(() => import('./features/admin-clinic/AuditLogs.jsx'));
+const OcrSettings = lazy(() => import('./features/admin-clinic/OcrSettings.jsx'));
+const Reports = lazy(() => import('./features/admin-clinic/Reports.jsx'));
+const Settings = lazy(() => import('./components/Settings'));
+
+// ── Lazy Loading Fallback ─────────────────────────────────────────────────────
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[200px]">
+    <div className="w-8 h-8 border-3 border-[#466460] border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -217,100 +225,102 @@ function App() {
       <AppointmentProvider>
         <RouteChangeHandler />
         <GlobalLoading />
-        <Routes>
-          {/* Public */}
-          <Route path="/signup"     element={<SignupForm />} />
-          <Route path="/login"      element={<LoginForm />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Public */}
+            <Route path="/signup"     element={<SignupForm />} />
+            <Route path="/login"      element={<LoginForm />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
 
-          {/* Admin / Clinic */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Dashboard /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/records" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Records /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/record-management" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><RecordManagement /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/audit-logs" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><AuditLogs /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/appointments" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Appointments /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/examinations" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/approvals" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/dental-approvals" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><DentalApprovals /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/announcements" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Announcements /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/consultations" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Consultations /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/users" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><UserManagement /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/ocr-settings" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><OcrSettings /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
-          <Route path="/reports" element={
-            <ProtectedRoute adminOnly={true}>
-              <AdminLayoutWrapper><Reports /></AdminLayoutWrapper>
-            </ProtectedRoute>
-          } />
+            {/* Admin / Clinic */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Dashboard /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/records" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Records /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/record-management" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><RecordManagement /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/audit-logs" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><AuditLogs /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Appointments /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/examinations" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/approvals" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/dental-approvals" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><DentalApprovals /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/announcements" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Announcements /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/consultations" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Consultations /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/users" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><UserManagement /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/ocr-settings" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><OcrSettings /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Reports /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
 
-          {/* Student / Patient */}
-          <Route path="/student/meditrack" element={
-            <ProtectedRoute adminOnly={false}>
-              <Meditrack />
-            </ProtectedRoute>
-          } />
+            {/* Student / Patient */}
+            <Route path="/student/meditrack" element={
+              <ProtectedRoute adminOnly={false}>
+                <Meditrack />
+              </ProtectedRoute>
+            } />
 
-          {/* ── Settings (Global) ── */}
-          <Route path="/student/settings" element={
-            <ProtectedRoute adminOnly={false}>
-              <Settings
-                userRole={JSON.parse(localStorage.getItem('user'))?.role || 'student'}
-                onLogout={() => { authService.logout(); }}
-              />
-            </ProtectedRoute>
-          } />
+            {/* ── Settings (Global) ── */}
+            <Route path="/student/settings" element={
+              <ProtectedRoute adminOnly={false}>
+                <Settings
+                  userRole={JSON.parse(localStorage.getItem('user'))?.role || 'student'}
+                  onLogout={() => { authService.logout(); }}
+                />
+              </ProtectedRoute>
+            } />
 
-          {/* Fallback */}
-          <Route path="/"  element={<Navigate to="/login" replace />} />
-          <Route path="*"  element={<Navigate to="/login" replace />} />
-        </Routes>
+            {/* Fallback */}
+            <Route path="/"  element={<Navigate to="/login" replace />} />
+            <Route path="*"  element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Suspense>
       </AppointmentProvider>
     </LoadingProvider>
   );

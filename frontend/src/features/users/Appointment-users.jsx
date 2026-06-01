@@ -176,8 +176,7 @@ export default function AppointmentUsers() {
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
 
   // ── Pull-to-refresh — re-runs fetchAppointments on release ───────────────
-  const { scrollElRef, indicatorRef, onTouchStart, onTouchMove, onTouchEnd } =
-    usePullToRefresh(fetchAppointments);
+  const { scrollElRef, indicatorRef } = usePullToRefresh(fetchAppointments);
 
   // ── Guard: Profile check ──────────────────────────────────────────────────
   if (!currentPatient) {
@@ -223,7 +222,15 @@ export default function AppointmentUsers() {
     setSubmitError('');
 
     const serviceType = selectedPurposes.includes('Dental') ? 'Dental Examination' : 'Medical Consultation';
-    const payload     = { patientName: currentPatient.name, serviceType, reason };
+
+    // ── UPDATED PAYLOAD TO MATCH ZOD SCHEMA EXACTLY ──
+    const payload = {
+      patientId: currentPatient.idno !== '—' ? currentPatient.idno : (currentPatient.uid || 'unknown'),
+      name: currentPatient.name,
+      type: currentPatient.type.toLowerCase(), // Ensures it matches the "student" enum
+      serviceType: serviceType,
+      reason: reason
+    };
 
     try {
       const response = await axios.post(`${API_URL}/appointments`, payload, {
@@ -304,9 +311,6 @@ export default function AppointmentUsers() {
         <div
           ref={scrollElRef}
           className="flex-1 overflow-y-auto min-h-0 px-5 pb-5"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
         >
           {/* PTR indicator — must be first child */}
           <PullIndicator indicatorRef={indicatorRef} />

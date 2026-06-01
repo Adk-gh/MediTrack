@@ -822,6 +822,23 @@ export const DesktopHeader = ({ onOpenQR }) => {
   const authUser = authService.getCurrentUser();
   const [fullProfile, setFullProfile] = useState(authUser || {});
 
+  // Fetch unread notification count on mount
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await notificationsService.getUnreadCount();
+        setUnreadCount(count || 0);
+      } catch (err) {
+        console.error('Error fetching unread count:', err);
+      }
+    };
+    fetchUnreadCount();
+
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const fetchFullProfile = async () => {
       try {
@@ -865,6 +882,45 @@ export const DesktopHeader = ({ onOpenQR }) => {
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Real-time subscription for notification count updates
+  useEffect(() => {
+    const getUserId = () => {
+      try {
+        const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
+        if (profile?.internalUserId) return profile.internalUserId;
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        return user?.id || null;
+      } catch { return null; }
+    };
+
+    const userId = getUserId();
+    if (!userId) return;
+
+    const channel = supabase
+      .channel('header-notif-count')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        () => {
+          setUnreadCount(prev => prev + 1);
+          // Invalidate cache
+          sessionStorage.removeItem('meditrack_notif_count');
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        async () => {
+          const count = await notificationsService.getUnreadCount();
+          setUnreadCount(count);
+          sessionStorage.removeItem('meditrack_notif_count');
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const displayName = (fullProfile.firstName && fullProfile.lastName)

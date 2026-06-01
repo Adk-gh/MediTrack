@@ -1,7 +1,8 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Records-users.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 const CACHE_KEY_PREFIX = 'meditrack_records_';
@@ -42,6 +43,62 @@ const formatDate = (raw) => {
   }
   return raw;
 };
+
+// ── PTR spinner keyframe ──────────────────────────────────────────────────────
+const ptrStyles = `
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+  [data-spin="true"]  [data-ptr-icon] { display: none;  }
+  [data-spin="true"]  [data-ptr-spin] { display: block; }
+  [data-spin="false"] [data-ptr-icon] { display: block; }
+  [data-spin="false"] [data-ptr-spin] { display: none;  }
+`;
+
+// ── Pull-to-Refresh Indicator ─────────────────────────────────────────────────
+const PullIndicator = ({ indicatorRef }) => (
+  <div
+    ref={indicatorRef}
+    data-spin="false"
+    style={{
+      overflow:       'hidden',
+      height:         0,
+      opacity:        0,
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'center',
+      flexShrink:     0,
+      transition:     'height 0.2s ease, opacity 0.2s ease',
+    }}
+  >
+    {/* Arrow */}
+    <svg
+      data-ptr-icon
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transition: 'transform 0.2s ease' }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+
+    {/* Spinner */}
+    <svg
+      data-ptr-spin
+      width="20" height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#466460"
+      strokeWidth="2.5"
+      style={{ animation: 'ptr-spin 0.8s linear infinite' }}
+    >
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.2" />
+      <path d="M12 3 a9 9 0 0 1 9 9" />
+    </svg>
+  </div>
+);
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 const InfoRow = ({ label, value }) => (
@@ -87,156 +144,151 @@ export default function RecordsUsers() {
   const [view, setView]                     = useState('list');
   const [currentUserId, setCurrentUserId]   = useState(null);
 
-  useEffect(() => {
-    const fetchRecords = async (forceRefresh = false) => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setLoading(false); return; }
+  // ── Extracted fetch logic ───────────────────────────────────────────────────
+  const fetchRecords = useCallback(async (forceRefresh = false) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
 
-        setCurrentUserId(user.id);
+      setCurrentUserId(user.id);
 
-        // ── Try cache first ──────────────────────────────────────────────
-        if (!forceRefresh) {
-          const cached = readCache(user.id);
-          if (cached) {
-            setRecords(cached);
-            setFromCache(true);
-            setLoading(false);
-            return;
-          }
-        }
-
-        setFromCache(false);
-
-        // ── Cache miss: fetch from Supabase ──────────────────────────────
-        const { data: userRow, error: userErr } = await supabase
-          .from('users')
-          .select('id, first_name, last_name, program, year_level, section, department, home_address, age, sex')
-          .eq('uid', user.id)
-          .single();
-
-        if (userErr || !userRow) {
-          console.error('[RecordsUsers] user lookup failed:', userErr);
+      // Try cache first unless forced
+      if (!forceRefresh) {
+        const cached = readCache(user.id);
+        if (cached) {
+          setRecords(cached);
+          setFromCache(true);
           setLoading(false);
           return;
         }
-
-        const internalUserId = userRow.id;
-
-        const [medRes, denRes] = await Promise.all([
-          supabase.from('medical_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
-          supabase.from('dental_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
-        ]);
-
-        // ── Medical mapping ──────────────────────────────────────────────
-        const medDocs = (medRes.data || []).map(d => ({
-          recordType:      'medical',
-          id:              d.id,
-          approved_at:     d.approved_at || d.updated_at || d.created_at,
-          created_at:      d.created_at,
-          firstName:       d.first_name  || userRow.first_name,
-          lastName:        d.last_name   || userRow.last_name,
-          age:             d.age         || userRow.age,
-          sex:             d.sex         || userRow.sex,
-          address:         d.address     || userRow.home_address,
-          course:          userRow.program,
-          yearSection:     [userRow.year_level, userRow.section].filter(Boolean).join(' - '),
-          examDate:        d.exam_date,
-          physician:       d.physician,
-          nurseOnDuty:     d.nurse_on_duty,
-          height:          d.height,
-          weight:          d.weight,
-          bmi:             d.bmi,
-          waist:           d.waist,
-          lmp:             d.lmp,
-          vitalRecords:    d.vital_records   || [],
-          labCbc:          d.lab_cbc,
-          labCbcFacility:  d.lab_cbc_facility,
-          labCbcDate:      d.lab_cbc_date,
-          labUa:           d.lab_ua,
-          labUaFacility:   d.lab_ua_facility,
-          labUaDate:       d.lab_ua_date,
-          labXray:         d.lab_xray,
-          labXrayFacility: d.lab_xray_facility,
-          labXrayDate:     d.lab_xray_date,
-          checkedMedical:  d.checked_medical  || [],
-          checkedFamily:   d.checked_family   || [],
-          checkedHealth:   d.checked_health   || [],
-          smoking:         d.smoking,
-          smokingDetails:  d.smoking_details,
-          alcohol:         d.alcohol,
-          alcoholDetails:  d.alcohol_details,
-          drugs:           d.drugs,
-          drugsDetails:    d.drugs_details,
-          covidHistory:       d.covid_history,
-          otherMedHistory:    d.other_medical_history,
-          otherFamilyHistory: d.other_family_history,
-          surgicalHistory: [],
-          remarks:         d.remarks || d.other_medical_history || '',
-          finding1:        d.finding1 || '',
-          isFit:           d.is_fit,
-          isNormalFindings: d.is_normal_findings,
-        }));
-
-        // ── Dental mapping ───────────────────────────────────────────────
-        const denDocs = (denRes.data || []).map(d => ({
-          recordType:    'dental',
-          id:            d.id,
-          approved_at:   d.approved_at || d.created_at,
-          created_at:    d.created_at,
-          dFirstName:    d.first_name,
-          dLastName:     d.last_name,
-          dAge:          d.age,
-          dSex:          d.sex,
-          dCourseYear:   d.course_year,
-          dAddress:      d.address,
-          dLastVisit:    d.last_visit,
-          dPrevDentist:  d.prev_dentist,
-          dExaminedBy:   d.examined_by,
-          dSigDate:      d.sig_date,
-          dExamDate:     d.exam_date,
-          dentalHistory: d.dental_history || {},
-          toothData:     d.tooth_data     || {},
-          intraoral:     d.intraoral      || {},
-        }));
-
-        const combined = [...medDocs, ...denDocs].sort((a, b) => {
-          const timeA = new Date(a.approved_at || a.created_at).getTime() || 0;
-          const timeB = new Date(b.approved_at || b.created_at).getTime() || 0;
-          return timeB - timeA;
-        });
-
-        // ── Save to cache ────────────────────────────────────────────────
-        writeCache(user.id, combined);
-        setRecords(combined);
-      } catch (err) {
-        console.error('[RecordsUsers] fetch error:', err);
+      } else {
+        clearCache(user.id);
       }
-      setLoading(false);
-    };
 
+      setFromCache(false);
+      setLoading(true); // Show loading state briefly if forcing a fresh pull
+
+      // Cache miss: fetch from Supabase
+      const { data: userRow, error: userErr } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, program, year_level, section, department, home_address, age, sex')
+        .eq('uid', user.id)
+        .single();
+
+      if (userErr || !userRow) {
+        console.error('[RecordsUsers] user lookup failed:', userErr);
+        setLoading(false);
+        return;
+      }
+
+      const internalUserId = userRow.id;
+
+      const [medRes, denRes] = await Promise.all([
+        supabase.from('medical_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
+        supabase.from('dental_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
+      ]);
+
+      // Medical mapping
+      const medDocs = (medRes.data || []).map(d => ({
+        recordType:      'medical',
+        id:              d.id,
+        approved_at:     d.approved_at || d.updated_at || d.created_at,
+        created_at:      d.created_at,
+        firstName:       d.first_name  || userRow.first_name,
+        lastName:        d.last_name   || userRow.last_name,
+        age:             d.age         || userRow.age,
+        sex:             d.sex         || userRow.sex,
+        address:         d.address     || userRow.home_address,
+        course:          userRow.program,
+        yearSection:     [userRow.year_level, userRow.section].filter(Boolean).join(' - '),
+        examDate:        d.exam_date,
+        physician:       d.physician,
+        nurseOnDuty:     d.nurse_on_duty,
+        height:          d.height,
+        weight:          d.weight,
+        bmi:             d.bmi,
+        waist:           d.waist,
+        lmp:             d.lmp,
+        vitalRecords:    d.vital_records   || [],
+        labCbc:          d.lab_cbc,
+        labCbcFacility:  d.lab_cbc_facility,
+        labCbcDate:      d.lab_cbc_date,
+        labUa:           d.lab_ua,
+        labUaFacility:   d.lab_ua_facility,
+        labUaDate:       d.lab_ua_date,
+        labXray:         d.lab_xray,
+        labXrayFacility: d.lab_xray_facility,
+        labXrayDate:     d.lab_xray_date,
+        checkedMedical:  d.checked_medical  || [],
+        checkedFamily:   d.checked_family   || [],
+        checkedHealth:   d.checked_health   || [],
+        smoking:         d.smoking,
+        smokingDetails:  d.smoking_details,
+        alcohol:         d.alcohol,
+        alcoholDetails:  d.alcohol_details,
+        drugs:           d.drugs,
+        drugsDetails:    d.drugs_details,
+        covidHistory:       d.covid_history,
+        otherMedHistory:    d.other_medical_history,
+        otherFamilyHistory: d.other_family_history,
+        surgicalHistory: [],
+        remarks:         d.remarks || d.other_medical_history || '',
+        finding1:        d.finding1 || '',
+        isFit:           d.is_fit,
+        isNormalFindings: d.is_normal_findings,
+      }));
+
+      // Dental mapping
+      const denDocs = (denRes.data || []).map(d => ({
+        recordType:    'dental',
+        id:            d.id,
+        approved_at:   d.approved_at || d.created_at,
+        created_at:    d.created_at,
+        dFirstName:    d.first_name,
+        dLastName:     d.last_name,
+        dAge:          d.age,
+        dSex:          d.sex,
+        dCourseYear:   d.course_year,
+        dAddress:      d.address,
+        dLastVisit:    d.last_visit,
+        dPrevDentist:  d.prev_dentist,
+        dExaminedBy:   d.examined_by,
+        dSigDate:      d.sig_date,
+        dExamDate:     d.exam_date,
+        dentalHistory: d.dental_history || {},
+        toothData:     d.tooth_data     || {},
+        intraoral:     d.intraoral      || {},
+      }));
+
+      const combined = [...medDocs, ...denDocs].sort((a, b) => {
+        const timeA = new Date(a.approved_at || a.created_at).getTime() || 0;
+        const timeB = new Date(b.approved_at || b.created_at).getTime() || 0;
+        return timeB - timeA;
+      });
+
+      // Save to cache
+      writeCache(user.id, combined);
+      setRecords(combined);
+    } catch (err) {
+      console.error('[RecordsUsers] fetch error:', err);
+    }
+    setLoading(false);
+  }, []);
+
+  // ── Pull-to-refresh hook ────────────────────────────────────────────────────
+  const { scrollElRef, indicatorRef } = usePullToRefresh(async () => {
+    await fetchRecords(true);
+  });
+
+  useEffect(() => {
     fetchRecords();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      // Clear cache on sign-out so stale data doesn't persist
       if (event === 'SIGNED_OUT' && currentUserId) clearCache(currentUserId);
-      fetchRecords(true); // force refresh on auth change
+      fetchRecords(true);
     });
     return () => subscription.unsubscribe();
-  }, []);
-
-  const handleRefresh = () => {
-    if (currentUserId) clearCache(currentUserId);
-    setLoading(true);
-    setRecords([]);
-    // Re-trigger useEffect by forcing a re-fetch
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        clearCache(user.id);
-        window.location.reload(); // simplest way to re-run the effect cleanly
-      }
-    });
-  };
+  }, [fetchRecords, currentUserId]);
 
   const openRecord = (rec) => { setSelectedRecord(rec); setView('summary'); };
   const close      = ()    => { setSelectedRecord(null); setView('list'); };
@@ -258,7 +310,7 @@ export default function RecordsUsers() {
   });
 
   // ── Loading ───────────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && records.length === 0) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a5c3a', fontSize: 13, fontWeight: 600 }}>
         Loading records...
@@ -269,99 +321,93 @@ export default function RecordsUsers() {
   // ── List view ─────────────────────────────────────────────────────────────
   if (view === 'list') {
     return (
-      <div style={{ padding: '20px 16px 32px', overflowY: 'auto', scrollbarWidth: 'none' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-          <div>
-            <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a2e22', margin: 0 }}>Health Records</h2>
-            <p style={{ fontSize: 11, color: '#6b8577', margin: '2px 0 0' }}>Official records and health certifications issued by the clinic.</p>
-          </div>
-          {/* Refresh button + cache indicator */}
-          <button
-            onClick={handleRefresh}
-            title={fromCache ? 'Loaded from cache — tap to refresh' : 'Refresh records'}
-            style={{
-              background: fromCache ? '#fff8e1' : '#e8f5ee',
-              border: `1px solid ${fromCache ? '#fde68a' : '#b6e8c8'}`,
-              borderRadius: 10, padding: '6px 10px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke={fromCache ? '#b45309' : '#1a5c3a'} strokeWidth="2.5" width="13" height="13">
-              <path d="M1 4v6h6M23 20v-6h-6" /><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" />
-            </svg>
-            <span style={{ fontSize: 10, fontWeight: 700, color: fromCache ? '#b45309' : '#1a5c3a' }}>
-              {fromCache ? 'Cached' : 'Live'}
-            </span>
-          </button>
-        </div>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <style>{ptrStyles}</style>
 
-        {/* Filter Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, marginTop: 16 }}>
-          {['All', 'Medical', 'Dental'].map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              style={{
-                padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                cursor: 'pointer', transition: 'all 0.2s', border: 'none',
-                background: filter === f ? '#1a5c3a' : '#e8f5ee',
-                color:      filter === f ? '#fff'     : '#1a5c3a',
-              }}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+        {/* This is the scrollable container.
+          The PTR hook tracks scroll events on this element.
+        */}
+        <div
+          ref={scrollElRef}
+          style={{ flex: 1, padding: '20px 16px 32px', overflowY: 'auto', scrollbarWidth: 'none' }}
+        >
+          <PullIndicator indicatorRef={indicatorRef} />
 
-        {filteredRecords.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9bb5a5' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-            <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>No approved records found.</p>
-            <p style={{ fontSize: 11, marginTop: 4 }}>Records will appear here once examinations are finalized.</p>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+            <div>
+              <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a2e22', margin: 0 }}>Health Records</h2>
+              <p style={{ fontSize: 11, color: '#6b8577', margin: '2px 0 0' }}>Official records and health certifications issued by the clinic.</p>
+            </div>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filteredRecords.map((rec) => (
-              <div
-                key={rec.id}
-                onClick={() => openRecord(rec)}
+
+          {/* Filter Tabs */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, marginTop: 16 }}>
+            {['All', 'Medical', 'Dental'].map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
                 style={{
-                  background: '#fff', border: '1px solid #ddeee5', borderRadius: 20,
-                  padding: '14px 16px', display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                  padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+                  background: filter === f ? '#1a5c3a' : '#e8f5ee',
+                  color:      filter === f ? '#fff'     : '#1a5c3a',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#34c472'; e.currentTarget.style.boxShadow = '0 4px 16px #34c47220'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#ddeee5'; e.currentTarget.style.boxShadow = 'none'; }}
               >
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
-                    {formatDate(rec.approved_at || rec.created_at)}
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {rec.recordType === 'dental'
-                      ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }}></i>
-                      : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }}></i>}
-                    {rec.recordType === 'dental' ? 'Dental Examination' : 'Medical Examination'}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
-                    {fmt(rec.course || rec.dCourseYear)}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ background: '#e8f5ee', color: '#1a5c3a', fontSize: 9, fontWeight: 800, padding: '3px 10px', borderRadius: 30, textTransform: 'uppercase' }}>
-                    Approved
-                  </span>
-                  <div style={{ width: 32, height: 32, background: '#e8f5ee', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="2" width="15" height="15">
-                      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
+                {f}
+              </button>
             ))}
           </div>
-        )}
+
+          {filteredRecords.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9bb5a5' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+              <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>No approved records found.</p>
+              <p style={{ fontSize: 11, marginTop: 4 }}>Records will appear here once examinations are finalized.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {filteredRecords.map((rec) => (
+                <div
+                  key={rec.id}
+                  onClick={() => openRecord(rec)}
+                  style={{
+                    background: '#fff', border: '1px solid #ddeee5', borderRadius: 20,
+                    padding: '14px 16px', display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#34c472'; e.currentTarget.style.boxShadow = '0 4px 16px #34c47220'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#ddeee5'; e.currentTarget.style.boxShadow = 'none'; }}
+                >
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+                      {formatDate(rec.approved_at || rec.created_at)}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {rec.recordType === 'dental'
+                        ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }}></i>
+                        : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }}></i>}
+                      {rec.recordType === 'dental' ? 'Dental Examination' : 'Medical Examination'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
+                      {fmt(rec.course || rec.dCourseYear)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ background: '#e8f5ee', color: '#1a5c3a', fontSize: 9, fontWeight: 800, padding: '3px 10px', borderRadius: 30, textTransform: 'uppercase' }}>
+                      Approved
+                    </span>
+                    <div style={{ width: 32, height: 32, background: '#e8f5ee', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="2" width="15" height="15">
+                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -448,14 +494,14 @@ export default function RecordsUsers() {
               <>
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Patient Information" />
-                  <InfoRow label="Name"          value={`${rec.firstName || ''} ${rec.lastName || ''}`.trim()} />
-                  <InfoRow label="Age"           value={rec.age} />
-                  <InfoRow label="Sex"           value={rec.sex} />
-                  <InfoRow label="Address"       value={rec.address} />
-                  <InfoRow label="Program"       value={rec.course} />
-                  <InfoRow label="Year/Section"  value={rec.yearSection} />
-                  <InfoRow label="Exam Date"     value={formatDate(rec.examDate)} />
-                  <InfoRow label="Physician"     value={rec.physician} />
+                  <InfoRow label="Name"         value={`${rec.firstName || ''} ${rec.lastName || ''}`.trim()} />
+                  <InfoRow label="Age"          value={rec.age} />
+                  <InfoRow label="Sex"          value={rec.sex} />
+                  <InfoRow label="Address"      value={rec.address} />
+                  <InfoRow label="Program"      value={rec.course} />
+                  <InfoRow label="Year/Section" value={rec.yearSection} />
+                  <InfoRow label="Exam Date"    value={formatDate(rec.examDate)} />
+                  <InfoRow label="Physician"    value={rec.physician} />
                   <InfoRow label="Nurse on Duty" value={rec.nurseOnDuty} />
                 </div>
 

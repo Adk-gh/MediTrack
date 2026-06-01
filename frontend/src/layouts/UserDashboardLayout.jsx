@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { UserNotificationBell, UserNotificationPanel } from "../components/UserNotifications.jsx";
+import { supabase } from "../supabase";
 import notificationsService from "../services/notifications.service.js";
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
@@ -594,6 +595,44 @@ export default function UserDashboardLayout({
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Real-time subscription for notification count updates
+  useEffect(() => {
+    const getUserId = () => {
+      try {
+        const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
+        if (profile?.internalUserId) return profile.internalUserId;
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        return user?.id || null;
+      } catch { return null; }
+    };
+
+    const userId = getUserId();
+    if (!userId) return;
+
+    const channel = supabase
+      .channel('layout-notif-count')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        () => {
+          setNotificationCount(prev => prev + 1);
+          sessionStorage.removeItem('meditrack_notif_count');
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        async () => {
+          const count = await notificationsService.getUnreadCount();
+          setNotificationCount(count);
+          sessionStorage.removeItem('meditrack_notif_count');
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {

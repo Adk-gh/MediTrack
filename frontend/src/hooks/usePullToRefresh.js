@@ -1,86 +1,110 @@
-//C:\Users\HP\MediTrack\frontend\src\hooks\usePullToRefresh.js
-import { useRef, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 
 const THRESHOLD   = 72;   // px dragged before release triggers refresh
 const RESIST      = 0.4;  // rubber-band feel (lower = more resistance)
 const SPINNER_H   = 56;   // px of reserved space for the spinner
 
 export function usePullToRefresh(onRefresh) {
-  const startYRef     = useRef(0);
-  const pullDistRef   = useRef(0);
   const isRefreshing  = useRef(false);
   const indicatorRef  = useRef(null);
   const scrollElRef   = useRef(null);
 
-  // Animate the indicator element
-  const setIndicator = (dist, refreshing = false) => {
-    const el = indicatorRef.current;
-    if (!el) return;
+  useEffect(() => {
+    const scrollEl = scrollElRef.current;
+    if (!scrollEl) return;
 
-    if (refreshing) {
-      el.style.height    = `${SPINNER_H}px`;
-      el.style.opacity   = '1';
-      el.dataset.spin    = 'true';
-      return;
-    }
+    // Use local variables instead of refs for touch state
+    // since they don't need to persist across renders outside this effect
+    let startY = 0;
+    let pullDist = 0;
 
-    const clamped = Math.min(dist, THRESHOLD * 1.5);
-    el.style.height    = `${clamped * RESIST}px`;
-    el.style.opacity   = String(Math.min(clamped / THRESHOLD, 1));
-    el.dataset.spin    = 'false';
+    // Animate the indicator element
+    const setIndicator = (dist, refreshing = false) => {
+      const el = indicatorRef.current;
+      if (!el) return;
 
-    // rotate the arrow icon to signal "ready to release"
-    const icon = el.querySelector('[data-ptr-icon]');
-    if (icon) icon.style.transform = clamped >= THRESHOLD
-      ? 'rotate(180deg)'
-      : 'rotate(0deg)';
-  };
+      if (refreshing) {
+        el.style.height    = `${SPINNER_H}px`;
+        el.style.opacity   = '1';
+        el.dataset.spin    = 'true';
+        return;
+      }
 
-  const onTouchStart = useCallback((e) => {
-    const el = scrollElRef.current;
-    if (!el || isRefreshing.current) return;
-    if (el.scrollTop > 0) return;  // only fire when already at the top
+      const clamped = Math.min(dist, THRESHOLD * 1.5);
+      el.style.height    = `${clamped * RESIST}px`;
+      el.style.opacity   = String(Math.min(clamped / THRESHOLD, 1));
+      el.dataset.spin    = 'false';
 
-    startYRef.current  = e.touches[0].clientY;
-    pullDistRef.current = 0;
-  }, []);
+      // rotate the arrow icon to signal "ready to release"
+      const icon = el.querySelector('[data-ptr-icon]');
+      if (icon) {
+        icon.style.transform = clamped >= THRESHOLD ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    };
 
-  const onTouchMove = useCallback((e) => {
-    const el = scrollElRef.current;
-    if (!el || isRefreshing.current || startYRef.current === 0) return;
-    if (el.scrollTop > 0) { startYRef.current = 0; return; }
+    const handleTouchStart = (e) => {
+      if (isRefreshing.current) return;
+      if (scrollEl.scrollTop > 0) return; // only fire when already at the top
 
-    const delta = e.touches[0].clientY - startYRef.current;
-    if (delta <= 0) return;
+      startY = e.touches[0].clientY;
+      pullDist = 0;
+    };
 
-    pullDistRef.current = delta;
-    setIndicator(delta);
+    const handleTouchMove = (e) => {
+      if (isRefreshing.current || startY === 0) return;
+      if (scrollEl.scrollTop > 0) {
+        startY = 0;
+        return;
+      }
 
-    // Prevent native page scroll while pulling
-    if (delta > 8) e.preventDefault();
-  }, []);
+      const delta = e.touches[0].clientY - startY;
+      if (delta <= 0) return;
 
-  const onTouchEnd = useCallback(async () => {
-    if (startYRef.current === 0 || isRefreshing.current) return;
-    startYRef.current = 0;
+      pullDist = delta;
+      setIndicator(delta);
 
-    if (pullDistRef.current < THRESHOLD) {
-      // Not far enough — snap back
-      setIndicator(0);
-      return;
-    }
+      // Prevent native page scroll while pulling.
+      // Because we set { passive: false }, this will no longer throw an error.
+      if (delta > 8 && e.cancelable) {
+        e.preventDefault();
+      }
+    };
 
-    // Trigger refresh
-    isRefreshing.current = true;
-    setIndicator(0, true);
+    const handleTouchEnd = async () => {
+      if (startY === 0 || isRefreshing.current) return;
+      startY = 0;
 
-    try {
-      await onRefresh();
-    } finally {
-      isRefreshing.current = false;
-      setIndicator(0);
-    }
+      if (pullDist < THRESHOLD) {
+        // Not far enough — snap back
+        setIndicator(0);
+        return;
+      }
+
+      // Trigger refresh
+      isRefreshing.current = true;
+      setIndicator(0, true);
+
+      try {
+        await onRefresh();
+      } finally {
+        isRefreshing.current = false;
+        setIndicator(0);
+      }
+    };
+
+
+    scrollEl.addEventListener('touchstart', handleTouchStart, { passive: true });
+    scrollEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+    scrollEl.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    // Cleanup
+    return () => {
+      scrollEl.removeEventListener('touchstart', handleTouchStart);
+      scrollEl.removeEventListener('touchmove', handleTouchMove);
+      scrollEl.removeEventListener('touchend', handleTouchEnd);
+    };
   }, [onRefresh]);
 
-  return { scrollElRef, indicatorRef, onTouchStart, onTouchMove, onTouchEnd };
+  // Notice we only return the refs now, no callbacks
+  return { scrollElRef, indicatorRef };
 }

@@ -17,7 +17,10 @@
     "@capacitor/android": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/ios": "^8.3.4",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@ionic/react": "^8.8.7",
+    "@mui/material": "^9.0.1",
     "@supabase/supabase-js": "^2.106.2",
     "axios": "^1.7.0",
     "chart.js": "^4.5.1",
@@ -31,6 +34,8 @@
     "react-datepicker": "^9.1.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0",
+    "vite-plugin-compression": "^0.5.1",
+    "yup": "^1.7.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

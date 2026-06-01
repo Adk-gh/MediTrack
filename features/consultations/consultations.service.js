@@ -86,7 +86,7 @@ exports.createConsultation = async (consultationData) => {
       .eq('id', existingChat.id)
       .eq('status', 'ended')
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       console.error('[createConsultation] Update error:', updateError);

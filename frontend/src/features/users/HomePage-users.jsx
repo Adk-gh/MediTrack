@@ -463,7 +463,7 @@ const HomePageUsers = () => {
   const pinnedAnn = urgentAnn || latestAnn;
 
   return (
-    <div className="flex flex-col h-full bg-[#f7faf8] pb-16 relative">
+    <div className="flex flex-col h-full bg-[#f7faf8] relative">
 
       {/* NEW: Top linear loading bar indicating PTR is active */}
       {isRefreshing && (

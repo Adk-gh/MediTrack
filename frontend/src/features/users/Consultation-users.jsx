@@ -1,7 +1,73 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Consultation-users.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+
+// ── CACHE KEYS ─────────────────────────────────────────────────────────────
+const MSG_CACHE_KEY      = 'meditrack_chat_messages';
+const CONSULT_CACHE_KEY  = 'meditrack_consultations';
+const PRESENCE_CACHE_KEY = 'meditrack_clinic_presence';
+const PRESENCE_TTL_MS    = 60000; // 1 minute cache for clinic status
+
+// ── Message Cache Helpers ─────────────────────────────────────────────────
+const getCachedMessages = (consultationId) => {
+  if (!consultationId) return null;
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(MSG_CACHE_KEY) || '{}');
+    const entry = cache[consultationId];
+    if (!entry) return null;
+    // Cache valid for 5 minutes
+    if (Date.now() - entry.timestamp > 5 * 60 * 1000) return null;
+    return entry.data;
+  } catch { return null; }
+};
+
+const setCachedMessages = (consultationId, messages) => {
+  if (!consultationId) return;
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(MSG_CACHE_KEY) || '{}');
+    cache[consultationId] = { data: messages, timestamp: Date.now() };
+    sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+};
+
+// ── Consultation Cache Helpers ────────────────────────────────────────────
+const getCachedConsultations = (userId) => {
+  if (!userId) return null;
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(CONSULT_CACHE_KEY) || '{}');
+    const entry = cache[userId];
+    if (!entry) return null;
+    // Cache valid for 2 minutes
+    if (Date.now() - entry.timestamp > 2 * 60 * 1000) return null;
+    return entry.data;
+  } catch { return null; }
+};
+
+const setCachedConsultations = (userId, data) => {
+  if (!userId) return;
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(CONSULT_CACHE_KEY) || '{}');
+    cache[userId] = { data, timestamp: Date.now() };
+    sessionStorage.setItem(CONSULT_CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+};
+
+// ── Presence Cache Helpers ─────────────────────────────────────────────────
+const getCachedPresence = () => {
+  try {
+    const cache = JSON.parse(sessionStorage.getItem(PRESENCE_CACHE_KEY) || 'null');
+    if (!cache) return null;
+    if (Date.now() - cache.timestamp > PRESENCE_TTL_MS) return null;
+    return cache.isOnline;
+  } catch { return null; }
+};
+
+const setCachedPresence = (isOnline) => {
+  try {
+    sessionStorage.setItem(PRESENCE_CACHE_KEY, JSON.stringify({ isOnline, timestamp: Date.now() }));
+  } catch {}
+};
 
 const formatTime = (ts) => {
   if (!ts) return '';
@@ -128,6 +194,9 @@ export default function ConsultationUsers() {
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMore,     setLoadingMore]     = useState(false);
 
+  // State to track which option button was clicked and lock the UI
+  const [startingOption,  setStartingOption]  = useState(null);
+
   const messagesEndRef  = useRef(null);
   const scrollAreaRef   = useRef(null);
   const isEndedRef      = useRef(true);
@@ -137,7 +206,7 @@ export default function ConsultationUsers() {
   const prevMsgCountRef = useRef(0);
   const prevFirstIdRef  = useRef(null);
 
-  useEffect(() => { isEndedRef.current     = isEnded;      }, [isEnded]);
+  useEffect(() => { isEndedRef.current = isEnded; }, [isEnded]);
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
 
   useEffect(() => {
@@ -156,7 +225,12 @@ export default function ConsultationUsers() {
       .eq('consultation_id', roomId)
       .order('created_at', { ascending: false })
       .limit(MSG_PAGE_SIZE);
-    if (data) setMessages([...data].reverse());
+    if (data) {
+      const ordered = [...data].reverse();
+      setMessages(ordered);
+      // Update cache on refresh
+      setCachedMessages(roomId, ordered);
+    }
   }, []);
 
   const {
@@ -177,7 +251,7 @@ export default function ConsultationUsers() {
   // Returns true when a raw JWT access token is expired (or unparseable).
   const isTokenExpired = (token) => {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
+     const payload = JSON.parse(atob(token.split('.')[1]));
       // exp is in seconds; subtract 30s so we refresh slightly early
       return Date.now() / 1000 > payload.exp - 30;
     } catch {
@@ -185,8 +259,10 @@ export default function ConsultationUsers() {
     }
   };
 
-  // Ensures a valid Supabase session exists and syncs it to realtime.
-  // Returns the live access token, or null if it cannot be obtained.
+  // FIX: Removed the pre-refresh setSession call that was causing the 400 Bad Request.
+  // Supabase's refreshSession() handles the refresh token internally — manually calling
+  // setSession() with an expired access token before refreshing can corrupt the session
+  // state and cause the token endpoint to reject the request.
   const ensureValidSession = useCallback(async () => {
     const accessToken  = localStorage.getItem('token');
     const refreshToken = localStorage.getItem('refresh_token') || '';
@@ -195,42 +271,41 @@ export default function ConsultationUsers() {
 
     // ── Fast path: token still valid ─────────────────────────────────
     if (!isTokenExpired(accessToken)) {
-      // Still set the session so the supabase client is aware of it
-      const { data: sd } = await supabase.auth.setSession({
-        access_token:  accessToken,
-        refresh_token: refreshToken,
-      });
-      const liveToken = sd?.session?.access_token || accessToken;
-      try { supabase.realtime.setAuth(liveToken); } catch {}
-      return liveToken;
+      try {
+        const { data: sd } = await supabase.auth.setSession({
+          access_token:  accessToken,
+          refresh_token: refreshToken,
+        });
+        const liveToken = sd?.session?.access_token || accessToken;
+        try { supabase.realtime.setAuth(liveToken); } catch {}
+        return liveToken;
+      } catch {
+        return accessToken;
+      }
     }
 
-    // ── Token expired — try to refresh using the refresh token ───────
+    // ── Token expired — call refreshSession() directly (no pre-setSession) ───
     console.log('[Chat] Access token expired, refreshing…');
 
-    if (refreshToken) {
-      // Set the expired session first so supabase knows which refresh
-      // token to use, then immediately refresh
-      await supabase.auth.setSession({
-        access_token:  accessToken,
-        refresh_token: refreshToken,
-      }).catch(() => {});
+    try {
+      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+
+      if (!refreshErr && refreshed?.session) {
+        const newAccess  = refreshed.session.access_token;
+        const newRefresh = refreshed.session.refresh_token;
+        localStorage.setItem('token', newAccess);
+        if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
+        try { supabase.realtime.setAuth(newAccess); } catch {}
+        console.log('[Chat] Token refreshed successfully');
+        return newAccess;
+      }
+
+      console.warn('[Chat] Token refresh failed, continuing without valid auth');
+      return null;
+    } catch (err) {
+      console.warn('[Chat] Token refresh threw:', err);
+      return null;
     }
-
-    const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-
-    if (!refreshErr && refreshed?.session) {
-      const newAccess  = refreshed.session.access_token;
-      const newRefresh = refreshed.session.refresh_token;
-      localStorage.setItem('token', newAccess);
-      if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
-      try { supabase.realtime.setAuth(newAccess); } catch {}
-      console.log('[Chat] Token refreshed successfully');
-      return newAccess;
-    }
-
-    console.warn('[Chat] Token refresh failed, continuing without valid auth');
-    return null;
   }, []);
 
   // ── 1. Session init — runs ONCE on mount ──────────────────────────────
@@ -252,10 +327,14 @@ export default function ConsultationUsers() {
       await ensureValidSession();
 
       if (profileCache?.internalUserId) {
-        supabase.from('presence').upsert(
-          { user_id: profileCache.internalUserId, status: 'online', last_seen: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        ).then().catch(() => {});
+        // FIX: Supabase query builders return a PromiseLike, not a real Promise.
+        // .catch() does not exist on them. Use try/catch with await instead.
+        try {
+          await supabase.from('presence').upsert(
+            { user_id: profileCache.internalUserId, status: 'online', last_seen: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+        } catch {}
         return; // effect 2 will clear loadingHistory
       }
 
@@ -266,7 +345,7 @@ export default function ConsultationUsers() {
         .eq('uid', currentUser.uid)
         .limit(1);
 
-      const profile = profiles?.[0];
+      const profile = profiles?.[0] || null;
       if (error || !profile) {
         setLoadingHistory(false);
         return;
@@ -277,18 +356,19 @@ export default function ConsultationUsers() {
       setInternalName(name);
       setSessionReady(true);
 
-      supabase.from('presence').upsert(
-        { user_id: profile.id, status: 'online', last_seen: new Date().toISOString() },
-        { onConflict: 'user_id' }
-      ).then().catch(() => {});
+      // FIX: Same fix — use try/catch instead of .catch()
+      try {
+        await supabase.from('presence').upsert(
+          { user_id: profile.id, status: 'online', last_seen: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        );
+      } catch {}
       // effect 2 will clear loadingHistory
     };
 
     run();
 
     // ── Proactive token refresh every 10 minutes ──────────────────────
-    // Supabase JWTs expire after 1 hour by default. Refreshing every 10
-    // minutes means realtime subscriptions never lose auth mid-session.
     const tokenRefreshInterval = setInterval(() => {
       ensureValidSession().catch(() => {});
     }, 10 * 60 * 1000);
@@ -297,13 +377,15 @@ export default function ConsultationUsers() {
       clearInterval(tokenRefreshInterval);
       const storedId = localStorage.getItem('_internalUserId');
       if (storedId) {
+        // FIX: Dropped .then() — fire-and-forget is fine without it.
+        // .then() on a Supabase builder is unreliable in cleanup contexts.
         supabase.from('presence').upsert(
           { user_id: storedId, status: 'offline', last_seen: new Date().toISOString() },
           { onConflict: 'user_id' }
-        ).then();
+        );
       }
     };
-  }, [ensureValidSession]);
+  }, [ensureValidSession, currentUser?.uid, profileCache?.internalUserId]);
 
   useEffect(() => {
     if (internalUserId) localStorage.setItem('_internalUserId', String(internalUserId));
@@ -317,6 +399,16 @@ export default function ConsultationUsers() {
 
     // ── Paginated message fetcher ─────────────────────────────────────
     const fetchMessages = async (roomId, beforeId = null) => {
+      // Try cache first for initial load (no beforeId)
+      if (!beforeId) {
+        const cached = getCachedMessages(roomId);
+        if (cached) {
+          setMessages(cached);
+          setHasMoreMessages(cached.length === MSG_PAGE_SIZE);
+          return;
+        }
+      }
+
       let query = supabase
         .from('consultation_messages')
         .select('*')
@@ -342,6 +434,8 @@ export default function ConsultationUsers() {
         setMessages(prev => [...ordered, ...prev]);
       } else {
         setMessages(ordered);
+        // Cache the initial messages
+        setCachedMessages(roomId, ordered);
       }
 
       setHasMoreMessages(data.length === MSG_PAGE_SIZE);
@@ -350,6 +444,24 @@ export default function ConsultationUsers() {
     // ── Initial consultation fetch ────────────────────────────────────
     const fetchConsultation = async () => {
       try {
+        // Check cache first
+        const cached = getCachedConsultations(internalUserId);
+        if (cached) {
+          if (cached.activeConsult) {
+            setActiveRoomId(cached.activeConsult.id);
+            setIsEnded(false);
+            setConsultType(cached.activeConsult.consultation_type || null);
+            await fetchMessages(cached.activeConsult.id);
+            return;
+          }
+          if (cached.lastEnded) {
+            setActiveRoomId(cached.lastEnded.id);
+            setConsultType(cached.lastEnded.consultation_type || null);
+            await fetchMessages(cached.lastEnded.id);
+            return;
+          }
+        }
+
         // Check for an active session first
         const { data: activeConsults } = await supabase
           .from('consultations')
@@ -366,6 +478,8 @@ export default function ConsultationUsers() {
           setIsEnded(false);
           setConsultType(activeConsult.consultation_type || null);
           await fetchMessages(activeConsult.id);
+          // Cache the result
+          setCachedConsultations(internalUserId, { activeConsult, lastEnded: null });
           return;
         }
 
@@ -384,7 +498,12 @@ export default function ConsultationUsers() {
           setActiveRoomId(lastEnded.id);
           setConsultType(lastEnded.consultation_type || null);
           await fetchMessages(lastEnded.id);
+          // Cache the result
+          setCachedConsultations(internalUserId, { activeConsult: null, lastEnded });
           // isEnded stays true — history + greeting both show
+        } else {
+          // Cache the empty result
+          setCachedConsultations(internalUserId, { activeConsult: null, lastEnded: null });
         }
       } finally {
         setLoadingHistory(false);
@@ -403,7 +522,7 @@ export default function ConsultationUsers() {
           .order('created_at', { ascending: false })
           .limit(1);
 
-        const row = latest?.[0];
+        const row = latest?.[0] || null;
         if (!row) return;
 
         const currentlyEnded = isEndedRef.current;
@@ -468,13 +587,23 @@ export default function ConsultationUsers() {
     let isMounted = true;
 
     const fetchPresence = async () => {
+      // Check cache first
+      const cachedOnline = getCachedPresence();
+      if (cachedOnline !== null) {
+        if (isMounted) setIsClinicOnline(cachedOnline);
+        return;
+      }
+
       const { data: onlineRows } = await supabase
         .from('presence')
         .select('user_id')
         .eq('status', 'online');
 
       if (!isMounted || !onlineRows?.length) {
-        if (isMounted) setIsClinicOnline(false);
+        if (isMounted) {
+          setIsClinicOnline(false);
+          setCachedPresence(false);
+        }
         return;
       }
 
@@ -491,8 +620,14 @@ export default function ConsultationUsers() {
         ['doctor', 'nurse', 'dentist', 'admin', 'administrator'].includes(u.role?.toLowerCase())
       );
       setIsClinicOnline(clinicOnline);
+      setCachedPresence(clinicOnline);
     };
 
+    // Initial fetch with cached value
+    const cachedOnline = getCachedPresence();
+    if (cachedOnline !== null) {
+      setIsClinicOnline(cachedOnline);
+    }
     fetchPresence();
 
     const presenceChannel = supabase
@@ -578,7 +713,10 @@ export default function ConsultationUsers() {
 
   // ── 6. Chat Handlers ───────────────────────────────────────────────────
   const handleOptionSelect = async (option) => {
-    if (!internalUserId) return;
+    // Prevent execution if already starting a session or missing user ID
+    if (!internalUserId || startingOption) return;
+
+    setStartingOption(option.label); // Lock UI immediately
 
     try {
       const token = localStorage.getItem('token');
@@ -610,6 +748,11 @@ export default function ConsultationUsers() {
       setMessages([]);
       setHasMoreMessages(false);
 
+      // Invalidate consultation cache when new one is created
+      setCachedConsultations(internalUserId, { activeConsult: consultation, lastEnded: null });
+      // Clear message cache for the new room
+      setCachedMessages(roomId, []);
+
       await supabase.from('consultation_messages').insert([
         {
           consultation_id: roomId,
@@ -631,6 +774,8 @@ export default function ConsultationUsers() {
 
     } catch (err) {
       console.error('Failed to start consultation:', err);
+    } finally {
+      setStartingOption(null); // Unlock UI once complete
     }
   };
 
@@ -648,13 +793,15 @@ export default function ConsultationUsers() {
         message:         text,
         created_at:      new Date().toISOString(),
       });
+      // Invalidate message cache so next fetch gets fresh data
+      setCachedMessages(activeRoomId, null);
     } catch (err) {
       console.error('Send error:', err);
     }
   };
 
-  // ── Group by date ──────────────────────────────────────────────────────
-  const groupedMessages = () => {
+  // ── Group by date (memoized) ───────────────────────────────────────────
+  const groupedMessages = useMemo(() => {
     const groups = [];
     let lastDate = null;
     messages.forEach(msg => {
@@ -666,14 +813,14 @@ export default function ConsultationUsers() {
       groups.push(msg);
     });
     return groups;
-  };
+  }, [messages]);
 
-  const typeConfig = {
+  const typeConfig = useMemo(() => ({
     generic: { label: 'MediTrack', sublabel: 'Assistant',        accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
     medical: { label: 'Medical',   sublabel: 'Doctors & Nurses', accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
     dental:  { label: 'Dental',    sublabel: 'Dentists',         accent: '#1a4a7a', accentLight: '#e8f0fa', accentBorder: '#b2c8e8' },
-  };
-  const cfg = (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic;
+  }), []);
+  const cfg = useMemo(() => (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic, [consultType, isEnded, typeConfig]);
 
   // ── Shared message renderer ────────────────────────────────────────────
   const renderMessage = (item, i, overrideCfg = null) => {
@@ -846,12 +993,12 @@ export default function ConsultationUsers() {
         )}
 
         {/* Active session messages */}
-        {!isEnded && sessionReady && groupedMessages().map((item, i) => renderMessage(item, i))}
+        {!isEnded && sessionReady && groupedMessages.map((item, i) => renderMessage(item, i))}
 
         {/* Ended session — history + divider */}
         {isEnded && messages.length > 0 && (
           <>
-            {sessionReady && groupedMessages().map((item, i) => renderMessage(item, i, typeConfig.generic))}
+            {sessionReady && groupedMessages.map((item, i) => renderMessage(item, i, typeConfig.generic))}
             <div className="flex items-center gap-3 my-4 opacity-60">
               <div className="flex-1 h-px bg-slate-300" />
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
@@ -877,18 +1024,36 @@ export default function ConsultationUsers() {
                 <strong>What brings you in today?</strong> Please select the type of consultation you need:
               </div>
             </div>
+
+            {/* OPTION BUTTONS WITH UI LOCK */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-9 max-w-[90%]">
-              {INITIAL_OPTIONS.map((opt, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleOptionSelect(opt)}
-                  disabled={!sessionReady}
-                  className="text-left text-[12px] font-bold px-4 py-3 rounded-xl border-2 bg-white transition-all hover:shadow-md active:scale-[0.98] duration-300 border-[#c4dbd8] text-[#466460] hover:border-[#466460] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {INITIAL_OPTIONS.map((opt, idx) => {
+                const isThisLoading = startingOption === opt.label;
+                const isDisabled = !sessionReady || startingOption !== null;
+
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleOptionSelect(opt)}
+                    disabled={isDisabled}
+                    className={`text-left text-[12px] font-bold px-4 py-3 rounded-xl border-2 bg-white transition-all duration-300 border-[#c4dbd8] text-[#466460] flex items-center justify-between ${
+                      isDisabled
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'hover:shadow-md active:scale-[0.98] hover:border-[#466460]'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                    {isThisLoading && (
+                      <svg className="animate-spin w-4 h-4 text-[#466460]" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
             </div>
+
           </div>
         )}
 

@@ -1,5 +1,6 @@
 //C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../supabase';
 import notificationsService from '../services/notifications.service.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -107,11 +108,57 @@ export function UserNotificationPanel({ isOpen, onClose }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const userIdRef = useRef(null);
 
+  // Get user ID from profile
+  useEffect(() => {
+    try {
+      const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
+      userIdRef.current = profile?.internalUserId || null;
+    } catch {}
+  }, []);
+
+  // Fetch notifications when panel opens
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
     }
+  }, [isOpen]);
+
+  // Real-time subscription for new notifications
+  useEffect(() => {
+    if (!userIdRef.current || !isOpen) return;
+
+    const channel = supabase
+      .channel('user-notifications-realtime')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userIdRef.current}` },
+        (payload) => {
+          setNotifications(prev => [payload.new, ...prev]);
+          setUnreadCount(prev => prev + 1);
+          sessionStorage.removeItem('meditrack_notifications');
+          sessionStorage.removeItem('meditrack_notif_count');
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userIdRef.current}` },
+        (payload) => {
+          setNotifications(prev => prev.map(n =>
+            n.id === payload.new.id ? { ...n, is_read: payload.new.is_read } : n
+          ));
+        }
+      )
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userIdRef.current}` },
+        (payload) => {
+          setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [isOpen]);
 
   const fetchNotifications = async () => {
