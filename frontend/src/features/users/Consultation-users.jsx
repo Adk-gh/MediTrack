@@ -186,6 +186,7 @@ export default function ConsultationUsers() {
   const [isClinicOnline,  setIsClinicOnline]  = useState(false);
   const [isEnded,         setIsEnded]         = useState(true);
   const [consultType,     setConsultType]     = useState(null);
+  const [historyFilter,   setHistoryFilter]   = useState('medical'); // 'medical' or 'dental'
   const [activeRoomId,    setActiveRoomId]    = useState(null);
   const [internalUserId,  setInternalUserId]  = useState(profileCache?.internalUserId ?? null);
   const [internalName,    setInternalName]    = useState(profileCache?.internalName   ?? 'Patient');
@@ -205,6 +206,7 @@ export default function ConsultationUsers() {
   const activeRoomIdRef = useRef(null);
   const prevMsgCountRef = useRef(0);
   const prevFirstIdRef  = useRef(null);
+  const isSendingRef    = useRef(false); // Track if sending to skip realtime dupes
 
   useEffect(() => { isEndedRef.current = isEnded; }, [isEnded]);
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
@@ -391,79 +393,74 @@ export default function ConsultationUsers() {
     if (internalUserId) localStorage.setItem('_internalUserId', String(internalUserId));
   }, [internalUserId]);
 
+  // ── 2. Message fetcher function (exposed for toggle handlers) ─────────
+  const fetchMessages = useCallback(async (roomId, beforeId = null) => {
+    // Try cache first for initial load (no beforeId)
+    if (!beforeId) {
+      const cached = getCachedMessages(roomId);
+      if (cached) {
+        setMessages(cached);
+        setHasMoreMessages(cached.length === MSG_PAGE_SIZE);
+        return;
+      }
+    }
+
+    let query = supabase
+      .from('consultation_messages')
+      .select('*')
+      .eq('consultation_id', roomId)
+      .order('created_at', { ascending: false })
+      .limit(MSG_PAGE_SIZE);
+
+    if (beforeId) {
+      const { data: pivot } = await supabase
+        .from('consultation_messages')
+        .select('created_at')
+        .eq('id', beforeId)
+        .single();
+      if (pivot) query = query.lt('created_at', pivot.created_at);
+    }
+
+    const { data } = await query;
+    if (!data) return;
+
+    const ordered = [...data].reverse(); // oldest-first for display
+
+    if (beforeId) {
+      setMessages(prev => [...ordered, ...prev]);
+    } else {
+      setMessages(ordered);
+      // Cache the initial messages
+      setCachedMessages(roomId, ordered);
+    }
+
+    setHasMoreMessages(data.length === MSG_PAGE_SIZE);
+  }, []);
+
   // ── 2. Consultation fetch + realtime listeners ────────────────────────
   useEffect(() => {
     if (!internalUserId || !sessionReady) return;
     if (fetchRanRef.current) return;
     fetchRanRef.current = true;
 
-    // ── Paginated message fetcher ─────────────────────────────────────
-    const fetchMessages = async (roomId, beforeId = null) => {
-      // Try cache first for initial load (no beforeId)
-      if (!beforeId) {
-        const cached = getCachedMessages(roomId);
-        if (cached) {
-          setMessages(cached);
-          setHasMoreMessages(cached.length === MSG_PAGE_SIZE);
-          return;
-        }
-      }
-
-      let query = supabase
-        .from('consultation_messages')
-        .select('*')
-        .eq('consultation_id', roomId)
-        .order('created_at', { ascending: false })
-        .limit(MSG_PAGE_SIZE);
-
-      if (beforeId) {
-        const { data: pivot } = await supabase
-          .from('consultation_messages')
-          .select('created_at')
-          .eq('id', beforeId)
-          .single();
-        if (pivot) query = query.lt('created_at', pivot.created_at);
-      }
-
-      const { data } = await query;
-      if (!data) return;
-
-      const ordered = [...data].reverse(); // oldest-first for display
-
-      if (beforeId) {
-        setMessages(prev => [...ordered, ...prev]);
-      } else {
-        setMessages(ordered);
-        // Cache the initial messages
-        setCachedMessages(roomId, ordered);
-      }
-
-      setHasMoreMessages(data.length === MSG_PAGE_SIZE);
-    };
-
     // ── Initial consultation fetch ────────────────────────────────────
     const fetchConsultation = async () => {
-      try {
-        // Check cache first
-        const cached = getCachedConsultations(internalUserId);
-        if (cached) {
-          if (cached.activeConsult) {
-            setActiveRoomId(cached.activeConsult.id);
-            setIsEnded(false);
-            setConsultType(cached.activeConsult.consultation_type || null);
-            await fetchMessages(cached.activeConsult.id);
-            return;
-          }
-          if (cached.lastEnded) {
-            setActiveRoomId(cached.lastEnded.id);
-            setConsultType(cached.lastEnded.consultation_type || null);
-            await fetchMessages(cached.lastEnded.id);
-            return;
-          }
-        }
+      console.log('[Chat] fetchConsultation called, internalUserId:', internalUserId);
 
-        // Check for an active session first
-        const { data: activeConsults } = await supabase
+      // Ensure session is valid before querying
+      await ensureValidSession();
+
+      // Verify session is active
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.log('[Chat] fetchConsultation: No session, returning early');
+        return;
+      }
+
+      try {
+        // FOR REAL-TIME DATA: Always query the database first, don't rely on cache
+        // This ensures we get the correct status after page refresh
+        const { data: activeConsults, error: activeError } = await supabase
           .from('consultations')
           .select('*')
           .eq('patient_id', internalUserId)
@@ -471,24 +468,50 @@ export default function ConsultationUsers() {
           .order('created_at', { ascending: false })
           .limit(1);
 
+        if (activeError) {
+          console.error('[Chat] Error fetching active consult:', activeError);
+        }
+
         const activeConsult = activeConsults?.[0] || null;
 
         if (activeConsult) {
+          console.log('[Chat] Found active consultation:', activeConsult.id, activeConsult.status);
           setActiveRoomId(activeConsult.id);
           setIsEnded(false);
           setConsultType(activeConsult.consultation_type || null);
           await fetchMessages(activeConsult.id);
-          // Cache the result
+          // Cache for future reference
           setCachedConsultations(internalUserId, { activeConsult, lastEnded: null });
           return;
         }
 
-        // No active session — load most recent ended session for history
+        // Only check cache if no active session found in DB
+        console.log('[Chat] No active consultation in DB, checking cache...');
+        const cached = getCachedConsultations(internalUserId);
+        if (cached?.activeConsult) {
+          // Verify this cached consult is actually active in DB
+          const { data: verifyData } = await supabase
+            .from('consultations')
+            .select('id, status')
+            .eq('id', cached.activeConsult.id)
+            .single();
+
+          if (verifyData?.status === 'active') {
+            setActiveRoomId(cached.activeConsult.id);
+            setIsEnded(false);
+            setConsultType(cached.activeConsult.consultation_type || null);
+            await fetchMessages(cached.activeConsult.id);
+            return;
+          }
+        }
+
+        // No active session — load most recent ended session for history (filtered by type)
         const { data: endedConsults } = await supabase
           .from('consultations')
           .select('*')
           .eq('patient_id', internalUserId)
           .eq('status', 'ended')
+          .eq('consultation_type', historyFilter)
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -515,28 +538,85 @@ export default function ConsultationUsers() {
     // ── POLLING FALLBACK (15s — realtime covers instant updates) ─────
     const pollInterval = setInterval(async () => {
       try {
-        const { data: latest } = await supabase
+        // Ensure session is valid before querying
+        await ensureValidSession();
+
+        // Verify session is active
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.log('[Chat] Poll: No session, skipping...');
+          return;
+        }
+
+        console.log('[Chat] Poll: Checking for active consultation for patient:', internalUserId);
+
+        // First check if there's an active consultation
+        console.log('[Chat] Poll: Querying with patient_id:', internalUserId);
+        const { data: activeData, error: activeError } = await supabase
+          .from('consultations')
+          .select('id, status, consultation_type')
+          .eq('patient_id', internalUserId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (activeError) {
+          console.error('[Chat] Poll: Error querying active:', activeError);
+          return;
+        }
+
+        console.log('[Chat] Poll: Active consultations found:', activeData?.map(c => ({ id: c.id, status: c.status })));
+
+        // Debug: Also get ALL consultations to see what's in DB
+        const { data: allConsults } = await supabase
           .from('consultations')
           .select('id, status, consultation_type')
           .eq('patient_id', internalUserId)
           .order('created_at', { ascending: false })
-          .limit(1);
+          .limit(5);
+        console.log('[Chat] Poll: All recent consultations:', allConsults?.map(c => ({ id: c.id, status: c.status })));
 
-        const row = latest?.[0] || null;
-        if (!row) return;
+        const activeRow = activeData?.[0] || null;
+        const currentRoomId = activeRoomIdRef.current;
 
+        // If there's an active consultation and we're not already viewing it
+        if (activeRow) {
+          if (activeRow.id !== currentRoomId) {
+            console.log('[Chat] Poll: Switching to active consultation:', activeRow.id);
+            setIsEnded(false);
+            setActiveRoomId(activeRow.id);
+            setConsultType(activeRow.consultation_type || null);
+            await fetchMessages(activeRow.id);
+          }
+          // If we're already viewing this active consultation, do nothing
+          return;
+        }
+
+        // No active consultation - we're either already ended or there's no consultation at all
+        // Only update if we think we're in an active session but there's actually none
         const currentlyEnded = isEndedRef.current;
+        if (!currentlyEnded) {
+          console.log('[Chat] Poll: No active consultation found, showing ended/history');
+          // Load the most recent ended consultation
+          const { data: endedData } = await supabase
+            .from('consultations')
+            .select('id, status, consultation_type')
+            .eq('patient_id', internalUserId)
+            .eq('status', 'ended')
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        if (row.status === 'ended' && !currentlyEnded) {
-          await fetchMessages(row.id);
-          setActiveRoomId(row.id);
-          setConsultType(null);
-          setIsEnded(true);
-        } else if (row.status === 'active' && currentlyEnded) {
-          setIsEnded(false);
-          setActiveRoomId(row.id);
-          setConsultType(row.consultation_type || null);
-          await fetchMessages(row.id);
+          const endedRow = endedData?.[0] || null;
+          if (endedRow) {
+            setIsEnded(true);
+            setActiveRoomId(endedRow.id);
+            setConsultType(endedRow.consultation_type || null);
+            await fetchMessages(endedRow.id);
+          } else {
+            setIsEnded(true);
+            setActiveRoomId(null);
+            setConsultType(null);
+          }
         }
       } catch (err) {
         console.warn('[Chat] Poll error:', err);
@@ -548,26 +628,46 @@ export default function ConsultationUsers() {
       .channel(`consultation-msgs-${internalUserId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'consultation_messages' },
         (payload) => {
-          if (String(payload.new.consultation_id) !== String(activeRoomIdRef.current)) return;
+          console.log('[Chat] Realtime message received:', payload.new);
+          if (String(payload.new.consultation_id) !== String(activeRoomIdRef.current)) {
+            console.log('[Chat] Message for different room, ignoring');
+            return;
+          }
+          // Skip realtime add if we're currently sending (we handle it via fetch)
+          if (isSendingRef.current) return;
           setMessages(msgs => {
             if (msgs.some(m => m.id === payload.new.id)) return msgs;
             return [...msgs, payload.new];
           });
         })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[Chat] Messages channel status:', status);
+      });
 
     // ── STATUS CHANGE LISTENER ────────────────────────────────────────
     const statusChannel = supabase
       .channel(`consultation-status-${internalUserId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultations' },
         async (payload) => {
+          console.log('[Chat] Status update received:', payload.new);
           if (String(payload.new.patient_id) !== String(internalUserId)) return;
+
+          const currentRoomId = activeRoomIdRef.current;
+
+          // Only process updates for the consultation we're currently viewing
+          if (String(payload.new.id) !== String(currentRoomId)) {
+            console.log('[Chat] Status update for different consultation, ignoring');
+            return;
+          }
+
           if (payload.new.status === 'ended') {
+            console.log('[Chat] Consultation ended by clinic');
             await fetchMessages(payload.new.id);
             setActiveRoomId(payload.new.id);
             setConsultType(null);
             setIsEnded(true);
           } else if (payload.new.status === 'active') {
+            console.log('[Chat] Consultation activated');
             setIsEnded(false);
             setConsultType(payload.new.consultation_type || null);
             setActiveRoomId(payload.new.id);
@@ -716,11 +816,20 @@ export default function ConsultationUsers() {
     // Prevent execution if already starting a session or missing user ID
     if (!internalUserId || startingOption) return;
 
+    // Don't create a new consultation if we're already in an active one
+    if (!isEndedRef.current && activeRoomIdRef.current) {
+      console.log('[Chat] Already in active consultation:', activeRoomIdRef.current);
+      setStartingOption(null);
+      return;
+    }
+
     setStartingOption(option.label); // Lock UI immediately
 
     try {
       const token = localStorage.getItem('token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+      console.log('[Chat] Creating consultation with:', { patient_id: internalUserId, consultation_type: option.type });
 
       const response = await fetch(`${API_URL}/consultations`, {
         method: 'POST',
@@ -737,11 +846,19 @@ export default function ConsultationUsers() {
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Failed to create consultation');
+      console.log('[Chat] Consultation response status:', response.status, 'data:', result);
+
+      if (!response.ok) {
+        console.error('[Chat] FAILED to create consultation:', result);
+        throw new Error(result.message || 'Failed to create consultation');
+      }
 
       const consultation = result.data;
       const roomId = consultation.id;
 
+      console.log('[Chat] Setting active room:', roomId, 'status:', consultation.status);
+
+      // Update state BEFORE inserting messages
       setActiveRoomId(roomId);
       setIsEnded(false);
       setConsultType(option.type);
@@ -753,6 +870,8 @@ export default function ConsultationUsers() {
       // Clear message cache for the new room
       setCachedMessages(roomId, []);
 
+      // Insert messages using direct Supabase call
+      console.log('[Chat] Inserting messages...');
       await supabase.from('consultation_messages').insert([
         {
           consultation_id: roomId,
@@ -772,8 +891,23 @@ export default function ConsultationUsers() {
         }
       ]);
 
+      // Force fetch messages after inserting to ensure they appear
+      console.log('[Chat] Fetching messages after insert...');
+      const { data: newMessages } = await supabase
+        .from('consultation_messages')
+        .select('*')
+        .eq('consultation_id', roomId)
+        .order('created_at', { ascending: true });
+
+      console.log('[Chat] New messages fetched:', newMessages?.length);
+      if (newMessages && newMessages.length > 0) {
+        setMessages(newMessages);
+      }
+
     } catch (err) {
-      console.error('Failed to start consultation:', err);
+      console.error('[Chat] Failed to start consultation:', err);
+      // Reset to ended state on error so user can try again
+      setIsEnded(true);
     } finally {
       setStartingOption(null); // Unlock UI once complete
     }
@@ -783,6 +917,7 @@ export default function ConsultationUsers() {
     if (!inputValue.trim() || !activeRoomId || isEnded) return;
     const text = inputValue.trim();
     setInputValue('');
+    isSendingRef.current = true; // Prevent realtime dupe
 
     try {
       await supabase.from('consultation_messages').insert({
@@ -793,11 +928,59 @@ export default function ConsultationUsers() {
         message:         text,
         created_at:      new Date().toISOString(),
       });
+
+      // Immediately fetch updated messages
+      const { data: updatedMessages } = await supabase
+        .from('consultation_messages')
+        .select('*')
+        .eq('consultation_id', activeRoomId)
+        .order('created_at', { ascending: true });
+
+      // Deduplicate by message ID
+      if (updatedMessages) {
+        const uniqueMessages = updatedMessages.reduce((acc, msg) => {
+          if (!acc.some(m => m.id === msg.id)) {
+            acc.push(msg);
+          }
+          return acc;
+        }, []);
+        setMessages(uniqueMessages);
+      }
       // Invalidate message cache so next fetch gets fresh data
       setCachedMessages(activeRoomId, null);
     } catch (err) {
       console.error('Send error:', err);
+    } finally {
+      isSendingRef.current = false; // Re-enable realtime
     }
+  };
+
+  // ── History filter switcher ────────────────────────────────────────────
+  const handleHistoryFilterSwitch = async (filterType) => {
+    setHistoryFilter(filterType);
+    setLoadingHistory(true);
+
+    await ensureValidSession();
+
+    const { data } = await supabase
+      .from('consultations')
+      .select('*')
+      .eq('patient_id', internalUserId)
+      .eq('status', 'ended')
+      .eq('consultation_type', filterType)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (data?.[0]) {
+      setActiveRoomId(data[0].id);
+      setConsultType(data[0].consultation_type);
+      await fetchMessages(data[0].id);
+    } else {
+      setActiveRoomId(null);
+      setConsultType(null);
+      setMessages([]);
+    }
+    setLoadingHistory(false);
   };
 
   // ── Group by date (memoized) ───────────────────────────────────────────
@@ -993,6 +1176,7 @@ export default function ConsultationUsers() {
         )}
 
         {/* Active session messages */}
+        {/* DEBUG: isEnded=, sessionReady=, messages.length=, loadingHistory= */}
         {!isEnded && sessionReady && groupedMessages.map((item, i) => renderMessage(item, i))}
 
         {/* Ended session — history + divider */}
@@ -1007,7 +1191,33 @@ export default function ConsultationUsers() {
           </>
         )}
 
-        {/* Greeting — shown only after DB check confirms no active session */}
+        {/* History Filter Toggle - only visible when consultation has ended */}
+        {!loadingHistory && isEnded && (
+          <div className="flex items-center justify-center gap-2 py-2 px-4">
+            <button
+              onClick={() => handleHistoryFilterSwitch('medical')}
+              className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-all ${
+                historyFilter === 'medical'
+                  ? 'bg-[#1a5c3a] text-white'
+                  : 'bg-white text-slate-500 border border-slate-200'
+              }`}
+            >
+              Medical
+            </button>
+            <button
+              onClick={() => handleHistoryFilterSwitch('dental')}
+              className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-all ${
+                historyFilter === 'dental'
+                  ? 'bg-[#1a4a7a] text-white'
+                  : 'bg-white text-slate-500 border border-slate-200'
+              }`}
+            >
+              Dental
+            </button>
+          </div>
+        )}
+
+        {/* Greeting — shown when consultation has ended (including when viewing history) */}
         {!loadingHistory && isEnded && (
           <div className="mt-2 mb-2 flex flex-col gap-3">
             <div className="flex items-end gap-2">

@@ -1,9 +1,12 @@
 // frontend/src/features/admin-clinic/Records.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker';
 import recordsService from '../../services/records.service';
+import { Medical } from './Examination/Medical';
+import { Dental } from './Examination/Dental';
 
 // ============================================================
 // CONSTANTS
@@ -154,7 +157,6 @@ const typeBadgeClass = (roleStr) => {
 
 const normalizeUser = (doc) => {
   const d = doc;
-  // Support both snake_case (from Supabase) and camelCase (legacy / optimistic inserts)
   const firstName = d.first_name    || d.firstName    || '';
   const lastName  = d.last_name     || d.lastName     || '';
   const middle    = d.middle_name || '';
@@ -164,7 +166,7 @@ const normalizeUser = (doc) => {
     : `${firstName} ${middle} ${suffix}`.trim() || '—';
 
   return {
-    uid:          doc.id || doc.uid,                                // id is the PK now
+    uid:          doc.id || doc.uid,
     name,
     firstName,
     lastName,
@@ -205,7 +207,6 @@ const RecordHistoryViewer = ({ person }) => {
 
     const fetchRecords = async () => {
       try {
-        // Fetch medical records
         const { data: medData, error: medError } = await supabase
           .from('medical_records')
           .select('*')
@@ -214,7 +215,6 @@ const RecordHistoryViewer = ({ person }) => {
 
         if (medError) console.error('Error fetching medical records:', medError);
 
-        // Fetch dental records
         const { data: denData, error: denError } = await supabase
           .from('dental_records')
           .select('*')
@@ -518,17 +518,21 @@ const RecordHistoryViewer = ({ person }) => {
 // ============================================================
 // PROFILE PANEL
 // ============================================================
-const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) => {
+const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, currentUserRole }) => {
   const [consultLoading, setConsultLoading] = useState(false);
 
   if (!person) return null;
+
+  // Normalize role for comparison
+  const userRole = String(currentUserRole || '').toLowerCase().trim();
+  const canDoMedical = ['nurse', 'doctor', 'admin', 'administrator'].includes(userRole);
+  const canDoDental = ['dentist', 'admin', 'administrator'].includes(userRole);
 
   const handleConsult = async () => {
     setConsultLoading(true);
     try {
       localStorage.setItem('selectedPatient', JSON.stringify(person));
 
-      // Check for existing active consultation for this patient
       const { data: existing, error: fetchError } = await supabase
         .from('consultations')
         .select('id')
@@ -541,7 +545,6 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) =>
       if (existing) {
         navigate(`/consultations?patientId=${person.uid}&convId=${existing.id}`);
       } else {
-        // Create new consultation
         const { data: newConsult, error: insertError } = await supabase
           .from('consultations')
           .insert({
@@ -665,13 +668,24 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) =>
       )}
 
       <div className="flex gap-2 flex-wrap">
-        <button
-          onClick={() => onExamine(person)}
-          className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-5 py-2.5 rounded-full text-[10px] font-bold hover:scale-105 transition-transform flex items-center gap-1.5 shadow-md"
-        >
-          <i className="fa-solid fa-stethoscope"></i>
-          Examine
-        </button>
+        {canDoMedical && (
+          <button
+            onClick={() => onExamine(person, 'medical')}
+            className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-5 py-2.5 rounded-full text-[10px] font-bold hover:scale-105 transition-transform flex items-center gap-1.5 shadow-md"
+          >
+            <i className="fa-solid fa-stethoscope"></i>
+            Medical
+          </button>
+        )}
+        {canDoDental && (
+          <button
+            onClick={() => onExamine(person, 'dental')}
+            className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-5 py-2.5 rounded-full text-[10px] font-bold hover:scale-105 transition-transform flex items-center gap-1.5 shadow-md"
+          >
+            <i className="fa-solid fa-tooth"></i>
+            Dental
+          </button>
+        )}
         <button
           onClick={handleConsult}
           disabled={consultLoading}
@@ -686,6 +700,201 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar }) =>
       </div>
 
       <RecordHistoryViewer person={person} />
+    </div>
+  );
+};
+
+// ============================================================
+// EXAMINATION MODAL
+// ============================================================
+// Normalize patient data similar to Examinations.jsx
+const normalizePatientData = (uid, d) => {
+  const firstName     = d.firstName    || d.first_name    || '';
+  const lastName      = d.lastName     || d.last_name     || '';
+  const middleName   = d.middleName   || d.middle_name   || '';
+  const suffix       = d.suffix       || '';
+  const universityId = d.universityId || d.university_id || d.studentId || d.student_id || '';
+
+  const name = lastName
+    ? `${lastName}, ${firstName} ${middleName} ${suffix}`.trim()
+    : firstName || '—';
+
+  return {
+    uid, name, firstName, lastName, middleName, suffix,
+    id:             universityId || uid,
+    universityId,
+    studentId:      d.studentId  || d.student_id  || universityId || '',
+    role:           d.role       || '',
+    prog:           d.program    || d.course       || '',
+    program:        d.program    || d.course       || '',
+    year:           d.yearLevel  || d.year_level   || '',
+    yearLevel:      d.yearLevel  || d.year_level   || '',
+    section:        d.section    || '',
+    age:            d.age        || '',
+    gender:         d.gender     || d.sex          || '',
+    sex:            d.gender     || d.sex          || '',
+    birthdate:      d.birthday   || d.birthdate    || '',
+    birthday:       d.birthday   || d.birthdate    || '',
+    email:          d.email      || '',
+    phoneNumber:    d.phoneNumber || d.phone_number || d.contact_no || '',
+    department:     d.department || '',
+    jobTitle:       d.jobTitle   || d.job_title    || '',
+    classification: d.classification || '',
+    homeAddress:    d.homeAddress || d.home_address || d.address || '',
+    religion:       d.religion   || '',
+    nationality:    d.nationality || '',
+    civilStatus:    d.civilStatus || d.civil_status || '',
+    bloodType:      d.bloodType  || d.blood_type   || '',
+    emergencyContact: d.emergencyContact || d.emergency_contact || {
+      name: '', relationship: '', phone: '', address: ''
+    },
+    vaccinations: d.vaccinations || {
+      dose1:    { vaccineName: '', date: '' },
+      dose2:    { vaccineName: '', date: '' },
+      booster1: { vaccineName: '', date: '' },
+      booster2: { vaccineName: '', date: '' },
+    },
+  };
+};
+
+const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onExamSubmitted, resetKey, currentUserRole }) => {
+  const [loading, setLoading] = useState(true);
+  const [normalizedPatient, setNormalizedPatient] = useState(null);
+
+  // Filter tabs based on user role
+  const userRole = String(currentUserRole || '').toLowerCase().trim();
+  const canDoMedical = ['nurse', 'doctor', 'admin', 'administrator'].includes(userRole);
+  const canDoDental = ['dentist', 'admin', 'administrator'].includes(userRole);
+
+  // Determine available tabs
+  const availableTabs = [
+    { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
+    { key: 'dental', icon: 'fa-tooth', label: 'Dental Examination' },
+  ].filter(tab => {
+    if (tab.key === 'medical') return canDoMedical;
+    if (tab.key === 'dental') return canDoDental;
+    return true;
+  });
+
+  useEffect(() => {
+    if (!isOpen || !patient) {
+      setNormalizedPatient(null);
+      return;
+    }
+
+    const fetchPatientData = async () => {
+      setLoading(true);
+
+      // Get the uid - use patient.uid or patient.id (university id)
+      const userId = patient.uid || patient.id;
+      const matchCol = patient.uid ? 'id' : 'university_id';
+
+      try {
+        // Try to fetch from Supabase
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq(matchCol, userId)
+          .maybeSingle();
+
+        if (data && !error) {
+          // Use the fetched data, properly normalized
+          setNormalizedPatient(normalizePatientData(userId, data));
+        } else {
+          // Fallback to the patient prop if fetch fails
+          setNormalizedPatient(normalizePatientData(userId, patient));
+        }
+      } catch (err) {
+        console.error('Error fetching patient data:', err);
+        // Fallback to the patient prop
+        setNormalizedPatient(normalizePatientData(userId, patient));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPatientData();
+  }, [isOpen, patient, resetKey]);
+
+  if (!isOpen || !patient) return null;
+
+  const displayPatient = normalizedPatient || patient;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
+
+      {/* Modal Content */}
+      <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+        {/* Header */}
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-[#466460] flex items-center justify-center">
+              <i className="fa-solid fa-user text-white"></i>
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-slate-800">{displayPatient.name}</h3>
+              <p className="text-xs text-slate-500">
+                {displayPatient.id} • {displayPatient.department || ''} {displayPatient.prog ? `• ${displayPatient.prog}` : ''}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+          >
+            <i className="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50">
+          {availableTabs.map(({ key, icon, label }) => (
+            <button
+              key={key}
+              onClick={() => setExamType(key)}
+              className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                examType === key
+                  ? 'bg-[#466460] text-white shadow-md'
+                  : 'text-slate-600 hover:bg-white hover:shadow-sm'
+              }`}
+            >
+              <i className={`fa-solid ${icon}`}></i>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Form Content */}
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center text-slate-400">
+                <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 block text-[#466460]"></i>
+                <p className="text-sm font-semibold">Loading patient data…</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {examType === 'medical' && (
+                <Medical
+                  key={`medical-${resetKey}`}
+                  selectedPatient={displayPatient}
+                  showMessage={onExamSubmitted}
+                />
+              )}
+              {examType === 'dental' && (
+                <Dental
+                  key={`dental-${resetKey}`}
+                  selectedPatient={displayPatient}
+                  showMessage={onExamSubmitted}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -715,6 +924,21 @@ export const Records = () => {
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const snackbarTimer = useRef(null);
 
+  // Examination Modal State
+  const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examType, setExamType] = useState('medical');
+  const [examResetKey, setExamResetKey] = useState(0);
+
+  // Get current user role from localStorage
+  const [currentUserRole, setCurrentUserRole] = useState(() => {
+    try {
+      const rawUser = localStorage.getItem('user');
+      return rawUser ? JSON.parse(rawUser)?.role || 'student' : 'student';
+    } catch {
+      return 'student';
+    }
+  });
+
   const [form, setForm] = useState({
     surname: '', firstname: '', middlename: '', suffix: '', id: '',
     birthdate: '', age: '', gender: 'Male', type: 'student',
@@ -724,51 +948,41 @@ export const Records = () => {
     email: '', phone: '', password: '',
   });
 
-  // Load users directly from Supabase
   const loadUsers = async () => {
-  try {
-    setLoading(true);
-    console.log('[Records] Fetching users from Supabase...');
-    console.log('[Records] Supabase client:', supabase);
-    console.log('[Records] Supabase URL:', supabase.supabaseUrl);
+    try {
+      setLoading(true);
+      console.log('[Records] Fetching users from Supabase...');
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('*');
-      // .order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('users')
+        .select('*');
 
-    console.log('[Records] Supabase response:', { data, error });
+      if (error) {
+        console.error('[Records] Supabase error:', error);
+        throw error;
+      }
 
-    if (error) {
-      console.error('[Records] Supabase error:', error);
-      console.error('[Records] Error details:', JSON.stringify(error, null, 2));
-      throw error;
-    }
+      if (!data || data.length === 0) {
+        console.warn('[Records] No users found in database');
+        setPeopleData([]);
+        setLoading(false);
+        return;
+      }
 
-    console.log('[Records] Raw data count:', data?.length || 0);
+      const normalized = (data || []).map(doc => ({
+        ...normalizeUser(doc),
+        department: doc.department || 'Unassigned',
+      }));
 
-    if (!data || data.length === 0) {
-      console.warn('[Records] No users found in database');
-      setPeopleData([]);
+      console.log('[Records] Loaded users:', normalized.length);
+      setPeopleData(normalized);
+    } catch (err) {
+      console.error('Failed to load users:', err);
+      showSnackbar('Could not load users from database', 'error');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const normalized = (data || []).map(doc => ({
-      ...normalizeUser(doc),
-      // fallback so null-department users still appear
-      department: doc.department || 'Unassigned',
-    }));
-
-    console.log('[Records] Loaded users:', normalized.length);
-    setPeopleData(normalized);
-  } catch (err) {
-    console.error('Failed to load users:', err);
-    showSnackbar('Could not load users from database', 'error');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     loadUsers();
@@ -849,9 +1063,24 @@ export const Records = () => {
     setProfileOpen(true);
   };
 
-  const handleExamine = (person) => {
+  const handleExamine = (person, type = 'medical') => {
     localStorage.setItem('selectedPatient', JSON.stringify(person));
-    navigate(`/examinations?patientId=${person.uid}`);
+    setExamType(type);
+    setExamResetKey(k => k + 1);
+    setExamModalOpen(true);
+  };
+
+  const handleExamModalClose = () => {
+    setExamModalOpen(false);
+    localStorage.removeItem('selectedPatient');
+    setExamResetKey(k => k + 1);
+  };
+
+  const handleExamSubmitted = (msg) => {
+    showSnackbar(msg, 'success');
+    setExamModalOpen(false);
+    localStorage.removeItem('selectedPatient');
+    setExamResetKey(k => k + 1);
   };
 
   const handleFormChange = (e) => {
@@ -1140,48 +1369,49 @@ export const Records = () => {
                     <div className="w-10 h-1 rounded-full bg-slate-200"></div>
                   </div>
                   <div className="flex-1 overflow-y-auto px-5 pb-8 pt-2 [&::-webkit-scrollbar]:hidden">
-                    <ProfilePanel person={selectedPerson} onExamine={handleExamine} onClose={() => setProfileOpen(false)} navigate={navigate} showSnackbar={showSnackbar} />
+                    <ProfilePanel person={selectedPerson} onExamine={handleExamine} onClose={() => setProfileOpen(false)} navigate={navigate} showSnackbar={showSnackbar} currentUserRole={currentUserRole} />
                   </div>
                 </div>
               </div>
 
-              {/* DESKTOP */}
+              {/* DESKTOP — 2-column layout: People | Clinical Profile */}
               <div className="hidden lg:flex h-full bg-white overflow-hidden">
-                {/* Column 1 — Departments */}
-                <div className="flex-[1.2] border-r border-[#eef2f6] flex flex-col min-w-[160px] overflow-hidden">
-                  <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
-                    <h3 className="font-bold text-[11px] uppercase text-[#466460]">Departments</h3>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
-                    {loading ? (
-                      <div className="text-center text-slate-400 text-xs py-8">
-                        <i className="fa-solid fa-spinner fa-spin mr-1"></i> Loading...
-                      </div>
-                    ) : departments.length === 0 ? (
-                      <div className="text-center text-slate-400 text-xs py-8">No departments found</div>
-                    ) : departments.map(dept => (
-                      <div
-                        key={dept}
-                        onClick={() => handleSelectDept(dept)}
-                        className={`px-3 py-2 cursor-pointer rounded-lg transition-all border-l-[3px] text-xs font-semibold ${
-                          currentDept === dept
-                            ? 'bg-gradient-to-r from-[#e0eceb] to-white border-[#466460] text-[#466460]'
-                            : 'border-transparent text-slate-600 hover:bg-gradient-to-r hover:from-slate-50 hover:to-white hover:translate-x-0.5'
-                        }`}
-                      >
-                        {dept}
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Column 2 — People */}
-                <div className="flex-[1.5] border-r border-[#eef2f6] flex flex-col min-w-[200px] overflow-hidden">
+                {/* Column 1 — People (with department selector integrated into filters) */}
+                <div className="flex-[1.5] border-r border-[#eef2f6] flex flex-col min-w-[220px] max-w-[340px] overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-4">
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="font-bold text-[11px] uppercase text-[#466460]">People</h3>
                       <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">{filteredPeople.length}</span>
                     </div>
+
+                    {/* Department selector — moved from sidebar into People header */}
+                    <div className="relative mb-3">
+                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                          <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                      </div>
+                      <select
+                        value={currentDept || ''}
+                        onChange={e => handleSelectDept(e.target.value)}
+                        className="w-full pl-8 pr-8 py-2 bg-[#f4f8f6] border border-[#c8ddd8] rounded-lg text-[11px] font-semibold text-[#1a2e22] outline-none appearance-none focus:border-[#466460] focus:bg-white transition-all cursor-pointer"
+                        style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
+                      >
+                        {loading ? (
+                          <option>Loading...</option>
+                        ) : departments.map(dept => (
+                          <option key={dept} value={dept}>{dept}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </div>
+                    </div>
+
                     <div className="flex items-center gap-2 mb-2">
                       <div className="relative flex-1">
                         <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"></i>
@@ -1253,8 +1483,8 @@ export const Records = () => {
                   </div>
                 </div>
 
-                {/* Column 3 — Clinical Profile */}
-                <div className="flex-[2.2] flex flex-col min-w-0 overflow-hidden">
+                {/* Column 2 — Clinical Profile (expanded to fill all remaining space) */}
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
                     <h3 className="font-bold text-[11px] uppercase text-[#466460]">Clinical Profile</h3>
                   </div>
@@ -1265,10 +1495,11 @@ export const Records = () => {
                         <p className="text-slate-400 text-sm">Select a person from the list</p>
                       </div>
                     ) : (
-                      <ProfilePanel person={selectedPerson} onExamine={handleExamine} navigate={navigate} showSnackbar={showSnackbar} />
+                      <ProfilePanel person={selectedPerson} onExamine={handleExamine} navigate={navigate} showSnackbar={showSnackbar} currentUserRole={currentUserRole} />
                     )}
                   </div>
                 </div>
+
               </div>
             </>
           )}
@@ -1455,6 +1686,22 @@ export const Records = () => {
           )}
         </div>
       </div>
+
+      {/* Examination Modal - Using Portal to render at document root level */}
+      {examModalOpen && createPortal(
+        <ExaminationModal
+          isOpen={examModalOpen}
+          onClose={handleExamModalClose}
+          patient={selectedPerson}
+          examType={examType}
+          setExamType={setExamType}
+          onExamSubmitted={handleExamSubmitted}
+          resetKey={examResetKey}
+          currentUserRole={currentUserRole}
+        />,
+        document.body
+      )}
+
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
     </>
   );

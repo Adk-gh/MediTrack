@@ -77,23 +77,46 @@ exports.createConsultation = async (consultationData) => {
   if (existingChat) {
     console.log(`[createConsultation] Reactivating ended session: ${existingChat.id}`);
 
-    const { data: updated, error: updateError } = await supabase
+    // First update
+    const { error: updateError } = await supabase
       .from('consultations')
       .update({
         status:   'active',
         ended_at: null,
       })
-      .eq('id', existingChat.id)
-      .eq('status', 'ended')
-      .select()
-      .maybeSingle();
+      .eq('id', existingChat.id);
 
     if (updateError) {
       console.error('[createConsultation] Update error:', updateError);
       throw new Error(updateError.message);
     }
 
-    return updated || existingChat;
+    // Then fetch fresh to get updated data
+    const { data: updated, error: fetchError } = await supabase
+      .from('consultations')
+      .select('*')
+      .eq('id', existingChat.id)
+      .single();
+
+    if (fetchError) {
+      console.error('[createConsultation] Fetch error:', fetchError);
+    }
+
+    // If update succeeded but fetch failed, fetch again
+    if (!updated) {
+      const { data: retryData } = await supabase
+        .from('consultations')
+        .select('*')
+        .eq('id', existingChat.id)
+        .single();
+      if (retryData) {
+        console.log('[createConsultation] Reactivated (retry):', retryData);
+        return retryData;
+      }
+    }
+
+    console.log('[createConsultation] Reactivated:', updated);
+    return updated;
   }
 
   // ── STEP 3: No history — create a brand new session ───────────────────
@@ -124,6 +147,7 @@ exports.createConsultation = async (consultationData) => {
     console.error('[createConsultation] Insert error:', error);
     throw new Error(error.message);
   }
+
   return data;
 };
 

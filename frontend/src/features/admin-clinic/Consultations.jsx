@@ -90,6 +90,8 @@ export const Consultations = () => {
   const msgChannelRef   = useRef(null);
   const convChannelRef  = useRef(null);
   const presenceChannelRef = useRef(null);
+  const selectedConvIdRef = useRef(null);
+  const isSendingRef    = useRef(false); // Track if sending to skip realtime dupes
 
   const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
 
@@ -172,7 +174,10 @@ export const Consultations = () => {
     if (!sessionReady) return;
     const loadConsultations = async () => {
       try {
-        const data = await consultationsService.getAllConsultations();
+        console.log('[Clinic] Loading consultations...');
+        const data = await consultationsService.getAllConsultations(null, true); // Force refresh
+        console.log('[Clinic] Raw data from API:', data?.map(c => ({ id: c.id, status: c.status, patient_id: c.patient_id })));
+
         const consultationsWithLastMessage = await Promise.all(
           (data || []).map(async (conv) => {
             try {
@@ -189,7 +194,10 @@ export const Consultations = () => {
           })
         );
         consultationsWithLastMessage.sort((a, b) => b.last_timestamp - a.last_timestamp);
+        console.log('[Clinic] Processed consultations:', consultationsWithLastMessage.map(c => ({ id: c.id, status: c.status, last_msg: c.last_message?.substring(0, 30) })));
         setConversations(consultationsWithLastMessage);
+
+        // REMOVED: Auto-select first active conversation - user selects manually
       } catch (err) {
         console.error('Failed to load consultations:', err);
       }
@@ -198,7 +206,9 @@ export const Consultations = () => {
 
     convChannelRef.current = consultationsService.subscribeToConsultations((payload) => {
       if (payload.eventType === 'INSERT') {
-        setConversations(prev => [{ ...payload.new, last_message: '', last_timestamp: 0 }, ...prev]);
+        const newConv = { ...payload.new, last_message: '', last_timestamp: 0 };
+        setConversations(prev => [newConv, ...prev]);
+        // REMOVED: Auto-select new consultation - user selects manually
       } else if (payload.eventType === 'UPDATE') {
         setConversations(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
       }
@@ -260,13 +270,19 @@ export const Consultations = () => {
 
     if (selectedConvId) {
       msgChannelRef.current = consultationsService.subscribeToMessages(selectedConvId, (newMessage) => {
-        const formatted = {
-          ...newMessage,
-          text: newMessage.message,
-          timestamp: new Date(newMessage.created_at).getTime(),
-          sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(newMessage.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
-        };
-        setMessages(prev => [...prev, formatted]);
+        // Skip realtime add if we're currently sending (we handle it via fetch)
+        if (isSendingRef.current) return;
+        // Check for duplicate before adding
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMessage.id)) return prev;
+          const formatted = {
+            ...newMessage,
+            text: newMessage.message,
+            timestamp: new Date(newMessage.created_at).getTime(),
+            sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(newMessage.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+          };
+          return [...prev, formatted];
+        });
       });
     }
 
@@ -276,6 +292,7 @@ export const Consultations = () => {
   }, [selectedConvId, sessionReady]);
 
   useEffect(() => { setShowPatientPanel(false); }, [selectedConvId]);
+  useEffect(() => { selectedConvIdRef.current = selectedConvId; }, [selectedConvId]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   // ── Send Message ──────────────────────────────────────────────────────
@@ -284,6 +301,7 @@ export const Consultations = () => {
     if (!selectedConvId || !messageInput.trim() || !internalStaffId) return;
     const text = messageInput.trim();
     setMessageInput('');
+    isSendingRef.current = true; // Prevent realtime dupe
     try {
       await consultationsService.sendMessage(selectedConvId, {
         text,
@@ -291,9 +309,28 @@ export const Consultations = () => {
         sender_name: currentUser.name || 'Clinic Staff',
         sender_role: currentUser.role || 'staff',
       });
+
+      // Immediately fetch updated messages (force refresh to skip cache)
+      const data = await consultationsService.getMessagesByConsultationId(selectedConvId, true);
+      // Deduplicate by message ID
+      const uniqueData = (data || []).reduce((acc, msg) => {
+        if (!acc.some(m => m.id === msg.id)) {
+          acc.push(msg);
+        }
+        return acc;
+      }, []);
+      const formatted = (uniqueData || []).map(msg => ({
+        ...msg,
+        text: msg.message,
+        timestamp: new Date(msg.created_at).getTime(),
+        sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+      }));
+      setMessages(formatted);
     } catch (err) {
       console.error('Send error:', err);
       showToast('Failed to send message', 'error');
+    } finally {
+      isSendingRef.current = false; // Re-enable realtime
     }
   };
 
