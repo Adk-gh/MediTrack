@@ -18,32 +18,49 @@ const ResetPassword = () => {
   useEffect(() => {
     setIsLoaded(true);
 
-    // Check for hash parameters in URL (Supabase sends reset link with hash)
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    // First, check for error in URL hash (Supabase redirects with error info)
+    const hashString = window.location.hash.substring(1);
+    const hashParams = new URLSearchParams(hashString);
+    const urlError = hashParams.get('error');
+    const errorDescription = hashParams.get('error_description');
+
+    if (urlError) {
+      // Parse the error description (URL encoded)
+      const decodedError = errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, ' ')) : 'Invalid or expired reset link';
+      setError(decodedError);
+      return;
+    }
+
+    // Get all possible tokens from URL
     const accessToken = hashParams.get('access_token');
     const refreshToken = hashParams.get('refresh_token');
+    const queryToken = searchParams.get('token');
+    const queryRefreshToken = searchParams.get('refresh_token');
+    const code = searchParams.get('code'); // Some Supabase setups use 'code'
 
-    if (accessToken && refreshToken) {
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken
-      }).then(({ error }) => {
-        if (error) {
-          setError('Invalid or expired reset link');
-        } else {
-          setIsReady(true);
-        }
-      });
-    } else {
-      // Check query parameters (some setups use query params)
-      const token = searchParams.get('token');
-      const type = searchParams.get('type');
+    const finalToken = accessToken || queryToken || code;
+    const finalRefreshToken = refreshToken || queryRefreshToken;
 
-      // If no token at all, show error
-      if (!token && !accessToken) {
-        setError('Invalid reset link. Please request a new password reset.');
-      }
+    if (!finalToken) {
+      setError('Invalid reset link. Please request a new password reset.');
+      return;
     }
+
+    // Try to set the session with the token
+    supabase.auth.setSession({
+      access_token: finalToken,
+      refresh_token: finalRefreshToken || ''
+    }).then(({ error }) => {
+      if (error) {
+        console.error('Set session error:', error);
+        setError('Invalid or expired reset link: ' + error.message);
+      } else {
+        setIsReady(true);
+      }
+    }).catch(err => {
+      console.error('Catch error:', err);
+      setError('Failed to validate reset link');
+    });
   }, [searchParams]);
 
   const handleSubmit = async (e) => {
@@ -160,7 +177,7 @@ const ResetPassword = () => {
             Enter your new password below.
           </p>
 
-          {!isReady && !error ? (
+{!isReady && !error ? (
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <div style={{
                 width: 32, height: 32,
@@ -171,7 +188,38 @@ const ResetPassword = () => {
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               <p style={{ color: '#6b7280', fontSize: 14 }}>Preparing reset link...</p>
             </div>
-          ) : isReady ? (
+          ) : error ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                padding: '20px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 8,
+                marginBottom: 20,
+                color: '#dc2626',
+                fontSize: 14
+              }}>
+                {error}
+              </div>
+              <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 20 }}>
+                The reset link has expired or is invalid. Please request a new one.
+              </p>
+              <Link
+                to="/forgot-password"
+                style={{
+                  display: 'inline-block',
+                  padding: '12px 24px',
+                  background: '#466460',
+                  color: 'white',
+                  textDecoration: 'none',
+                  borderRadius: 8,
+                  fontWeight: 600
+                }}
+              >
+                Request New Reset Link
+              </Link>
+            </div>
+          ) : (
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, fontSize: 14, color: '#374151' }}>
@@ -235,7 +283,7 @@ const ResetPassword = () => {
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
             </form>
-          ) : null}
+          )}
 
           <div style={{ textAlign: 'center', marginTop: 20 }}>
             <Link to="/login" style={{ color: '#466460', textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>
