@@ -1,5 +1,8 @@
 // C:\Users\HP\MediTrack\features\consultations\consultations.service.js
 const supabase = require('../../configs/database');
+const archiveHelper = require('../archives/archiveHelper');
+
+const ARCHIVE_TYPE = 'consultation';
 
 exports.getAllConsultations = async (consultationType = null, role = null) => {
   let query = supabase
@@ -173,13 +176,16 @@ exports.endConsultation = async (id) => {
   });
 };
 
-exports.deleteConsultation = async (id) => {
-  const { error } = await supabase
-    .from('consultations')
-    .delete()
-    .eq('id', id);
+exports.deleteConsultation = async (id, deletedBy) => {
+  // Move to archives before deletion
+  await archiveHelper.archiveAndDelete({
+    type: ARCHIVE_TYPE,
+    originalId: id,
+    tableName: 'consultations',
+    idColumn: 'id',
+    deletedBy
+  }, supabase);
 
-  if (error) throw new Error(error.message);
   return { success: true };
 };
 

@@ -75,4 +75,7 @@ const getAllUsers = async (req, res) => {
 // GET request - No logging
 router.get("/users", authorized, getAllUsers);
 
+// DELETE user - move to archives
+router.delete("/users/:userId", authorized, userController.deleteUser);
+
 module.exports = router;

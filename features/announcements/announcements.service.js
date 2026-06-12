@@ -1,5 +1,8 @@
 // C:\Users\HP\MediTrack\features/announcements/announcements.service.js
 const supabase = require('../../configs/database');
+const archiveHelper = require('../archives/archiveHelper');
+
+const ARCHIVE_TYPE = 'announcement';
 
 // ── In-Memory Cache Setup ──────────────────────────────────────────────
 let announcementsCache = {
@@ -148,13 +151,15 @@ exports.updateAnnouncement = async (id, data) => {
   return { id, ...updateData };
 };
 
-exports.deleteAnnouncement = async (id) => {
-  const { error } = await supabase
-    .from('announcements')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
+exports.deleteAnnouncement = async (id, deletedBy) => {
+  // Move to archives before deletion
+  await archiveHelper.archiveAndDelete({
+    type: ARCHIVE_TYPE,
+    originalId: id,
+    tableName: 'announcements',
+    idColumn: 'id',
+    deletedBy
+  }, supabase);
 
   // Clear cache so the deleted item vanishes instantly
   clearCache();

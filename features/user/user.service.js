@@ -243,14 +243,18 @@ exports.setupProfile = async (userId, profileData) => {
 
   const { data: existingUser } = await supabase
     .from('users')
-    .select('role')
+    .select('email, role')
     .eq('uid', userId)
     .single();
 
   const resolvedRole = (profileData.role || existingUser?.role || 'student').toLowerCase();
   const isStudent = resolvedRole === 'student';
 
+  // Preserve existing email if not provided in profileData
+  const email = profileData.email || existingUser?.email || '';
+
   const sanitized = {
+    email:                  email,
     first_name:             profileData.firstName ?? '',
     middle_name:         profileData.middleName ?? '',
     last_name:              profileData.lastName ?? '',
@@ -348,6 +352,37 @@ exports.getProfile = async (userId) => {
     emergencyContact:     data.emergency_contact || {},
     vaccinations:         data.vaccinations || {},
   };
+};
+
+const archiveHelper = require('../archives/archiveHelper');
+const ARCHIVE_TYPE = 'user';
+
+exports.deleteUser = async (userId, deletedBy) => {
+  const { data: userData, error: fetchError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('uid', userId)
+    .single();
+
+  if (fetchError) {
+    throw new Error(fetchError.message);
+  }
+
+  await archiveHelper.archiveAndDelete({
+    type: ARCHIVE_TYPE,
+    originalId: userId,
+    tableName: 'users',
+    idColumn: 'uid',
+    deletedBy
+  }, supabase);
+
+  try {
+    await supabase.auth.admin.deleteUser(userId);
+  } catch (e) {
+    console.log('Auth user already deleted or mismatch');
+  }
+
+  return { uid: userId };
 };
 
 exports.checkUniversityId = async (universityId) => {

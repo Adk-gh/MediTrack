@@ -113,8 +113,12 @@ const endConsultation = async (req, res, next) => {
 const deleteConsultation = async (req, res, next) => {
   try {
     const { id } = req.params;
-    await consultationsService.deleteConsultation(id);
-    res.status(200).json({ success: true, message: 'Consultation deleted' });
+    const deletedBy = {
+      id: req.user?.uid,
+      email: req.user?.email
+    };
+    await consultationsService.deleteConsultation(id, deletedBy);
+    res.status(200).json({ success: true, message: 'Consultation moved to archives' });
   } catch (error) {
     next(error);
   }

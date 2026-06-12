@@ -44,8 +44,12 @@ const updateAnnouncement = async (req, res, next) => {
 
 const deleteAnnouncement = async (req, res, next) => {
   try {
-    await announcementsService.deleteAnnouncement(req.params.id);
-    res.status(200).json({ success: true, message: "Announcement deleted" });
+    const deletedBy = {
+      id: req.user?.uid,
+      email: req.user?.email
+    };
+    await announcementsService.deleteAnnouncement(req.params.id, deletedBy);
+    res.status(200).json({ success: true, message: "Announcement moved to archives" });
   } catch (error) {
     next(error);
   }

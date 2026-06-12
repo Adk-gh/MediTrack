@@ -1,6 +1,9 @@
 // C:\Users\HP\MediTrack\features/Records/records.service.js
 const supabase = require('../../configs/database');
 const notificationsService = require('../notifications/notifications.service');
+const archiveHelper = require('../archives/archiveHelper');
+
+const ARCHIVE_TYPE = 'record';
 
 exports.getAllRecords = async () => {
   const { data, error } = await supabase
@@ -134,13 +137,22 @@ exports.updateRecord = async (id, data) => {
   return { id, ...updateData };
 };
 
-exports.deleteRecord = async (id) => {
+exports.deleteRecord = async (id, deletedBy) => {
+  // Move to archives before deletion
+  await archiveHelper.archiveAndDelete({
+    type: ARCHIVE_TYPE,
+    originalId: id,
+    tableName: 'users',
+    idColumn: 'id',
+    deletedBy
+  }, supabase);
+
+  // Also delete from auth if exists
   try {
     await supabase.auth.admin.deleteUser(id);
   } catch (e) {
     console.log('Auth user already deleted or mismatch');
   }
-  const { error } = await supabase.from('users').delete().eq('id', id);
-  if (error) throw error;
+
   return { id };
 };

@@ -95,6 +95,14 @@ const NavReportsIcon = ({ active }) => (
   </svg>
 );
 
+const NavArchiveIcon = ({ active }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
+    <path d="M21 8v13H3V8" />
+    <path d="M1 3h22v5H1z" />
+    <path d="M10 12h4" />
+  </svg>
+);
+
 // ─── Role-based mobile nav items ──────────────────────────────────────────────
 const ROLE_MOBILE_NAV = {
   admin: [
@@ -105,6 +113,7 @@ const ROLE_MOBILE_NAV = {
     { id: 'users', label: 'Users', Icon: NavUsersIcon },
     { id: 'ocrSettings', label: 'OCR Settings', Icon: NavOcrIcon },
     { id: 'reports', label: 'Reports', Icon: NavReportsIcon },
+    { id: 'archives', label: 'Archives', Icon: NavArchiveIcon },
   ],
   doctor: [
     { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },

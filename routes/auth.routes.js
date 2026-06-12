@@ -21,4 +21,7 @@ router.post('/login',
   authController.login
 );
 
+// 3. Forgot Password: Send password reset email
+router.post('/forgot-password', authController.forgotPassword);
+
 module.exports = router;

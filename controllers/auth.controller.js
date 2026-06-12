@@ -1,5 +1,30 @@
 // C:\Users\HP\MediTrack\controllers\auth.controller.js
 const userService = require('../features/user/user.service');
+const supabase = require('../configs/supabase');
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: process.env.CLIENT_URL || 'http://localhost:3000'
+    });
+
+    if (error) {
+      console.error('Forgot password error:', error);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    res.json({ success: true, message: 'Password reset email sent. Check your inbox.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
 
 exports.register = async (req, res) => {
   try {

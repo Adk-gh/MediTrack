@@ -16,6 +16,7 @@ const examinationsRoutes = require('../features/examinations/examinations.route'
 const announcementsRoutes = require('../features/announcements/announcements.route');
 const notificationsRoutes = require('../features/notifications/notifications.route');
 const consultationsRoutes = require('../features/consultations/consultations.route');
+const archivesRoutes = require('../features/archives/archives.route');
 
 // 🔴 FIX 1: Commented out the 'hijacker' route so it doesn't intercept our new code
 // const profileSetupRoutes = require('../features/user/profile-setup/profile-setup');
@@ -31,5 +32,6 @@ router.use('/examinations', examinationsRoutes);
 router.use('/announcements', announcementsRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/consultations', consultationsRoutes);
+router.use('/archives', archivesRoutes);
 
 module.exports = router;

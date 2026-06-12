@@ -1,7 +1,9 @@
 // frontend/src/components/ProfileSetup.jsx
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import DatePicker from './Datepicker'; // ← replaces react-datepicker
+import DatePicker from './Datepicker';
+import AddressModal from './AddressModal';
 
 // --- PLSP Department Data ---
 const departmentsData = [
@@ -118,6 +120,125 @@ const VACCINE_DOSES = [
   { key: 'booster2', label: 'Booster 2' },
 ];
 
+// ── Philippines Address Data ─────────────────────────────────────────────────
+const PHILIPPINES_REGIONS = [
+  { code: 'NCR', name: 'National Capital Region' },
+  { code: 'CAR', name: 'Cordillera Administrative Region' },
+  { code: 'Region I', name: 'Ilocos Region' },
+  { code: 'Region II', name: 'Cagayan Valley' },
+  { code: 'Region III', name: 'Central Luzon' },
+  { code: 'Region IV-A', name: 'CALABARZON' },
+  { code: 'Region IV-B', name: 'MIMAROPA' },
+  { code: 'Region V', name: 'Bicol Region' },
+  { code: 'Region VI', name: 'Western Visayas' },
+  { code: 'Region VII', name: 'Central Visayas' },
+  { code: 'Region VIII', name: 'Eastern Visayas' },
+  { code: 'Region IX', name: 'Zamboanga Peninsula' },
+  { code: 'Region X', name: 'Northern Mindanao' },
+  { code: 'Region XI', name: 'Davao Region' },
+  { code: 'Region XII', name: 'SOCCSKSARGEN' },
+  { code: 'Region XIII', name: 'Caraga' },
+  { code: 'BARMM', name: 'Bangsamoro Autonomous Region in Muslim Mindanao' },
+];
+
+const PHILIPPINES_PROVINCES = {
+  'NCR': [
+    { name: 'Metro Manila', cities: ['Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Manila', 'Marikina', 'Muntinlupa', 'Navotas', 'Pasay', 'Pasig', 'Quezon City', 'San Juan', 'Taguig', 'Valenzuela'] }
+  ],
+  'Region III': [
+    { name: 'Aurora', cities: ['Baler', 'Dipaculao'] },
+    { name: 'Bataan', cities: ['Abucay', 'Bagac', 'Balanga', 'Dinalupihan', 'Hermosa', 'Limay', 'Lubao', 'Mariveles', 'Morong', 'Orani', 'Orion', 'Pilar', 'Samal'] },
+    { name: 'Bulacan', cities: ['Angat', 'Balagtas', 'Baliuag', 'Bocaue', 'Bulacan', 'Bustos', 'Calumpit', 'Guiguinto', 'Hagonoy', 'Malolos', 'Marilao', 'Meycauayan', 'Norzagaray', 'Obando', 'Pandi', 'Paombong', 'Plaridel', 'Pulilan', 'San Ildefonso', 'San Jose del Monte', 'San Miguel', 'San Rafael', 'Santa Maria', 'Doña Remedios Trinidad'] },
+    { name: 'Nueva Ecija', cities: ['Angeles', 'Cabanatuan', 'Gapan', 'Guimba', 'Laoang', 'Licab', 'Llanera', 'Lupao', 'San Antonio', 'San Jose', 'San Leonardo', 'Santo Domingo', 'Talavera', 'Zaragoza'] },
+    { name: 'Pampanga', cities: ['Angeles', 'Apalit', 'Arayat', 'Bacolor', 'Candaba', 'Floridablanca', 'Guagua', 'Lubao', 'Macabebe', 'Magalang', 'Masantol', 'Mexico', 'Minalin', 'Porac', 'San Fernando', 'San Luis', 'San Simon', 'Santa Ana', 'Santa Rita', 'Santo Tomas', 'Sasmuan'] },
+    { name: 'Tarlac', cities: ['Anao', 'Bamban', 'Camiling', 'Capas', 'Concepcion', 'Gerona', 'La Paz', 'Mayantoc', 'Moncada', 'Pancalan', 'Pilar', 'Ramos', 'San Carlos', 'San Clemente', 'San Manuel', 'Santa Rosa', 'Tarlac City', 'Victoria'] },
+    { name: 'Zambales', cities: ['Botolan', 'Cabangan', 'Candelaria', 'Castillejos', 'Iba', 'Masinloc', 'Olongapo', 'San Antonio', 'San Felipe', 'San Marcelino', 'San Narciso', 'Santa Cruz', 'Subic'] }
+  ],
+  'Region IV-A': [
+    { name: 'Batangas', cities: ['Agoncillo', 'Alitagtag', 'Balayan', 'Batangas City', 'Bauan', 'Calaca', 'Calatagan', 'Cuenca', 'Fernando', 'Ibaan', 'Jomalig', 'Lipa', 'Lobo', 'Mabini', 'Malvar', 'Mataasnakahoy', 'Nasugbu', 'Padre Garcia', 'Rosario', 'San Jose', 'San Juan', 'San Luis', 'San Nicolas', 'Santo Tomas', 'Taal', 'Talisay', 'Tanauan', 'Taysan', 'Tingloy', 'Tuy'] },
+    { name: 'Cavite', cities: ['Cavite City', 'Tagaytay', 'Trece Martires', 'Alfonso', 'Amadeo', 'Bacoor', 'Carmona', 'Dasmariñas', 'General Emilio Aguinaldo', 'General Mariano Alvarez', 'Imus', 'Indang', 'Kawit', 'Maragondon', 'Mendez', 'Naic', 'Noveleta', 'Rosario', 'Silang', 'Tanza', 'Ternate'] },
+    { name: 'Laguna', cities: ['San Pablo', 'Alaminos', 'Bay', 'Biñan', 'Cabuyao', 'Calamba', 'Calauan', 'Famy', 'Kalayaan', 'Liliw', 'Los Baños', 'Luisiana', 'Lumban', 'Mabitac', 'Magdalena', 'Majayjay', 'Nagcarlan', 'Paete', 'Pagsanjan', 'Pakil', 'Pangil', 'Pila', 'Rizal', 'San Pedro', 'Santa Cruz', 'Santa Maria', 'Siniloan', 'Victoria'] },
+    { name: 'Rizal', cities: ['Antipolo', 'Angono', 'Baras', 'Binangonan', 'Cainta', 'Cardona', 'Jalajala', 'Morong', 'Pililla', 'Rodriguez', 'San Mateo', 'Taytay'] }
+  ],
+  'Region V': [
+    { name: 'Albay', cities: ['Legazpi', 'Tabaco', 'Ligao', 'Camalig', 'Daraga', 'Guinobatan', 'Jovellar', 'Libon', 'Malilipot', 'Malinao', 'Oas', 'Pioduran', 'Rapu-Rapu', 'Santo Domingo', 'Tibiao'] },
+    { name: 'Camarines Norte', cities: ['Daet', 'Basud', 'Capalonga', 'Daet', 'Javier', 'Labo', 'Mercedes', 'Paracale', 'San Lorenzo Ruiz', 'San Vicente', 'Talisay', 'Vinzons'] },
+    { name: 'Camarines Sur', cities: ['Naga', 'Iriga', 'Baao', 'Balatan', 'Bato', 'Bombon', 'Buenavista', 'Buhi', 'Bula', 'Cabusao', 'Calabanga', 'Camaligan', 'Canaman', 'Caramoan', 'Del Gallego', 'Gainza', 'Garchitorena', 'Goa', 'Lagonoy', 'Libmanan', 'Ligid', 'Milaor', 'Minalabac', 'Nabua', 'Ocampo', 'Pamplona', 'Pasacao', 'Pili', 'Presentacion', 'Sagñay', 'San Andres', 'San Fernando', 'San Jose', 'Sipocot', 'Siruma', 'Tigaon', 'Tinambac'] },
+    { name: 'Catanduanes', cities: ['Virac', 'Bagamanoc', 'Baras', 'Bato', 'Caramoran', 'Gigmoto', 'Pandan', 'Panganiban', 'San Andres', 'San Miguel', 'Viga'] },
+    { name: 'Masbate', cities: ['Masbate City', 'Aroroy', 'Baleno', 'Balud', 'Batuan', 'Cataingan', 'Cawayan', 'Claveria', 'Dimasalang', 'Esperanza', 'Mandaon', 'Milagros', 'Mobo', 'Monreal', 'Palanas', 'Pio V. Corpuz', 'Placer', 'San Fernando', 'San Jacinto', 'San Pascual', 'Uson'] },
+    { name: 'Sorsogon', cities: ['Sorsogon City', 'Barcelona', 'Bulan', 'Bulusan', 'Casiguran', 'Castilla', 'Davao', 'Donsol', 'Gubat', 'Irosin', 'Juban', 'Magallanes', 'Matnog', 'Pilar', 'Prieto Diaz', 'Santa Magdalena'] }
+  ],
+  'Region VI': [
+    { name: 'Aklan', cities: ['Kalibo', 'Altavas', 'Balete', 'Banga', 'Batan', 'Buruanga', 'Ibajay', 'Lezo', 'Libacao', 'Madalag', 'Makato', 'Malay', 'Malinao', 'Nabas', 'New Washington', 'Tangalan'] },
+    { name: 'Antique', cities: ['San Jose', 'Anini-y', 'Barbaza', 'Belison', 'Bugasong', 'Caluya', 'Culasi', 'Hamtic', 'Laua-an', 'Libertad', 'Pandan', 'Patnongon', 'San Remigio', 'Sebaste', 'Sibalom', 'Tibiao', 'Valderrama'] },
+    { name: 'Capiz', cities: ['Roxas City', 'Cuartero', 'Dao', 'Dumalag', 'Dumarao', 'Ivisan', 'Jamindan', 'Maayon', 'Mambusao', 'Panitan', 'Pilar', 'Pontevedra', 'President Roxas', 'Sapi-an', 'Sigma', 'Tapaz'] },
+    { name: 'Iloilo', cities: ['Iloilo City', 'Passi City', 'Ajuy', 'Alimodian', 'Anilao', 'Badiangan', 'Balasan', 'Banate', 'Barotac Nuevo', 'Barotac Viejo', 'Batad', 'Bingawan', 'Culasi', 'Dingle', 'Duenas', 'Dumangas', 'Estancia', 'Guimbal', 'Igbaras', 'Iloilo City', 'Janiuay', 'Lambunao', 'Leganes', 'Lemery', 'Leon', 'Maasin', 'Miag-ao', 'Molo', 'Nabas', 'New Lucena', 'Oton', 'Pavia', 'Pototan', 'San Dionisio', 'San Enrique', 'San Joaquin', 'San Lorenzo', 'San Miguel', 'San Rafael', 'Santa Barbara', 'Santiago', 'Sara', 'Tigbauan', 'Tubungan', 'Zarraga'] },
+    { name: 'Negros Occidental', cities: ['Bacolod', 'Bago', 'Cadiz', 'Escalante', 'Himamaylan', 'Ilog', 'Kabankalan', 'La Carlota', 'Manapla', 'Murcia', 'Pontevedra', 'Pulupandan', 'Sagbayan', 'Salvador Benedicto', 'San Carlos', 'San Enrique', 'Silay', 'Sipalay', 'Talisay', 'Toboso', 'Valladolid', 'Victorias'] }
+  ],
+  'Region VII': [
+    { name: 'Bohol', cities: ['Tagbilaran', 'Albuera', 'Alicia', 'Anda', 'Antequera', 'Bacacay', 'Balilihan', 'Batuan', 'Bien Unido', 'Bilar', 'Buenavista', 'Calape', 'Candijay', 'Carmen', 'Catigbian', 'Clarin', 'Corella', 'Cortes', 'Daanbantayan', 'Danao', 'Datal Bat', 'Dimiao', 'Duero', 'Garcia Hernandez', 'Getafe', 'Guindulman', 'Inabanga', 'Jagna', 'Lila', 'Loay', 'Loboc', 'Mabini', 'Maribojoc', 'Panglao', 'Pilar', 'President Carlos P. Garcia', 'Sierra Bullones', 'Sikatuna', 'Tagbilaran', 'Talibon', 'Trinidad', 'Tubigon', 'Ubay', 'Valencia'] },
+    { name: 'Cebu', cities: ['Cebu City', 'Lapu-Lapu', 'Mandaue', 'Argao', 'Alcantara', 'Alcoy', 'Alegria', 'Aloguinsan', 'Argao', 'Asturias', 'Badian', 'Balamban', 'Bantayan', 'Barili', 'Batuan', 'Bogo', 'Boljoon', 'Borbon', 'Carcar', 'Carmen', 'Catmon', 'Cebu City', 'Compostela', 'Consolacion', 'Cordoba', 'Daanbantayan', 'Dalaguete', 'Danao', 'Dumanjug', 'El Salvador', 'Ginatilan', 'Lapu-Lapu', 'Liloan', 'Madridejos', 'Mandaue', 'Medellin', 'Minglanilla', 'Moalboal', 'Naga', 'Oslob', 'Pilar', 'Pinamalayan', 'Poro', 'Ronda', 'Samboan', 'San Fernando', 'San Francisco', 'San Remigio', 'Santander', 'Sibonga', 'Sogod', 'Tabogon', 'Tabuelan', 'Talisay', 'Toledo', 'Tuburan', 'Tudela'] },
+    { name: 'Negros Oriental', cities: ['Dumaguete', 'Amlan', 'Ayungon', 'Bacnotan', 'Bais', 'Basay', 'Bayawan', 'Bindoy', 'Canlaon', 'Dauin', 'Dumaguete', 'Guihulngan', 'Jimalalud', 'La Libertad', 'Mabinay', 'Manjuyod', 'Pamplona', 'San Jose', 'San Manuel', 'Santa Catalina', 'Siaton', 'Sibulan', 'Tanjay', 'Tayasan', 'Valencia', 'Vallehermoso', 'Zamboanguita'] }
+  ],
+  'Region VIII': [
+    { name: 'Biliran', cities: ['Naval', 'Almeria', 'Biliran', 'Cabucgayan', 'Culasi', 'Kawayan', 'Maripipi', 'Naval', 'Sohoton', 'Tubig', 'WITHOUT CITY'] },
+    { name: 'Eastern Samar', cities: ['Borongan', 'Arteche', 'Balangiga', 'Balangkayan', 'Borongan', 'Can-avid', 'Dolores', 'General MacArthur', 'Giporlos', 'Guiuan', 'Hernani', 'Jipapad', 'Llorente', 'Maslog', 'Maydolong', 'Mercedes', 'Oras', 'Quinapondan', 'Salcedo', 'San Julian', 'San Policarpo', 'Sulat', 'Taft'] },
+    { name: 'Leyte', cities: ['Tacloban', 'Ormoc', 'Abuyog', 'Alangalang', 'Albuera', 'Babatngon', 'Barugo', 'Bato', 'Baybay', 'Burauen', 'Calubian', 'Capoocan', 'Carigara', 'Dagami', 'Dulag', 'Hilongos', 'Hindang', 'Inopacan', 'Jaro', 'Javier', 'Julita', 'Kananga', 'La Paz', 'Leyte', 'Libong', 'Liloan', 'Limay', 'Matalom', 'Mayorga', 'Merida', 'Palo', 'Palompon', 'Pastrana', 'San Fernando', 'San Ricardo', 'Sohol', 'Tabango', 'Tabontanon', 'Tacloban', 'Talisayan', 'Tanauan', 'Tolosa', 'Tunga', 'Villaba'] },
+    { name: 'Northern Samar', cities: ['Catarman', 'Allen', 'Biri', 'Bobon', 'Calbayog', 'Catarman', 'Catubig', 'Claveria', 'Darag', 'Gamay', 'Laoang', 'Lapinig', 'Las Navas', 'Lope de Vega', 'Mapanas', 'Mondragon', 'Palapag', 'Pambujan', 'Mondragon', 'Rosario', 'San Antonio', 'San Jose', 'San Roque', 'San Vicente', 'Silvino Luyos', 'Tagbilaran', 'Victoria'] },
+    { name: 'Samar', cities: ['Catbalogan', 'Basey', 'Calbiga', 'Catbalogan', 'Daram', 'Gandara', 'Hinabangan', 'Jiabong', 'Marabut', 'Motion', 'Pinamalayan', 'San Jorge', 'San Jose de Buan', 'San Sebastian', 'Santo Niño', 'Tagas', 'Talalora', 'Tarangnan', 'Villareal', 'Zumarraga'] },
+    { name: 'Southern Leyte', cities: ['Maasin', 'Anahawan', 'Bontoc', 'Cabulijan', 'Hinunangan', 'Hinukay', 'Libagon', 'Liloan', 'Maasin', 'Macrohon', 'Malitbog', 'Padre Burgos', 'Pintuyan', 'Saint Bernard', 'San Francisco', 'San Juan', 'San Ricardo', 'Silago', 'Sogod', 'Tahusan', 'Tomas Oppus'] }
+  ],
+  'Region IX': [
+    { name: 'Zamboanga del Norte', cities: ['Dipolog', 'Dapitan', 'Katipunan', 'Labason', 'Liloy', 'Manukan', 'Mutia', 'Piñan', 'Polanco', 'Pres. Manuel A. Roxas', 'Rizal', 'Salug', 'Sergio Osmena Sr.', 'Sibuco', 'Sibutad', 'Siocon', 'Sirawai', 'Tampilisan'] },
+    { name: 'Zamboanga del Sur', cities: ['Pagadian', 'Aurora', 'Bayog', 'Dimataling', 'Dinas', 'Dumalinao', 'Gumangan', 'Josefina', 'Kumalarang', 'Labangan', 'Lakewood', 'Lapuyan', 'Mahayag', 'Magsaysay', 'Maitum', 'Malangas', 'Margosatubig', 'Meo', 'Midsalip', 'Molave', 'Naga', 'Pitogo', 'Ramon Magsaysay', 'San Miguel', 'San Pablo', 'Sominot', 'Tabina', 'Tambulig', 'Tukuran', 'Vincenzo A. Sagun'] },
+    { name: 'Zamboanga Sibugay', cities: ['Ipil', 'Buluan', 'Buug', 'Diplahan', 'Imelda', 'Ipil', 'Kabasalan', 'Kalawsan', 'Kumalarang', 'Mabuhay', 'Malangas', 'Naga', 'Olutanga', 'Payao', 'Roseller T. Lim', 'Siay', 'Sibugay', 'Talusan', 'Tungawan'] }
+  ],
+  'Region X': [
+    { name: 'Bukidnon', cities: ['Malaybalay', 'Valencia', 'Baungon', 'Cabanglasan', 'Damulog', 'Dangcagan', 'Don Carlos', 'Impasugong', 'Kadingilan', 'Kalilangan', 'Kibawe', 'Kitaotao', 'Lantapan', 'Libona', 'Malitbog', 'Manolo Fortich', 'Maramag', 'Pangantucan', 'Quezon', 'San Fernando', 'Sumilao', 'Talakag', 'Valladolid', 'Veruela'] },
+    { name: 'Camiguin', cities: ['Mambajao', 'Catarman', 'Guinsiliban', 'Mahinog', 'Sagbayan'] },
+    { name: 'Lanao del Norte', cities: ['Iligan', 'Bacolod', 'Baloi', 'Baroy', 'Damascus', 'Iligan', 'Kapatagan', 'Lala', 'Linamon', 'Magsaysay', 'Maigo', 'Matungao', 'Nunukan', 'Pandanan', 'Pantar', 'Poona Piagapo', 'Salvador', 'Sapiano', 'Tagoloan', 'Tubod'] },
+    { name: 'Misamis Occidental', cities: ['Oroquieta', 'Aloran', 'Baliangao', 'Bonifacio', 'Calamba', 'Clarin', 'Concepcion', 'Don Victoriano Chiongbian', 'Jasa', 'Lopez Jaena', 'Oroquieta', 'Ozamiz', 'Panaon', 'Plaridel', 'Sapang Dalaga', 'Sinacaban', 'Tudela'] },
+    { name: 'Misamis Oriental', cities: ['Cagayan de Oro', 'Alubijid', 'Balingasag', 'Balingoan', 'Binuangan', 'Cagayan de Oro', 'Claveria', 'El Salvador', 'Gingoog', 'Gitagum', 'Initao', 'Jasaan', 'Kinoguitan', 'Lagonglong', 'Laguindingan', 'Libertad', 'Lugait', 'Magsaysay', 'Manticao', 'Medina', 'Naawan', 'Opol', 'Oton', 'Tagoloan', 'Talusan', 'Villanueva'] }
+  ],
+  'Region XI': [
+    { name: 'Davao del Norte', cities: ['Tagum', 'Asuncion', 'Braulio E. Dujali', 'Carmen', 'Dapa', 'Don Marcelino', 'Kapalong', 'Mabini', 'Maco', 'Manat', 'Montevista', 'Nabunturan', 'New Bataan', 'Padre Burgos', 'Pantukan', 'San Francisco', 'Santo Tomas', 'Tagum', 'Talaingod'] },
+    { name: 'Davao del Sur', cities: ['Davao City', 'Bansalan', 'Davao City', 'Digos', 'Hagonoy', 'Koronadal', 'Magsaysay', 'Malalag', 'Matanao', 'Padada', 'Santa Cruz', 'Sulop'] },
+    { name: 'Davao Oriental', cities: ['Mati', 'Banaybanay', 'Boston', 'Cateel', 'Davao Oriental', 'Governor Generoso', 'Lupon', 'Manay', 'Mati', 'San Isidrio', 'Tarragona'] },
+    { name: 'South Cotabato', cities: ['Koronadal', 'Bangha', 'Banga', 'Koronadal', 'Lake Sebu', 'Norala', 'Polomolok', 'Santo Niño', 'Surallah', 'Tampakan', 'Tantangan', 'Tboli'] },
+    { name: 'Sultan Kudarat', cities: ['Isulan', 'Bagumbayan', 'Columbio', 'Esperanza', 'Isulan', 'Kalamansi', 'Lebak', 'Lutayan', 'Palimbang', 'President Quirino', 'Sen. Ninoy Aquino', 'Tacurong'] }
+  ],
+};
+
+// Get provinces by region name
+const getProvincesByRegion = (regionName) => {
+  // Find region code by name
+  const region = PHILIPPINES_REGIONS.find(r => r.name === regionName);
+  if (!region) return [];
+
+  // Check both code and name as keys
+  return PHILIPPINES_PROVINCES[region.code] || PHILIPPINES_PROVINCES[regionName] || [];
+};
+
+// Get cities by province
+const getCitiesByProvince = (regionName, provinceName) => {
+  const provinces = getProvincesByRegion(regionName);
+  const province = provinces.find(p => p.name === provinceName);
+  return province ? province.cities : [];
+};
+
+// Build full address
+const buildFullAddress = (formData) => {
+  const parts = [];
+  if (formData.addressStreet) parts.push(formData.addressStreet);
+  if (formData.addressBarangay) parts.push(formData.addressBarangay);
+  if (formData.addressCity) parts.push(formData.addressCity);
+  if (formData.addressProvince) parts.push(formData.addressProvince);
+  if (formData.addressRegion) parts.push(formData.addressRegion);
+  if (formData.addressCountry) parts.push(formData.addressCountry);
+  if (formData.addressZipCode) parts.push(formData.addressZipCode);
+  return parts.join(', ');
+};
+
 const API_URL     = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const TOTAL_STEPS = 3;
 
@@ -176,7 +297,15 @@ function calcAge(isoDate) {
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return String(age);
+  return age; // returns number
+}
+
+// Validate age is realistic
+function isValidAge(age) {
+  if (age === '' || age === null || age === undefined) return false;
+  const numAge = Number(age);
+  if (isNaN(numAge) || numAge < 1 || numAge > 120) return false;
+  return true;
 }
 
 // =============================================================================
@@ -201,6 +330,14 @@ const ProfileSetup = ({ user, onComplete }) => {
     sex:           '',
     bloodType:     '',
     homeAddress:   '',
+    // Address fields
+    addressCountry:   'Philippines',
+    addressRegion:    '',
+    addressProvince: '',
+    addressCity:      '',
+    addressBarangay:  '',
+    addressStreet:    '',
+    addressZipCode:   '',
     religion:      '',
     nationality:   'Filipino',
     civilStatus:   'Single',
@@ -224,6 +361,14 @@ const ProfileSetup = ({ user, onComplete }) => {
     emergencyRelationship: '',
     emergencyPhone:        '',
     emergencyAddress:      '',
+    // Emergency Address fields
+    emergencyAddressCountry:   'Philippines',
+    emergencyAddressRegion:    '',
+    emergencyAddressProvince: '',
+    emergencyAddressCity:      '',
+    emergencyAddressBarangay:  '',
+    emergencyAddressStreet:    '',
+    emergencyAddressZipCode:   '',
 
     vaccinations: {
       dose1:    { vaccineName: '', date: '' },
@@ -234,6 +379,8 @@ const ProfileSetup = ({ user, onComplete }) => {
   });
 
   const [errors, setErrors] = useState({});
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showEmergencyAddressModal, setShowEmergencyAddressModal] = useState(false);
 
   // Auth Guard
   useEffect(() => {
@@ -271,13 +418,61 @@ const ProfileSetup = ({ user, onComplete }) => {
       return;
     }
 
+    // Handle address field changes
+    if (id.startsWith('address')) {
+      let updatedData = { [id]: value };
+
+      // When region changes, reset province, city, barangay
+      if (id === 'addressRegion') {
+        updatedData = {
+          ...updatedData,
+          addressProvince: '',
+          addressCity: '',
+          addressBarangay: '',
+        };
+      }
+      // When province changes, reset city, barangay
+      if (id === 'addressProvince') {
+        updatedData = {
+          ...updatedData,
+          addressCity: '',
+          addressBarangay: '',
+        };
+      }
+      // When city changes, reset barangay
+      if (id === 'addressCity') {
+        updatedData = {
+          ...updatedData,
+          addressBarangay: '',
+        };
+      }
+
+      setFormData(prev => {
+        const newData = { ...prev, ...updatedData };
+        // Update homeAddress with full address string
+        newData.homeAddress = buildFullAddress(newData);
+        return newData;
+      });
+      clearError(id);
+      return;
+    }
+
     setFormData(prev => ({ ...prev, [id]: value }));
     clearError(id);
   };
 
   // ── Birthday change (from DatePicker) ────────────────────────────
   const handleBirthdayChange = (isoDate) => {
-    setFormData(prev => ({ ...prev, birthday: isoDate, age: calcAge(isoDate) }));
+    const calculatedAge = calcAge(isoDate);
+
+    // Validate age is realistic
+    if (isoDate && !isValidAge(calculatedAge)) {
+      setError('birthday', calculatedAge < 1 ? 'Birthday cannot be in the future.' : 'Please enter a valid birthday.');
+      return;
+    }
+
+    // Store age as string to match the original behavior
+    setFormData(prev => ({ ...prev, birthday: isoDate, age: String(calculatedAge) }));
     clearError('birthday');
   };
 
@@ -347,6 +542,8 @@ const ProfileSetup = ({ user, onComplete }) => {
       if (isEmpty(formData.firstName)) newErrors.firstName = 'First name is required.';
       if (isEmpty(formData.lastName))  newErrors.lastName  = 'Last name is required.';
       if (!formData.birthday)          newErrors.birthday  = 'Birthday is required.';
+      const ageNum = Number(formData.age);
+      if (!isValidAge(ageNum))         newErrors.birthday  = ageNum < 1 ? 'Birthday cannot be in the future.' : 'Please enter a valid birthday.';
       if (!formData.sex)               newErrors.sex       = 'Sex is required.';
     }
 
@@ -376,9 +573,16 @@ const ProfileSetup = ({ user, onComplete }) => {
   };
 
   const nextStep = () => {
-    if (step === 1 && !formData.birthday) {
-      setError('birthday', 'Birthday is required.');
-      return;
+    if (step === 1) {
+      if (!formData.birthday) {
+        setError('birthday', 'Birthday is required.');
+        return;
+      }
+      const ageNum = Number(formData.age);
+      if (!isValidAge(ageNum)) {
+        setError('birthday', ageNum < 1 ? 'Birthday cannot be in the future.' : 'Please enter a valid birthday.');
+        return;
+      }
     }
     if (!validateStep(step + 1)) return;
     setStep(prev => Math.min(prev + 1, TOTAL_STEPS));
@@ -394,6 +598,8 @@ const ProfileSetup = ({ user, onComplete }) => {
     if (isEmpty(formData.firstName)) allErrors.firstName = 'First name is required.';
     if (isEmpty(formData.lastName))  allErrors.lastName  = 'Last name is required.';
     if (!formData.birthday)          allErrors.birthday  = 'Birthday is required.';
+    const ageNum = Number(formData.age);
+    if (!isValidAge(ageNum))   allErrors.birthday  = ageNum < 1 ? 'Birthday cannot be in the future.' : 'Please enter a valid birthday.';
     if (!formData.sex)               allErrors.sex       = 'Sex is required.';
 
     if (userRole === 'student') {
@@ -581,17 +787,17 @@ const ProfileSetup = ({ user, onComplete }) => {
           {step === 1 && (
             <div className="flex flex-col gap-3 animate-in fade-in duration-300">
 
-              <div className="grid grid-cols-12 gap-2">
-                <div className="col-span-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
                   <label className={labelCls}>First Name <span className="text-red-400">*</span></label>
                   <input id="firstName" type="text" required className={`${inputCls} ${inputErrCls('firstName')}`} value={formData.firstName} onChange={handleChange} />
                   {fieldError('firstName')}
                 </div>
-                <div className="col-span-2">
-                  <label className={labelCls}>M.I.</label>
+                <div>
+                  <label className={labelCls}>Middle Name</label>
                   <input id="middleName" type="text" className={`${inputCls}`} value={formData.middleName} onChange={handleChange} />
                 </div>
-                <div className="col-span-5">
+                <div>
                   <label className={labelCls}>Last Name <span className="text-red-400">*</span></label>
                   <input id="lastName" type="text" required className={`${inputCls} ${inputErrCls('lastName')}`} value={formData.lastName} onChange={handleChange} />
                   {fieldError('lastName')}
@@ -620,13 +826,20 @@ const ProfileSetup = ({ user, onComplete }) => {
                   <label className={labelCls}>Birthday <span className="text-red-400">*</span></label>
                   <DatePicker
                     value={formData.birthday}
-                    onChange={handleBirthdayChange}
+                    onChange={(date) => handleBirthdayChange(date)}
                     error={errors.birthday}
                   />
                 </div>
                 <div>
                   <label className={labelCls}>Age</label>
-                  <input id="age" type="number" readOnly className={`${inputCls} bg-slate-50`} value={formData.age} />
+                  <input
+                    id="age"
+                    type="number"
+                    readOnly
+                    className={`${inputCls} bg-slate-50 cursor-default select-none`}
+                    value={formData.age}
+                    onFocus={(e) => e.target.blur()}
+                  />
                 </div>
               </div>
 
@@ -667,14 +880,26 @@ const ProfileSetup = ({ user, onComplete }) => {
 
               <div>
                 <label className={labelCls}>Home Address</label>
-                <input
-                  id="homeAddress"
-                  type="text"
-                  placeholder="House No., Street, Barangay, City/Municipality, Province"
-                  className={inputCls}
-                  value={formData.homeAddress}
-                  onChange={handleChange}
-                />
+                <div className="relative">
+                  <input
+                    id="homeAddress"
+                    type="text"
+                    placeholder="Click to enter address"
+                    className={`${inputCls} cursor-pointer`}
+                    value={formData.homeAddress}
+                    readOnly
+                    onClick={() => setShowAddressModal(true)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddressModal(true)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a3.5 3.5 0 114.95 4.95L3.464 16.536" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div className="flex justify-end pt-3 border-t border-slate-100">
@@ -862,9 +1087,26 @@ const ProfileSetup = ({ user, onComplete }) => {
 
                   <div>
                     <label className={labelCls}>Address</label>
-                    <input id="emergencyAddress" type="text" placeholder="Emergency contact's home address"
-                      className={inputCls}
-                      value={formData.emergencyAddress} onChange={handleChange} />
+                    <div className="relative">
+                      <input
+                        id="emergencyAddress"
+                        type="text"
+                        placeholder="Click to enter address"
+                        className={`${inputCls} cursor-pointer`}
+                        value={formData.emergencyAddress}
+                        readOnly
+                        onClick={() => setShowEmergencyAddressModal(true)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEmergencyAddressModal(true)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a3.5 3.5 0 114.95 4.95L3.464 16.536" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -888,6 +1130,48 @@ const ProfileSetup = ({ user, onComplete }) => {
           )}
 
         </form>
+
+        {/* Address Modal - using reusable component */}
+        <AddressModal
+          isOpen={showAddressModal}
+          onClose={() => setShowAddressModal(false)}
+          onConfirm={(addressData) => {
+            setFormData(prev => ({
+              ...prev,
+              ...addressData
+            }));
+          }}
+          initialData={formData}
+        />
+
+        {/* Emergency Address Modal */}
+        <AddressModal
+          isOpen={showEmergencyAddressModal}
+          onClose={() => setShowEmergencyAddressModal(false)}
+          onConfirm={(addressData) => {
+            setFormData(prev => ({
+              ...prev,
+              emergencyAddress: addressData.homeAddress,
+              emergencyAddressCountry: addressData.addressCountry,
+              emergencyAddressRegion: addressData.addressRegion,
+              emergencyAddressProvince: addressData.addressProvince,
+              emergencyAddressCity: addressData.addressCity,
+              emergencyAddressBarangay: addressData.addressBarangay,
+              emergencyAddressStreet: addressData.addressStreet,
+              emergencyAddressZipCode: addressData.addressZipCode,
+            }));
+          }}
+          initialData={{
+            addressCountry: formData.emergencyAddressCountry,
+            addressRegion: formData.emergencyAddressRegion,
+            addressProvince: formData.emergencyAddressProvince,
+            addressCity: formData.emergencyAddressCity,
+            addressBarangay: formData.emergencyAddressBarangay,
+            addressStreet: formData.emergencyAddressStreet,
+            addressZipCode: formData.emergencyAddressZipCode,
+          }}
+        />
+
       </div>
     </div>
   );

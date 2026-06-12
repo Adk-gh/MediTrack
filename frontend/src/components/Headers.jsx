@@ -1014,6 +1014,7 @@ const ROLE_NAV_CONFIG = {
     { to: '/announcements', label: 'Announcement Management' },
     { to: '/users', label: 'User Management' },
     { to: '/reports', label: 'Reports' },
+    { to: '/archives', label: 'Archives' },
   ],
   doctor: [
     { to: '/dashboard', label: 'Dashboard' },

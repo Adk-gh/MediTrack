@@ -133,6 +133,17 @@ const checkIdExists = async (universityId) => {
   }
 };
 
+const forgotPassword = async (email) => {
+  const res = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Failed to send reset email");
+  return data;
+};
+
 export default {
   register,
   login,
@@ -140,5 +151,6 @@ export default {
   getCurrentUser,
   logout,
   checkIdExists,
-  getAuthHeaders // Exported so other API services can use await authService.getAuthHeaders()
+  getAuthHeaders,
+  forgotPassword,
 };

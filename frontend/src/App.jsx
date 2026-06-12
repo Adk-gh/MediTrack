@@ -13,6 +13,8 @@ import { LoadingProvider, useLoading } from './context/LoadingContext.jsx';
 // ── Lazy Loading ───────────────────────────────────────────────────────────────
 // Common pages (loaded immediately)
 import LoginForm from './features/LoginForm.jsx';
+import ForgotPassword from './features/ForgotPassword.jsx';
+import ResetPassword from './features/ResetPassword.jsx';
 import { DashboardLayout } from './layouts/DashboardLayout.jsx';
 import Records from './features/admin-clinic/Records.jsx';
 import Appointments from './features/admin-clinic/Appointments.jsx';
@@ -32,6 +34,7 @@ const RecordManagement = lazy(() => import('./features/admin-clinic/Record-Manag
 const AuditLogs = lazy(() => import('./features/admin-clinic/AuditLogs.jsx'));
 const OcrSettings = lazy(() => import('./features/admin-clinic/OcrSettings.jsx'));
 const Reports = lazy(() => import('./features/admin-clinic/Reports.jsx'));
+const Archives = lazy(() => import('./features/admin-clinic/Archives.jsx'));
 const Settings = lazy(() => import('./components/Settings'));
 
 // ── Lazy Loading Fallback ─────────────────────────────────────────────────────
@@ -82,6 +85,7 @@ const ROUTE_TO_TAB = {
   '/users':            'users',
   '/ocr-settings':    'ocrSettings',
   '/reports':          'reports',
+  '/archives':         'archives',
 };
 
 const TAB_TO_ROUTE = {
@@ -98,6 +102,7 @@ const TAB_TO_ROUTE = {
   'users':            '/users',
   'ocrSettings':     '/ocr-settings',
   'reports':          '/reports',
+  'archives':         '/archives',
 };
 
 // ── Admin Layout Wrapper ───────────────────────────────────────────────────────
@@ -228,9 +233,11 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public */}
-            <Route path="/signup"     element={<SignupForm />} />
-            <Route path="/login"      element={<LoginForm />} />
-            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/signup"           element={<SignupForm />} />
+            <Route path="/login"            element={<LoginForm />} />
+            <Route path="/forgot-password"  element={<ForgotPassword />} />
+            <Route path="/reset-password"   element={<ResetPassword />} />
+            <Route path="/onboarding"       element={<OnboardingPage />} />
 
             {/* Admin / Clinic */}
             <Route path="/dashboard" element={
@@ -296,6 +303,11 @@ function App() {
             <Route path="/reports" element={
               <ProtectedRoute adminOnly={true}>
                 <AdminLayoutWrapper><Reports /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/archives" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><Archives /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />
 

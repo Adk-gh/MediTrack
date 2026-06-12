@@ -145,7 +145,7 @@ Role Management
 Accounts:
 
 <dekbermas@gmail.com> admin\
-<john.doe@example.com> doctor
+[jamescantre@gmail.com](mailto:john.doe@example.com) doctor
 
 <smcrm521@gmail.com> nurse\
 <catherine@gmail.com> dentist
@@ -153,3 +153,38 @@ Accounts:
 <ly.jxnny@gmail.com> student
 
 password -1234567890
+
+user
+
+* [ ] the profile setup. it should be middle name and age couldn't be negative number and should be realistic.&#x20;
+* [ ] then make the consultation and appointment be only accessible if theres already a medical or dental record for that account.
+* [ ] user homepage, the pending and approved booking should show
+* [ ] user profile should be marked as yellow if theres a empty or null information.
+* [ ] use records should have some type of filter to sort from latest to oldest or something.
+* [ ] user notifications
+
+dentist/doctor
+
+* [ ] records should be set as all department by default.&#x20;
+* [ ] add a search bar for the approved appointments.
+* [ ] fix the dental exam report.
+* [ ] the appointments isnt showing up in the calendar
+
+admin
+
+* [ ] should be able to delete logs.
+* [ ] reports should be downloadable by categories(each categories should have downloads button)
+* [ ] update the user management to be able to update users just like how its done in profile setup, some inputs should be dropdowns.
+* [ ] user names is not showing properly in the audit logs and when admin edits the info it should show as well who updates the informations.
+* [x] add archives
+* [ ] consultation management. he can oversees both dental and medical conversations.(he can delete the whole conversation)
+*
+
+general:
+
+* [ ] make the settings functional&#x20;
+* [ ] forgot password function
+* [ ] normalize the text for the name so it cant be capitalized or all lowercase.
+* [ ] the university id didn't saved properly.
+*
+

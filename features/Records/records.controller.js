@@ -39,8 +39,12 @@ const updateRecord = async (req, res, next) => {
 
 const deleteRecord = async (req, res, next) => {
   try {
-    await recordsService.deleteRecord(req.params.id);
-    res.status(200).json({ success: true, message: "User Account & Record deleted" });
+    const deletedBy = {
+      id: req.user?.uid,
+      email: req.user?.email
+    };
+    await recordsService.deleteRecord(req.params.id, deletedBy);
+    res.status(200).json({ success: true, message: "User Account & Record moved to archives" });
   } catch (error) {
     next(error);
   }

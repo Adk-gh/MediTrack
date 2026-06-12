@@ -96,4 +96,18 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getProfile, setupProfile, checkProfileSetup, checkIdExists, updateProfile };
+const deleteUser = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const deletedBy = {
+      id: req.user?.uid,
+      email: req.user?.email
+    };
+    await userService.deleteUser(userId, deletedBy);
+    res.status(200).json({ success: true, message: 'User moved to archives' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { register, login, getProfile, setupProfile, checkProfileSetup, checkIdExists, updateProfile, deleteUser };
