@@ -6,6 +6,7 @@ exports.getMedicalExaminations = async () => {
   const { data, error } = await supabase
     .from('medical_records')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -17,6 +18,7 @@ exports.getDentalExaminations = async () => {
   const { data, error } = await supabase
     .from('dental_records')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -26,8 +28,8 @@ exports.getDentalExaminations = async () => {
 // 3. Fallback: Combine both for the general "/" route to prevent crashes
 exports.getAllExaminations = async () => {
   const [medical, dental] = await Promise.all([
-    supabase.from('medical_records').select('*'),
-    supabase.from('dental_records').select('*')
+    supabase.from('medical_records').select('*').eq('is_archived', false),
+    supabase.from('dental_records').select('*').eq('is_archived', false)
   ]);
 
   if (medical.error) throw medical.error;

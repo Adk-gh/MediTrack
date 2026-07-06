@@ -55,7 +55,7 @@ const UserData = (data) => {
       ? data.vaccinations.filter(v => v.dose || v.vaccineName || v.date)
       : [],
 
-    // Passwords are NEVER stored here — they stay in Firebase Auth!
+    
   };
 };
 

@@ -21,6 +21,9 @@ import Appointments from './features/admin-clinic/Appointments.jsx';
 import { Dashboard } from './features/admin-clinic/Dashboard.jsx';
 import Announcements from './features/admin-clinic/Announcements.jsx';
 import Consultations from './features/admin-clinic/Consultations.jsx';
+import ConsultationManagement from './features/admin-clinic/ConsultationManagement.jsx';
+import AppointmentManagement from './features/admin-clinic/AppointmentManagement.jsx';
+import ApprovalManagement from './features/admin-clinic/ApprovalManagement.jsx';
 import Meditrack from './features/users/Meditrack.jsx';
 
 // Rarely used pages (lazy loaded)
@@ -28,7 +31,6 @@ const SignupForm = lazy(() => import('./features/SignupForm.jsx'));
 const ProfileSetup = lazy(() => import('./components/ProfileSetup.jsx'));
 const Examination = lazy(() => import('./features/admin-clinic/Examinations.jsx'));
 const Approvals = lazy(() => import('./features/admin-clinic/Approvals.jsx'));
-const DentalApprovals = lazy(() => import('./features/admin-clinic/DentalApprovals.jsx'));
 const UserManagement = lazy(() => import('./features/admin-clinic/User-Management.jsx'));
 const RecordManagement = lazy(() => import('./features/admin-clinic/Record-Management.jsx'));
 const AuditLogs = lazy(() => import('./features/admin-clinic/AuditLogs.jsx'));
@@ -47,7 +49,7 @@ const PageLoader = () => (
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // ── Protected route guard ─────────────────────────────────────────────────────
-const ProtectedRoute = ({ children, adminOnly = false }) => {
+const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
   const token   = localStorage.getItem('token');
   const rawUser = localStorage.getItem('user');
   const user    = rawUser ? JSON.parse(rawUser) : null;
@@ -67,6 +69,39 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     }
   }
 
+  // Role-based access control for specific routes
+  if (allowedRoles.length > 0) {
+    const role = user.role?.toLowerCase().trim() || '';
+    const classification = user.classification?.toLowerCase() || '';
+    const jobTitle = user.job_title?.toLowerCase() || '';
+
+    // Determine effective role for access control
+    let effectiveRole = role;
+    if (!effectiveRole || effectiveRole === 'student') {
+      if (classification === 'dentist' || jobTitle.includes('dentist')) {
+        effectiveRole = 'dentist';
+      } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
+        effectiveRole = 'doctor';
+      } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
+        effectiveRole = 'nurse';
+      } else if (classification === 'admin' || classification === 'administrator' || jobTitle.includes('admin')) {
+        effectiveRole = 'admin';
+      }
+    }
+
+    if (!allowedRoles.includes(effectiveRole)) {
+      console.log(`Access Denied. User role: "${effectiveRole}", Required roles: ${allowedRoles.join(', ')}`);
+      // Redirect to appropriate page based on role
+      if (effectiveRole === 'dentist') {
+        return <Navigate to="/examinations" replace />;
+      } else if (effectiveRole === 'doctor' || effectiveRole === 'nurse') {
+        return <Navigate to="/approvals" replace />;
+      } else {
+        return <Navigate to="/dashboard" replace />;
+      }
+    }
+  }
+
   return children;
 };
 
@@ -79,8 +114,10 @@ const ROUTE_TO_TAB = {
   '/appointments':    'appointments',
   '/examinations':     'examinations',
   '/approvals':        'approvals',
-  '/dental-approvals': 'dentalApprovals',
   '/consultations':    'consultations',
+  '/consultation-management': 'consultationManagement',
+  '/appointment-management': 'appointmentManagement',
+  '/approval-management': 'approvalManagement',
   '/announcements':   'announcements',
   '/users':            'users',
   '/ocr-settings':    'ocrSettings',
@@ -96,8 +133,10 @@ const TAB_TO_ROUTE = {
   'appointments':     '/appointments',
   'examinations':     '/examinations',
   'approvals':         '/approvals',
-  'dentalApprovals':  '/dental-approvals',
   'consultations':    '/consultations',
+  'consultationManagement': '/consultation-management',
+  'appointmentManagement': '/appointment-management',
+  'approvalManagement': '/approval-management',
   'announcements':   '/announcements',
   'users':            '/users',
   'ocrSettings':     '/ocr-settings',
@@ -266,18 +305,13 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/examinations" element={
-              <ProtectedRoute adminOnly={true}>
+              <ProtectedRoute adminOnly={true} allowedRoles={['admin', 'doctor', 'nurse', 'dentist']}>
                 <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />
             <Route path="/approvals" element={
-              <ProtectedRoute adminOnly={true}>
+              <ProtectedRoute adminOnly={true} allowedRoles={['admin', 'doctor', 'nurse', 'dentist']}>
                 <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/dental-approvals" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><DentalApprovals /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />
             <Route path="/announcements" element={
@@ -288,6 +322,21 @@ function App() {
             <Route path="/consultations" element={
               <ProtectedRoute adminOnly={true}>
                 <AdminLayoutWrapper><Consultations /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/consultation-management" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><ConsultationManagement /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/appointment-management" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><AppointmentManagement /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/approval-management" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><ApprovalManagement /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />
             <Route path="/users" element={

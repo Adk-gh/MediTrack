@@ -120,6 +120,16 @@ const VACCINE_DOSES = [
   { key: 'booster2', label: 'Booster 2' },
 ];
 
+// ── Name Normalization ────────────────────────────────────────────────────────
+// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
+const normalizeName = (name) => {
+  if (!name) return '';
+  // Trim whitespace
+  let trimmed = name.trim();
+  // Convert to lowercase first, then capitalize first letter
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
 // ── Philippines Address Data ─────────────────────────────────────────────────
 const PHILIPPINES_REGIONS = [
   { code: 'NCR', name: 'National Capital Region' },
@@ -637,10 +647,10 @@ const ProfileSetup = ({ user, onComplete }) => {
       }
 
       const payload = {
-        // Personal
-        firstName:     formData.firstName,
-        middleName: formData.middleName,
-        lastName:      formData.lastName,
+        // Personal - normalize names (first letter capitalize, rest lowercase)
+        firstName:     normalizeName(formData.firstName),
+        middleName: normalizeName(formData.middleName),
+        lastName:      normalizeName(formData.lastName),
         suffix:        formData.suffix,
         birthday:      formData.birthday,
         age:           formData.age,

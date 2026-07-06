@@ -720,36 +720,261 @@ export const Reports = () => {
     }
   };
 
-  // ── Export to Excel (CSV) ─────────────────────────────────────────────────
+  // ── Export to Excel (CSV) - PRETTIER FORMAT ────────────────────────────────
   const exportToCSV = () => {
-    const headers = ['Category', 'Type', 'Count', 'Date Range'];
-    const rows = [
-      ['Appointments', 'Total', processedData.totalAppts, dateRange],
-      ['Appointments', 'Completed', processedData.completedAppts, dateRange],
-      ['Appointments', 'Pending', processedData.pendingAppts, dateRange],
-      ['Appointments', 'Approved', processedData.approvedAppts, dateRange],
-      ['Appointments', 'Missed', processedData.missedAppts, dateRange],
-      ['Examinations', 'Medical', processedData.totalMed, dateRange],
-      ['Examinations', 'Dental', processedData.totalDen, dateRange],
-      ['Users', 'Total', processedData.totalUsers, dateRange],
-      ['Health Trends', 'Most Common', processedData.mostCommonCondition?.[0] || 'N/A', dateRange],
-    ];
+    // Create a formatted Excel file with proper structure
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
 
-    // Add condition breakdown
-    MEDICAL_CONDITIONS.forEach(condition => {
-      rows.push(['Condition', condition.name, processedData.conditionCounts[condition.id], dateRange]);
-    });
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    // Add monthly breakdown
+    // Build rows with better organization
+    const rows = [];
+
+    // Header
+    rows.push(['MEDITRACK HEALTH REPORTS']);
+    rows.push(['Generated:', today]);
+    rows.push(['Date Range:', dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year']);
+    rows.push([]); // Empty row
+
+    // === SECTION 1: OVERVIEW STATS ===
+    rows.push(['OVERVIEW STATISTICS']);
+    rows.push(['Category', 'Metric', 'Count', 'Percentage']);
+    const totalExams = processedData.totalMed + processedData.totalDen;
+    rows.push(['Overview', 'Total Medical Exams', processedData.totalMed, '']);
+    rows.push(['Overview', 'Total Dental Exams', processedData.totalDen, '']);
+    rows.push(['Overview', 'Total Appointments', processedData.totalAppts, '']);
+    rows.push(['Overview', 'Total Users', processedData.totalUsers, '']);
+    rows.push([]);
+
+    // === SECTION 2: APPOINTMENTS ===
+    rows.push(['APPOINTMENTS ANALYSIS']);
+    rows.push(['Status', 'Count', 'Percentage']);
+    const totalAppts = processedData.totalAppts || 1;
+    rows.push(['Completed', processedData.completedAppts, Math.round((processedData.completedAppts / totalAppts) * 100) + '%']);
+    rows.push(['Pending', processedData.pendingAppts, Math.round((processedData.pendingAppts / totalAppts) * 100) + '%']);
+    rows.push(['Approved', processedData.approvedAppts, Math.round((processedData.approvedAppts / totalAppts) * 100) + '%']);
+    rows.push(['Missed', processedData.missedAppts, Math.round((processedData.missedAppts / totalAppts) * 100) + '%']);
+    rows.push([]);
+
+    // Monthly Appointments
+    rows.push(['Monthly Appointments']);
+    rows.push(['Month', 'Count']);
     MONTHS.forEach((month, idx) => {
-      rows.push(['Appointments', month, processedData.monthlyAppts[idx], dateRange]);
+      rows.push([month, processedData.monthlyAppts[idx]]);
     });
+    rows.push([]);
 
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    // === SECTION 3: MEDICAL EXAMINATIONS ===
+    rows.push(['MEDICAL EXAMINATIONS']);
+    rows.push(['Metric', 'Count', 'Percentage']);
+    const totalMed = processedData.totalMed || 1;
+    rows.push(['Total Medical Exams', processedData.totalMed, '']);
+    rows.push(['Fit', processedData.fitCount, Math.round((processedData.fitCount / totalMed) * 100) + '%']);
+    rows.push(['Not Fit', processedData.notFitCount, Math.round((processedData.notFitCount / totalMed) * 100) + '%']);
+    rows.push(['Normal Findings', processedData.normalFindingsCount, Math.round((processedData.normalFindingsCount / totalMed) * 100) + '%']);
+    rows.push(['Abnormal Findings', processedData.abnormalFindingsCount, Math.round((processedData.abnormalFindingsCount / totalMed) * 100) + '%']);
+    rows.push(['Approved', processedData.medApprovedCount, Math.round((processedData.medApprovedCount / totalMed) * 100) + '%']);
+    rows.push(['Pending', processedData.medPendingCount, Math.round((processedData.medPendingCount / totalMed) * 100) + '%']);
+    rows.push([]);
+
+    // === SECTION 4: HEALTH CONDITIONS ===
+    rows.push(['HEALTH CONDITIONS BREAKDOWN']);
+    rows.push(['Condition', 'Category', 'Count', 'Percentage']);
+    MEDICAL_CONDITIONS.forEach(condition => {
+      const count = processedData.conditionCounts[condition.id];
+      const pct = totalMed > 0 ? Math.round((count / totalMed) * 100) + '%' : '0%';
+      rows.push([condition.name, condition.category, count, pct]);
+    });
+    rows.push([]);
+
+    // === SECTION 5: DENTAL EXAMINATIONS ===
+    rows.push(['DENTAL EXAMINATIONS']);
+    rows.push(['Metric', 'Count', 'Percentage']);
+    const totalDen = processedData.totalDen || 1;
+    rows.push(['Total Dental Exams', processedData.totalDen, '']);
+    rows.push(['Approved', processedData.dentalFindingsList.filter(d => d.status === 'approved').length, '']);
+    rows.push(['Pending', processedData.dentalFindingsList.filter(d => d.status === 'pending').length, '']);
+    rows.push([]);
+
+    rows.push(['Dental Conditions']);
+    rows.push(['Condition', 'Category', 'Count']);
+    DENTAL_CONDITIONS.forEach(condition => {
+      const count = processedData.dentalConditionCounts[condition.id];
+      rows.push([condition.name, condition.category, count]);
+    });
+    rows.push([]);
+
+    // === SECTION 6: PATIENT DEMOGRAPHICS ===
+    rows.push(['PATIENT DEMOGRAPHICS']);
+    rows.push(['Type', 'Count', 'Percentage']);
+    const totalUsers = processedData.totalUsers || 1;
+    const typeCounts = { student: 0, faculty: 0, staff: 0 };
+    processedData.users.forEach(u => {
+      const role = (u.role || '').toLowerCase();
+      if (role.includes('student')) typeCounts.student++;
+      else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
+      else typeCounts.staff++;
+    });
+    rows.push(['Students', typeCounts.student, Math.round((typeCounts.student / totalUsers) * 100) + '%']);
+    rows.push(['Faculty', typeCounts.faculty, Math.round((typeCounts.faculty / totalUsers) * 100) + '%']);
+    rows.push(['Staff', typeCounts.staff, Math.round((typeCounts.staff / totalUsers) * 100) + '%']);
+
+    // Generate CSV content
+    const csvContent = rows.map(row => row.map(escapeCSV).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `MediTrack_Reports_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  // ── Export Individual Category to Excel ───────────────────────────────────
+  const exportCategoryToCSV = (category) => {
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const rows = [];
+
+    rows.push(['MEDITRACK - ' + category.toUpperCase() + ' REPORT']);
+    rows.push(['Generated:', today]);
+    rows.push(['Date Range:', dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year']);
+    rows.push([]);
+
+    switch (category) {
+      case 'appointments':
+        rows.push(['APPOINTMENTS ANALYSIS']);
+        rows.push(['Status', 'Count', 'Percentage']);
+        const totalAppts = processedData.totalAppts || 1;
+        rows.push(['Total', processedData.totalAppts, '']);
+        rows.push(['Completed', processedData.completedAppts, Math.round((processedData.completedAppts / totalAppts) * 100) + '%']);
+        rows.push(['Pending', processedData.pendingAppts, Math.round((processedData.pendingAppts / totalAppts) * 100) + '%']);
+        rows.push(['Approved', processedData.approvedAppts, Math.round((processedData.approvedAppts / totalAppts) * 100) + '%']);
+        rows.push(['Missed', processedData.missedAppts, Math.round((processedData.missedAppts / totalAppts) * 100) + '%']);
+        rows.push([]);
+        rows.push(['Monthly Appointments']);
+        rows.push(['Month', 'Count']);
+        MONTHS.forEach((month, idx) => {
+          rows.push([month, processedData.monthlyAppts[idx]]);
+        });
+        break;
+
+      case 'medical':
+        rows.push(['MEDICAL EXAMINATIONS']);
+        rows.push(['Metric', 'Count', 'Percentage']);
+        const totalMed = processedData.totalMed || 1;
+        rows.push(['Total Medical Exams', processedData.totalMed, '']);
+        rows.push(['Fit', processedData.fitCount, Math.round((processedData.fitCount / totalMed) * 100) + '%']);
+        rows.push(['Not Fit', processedData.notFitCount, Math.round((processedData.notFitCount / totalMed) * 100) + '%']);
+        rows.push(['Normal Findings', processedData.normalFindingsCount, Math.round((processedData.normalFindingsCount / totalMed) * 100) + '%']);
+        rows.push(['Abnormal Findings', processedData.abnormalFindingsCount, Math.round((processedData.abnormalFindingsCount / totalMed) * 100) + '%']);
+        rows.push(['Approved', processedData.medApprovedCount, Math.round((processedData.medApprovedCount / totalMed) * 100) + '%']);
+        rows.push(['Pending', processedData.medPendingCount, Math.round((processedData.medPendingCount / totalMed) * 100) + '%']);
+        rows.push([]);
+        rows.push(['Monthly Medical Exams']);
+        rows.push(['Month', 'Count']);
+        MONTHS.forEach((month, idx) => {
+          rows.push([month, processedData.monthlyMed[idx]]);
+        });
+        break;
+
+      case 'dental':
+        rows.push(['DENTAL EXAMINATIONS']);
+        rows.push(['Metric', 'Count', 'Percentage']);
+        const totalDen = processedData.totalDen || 1;
+        rows.push(['Total Dental Exams', processedData.totalDen, '']);
+        rows.push(['Approved', processedData.dentalFindingsList.filter(d => d.status === 'approved').length, '']);
+        rows.push(['Pending', processedData.dentalFindingsList.filter(d => d.status === 'pending').length, '']);
+        rows.push([]);
+        rows.push(['Dental Conditions']);
+        rows.push(['Condition', 'Category', 'Count']);
+        DENTAL_CONDITIONS.forEach(condition => {
+          const count = processedData.dentalConditionCounts[condition.id];
+          rows.push([condition.name, condition.category, count]);
+        });
+        rows.push([]);
+        rows.push(['Monthly Dental Exams']);
+        rows.push(['Month', 'Count']);
+        MONTHS.forEach((month, idx) => {
+          rows.push([month, processedData.monthlyDen[idx]]);
+        });
+        break;
+
+      case 'conditions':
+        rows.push(['HEALTH CONDITIONS BREAKDOWN']);
+        rows.push(['Condition', 'Category', 'Count', 'Percentage']);
+        const totMed = processedData.totalMed || 1;
+        MEDICAL_CONDITIONS.forEach(condition => {
+          const count = processedData.conditionCounts[condition.id];
+          const pct = totMed > 0 ? Math.round((count / totMed) * 100) + '%' : '0%';
+          rows.push([condition.name, condition.category, count, pct]);
+        });
+        break;
+
+      case 'demographics':
+        rows.push(['PATIENT DEMOGRAPHICS']);
+        rows.push(['Type', 'Count', 'Percentage']);
+        const totalUsers = processedData.totalUsers || 1;
+        const typeCounts = { student: 0, faculty: 0, staff: 0 };
+        processedData.users.forEach(u => {
+          const role = (u.role || '').toLowerCase();
+          if (role.includes('student')) typeCounts.student++;
+          else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
+          else typeCounts.staff++;
+        });
+        rows.push(['Total Users', processedData.totalUsers, '']);
+        rows.push(['Students', typeCounts.student, Math.round((typeCounts.student / totalUsers) * 100) + '%']);
+        rows.push(['Faculty', typeCounts.faculty, Math.round((typeCounts.faculty / totalUsers) * 100) + '%']);
+        rows.push(['Staff', typeCounts.staff, Math.round((typeCounts.staff / totalUsers) * 100) + '%']);
+        break;
+
+      case 'monthly':
+        rows.push(['MONTHLY CONSULTATIONS COMPARISON']);
+        rows.push(['Month', 'Medical Exams', 'Dental Exams', 'Total']);
+        MONTHS.forEach((month, idx) => {
+          const med = processedData.monthlyMed[idx];
+          const den = processedData.monthlyDen[idx];
+          rows.push([month, med, den, med + den]);
+        });
+        break;
+
+      case 'summary':
+        rows.push(['SUMMARY REPORT']);
+        rows.push(['Category', 'Metric', 'Count']);
+        rows.push(['Patients', 'Total Registered', processedData.totalUsers]);
+        rows.push(['Consultations', 'Medical', processedData.totalMed]);
+        rows.push(['Consultations', 'Dental', processedData.totalDen]);
+        rows.push(['Appointments', 'Completed', processedData.completedAppts]);
+        rows.push(['Appointments', 'Pending', processedData.pendingAppts]);
+        rows.push(['Medical Records', 'Approved', processedData.medApprovedCount]);
+        rows.push(['Medical Records', 'Pending', processedData.medPendingCount]);
+        rows.push(['Fitness Status', 'Fit', processedData.fitCount]);
+        rows.push(['Fitness Status', 'Not Fit', processedData.notFitCount]);
+        rows.push(['Findings', 'Normal', processedData.normalFindingsCount]);
+        break;
+
+      default:
+        rows.push(['No data available for this category']);
+    }
+
+    const csvContent = rows.map(row => row.map(escapeCSV).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `MediTrack_${category}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
 
@@ -865,9 +1090,18 @@ export const Reports = () => {
       <div id="reports-content">
         {/* ── Key Insights ── */}
         <GlassCard className="p-4 md:p-5 mb-6">
-          <h3 className="font-bold text-sm text-[#466460] mb-4">
-            <i className="fa-solid fa-lightbulb mr-2"></i>Key Health Insights
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-sm text-[#466460]">
+              <i className="fa-solid fa-lightbulb mr-2"></i>Key Health Insights
+            </h3>
+            <button
+              onClick={() => exportCategoryToCSV('summary')}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+            >
+              <IconDownload size={10} />
+              Download
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {insights.map((insight, idx) => {
               const Icon = insight.icon;
@@ -926,9 +1160,18 @@ export const Reports = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
           {/* Condition Distribution (Polar Area) */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-virus mr-2"></i>Health Conditions Distribution
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-virus mr-2"></i>Health Conditions Distribution
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('conditions')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[280px]">
               {loading ? <ChartSkeleton h="280px" /> : (
                 processedData.totalMed === 0 ? (
@@ -957,9 +1200,18 @@ export const Reports = () => {
 
           {/* Health Category Breakdown */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-chart-column mr-2"></i>Health Issues by Category
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-chart-column mr-2"></i>Health Issues by Category
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('conditions')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[280px]">
               {loading ? <ChartSkeleton h="280px" /> : (
                 <Bar
@@ -985,9 +1237,18 @@ export const Reports = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
           {/* Appointment Trends */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-chart-line mr-2"></i>Appointment Visit Trends
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-chart-line mr-2"></i>Appointment Visit Trends
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('appointments')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[250px]">
               {loading ? <ChartSkeleton h="250px" /> : (
                 <Line
@@ -1009,9 +1270,18 @@ export const Reports = () => {
 
           {/* Medical vs Dental */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-chart-pie mr-2"></i>Medical vs Dental Consultations
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-chart-pie mr-2"></i>Medical vs Dental Consultations
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('monthly')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[250px] flex justify-center">
               {loading ? <ChartSkeleton h="250px" /> : (
                 processedData.totalMed === 0 && processedData.totalDen === 0 ? (
@@ -1040,9 +1310,18 @@ export const Reports = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
           {/* Appointment Status */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-clipboard-check mr-2"></i>Appointment Status
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-clipboard-check mr-2"></i>Appointment Status
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('appointments')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[250px]">
               {loading ? <ChartSkeleton h="250px" /> : (
                 <Bar
@@ -1064,9 +1343,18 @@ export const Reports = () => {
 
           {/* Patient Demographics */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-users mr-2"></i>Patient Demographics
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-users mr-2"></i>Patient Demographics
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('demographics')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[250px] flex justify-center">
               {loading ? <ChartSkeleton h="250px" /> : (
                 processedData.totalUsers === 0 ? (
@@ -1095,9 +1383,18 @@ export const Reports = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
           {/* Monthly Comparison */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-chart-bar mr-2"></i>Monthly Consultations Comparison
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-chart-bar mr-2"></i>Monthly Consultations Comparison
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('monthly')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="h-[250px]">
               {loading ? <ChartSkeleton h="250px" /> : (
                 <Bar
@@ -1121,9 +1418,18 @@ export const Reports = () => {
 
           {/* Summary Report Table */}
           <GlassCard className="p-4 md:p-5">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-table mr-2"></i>Summary Report
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-table mr-2"></i>Summary Report
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('summary')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1193,9 +1499,18 @@ export const Reports = () => {
         {/* ── Individual Findings Display ── */}
         {processedData.findingsList && processedData.findingsList.length > 0 && (
           <GlassCard className="p-4 md:p-5 mb-6">
-            <h3 className="font-bold text-sm text-[#466460] mb-4">
-              <i className="fa-solid fa-file-medical-alt mr-2"></i>Patient Findings Details
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm text-[#466460]">
+                <i className="fa-solid fa-file-medical-alt mr-2"></i>Patient Findings Details
+              </h3>
+              <button
+                onClick={() => exportCategoryToCSV('medical')}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+              >
+                <IconDownload size={10} />
+                Download
+              </button>
+            </div>
             <div className="overflow-x-auto max-h-[400px]">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-white">
@@ -1264,9 +1579,18 @@ export const Reports = () => {
 
         {/* ── Dental Records Section ── */}
         <GlassCard className="p-4 md:p-5 mb-6">
-          <h3 className="font-bold text-sm text-[#466460] mb-4">
-            <i className="fa-solid fa-tooth mr-2"></i>Dental Records Analytics
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-sm text-[#466460]">
+              <i className="fa-solid fa-tooth mr-2"></i>Dental Records Analytics
+            </h3>
+            <button
+              onClick={() => exportCategoryToCSV('dental')}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+            >
+              <IconDownload size={10} />
+              Download
+            </button>
+          </div>
 
           {/* Dental Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -1357,9 +1681,18 @@ export const Reports = () => {
 
         {/* ── Condition Breakdown Table ── */}
         <GlassCard className="p-4 md:p-5">
-          <h3 className="font-bold text-sm text-[#466460] mb-4">
-            <i className="fa-solid fa-list-check mr-2"></i>Health Conditions Breakdown
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-sm text-[#466460]">
+              <i className="fa-solid fa-list-check mr-2"></i>Health Conditions Breakdown
+            </h3>
+            <button
+              onClick={() => exportCategoryToCSV('conditions')}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition-colors"
+            >
+              <IconDownload size={10} />
+              Download
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>

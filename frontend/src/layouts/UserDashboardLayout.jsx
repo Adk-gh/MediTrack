@@ -601,10 +601,9 @@ export default function UserDashboardLayout({
   useEffect(() => {
     const getUserId = () => {
       try {
-        const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
-        if (profile?.internalUserId) return profile.internalUserId;
+        // Use auth UID for notifications
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        return user?.id || null;
+        return user?.uid || null;
       } catch { return null; }
     };
 

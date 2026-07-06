@@ -4,7 +4,6 @@ const appointmentsService = require("./appointments.service");
 // ── NEW: Fetch appointments belonging strictly to the logged-in user ────────
 const getMyAppointments = async (req, res, next) => {
   try {
-    // Extracts UUID injected by your auth middleware, with a fallback header check
     const authUid = req.user?.uid || req.headers['x-user-uid'];
 
     if (!authUid) {

@@ -1,6 +1,20 @@
 // features/archives/archives.controller.js
 const archivesService = require('./archives.service');
 
+// Archive an item
+exports.archiveItem = async (req, res, next) => {
+  try {
+    const { type, originalId, data, deletedBy } = req.body;
+    if (!type || !originalId || !data) {
+      return res.status(400).json({ success: false, message: 'type, originalId, and data are required' });
+    }
+    const result = await archivesService.moveToArchives({ type, originalId, data, deletedBy });
+    res.json({ success: true, message: 'Item archived successfully', data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get all archives
 exports.getArchives = async (req, res, next) => {
   try {

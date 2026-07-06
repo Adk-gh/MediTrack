@@ -65,6 +65,7 @@ exports.getAllAnnouncements = async () => {
   const { data, error } = await supabase
     .from('announcements')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -88,6 +89,7 @@ exports.getAnnouncementById = async (id) => {
     .from('announcements')
     .select('*')
     .eq('id', id)
+    .eq('is_archived', false)
     .single();
 
   if (error || !data) {

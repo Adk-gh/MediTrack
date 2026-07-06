@@ -1,6 +1,8 @@
 // frontend/src/features/admin-clinic/User-Management.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
+import DatePicker from '../../components/Datepicker';
+import AddressModal from '../../components/AddressModal';
 
 // ── Department data (mirrors ProfileSetup) ────────────────────────────────────
 const departmentsData = [
@@ -54,6 +56,16 @@ const classificationColors = {
 const TOTAL_CREATE_STEPS = 4;
 const CREATE_STEP_LABELS = ['Account', 'Personal', 'Role & Work', 'Settings'];
 
+// ── Name Normalization ────────────────────────────────────────────────────────
+// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
+const normalizeName = (name) => {
+  if (!name) return '';
+  // Trim whitespace
+  let trimmed = name.trim();
+  // Convert to lowercase first, then capitalize first letter
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputCls  = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] bg-white";
 const selectCls = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]";
@@ -70,7 +82,7 @@ const EMPTY_CREATE = {
   birthday:'', age:'', sex:'', blood_type:'', civil_status:'Single',
   religion:'', nationality:'Filipino', home_address:'',
   year_level:'1st Year', section:'', student_classification:'Regular',
-  is_verified:true, is_profile_setup:false,
+  is_verified:true, profile_complete:false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,7 +144,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
     birthday: '', age: '', sex: '', blood_type: '', civil_status: 'Single',
     religion: '', nationality: 'Filipino', home_address: '',
     year_level: '1st Year', section: '', student_classification: 'Regular',
-    is_verified: true, is_profile_setup: false,
+    is_verified: true, profile_complete: false,
   });
 
   const cf = (key, val) => setForm(f => ({ ...f, [key]: val }));
@@ -187,15 +199,15 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-auth-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ email: form.email, password: form.password, firstName: form.first_name, lastName: form.last_name }),
+        body: JSON.stringify({ email: form.email, password: form.password, firstName: normalizeName(form.first_name), lastName: normalizeName(form.last_name) }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to create auth user');
 
       const newUser = {
         uid: result.uid,
-        first_name: form.first_name, middle_name: form.middle_name || '',
-        last_name: form.last_name, suffix: form.suffix || '',
+        first_name: normalizeName(form.first_name), middle_name: normalizeName(form.middle_name),
+        last_name: normalizeName(form.last_name), suffix: form.suffix || '',
         email: form.email.toLowerCase(), university_id: form.university_id,
         phone_number: form.phone_number || '', role: form.role,
         department: form.department || '', program: form.program || '',
@@ -207,7 +219,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
         year_level: form.year_level || '', section: form.section || '',
         student_classification: form.student_classification || '',
         classification: form.classification || '',
-        is_verified: form.is_verified, is_profile_setup: form.is_profile_setup,
+        is_verified: form.is_verified, profile_complete: form.profile_complete,
         created_at: new Date().toISOString(),
       };
 
@@ -432,7 +444,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
               <div className={secHead}>Account Flags</div>
               {[
                 { key: 'is_verified',      label: 'Mark as Email Verified',   desc: 'User can log in without verifying email.' },
-                { key: 'is_profile_setup', label: 'Mark Profile as Complete', desc: 'Skips profile setup on first login.' },
+                { key: 'profile_complete', label: 'Mark Profile as Complete', desc: 'Skips profile setup on first login.' },
               ].map(({ key, label, desc }) => (
                 <div key={key} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <button type="button" onClick={() => cf(key, !form[key])}
@@ -488,15 +500,18 @@ export const UserManagement = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget]       = useState(null);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [editShowPwd, setEditShowPwd] = useState(false);
 
   const EMPTY_FORM = {
     first_name:'', middle_name:'', last_name:'', suffix:'',
-    university_id:'', email:'', phone_number:'',
-    role:'student', department:'', program:'', job_title:'',
+    university_id:'', email:'', phone_number:'', password:'',
+    role:'student', department:'', departmentAbbr:'', program:'', job_title:'',
     birthday:'', age:'', sex:'', blood_type:'', civil_status:'',
     religion:'', nationality:'', home_address:'',
     year_level:'', section:'', student_classification:'', classification:'',
-    is_verified:false, is_profile_setup:false,
+    is_verified:false, profile_complete:false,
   };
   const [editForm, setEditForm] = useState(EMPTY_FORM);
 
@@ -505,7 +520,7 @@ export const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('users').select('*');
+      const { data, error } = await supabase.from('users').select('*').eq('is_archived', false);
       if (error) throw error;
       setUsers(data || []);
     } catch (error) {
@@ -563,13 +578,21 @@ export const UserManagement = () => {
 
   // ── Edit ──────────────────────────────────────────────────────────────────
   const openEditModal = (user) => {
+    // Find department abbreviation from full name
+    let foundDeptAbbr = '';
+    for (const d of departmentsData) {
+      if (d.full === user.department) {
+        foundDeptAbbr = d.abbr;
+        break;
+      }
+    }
     setEditTarget(user);
     setEditForm({
       first_name: user.first_name || '', middle_name: user.middle_name || '',
       last_name: user.last_name || '', suffix: user.suffix || '',
       university_id: user.university_id || '', email: user.email || '',
-      phone_number: user.phone_number || '', role: user.role || 'student',
-      department: user.department || '', program: user.program || '',
+      phone_number: user.phone_number || '', password: '', role: user.role || 'student',
+      department: user.department || '', departmentAbbr: foundDeptAbbr, program: user.program || '',
       job_title: user.job_title || '', birthday: user.birthday || '',
       age: user.age ?? '', sex: user.sex || '', blood_type: user.blood_type || '',
       civil_status: user.civil_status || '', religion: user.religion || '',
@@ -577,30 +600,139 @@ export const UserManagement = () => {
       year_level: user.year_level || '', section: user.section || '',
       student_classification: user.student_classification || '',
       classification: user.classification || '',
-      is_verified: user.is_verified ?? false, is_profile_setup: user.is_profile_setup ?? false,
+      is_verified: user.is_verified ?? false, profile_complete: user.profile_complete ?? false,
     });
+    setPhoneError('');
+    setEditShowPwd(false);
     setShowEditModal(true);
+  };
+
+  // Calculate age from birthday
+  const calculateAge = (birthday) => {
+    if (!birthday) return '';
+    const birth = new Date(birthday);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return String(age);
+  };
+
+  // Handle phone number validation
+  const handlePhoneChange = (value) => {
+    // Allow only digits
+    const cleaned = value.replace(/\D/g, '');
+    setEditForm(f => ({ ...f, phone_number: cleaned }));
+    if (cleaned.length > 0 && cleaned.length !== 11) {
+      setPhoneError('Phone number must be exactly 11 digits');
+    } else {
+      setPhoneError('');
+    }
+  };
+
+  // Handle department change
+  const handleDeptChange = (val) => {
+    setEditForm(f => ({
+      ...f,
+      departmentAbbr: val,
+      department: deptAbbrToFull[val] || val,
+      program: '',
+    }));
+  };
+
+  // Handle address modal confirm
+  const handleAddressConfirm = (addressData) => {
+    const fullAddress = [
+      addressData.addressStreet,
+      addressData.addressBarangay,
+      addressData.addressCity,
+      addressData.addressProvince,
+      addressData.addressRegion,
+    ].filter(Boolean).join(', ');
+    setEditForm(f => ({ ...f, home_address: fullAddress }));
+    setShowAddressModal(false);
+  };
+
+  // Handle role change in edit modal
+  const handleRoleEditChange = (val) => {
+    setEditForm(f => ({
+      ...f,
+      role: val,
+      classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
+      job_title: JOB_TITLE_MAP[val?.toLowerCase()] || '',
+    }));
   };
 
   const field = (key, value) => setEditForm(f => ({ ...f, [key]: value }));
 
   const saveEdit = async (e) => {
     e.preventDefault();
+
+    // Validate phone number if provided
+    if (editForm.phone_number && editForm.phone_number.length !== 11) {
+      showSnackbar('Phone number must be exactly 11 digits', 'error');
+      setPhoneError('Phone number must be exactly 11 digits');
+      return;
+    }
+
     try {
-      const payload = { ...editForm, age: editForm.age === '' ? null : Number(editForm.age), updated_at: new Date().toISOString() };
-      const { error: dbError } = await supabase.from('users').update(payload).eq('id', editTarget.id);
-      if (dbError) throw dbError;
-      if (editForm.email !== editTarget.email) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-auth-user`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-          body: JSON.stringify({ userId: editTarget.uid, email: editForm.email }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Failed to update auth email');
+      // Prepare payload - remove empty password to keep existing
+      const { password, first_name, middle_name, last_name, ...payloadWithoutPassword } = editForm;
+      const payload = {
+        ...payloadWithoutPassword,
+        // Normalize names: first letter capitalized, rest lowercase
+        first_name: normalizeName(first_name),
+        middle_name: normalizeName(middle_name),
+        last_name: normalizeName(last_name),
+        age: editForm.age === '' ? null : Number(editForm.age),
+        updated_at: new Date().toISOString(),
+        // Only include password if it's not empty
+        ...(editForm.password ? { newPassword: editForm.password } : {})
+      };
+      console.log('Saving payload via API:', payload);
+
+      const token = localStorage.getItem('token');
+
+      // Use backend API to update user (bypasses RLS)
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/user/admin-update`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          targetUid: editTarget.uid,
+          ...payload
+        })
+      });
+      const result = await response.json();
+      console.log('API Response:', result);
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || 'Failed to update user');
       }
-      setUsers(users.map(u => u.id === editTarget.id ? { ...u, ...payload } : u));
+
+      // Update local state with the result - convert camelCase to snake_case
+      if (result.data) {
+        const updatedUser = {
+          ...result.data,
+          // Convert camelCase to snake_case for frontend display
+          first_name: result.data.firstName,
+          middle_name: result.data.middleName,
+          last_name: result.data.lastName,
+          university_id: result.data.universityId,
+          phone_number: result.data.phoneNumber,
+          job_title: result.data.jobTitle,
+          blood_type: result.data.bloodType,
+          civil_status: result.data.civilStatus,
+          home_address: result.data.homeAddress,
+          year_level: result.data.yearLevel,
+          student_classification: result.data.studentClassification,
+          is_verified: result.data.isVerified,
+          profile_complete: result.data.profileComplete,
+        };
+        setUsers(users.map(u => u.uid === editTarget.uid ? { ...u, ...updatedUser } : u));
+      }
       showSnackbar('User updated successfully', 'success');
       setShowEditModal(false);
     } catch (err) {
@@ -615,13 +747,22 @@ export const UserManagement = () => {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const { error } = await supabase.from('users').delete().eq('id', deleteTarget.id);
+      // Get current user info for deleted_by
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const name = localStorage.getItem('name') || '';
+
+      // Set is_archived to true instead of deleting
+      const { error } = await supabase.from('users').update({
+        is_archived: true,
+        deleted_by: name || user.email || 'Admin',
+        updated_at: new Date().toISOString()
+      }).eq('uid', deleteTarget.uid);
       if (error) throw error;
-      setUsers(users.filter(u => u.id !== deleteTarget.id));
-      showSnackbar('User deleted successfully', 'success');
+      setUsers(users.filter(u => u.uid !== deleteTarget.uid));
+      showSnackbar('User archived successfully. You can restore them from the Archives page.', 'success');
     } catch (err) {
-      console.error('Error deleting user:', err);
-      showSnackbar('Error deleting user', 'error');
+      console.error('Error archiving user:', err);
+      showSnackbar('Error archiving user', 'error');
     }
     setShowDeleteModal(false);
     setDeleteTarget(null);
@@ -749,7 +890,7 @@ export const UserManagement = () => {
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.department || '—'}</td>
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.sex || '—'}</td>
                   <td className="p-3 whitespace-nowrap">
-                    {user.is_profile_setup
+                    {user.profile_complete
                       ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Active</span>
                       : <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-700">Pending Setup</span>
                     }
@@ -786,11 +927,11 @@ export const UserManagement = () => {
         />
       )}
 
-      {/* ── Edit Modal ── */}
+      {/* ── Edit Modal (same structure as Create) ── */}
       {showEditModal && editTarget && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
             <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
               <div className="overflow-hidden">
@@ -804,39 +945,111 @@ export const UserManagement = () => {
 
             <div className="flex-1 overflow-y-auto p-6">
               <form onSubmit={saveEdit} id="edit-form">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                  <div className={sectionHeadCls}>Identity</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+
+                  {/* Account Section */}
+                  <div className="sm:col-span-2">
+                    <div className={sectionHeadCls}>Account Information</div>
+                  </div>
+                  <div><label className={labelCls}>University ID</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} required /></div>
+                  <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
+                  <div>
+                    <label className={labelCls}>New Password <span className="text-slate-400 font-normal">(leave blank to keep)</span></label>
+                    <div className="relative">
+                      <input className={inputCls} type={editShowPwd ? 'text' : 'password'} value={editForm.password || ''} onChange={e => field('password', e.target.value)} placeholder="Enter new password" />
+                      <button type="button" onClick={() => setEditShowPwd(!editShowPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <EyeIcon open={editShowPwd} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Identity Section */}
+                  <div className="sm:col-span-2">
+                    <div className={sectionHeadCls}>Personal Information</div>
+                  </div>
                   <div><label className={labelCls}>First Name</label><input className={inputCls} value={editForm.first_name} onChange={e => field('first_name', e.target.value)} required /></div>
                   <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={editForm.middle_name} onChange={e => field('middle_name', e.target.value)} /></div>
                   <div><label className={labelCls}>Last Name</label><input className={inputCls} value={editForm.last_name} onChange={e => field('last_name', e.target.value)} required /></div>
                   <div><label className={labelCls}>Suffix</label><input className={inputCls} value={editForm.suffix} onChange={e => field('suffix', e.target.value)} placeholder="e.g. Jr., III" /></div>
-                  <div><label className={labelCls}>University ID</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} /></div>
-                  <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
-                  <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={editForm.phone_number} onChange={e => field('phone_number', e.target.value)} /></div>
+                  <div>
+                    <label className={labelCls}>Phone Number</label>
+                    <input
+                      className={`${inputCls} ${phoneError ? 'border-red-400 bg-red-50' : ''}`}
+                      value={editForm.phone_number}
+                      onChange={e => handlePhoneChange(e.target.value)}
+                      placeholder="11 digits (e.g. 09123456789)"
+                      maxLength={11}
+                    />
+                    {phoneError && <p className="text-xs text-red-500 mt-1">{phoneError}</p>}
+                  </div>
 
-                  <div className={sectionHeadCls}>Role &amp; Work</div>
-                  <div><label className={labelCls}>Role</label><select className={selectCls} value={editForm.role} onChange={e => field('role', e.target.value)}><RoleOptions /></select></div>
-                  <div><label className={labelCls}>Department / College</label><input className={inputCls} value={editForm.department} onChange={e => field('department', e.target.value)} /></div>
-                  <div><label className={labelCls}>Program</label><input className={inputCls} value={editForm.program} onChange={e => field('program', e.target.value)} /></div>
+                  {/* Role & Work Section */}
+                  <div className="sm:col-span-2">
+                    <div className={sectionHeadCls}>Role &amp; Work Information</div>
+                  </div>
+                  <div><label className={labelCls}>Role</label><select className={selectCls} value={editForm.role} onChange={e => handleRoleEditChange(e.target.value)}><RoleOptions /></select></div>
                   <div><label className={labelCls}>Job Title</label><input className={inputCls} value={editForm.job_title} onChange={e => field('job_title', e.target.value)} /></div>
-
-                  <div className={sectionHeadCls}>Personal Information</div>
-                  <div><label className={labelCls}>Birthday</label><input className={inputCls} type="date" value={editForm.birthday} onChange={e => field('birthday', e.target.value)} /></div>
-                  <div><label className={labelCls}>Age</label><input className={inputCls} type="number" min="1" max="120" value={editForm.age} onChange={e => field('age', e.target.value)} /></div>
-                  <div><label className={labelCls}>Sex</label><select className={selectCls} value={editForm.sex} onChange={e => field('sex', e.target.value)}><option value="">— Select —</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-                  <div><label className={labelCls}>Blood Type</label><select className={selectCls} value={editForm.blood_type} onChange={e => field('blood_type', e.target.value)}><option value="">— Select —</option>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className={labelCls}>Civil Status</label><select className={selectCls} value={editForm.civil_status} onChange={e => field('civil_status', e.target.value)}><option value="">— Select —</option>{['Single','Married','Widowed','Separated'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                  <div><label className={labelCls}>Religion</label><input className={inputCls} value={editForm.religion} onChange={e => field('religion', e.target.value)} /></div>
-                  <div><label className={labelCls}>Nationality</label><input className={inputCls} value={editForm.nationality} onChange={e => field('nationality', e.target.value)} /></div>
-                  <div className="sm:col-span-2"><label className={labelCls}>Home Address</label><textarea className={`${inputCls} resize-none`} rows={2} value={editForm.home_address} onChange={e => field('home_address', e.target.value)} /></div>
-
-                  <div className={sectionHeadCls}>Academic</div>
-                  <div><label className={labelCls}>Year Level</label><select className={selectCls} value={editForm.year_level} onChange={e => field('year_level', e.target.value)}><option value="">— Select —</option>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
-                  <div><label className={labelCls}>Section</label><input className={inputCls} value={editForm.section} onChange={e => field('section', e.target.value)} /></div>
-                  <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={editForm.student_classification} onChange={e => field('student_classification', e.target.value)}><option value="">— Select —</option>{['Regular','Irregular','Transferee','Freshmen','Returnee'].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                   <div><label className={labelCls}>Classification</label><input className={inputCls} value={editForm.classification} onChange={e => field('classification', e.target.value)} /></div>
+                  <div><label className={labelCls}>Department / Office</label>
+                    <select className={selectCls} value={editForm.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}>
+                      <option value="">— Select —</option>
+                      {departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.full}</option>)}
+                      {NON_ACADEMIC_OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div><label className={labelCls}>Program / Unit</label>
+                    <select className={selectCls} value={editForm.program} onChange={e => field('program', e.target.value)} disabled={!editForm.departmentAbbr}>
+                      <option value="">— Select —</option>
+                      {(programsByDeptAbbr[editForm.departmentAbbr] || []).map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
 
-                  <div className={sectionHeadCls}>Account Flags</div>
+                  {/* Personal Details Section */}
+                  <div className="sm:col-span-2">
+                    <div className={sectionHeadCls}>Personal Details</div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Birthday</label>
+                    <DatePicker
+                      value={editForm.birthday}
+                      onChange={(val) => {
+                        field('birthday', val);
+                        field('age', calculateAge(val));
+                      }}
+                    />
+                  </div>
+                  <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
+                  <div><label className={labelCls}>Sex</label><select className={selectCls} value={editForm.sex} onChange={e => field('sex', e.target.value)}><option value="">— Select —</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
+                  <div><label className={labelCls}>Civil Status</label><select className={selectCls} value={editForm.civil_status} onChange={e => field('civil_status', e.target.value)}><option value="">— Select —</option>{['Single','Married','Widowed','Divorced','Separated'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                  <div><label className={labelCls}>Blood Type</label><select className={selectCls} value={editForm.blood_type} onChange={e => field('blood_type', e.target.value)}><option value="">— Select —</option>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                  <div><label className={labelCls}>Religion</label><select className={selectCls} value={editForm.religion} onChange={e => field('religion', e.target.value)}><option value="">— Select —</option>{['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other'].map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                  <div><label className={labelCls}>Nationality</label><select className={selectCls} value={editForm.nationality} onChange={e => field('nationality', e.target.value)}><option value="">— Select —</option>{['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other'].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Home Address</label>
+                    <div className="flex gap-2">
+                      <input className={`${inputCls} bg-slate-50`} value={editForm.home_address} readOnly placeholder="Click to set address" />
+                      <button type="button" onClick={() => setShowAddressModal(true)} className="px-3 py-2 bg-[#466460] text-white rounded-lg text-sm font-semibold hover:bg-[#3a524f] transition">
+                        <i className="fa-solid fa-location-dot"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Academic Section - Only show for students */}
+                  {(editForm.role === 'student') && (
+                    <>
+                      <div className="sm:col-span-2">
+                        <div className={sectionHeadCls}>Academic Information</div>
+                      </div>
+                      <div><label className={labelCls}>Year Level</label><select className={selectCls} value={editForm.year_level} onChange={e => field('year_level', e.target.value)}><option value="">— Select —</option>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
+                      <div><label className={labelCls}>Section</label><select className={selectCls} value={editForm.section} onChange={e => field('section', e.target.value)}><option value="">— Select —</option>{['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                      <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={editForm.student_classification} onChange={e => field('student_classification', e.target.value)}><option value="">— Select —</option>{STUDENT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    </>
+                  )}
+
+                  {/* Account Flags */}
+                  <div className="sm:col-span-2">
+                    <div className={sectionHeadCls}>Account Status</div>
+                  </div>
                   <div className="flex items-center gap-3 py-1">
                     <button type="button" onClick={() => field('is_verified', !editForm.is_verified)}
                       className={`relative w-10 h-5 rounded-full transition-colors ${editForm.is_verified ? 'bg-[#466460]' : 'bg-slate-300'}`}>
@@ -845,11 +1058,11 @@ export const UserManagement = () => {
                     <span className="text-sm text-slate-700 font-medium">Email Verified</span>
                   </div>
                   <div className="flex items-center gap-3 py-1">
-                    <button type="button" onClick={() => field('is_profile_setup', !editForm.is_profile_setup)}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${editForm.is_profile_setup ? 'bg-[#466460]' : 'bg-slate-300'}`}>
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${editForm.is_profile_setup ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    <button type="button" onClick={() => field('profile_complete', !editForm.profile_complete)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${editForm.profile_complete ? 'bg-[#466460]' : 'bg-slate-300'}`}>
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${editForm.profile_complete ? 'translate-x-5' : 'translate-x-0.5'}`} />
                     </button>
-                    <span className="text-sm text-slate-700 font-medium">Profile Setup Complete</span>
+                    <span className="text-sm text-slate-700 font-medium">Profile Complete</span>
                   </div>
                 </div>
               </form>
@@ -863,22 +1076,38 @@ export const UserManagement = () => {
         </div>
       )}
 
+      {/* ── Address Modal for Edit ── */}
+      {showAddressModal && (
+        <AddressModal
+          isOpen={showAddressModal}
+          onClose={() => setShowAddressModal(false)}
+          onConfirm={handleAddressConfirm}
+          initialData={{
+            addressStreet: editForm.home_address?.split(',')[0] || '',
+            addressBarangay: '',
+            addressCity: '',
+            addressProvince: '',
+            addressRegion: '',
+          }}
+        />
+      )}
+
       {/* ── Delete Modal ── */}
       {showDeleteModal && deleteTarget && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={e => e.target === e.currentTarget && setShowDeleteModal(false)}>
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-red-600 to-red-700 px-6 py-5 text-white rounded-t-2xl flex items-center gap-2">
+            <div className="bg-gradient-to-br from-amber-600 to-amber-700 px-6 py-5 text-white rounded-t-2xl flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              <h3 className="text-lg font-bold">Delete User</h3>
+              <h3 className="text-lg font-bold">Archive User</h3>
             </div>
             <div className="p-6">
               <p className="text-slate-600 text-sm md:text-base mb-5">
-                Are you sure you want to delete <strong>{getFullName(deleteTarget)}</strong>? This action cannot be undone.
+                Are you sure you want to archive <strong>{getFullName(deleteTarget)}</strong>? You can restore them later from the Archives page.
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setShowDeleteModal(false)} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-                <button onClick={confirmDelete} className="flex-1 bg-red-600 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-700 transition">Delete</button>
+                <button onClick={confirmDelete} className="flex-1 bg-amber-600 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-amber-700 transition">Archive</button>
               </div>
             </div>
           </div>

@@ -125,38 +125,44 @@ DROP POLICY IF EXISTS "Patients and staff can create appointments" ON public.app
 DROP POLICY IF EXISTS "Staff can update appointments" ON public.appointments;
 DROP POLICY IF EXISTS "View appointments by role" ON public.appointments;
 
--- Patients can view their own appointments
+-- Patients can view their own appointments (supports both old internal ID and new auth UID)
 CREATE POLICY "Patients can view own appointments"
 ON public.appointments FOR SELECT TO authenticated
-USING (auth.uid() = user_id);
+USING (
+  -- Match by auth UID directly (new appointments)
+  auth.uid()::varchar = user_id
+  OR
+  -- Match by looking up internal user ID from auth UID
+  EXISTS (SELECT 1 FROM users WHERE users.uid = auth.uid()::varchar AND users.id = appointments.user_id)
+);
 
 -- Staff can view all appointments
 CREATE POLICY "Staff can view appointments"
 ON public.appointments FOR SELECT TO authenticated
 USING (
-  EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
+  EXISTS (SELECT 1 FROM users WHERE users.uid = auth.uid()::varchar AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
 );
 
 -- Patients and staff can create appointments
 CREATE POLICY "Patients and staff can create appointments"
 ON public.appointments FOR INSERT TO authenticated
 WITH CHECK (
-  auth.uid() = user_id
-  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
+  auth.uid()::varchar = user_id
+  OR EXISTS (SELECT 1 FROM users WHERE users.uid = auth.uid()::varchar AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
 );
 
 -- Staff can update appointments
 CREATE POLICY "Staff can update appointments"
 ON public.appointments FOR UPDATE TO authenticated
 USING (
-  EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
+  EXISTS (SELECT 1 FROM users WHERE users.uid = auth.uid()::varchar AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
 );
 
 -- Staff can delete appointments
 CREATE POLICY "Staff can delete appointments"
 ON public.appointments FOR DELETE TO authenticated
 USING (
-  EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
+  EXISTS (SELECT 1 FROM users WHERE users.uid = auth.uid()::varchar AND role IN ('admin', 'doctor', 'nurse', 'dentist'))
 );
 
 
@@ -242,14 +248,27 @@ DROP POLICY IF EXISTS "Users can update own notifications" ON public.notificatio
 DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
 
 -- Users can view their own notifications
+-- Updated: Compare auth.uid() (Supabase) to users.uid, then match users.id to notifications.user_id
 CREATE POLICY "Users can view own notifications"
 ON public.notifications FOR SELECT TO authenticated
-USING (auth.uid() = user_id);
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE users.uid = auth.uid()::varchar
+    AND users.id = notifications.user_id
+  )
+);
 
 -- Users can update their own notifications (mark as read)
 CREATE POLICY "Users can update own notifications"
 ON public.notifications FOR UPDATE TO authenticated
-USING (auth.uid() = user_id);
+USING (
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE users.uid = auth.uid()::varchar
+    AND users.id = notifications.user_id
+  )
+);
 
 -- Staff can manage all notifications
 CREATE POLICY "Staff can manage notifications"

@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabase'; // Adjusted path for the Examination folder
+import DatePicker from '../../../components/Datepicker';
+import TimePicker from '../../../components/TimePicker';
+import AddressModal from '../../../components/AddressModal';
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -108,6 +111,7 @@ const buildDentalForm = (p) => {
   const dh = p?.dentalHistory || {};
 
   return {
+    dId:         p?.id || '', // University ID
     dLastName:   lastName,
     dFirstName:  firstName,
     dMiddle:     p?.middleName || '',
@@ -132,10 +136,139 @@ const buildDentalForm = (p) => {
     dVax2Date:      vaxDate('dose2'),
     dBoosterDate:   vaxDate('booster1'),
     dPatientSig: '',
-    dExamDate: new Date().toISOString().slice(0, 16),
-    dSigDate: new Date().toISOString().slice(0, 16),
+    dExamDate: new Date().toISOString().slice(0, 10),
+    dExamTime: new Date().toISOString().slice(11, 16),
+    dSigDate: new Date().toISOString().slice(0, 10),
     dExaminedBy: '',
   };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dental Visit History Component
+const DentalVisitHistory = ({ selectedPatient }) => {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!selectedPatient?.uid) return;
+
+    const fetchRecords = async () => {
+      try {
+        // Only fetch dental records (not medical)
+        const { data: denData, error: denError } = await supabase
+          .from('dental_records')
+          .select('*')
+          .eq('user_id', selectedPatient.uid)
+          .order('created_at', { ascending: false });
+
+        if (denError) console.error('Error fetching dental records:', denError);
+
+        const denRecords = (denData || []).map(r => ({
+          ...r,
+          kind: 'dental',
+          _date: r.exam_date || r.last_visit || r.created_at?.split('T')[0] || '',
+          _datetime: r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+          }) : (r.exam_date || ''),
+        }));
+
+        setRecords(denRecords);
+      } catch (err) {
+        console.error('Error fetching records:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecords();
+  }, [selectedPatient?.uid]);
+
+  const StatusBadge = ({ status }) => {
+    const map = {
+      approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      pending: 'bg-amber-100 text-amber-700 border-amber-200',
+      rejected: 'bg-red-100 text-red-700 border-red-200',
+    };
+    return (
+      <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+        {status || 'unknown'}
+      </span>
+    );
+  };
+
+  const getVitalSigns = (record) => {
+    const vitals = record.vital_records?.[0] || {};
+    return {
+      bp: vitals.bp || '-',
+      pr: vitals.pr || '-',
+      rr: vitals.rr || '-',
+      temp: vitals.temp || '-',
+      o2sat: vitals.o2sat || vitals.o2Sat || '-',
+    };
+  };
+
+  const getHistory = (r) => ({
+    medical: Array.isArray(r.checked_medical) ? r.checked_medical : [],
+    family: Array.isArray(r.checked_family) ? r.checked_family : [],
+    health: Array.isArray(r.checked_health) ? r.checked_health : [],
+    surgical: r.other_medical_history || '',
+  });
+
+  if (loading) {
+    return (
+      <div className="text-center py-12 text-slate-400">
+        <i className="fa-solid fa-circle-notch fa-spin text-3xl text-[#7c3aed] mb-3 block"></i>
+        Loading records…
+      </div>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+        <i className="fa-solid fa-file-medical text-4xl mb-3 block opacity-30"></i>
+        <p>No visit history found</p>
+      </div>
+    );
+  }
+
+  // Now records only contains dental records
+  const dentalRecords = records;
+
+  return (
+    <div className="space-y-6">
+      {dentalRecords.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <i className="fa-solid fa-tooth text-[#3b82f6]"></i>
+            <h4 className="text-sm font-bold text-[#466460] uppercase">Dental Records</h4>
+            <span className="text-[9px] bg-[#3b82f6]/20 text-[#3b82f6] px-2 py-0.5 rounded-full font-semibold">{dentalRecords.length}</span>
+          </div>
+          <div className="space-y-4">
+            {dentalRecords.map((r) => (
+              <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
+                  <StatusBadge status={r.status} />
+                </div>
+                <div className="p-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{r.examined_by || '-'}</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">Last Visit</p><p className="font-medium">{r.last_visit || '-'}</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><p className="text-[7px] text-slate-400 uppercase">Upper</p><p className="font-mono">{r.teeth_upper || '-'}</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">Lower</p><p className="font-mono">{r.teeth_lower || '-'}</p></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,7 +278,11 @@ export const Dental = ({ selectedPatient, showMessage }) => {
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
   const [showSummary, setShowSummary]       = useState(false);
+  const [showHistory, setShowHistory]       = useState(false);
   const [isSubmitting, setIsSubmitting]     = useState(false);
+
+  // Address Modal state
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   const [dentalHistory, setDentalHistory]   = useState(
     Object.fromEntries(dentalProcedures.map(p => [p, 'No']))
@@ -162,26 +299,78 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     // 1. Populate top-level form fields
     setDentalFormData(buildDentalForm(selectedPatient));
 
-    // 2. Extract nested dental objects from patient profile
-    const userDh = selectedPatient?.dentalHistory || {};
+    // 2. Fetch latest dental record (including tooth_data) from the database
+    const fetchLatestDentalRecord = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('dental_records')
+          .select('*')
+          .eq('user_id', selectedPatient?.uid)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-    // 3. Set tooth chart data
-    setToothData(userDh.toothData || {});
+        if (error) {
+          console.error('Error fetching latest dental record:', error);
+        }
 
-    // 4. Set Procedures (Merge with defaults to avoid undefined errors)
-    const defaultProcedures = Object.fromEntries(dentalProcedures.map(p => [p, 'No']));
-    setDentalHistory({ ...defaultProcedures, ...(userDh.procedures || {}) });
+        if (data) {
+          // Set tooth chart data from the latest dental record
+          // Parse tooth_data if it's stored as a string
+          let toothDataFromDB = data.tooth_data || {};
+          if (typeof toothDataFromDB === 'string') {
+            try {
+              toothDataFromDB = JSON.parse(toothDataFromDB);
+            } catch (e) {
+              console.error('Error parsing tooth_data:', e);
+              toothDataFromDB = {};
+            }
+          }
+          console.log('[Dental] toothDataFromDB:', toothDataFromDB);
+          setToothData(toothDataFromDB);
 
-    // 5. Set Intraoral Findings
-    const defaultIntraoral = { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false };
-    setIntraoral({ ...defaultIntraoral, ...(userDh.intraoral || {}) });
+          // Set dental history/procedures
+          const defaultProcedures = Object.fromEntries(dentalProcedures.map(p => [p, 'No']));
+          const dbDentalHistory = typeof data.dental_history === 'string'
+            ? JSON.parse(data.dental_history)
+            : (data.dental_history || {});
+          setDentalHistory({ ...defaultProcedures, ...dbDentalHistory });
 
+          // Set intraoral findings
+          const defaultIntraoral = { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false };
+          const dbIntraoral = typeof data.intraoral === 'string'
+            ? JSON.parse(data.intraoral)
+            : (data.intraoral || {});
+          setIntraoral({ ...defaultIntraoral, ...dbIntraoral });
+        } else {
+          // No previous records, use defaults
+          setToothData({});
+          setDentalHistory(Object.fromEntries(dentalProcedures.map(p => [p, 'No'])));
+          setIntraoral({ gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
+        }
+      } catch (err) {
+        console.error('Error in fetchLatestDentalRecord:', err);
+        // Fallback to defaults
+        setToothData({});
+        setDentalHistory(Object.fromEntries(dentalProcedures.map(p => [p, 'No'])));
+        setIntraoral({ gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
+      }
+    };
+
+    if (selectedPatient?.uid) {
+      fetchLatestDentalRecord();
+    }
   }, [selectedPatient?.uid]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleDentalChange = (e) => {
     const { id, value, name } = e.target;
     setDentalFormData(prev => ({ ...prev, [id || name]: value }));
+  };
+
+  // Date picker handler for dental form
+  const handleDentalDateChange = (field, value) => {
+    setDentalFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const openToothModal = (num) => {
@@ -200,7 +389,11 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     }
   };
 
-  const getToothLabel = (num) => conditionLabel[toothData[num]?.condition] || '/';
+  const getToothLabel = (num) => {
+    const condition = toothData[num]?.condition;
+    console.log('[getToothLabel] num:', num, 'condition:', condition, 'toothData:', toothData);
+    return conditionLabel[condition] || '/';
+  };
   const getToothClass = (num) => toothConditionStyle[toothData[num]?.condition] || 'bg-white border-slate-300 text-slate-400';
 
   const renderToothRow = (teeth) => teeth.map(n => (
@@ -220,7 +413,15 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     .filter(([, d]) => d?.condition)
     .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
 
-    const toISO = (val) => val ? (val.length === 16 ? val + ':00' : val) : null;
+  // Combine date and time for submission
+  const combineDateTime = (date, time) => {
+    if (!date) return null;
+    if (time) {
+      return `${date}T${time}:00`;
+    }
+    return `${date}T00:00:00`;
+  };
+
   // ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
     if (!selectedPatient?.uid) {
@@ -231,64 +432,71 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     setIsSubmitting(true);
 
     try {
+      // Combine exam date and time
+      const examDateTime = combineDateTime(dentalFormData.dExamDate, dentalFormData.dExamTime);
+      const sigDateTime = dentalFormData.dSigDate ? `${dentalFormData.dSigDate}T00:00:00` : null;
+
       const payload = {
         ...dentalFormData,
         toothData,
         dentalHistory,
         intraoral,
-        status: "approved",
-        isApproved: true,
+        status: "pending",
+        isApproved: false,
+        examDateTime,
+        sigDateTime,
       };
 
-      // Get the user's UUID from the users table
-      const { data: userData } = await supabase
-        .from('users')
-        .select('id')
-        .eq('uid', selectedPatient.uid)
-        .single();
+      // Use selectedPatient.uid directly as user_id (it's the internal UUID from users table)
+      const userId = selectedPatient.uid;
 
-      const userId = userData?.id;
+      if (!userId) {
+        throw new Error("Could not find user ID. Please ensure the patient is registered in the system.");
+      }
 
       // Convert camelCase to snake_case matching dental_records table schema
+      // Note: dentalFormData uses d-prefixed fields (dLastName, dFirstName, etc.)
       const supabasePayload = {
         user_id: userId,
-        university_id: payload.studentId,
-        last_name: payload.lastName,
-        first_name: payload.firstName,
-        middle_name: payload.middleName,
-        sex: payload.sex,
-        age: payload.age,
-        birthday: payload.birthday,
-        address: payload.address,
-        cellphone: payload.cellphone,
-        course_year: payload.courseYear,
-        office_address: payload.officeAddress,
-        tel_no: payload.telNo,
-        nationality: payload.nationality,
-        last_visit: payload.lastVisit,
-        prev_dentist: payload.prevDentist,
-        physician: payload.physician,
-        vax1_date: payload.vax1Date,
-        vax2_date: payload.vax2Date,
-        booster_date: payload.boosterDate,
-        teeth_upper: payload.teethUpper,
-        teeth_lower: payload.teethLower,
-        tooth_data: payload.toothData,
-        dental_history: payload.dentalHistory,
-        intraoral: payload.intraoral,
-        examined_by: payload.physician,
-        exam_date: toISO(payload.examDate),
-        status: "approved",
-        is_approved: true,
+        university_id: payload.dId || payload.studentId || null,
+        last_name: payload.dLastName || null,
+        first_name: payload.dFirstName || null,
+        middle_name: payload.dMiddle || null,
+        sex: payload.dSex || null,
+        age: payload.dAge ? parseInt(payload.dAge) : null,
+        birthday: payload.dBirthday || null,
+        address: payload.dAddress || null,
+        cellphone: payload.dCellphone || null,
+        course_year: payload.dCourseYear || null,
+        office_address: payload.dOfficeAddress || null,
+        tel_no: payload.dTelNo || null,
+        nationality: payload.dNationality || null,
+        last_visit: payload.dLastVisit || null,
+        prev_dentist: payload.dPrevDentist || null,
+        physician: payload.dPhysician || null,
+        vax1_date: payload.dVax1Date || null,
+        vax2_date: payload.dVax2Date || null,
+        booster_date: payload.dBoosterDate || null,
+        teeth_upper: payload.dTeethUpper || null,
+        teeth_lower: payload.dTeethLower || null,
+        tooth_data: payload.toothData || {},
+        dental_history: payload.dentalHistory || {},
+        intraoral: payload.intraoral || {},
+        examined_by: payload.dExaminedBy || null,
+        patient_signature: payload.dPatientSig || null,
+        exam_date: payload.examDateTime || null,
+        sig_date: payload.sigDateTime || null,
+        status: "pending",
+        is_approved: false,
         created_at: new Date().toISOString(),
-        approved_at: new Date().toISOString(),
+        approved_at: null,
       };
 
       const { error } = await supabase.from('dental_records').insert(supabasePayload);
       if (error) throw error;
 
       setShowSummary(false);
-      showMessage('Dental record saved and approved successfully!');
+      showMessage('Dental record saved successfully! Waiting for approval.');
 
     } catch (error) {
       console.error("Error saving dental record: ", error);
@@ -311,11 +519,33 @@ export const Dental = ({ selectedPatient, showMessage }) => {
           [&::-webkit-scrollbar-thumb]:rounded-full"
       >
 
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-[#466460]">
-            <i className="fa-solid fa-tooth mr-2"></i>Student Dental Record
-          </h2>
+        
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setShowHistory(false)}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${!showHistory ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            <i className="fa-solid fa-clipboard-list mr-1"></i>
+            Examination
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowHistory(true)}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${showHistory ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            <i className="fa-solid fa-clock-rotate-left mr-1"></i>
+            Visit History
+          </button>
         </div>
+
+        {/* Visit History View */}
+        {showHistory ? (
+          <DentalVisitHistory selectedPatient={selectedPatient} />
+        ) : (
+        <>
 
         {/* ─── Patient Information ─────────────────────────────────────────── */}
         <div className={sectionClass}>Patient Information</div>
@@ -331,8 +561,33 @@ export const Dental = ({ selectedPatient, showMessage }) => {
             </div>
           </div>
           <div className="col-span-2"><label className={labelClass}>Age</label><input type="number" id="dAge" className={inputClass} value={dentalFormData.dAge} onChange={handleDentalChange} /></div>
-          <div className="col-span-2"><label className={labelClass}>Birthday</label><input type="date" id="dBirthday" className={inputClass} value={dentalFormData.dBirthday} onChange={handleDentalChange} /></div>
-          <div className="col-span-4"><label className={labelClass}>Address</label><input type="text" id="dAddress" className={inputClass} value={dentalFormData.dAddress} onChange={handleDentalChange} /></div>
+          <div className="col-span-2">
+            <label className={labelClass}>Birthday</label>
+            <DatePicker value={dentalFormData.dBirthday} onChange={(val) => handleDentalDateChange('dBirthday', val)} />
+          </div>
+          <div className="col-span-4">
+            <label className={labelClass}>Address</label>
+            <div className="relative">
+              <input
+                type="text"
+                id="dAddress"
+                className={`${inputClass} cursor-pointer`}
+                value={dentalFormData.dAddress}
+                readOnly
+                placeholder="Click to enter address"
+                onClick={() => setShowAddressModal(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowAddressModal(true)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a3.5 3.5 0 114.95 4.95L3.464 16.536" />
+                </svg>
+              </button>
+            </div>
+          </div>
           <div className="col-span-4"><label className={labelClass}>Cellphone No.</label><input type="text" id="dCellphone" className={inputClass} value={dentalFormData.dCellphone} onChange={handleDentalChange} /></div>
           <div className="col-span-3"><label className={labelClass}>Course / Year / Section</label><input type="text" id="dCourseYear" className={inputClass} value={dentalFormData.dCourseYear} onChange={handleDentalChange} /></div>
           <div className="col-span-3"><label className={labelClass}>Office Address</label><input type="text" id="dOfficeAddress" className={inputClass} value={dentalFormData.dOfficeAddress} onChange={handleDentalChange} /></div>
@@ -343,7 +598,10 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         {/* ─── Dental History ───────────────────────────────────────────────── */}
         <div className={sectionClass}>Dental History</div>
         <div className="grid grid-cols-12 gap-4 mb-4">
-          <div className="col-span-4"><label className={labelClass}>Last Dental Visit</label><input type="date" id="dLastVisit" className={inputClass} value={dentalFormData.dLastVisit} onChange={handleDentalChange} /></div>
+          <div className="col-span-4">
+            <label className={labelClass}>Last Dental Visit</label>
+            <DatePicker value={dentalFormData.dLastVisit} onChange={(val) => handleDentalDateChange('dLastVisit', val)} />
+          </div>
           <div className="col-span-4"><label className={labelClass}>Previous Dentist: Dr.</label><input type="text" id="dPrevDentist" className={inputClass} value={dentalFormData.dPrevDentist} onChange={handleDentalChange} /></div>
         </div>
         <p className="text-xs font-bold text-slate-700 mb-3">Dental History — Check if applicable (Yes / No):</p>
@@ -431,9 +689,18 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         {/* ─── COVID-19 Vaccine ─────────────────────────────────────────────── */}
         <div className={sectionClass}>COVID-19 Vaccine (Dental Record)</div>
         <div className="grid grid-cols-12 gap-4 mb-6">
-          <div className="col-span-3"><label className={labelClass}>First Dose Date</label><input type="date" id="dVax1Date" className={inputClass} value={dentalFormData.dVax1Date} onChange={handleDentalChange} /></div>
-          <div className="col-span-3"><label className={labelClass}>Second Dose Date</label><input type="date" id="dVax2Date" className={inputClass} value={dentalFormData.dVax2Date} onChange={handleDentalChange} /></div>
-          <div className="col-span-3"><label className={labelClass}>Booster Dose Date</label><input type="date" id="dBoosterDate" className={inputClass} value={dentalFormData.dBoosterDate} onChange={handleDentalChange} /></div>
+          <div className="col-span-3">
+            <label className={labelClass}>First Dose Date</label>
+            <DatePicker value={dentalFormData.dVax1Date} onChange={(val) => handleDentalDateChange('dVax1Date', val)} />
+          </div>
+          <div className="col-span-3">
+            <label className={labelClass}>Second Dose Date</label>
+            <DatePicker value={dentalFormData.dVax2Date} onChange={(val) => handleDentalDateChange('dVax2Date', val)} />
+          </div>
+          <div className="col-span-3">
+            <label className={labelClass}>Booster Dose Date</label>
+            <DatePicker value={dentalFormData.dBoosterDate} onChange={(val) => handleDentalDateChange('dBoosterDate', val)} />
+          </div>
         </div>
 
         {/* ─── Patient Dental Chart ─────────────────────────────────────────── */}
@@ -505,8 +772,18 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         <div className={sectionClass}>Signature & Examiner</div>
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6"><label className={labelClass}>Patient Signature</label><input type="text" id="dPatientSig" className={inputClass} placeholder="Type full name as signature" value={dentalFormData.dPatientSig} onChange={handleDentalChange} /></div>
-          <div className="col-span-3"><label className={labelClass}>Date</label><input type="date" id="dSigDate" className={inputClass} value={dentalFormData.dSigDate} onChange={handleDentalChange} /></div>
-          <div className="col-span-3"><label className={labelClass}>Examination Date & Time</label><input type="datetime-local" id="dExamDate" className={inputClass} value={dentalFormData.dExamDate} onChange={handleDentalChange} /></div>
+          <div className="col-span-3">
+            <label className={labelClass}>Date</label>
+            <DatePicker value={dentalFormData.dSigDate} onChange={(val) => handleDentalDateChange('dSigDate', val)} />
+          </div>
+          <div className="col-span-3">
+            <label className={labelClass}>Examination Date</label>
+            <DatePicker value={dentalFormData.dExamDate ? dentalFormData.dExamDate.slice(0, 10) : ''} onChange={(val) => handleDentalDateChange('dExamDate', val)} />
+          </div>
+          <div className="col-span-3">
+            <label className={labelClass}>Examination Time</label>
+            <TimePicker value={dentalFormData.dExamDate ? dentalFormData.dExamDate.slice(11, 16) : ''} onChange={(val) => handleDentalDateChange('dExamTime', val)} />
+          </div>
           <div className="col-span-6"><label className={labelClass}>Examined By</label><input type="text" id="dExaminedBy" className={inputClass} placeholder="Dentist name and license number" value={dentalFormData.dExaminedBy} onChange={handleDentalChange} /></div>
         </div>
 
@@ -532,6 +809,8 @@ export const Dental = ({ selectedPatient, showMessage }) => {
             </button>
           </div>
         </div>
+        </>
+        )}
       </form>
 
       {/* ═══ DENTAL SUMMARY MODAL ══════════════════════════════════════════ */}
@@ -675,6 +954,20 @@ export const Dental = ({ selectedPatient, showMessage }) => {
           </div>
         </div>
       )}
+
+      {/* ═══ ADDRESS MODAL ════════════════════════════════════════════════════ */}
+      <AddressModal
+        isOpen={showAddressModal}
+        onClose={() => setShowAddressModal(false)}
+        onConfirm={(addressData) => {
+          setDentalFormData(prev => ({
+            ...prev,
+            dAddress: addressData.homeAddress || '',
+          }));
+          setShowAddressModal(false);
+        }}
+        initialData={dentalFormData}
+      />
     </>
   );
 };

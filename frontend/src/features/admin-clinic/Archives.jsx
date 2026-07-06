@@ -1,18 +1,16 @@
 // frontend/src/features/admin-clinic/Archives.jsx
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { supabase } from '../../supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-// Archive type labels
+// Archive type labels - maps to actual table names
 const ARCHIVE_TYPE_LABELS = {
-  record: 'User Record',
-  announcement: 'Announcement',
   user: 'User',
-  consultation: 'Consultation',
+  announcement: 'Announcement',
   appointment: 'Appointment',
-  examination: 'Examination',
-  audit_log: 'Audit Log',
+  consultation: 'Consultation',
+  medical_record: 'Medical Record',
+  dental_record: 'Dental Record',
   all: 'All Types'
 };
 
@@ -30,28 +28,137 @@ export default function Archives() {
   const [selectedArchive, setSelectedArchive] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Fetch archives
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState(null);
+
+  // Show snackbar notification
+  const showSnackbar = (message, type = 'success') => {
+    setSnackbar({ message, type });
+    setTimeout(() => setSnackbar(null), 3000);
+  };
+
+  // Fetch archives from all tables using is_archived flag
   const fetchArchives = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const params = new URLSearchParams();
-      if (filterType !== 'all') params.append('type', filterType);
-      if (search) params.append('search', search);
-      params.append('page', page);
-      params.append('limit', limit);
-
-      const response = await fetch(`${API_URL}/archives?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const result = await response.json();
-
-      if (result.success) {
-        setArchives(result.data.data || []);
-        setTotalCount(result.data.count || 0);
+      // Set Supabase session for authenticated fetch
+      const accessToken = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refresh_token') || '';
+      if (accessToken) {
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        });
       }
+
+      // Fetch archived items from all tables
+      const [
+        usersData, announcementsData, appointmentsData, consultationsData,
+        medicalData, dentalData
+      ] = await Promise.all([
+        supabase.from('users').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+        supabase.from('announcements').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+        supabase.from('appointments').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+        supabase.from('consultations').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+        supabase.from('medical_records').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+        supabase.from('dental_records').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+      ]);
+
+      // Log any errors
+      if (usersData.error) console.error('Users error:', usersData.error);
+      if (announcementsData.error) console.error('Announcements error:', announcementsData.error);
+      if (appointmentsData.error) console.error('Appointments error:', appointmentsData.error);
+      if (consultationsData.error) console.error('Consultations error:', consultationsData.error);
+      if (medicalData.error) console.error('Medical error:', medicalData.error);
+      if (dentalData.error) console.error('Dental error:', dentalData.error);
+
+      // Debug: Log counts from each table
+      console.log('Archived counts:', {
+        users: usersData.data?.length || 0,
+        announcements: announcementsData.data?.length || 0,
+        appointments: appointmentsData.data?.length || 0,
+        consultations: consultationsData.data?.length || 0,
+        medical: medicalData.data?.length || 0,
+        dental: dentalData.data?.length || 0,
+      });
+
+      // Combine all archived items with type labels
+      let allArchives = [
+        ...(usersData.data || []).map(r => ({
+          ...r,
+          archiveType: 'user',
+          table: 'users',
+          id: r.uid,
+          displayName: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email || r.university_id || 'User',
+          detail: r.university_id || r.email || '',
+          deletedBy: r.deleted_by || 'System'
+        })),
+        ...(announcementsData.data || []).map(r => ({
+          ...r,
+          archiveType: 'announcement',
+          table: 'announcements',
+          id: r.id,
+          displayName: r.title || 'Announcement',
+          detail: `Posted: ${r.author_name || 'Admin'}`,
+          deletedBy: r.deleted_by || 'System'
+        })),
+        ...(appointmentsData.data || []).map(r => ({
+          ...r,
+          archiveType: 'appointment',
+          table: 'appointments',
+          id: r.id,
+          displayName: r.patient_name || r.reason || 'Appointment',
+          detail: `${r.service_type || 'Medical'} - ${r.reason || 'No reason'}`,
+          deletedBy: r.deleted_by || 'System'
+        })),
+        ...(consultationsData.data || []).map(r => ({
+          ...r,
+          archiveType: 'consultation',
+          table: 'consultations',
+          id: r.id,
+          displayName: r.patient_name || 'Consultation',
+          detail: `${r.consultation_type || 'General'} - ${r.status || ''}`,
+          deletedBy: r.deleted_by || 'System'
+        })),
+        ...(medicalData.data || []).map(r => ({
+          ...r,
+          archiveType: 'medical_record',
+          table: 'medical_records',
+          id: r.id,
+          displayName: r.patient_name || r.patientId || 'Medical Record',
+          detail: `Type: ${r.record_type || 'General'} | Visit: ${r.visit_date || 'N/A'}`,
+          deletedBy: r.deleted_by || 'System'
+        })),
+        ...(dentalData.data || []).map(r => ({
+          ...r,
+          archiveType: 'dental_record',
+          table: 'dental_records',
+          id: r.id,
+          displayName: r.patient_name || r.patientId || 'Dental Record',
+          detail: `Type: ${r.record_type || 'Dental'} | Visit: ${r.visit_date || 'N/A'}`,
+          deletedBy: r.deleted_by || 'System'
+        })),
+      ];
+
+      // Filter by type
+      if (filterType !== 'all') {
+        allArchives = allArchives.filter(a => a.archiveType === filterType);
+      }
+
+      // Filter by search
+      if (search) {
+        const s = search.toLowerCase();
+        allArchives = allArchives.filter(a => {
+          const searchable = `${a.displayName} ${a.detail} ${a.deletedBy} ${a.archiveType}`.toLowerCase();
+          return searchable.includes(s);
+        });
+      }
+
+      setArchives(allArchives);
+      setTotalCount(allArchives.length);
     } catch (error) {
       console.error('Error fetching archives:', error);
     } finally {
@@ -62,14 +169,35 @@ export default function Archives() {
   // Fetch stats
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/archives/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const result = await response.json();
-      if (result.success) {
-        setStats(result.data);
+      // Set Supabase session for authenticated fetch
+      const accessToken = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refresh_token') || '';
+      if (accessToken) {
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        });
       }
+
+      // Get count from each table
+      const [usersCount, announcementsCount, appointmentsCount, consultationsCount, medicalCount, dentalCount] = await Promise.all([
+        supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+        supabase.from('announcements').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+        supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+        supabase.from('consultations').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+        supabase.from('medical_records').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+        supabase.from('dental_records').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+      ]);
+
+      setStats({
+        total: (usersCount.count || 0) + (announcementsCount.count || 0) + (appointmentsCount.count || 0) +
+               (consultationsCount.count || 0) + (medicalCount.count || 0) + (dentalCount.count || 0),
+        users: usersCount.count || 0,
+        announcements: announcementsCount.count || 0,
+        appointments: appointmentsCount.count || 0,
+        consultations: consultationsCount.count || 0,
+        records: (medicalCount.count || 0) + (dentalCount.count || 0),
+      });
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -96,30 +224,40 @@ export default function Archives() {
     setShowViewModal(true);
   };
 
-  // Restore archive
-  const handleRestore = async (id) => {
-    if (!window.confirm('Are you sure you want to restore this item?')) return;
+  // Open restore modal
+  const handleRestoreClick = (archive) => {
+    setSelectedArchive(archive);
+    setShowRestoreModal(true);
+  };
+
+  // Confirm restore - set is_archived to false
+  const confirmRestore = async () => {
+    if (!selectedArchive) return;
 
     setActionLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/archives/${id}/restore`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const result = await response.json();
+      // Users table uses 'uid' as primary key, others use 'id'
+      const idColumn = selectedArchive.table === 'users' ? 'uid' : 'id';
 
-      if (result.success) {
-        alert('Item restored successfully!');
-        setShowViewModal(false);
-        fetchArchives();
-        fetchStats();
-      } else {
-        alert('Failed to restore: ' + result.message);
-      }
+      const { error } = await supabase
+        .from(selectedArchive.table)
+        .update({
+          is_archived: false,
+          deleted_by: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq(idColumn, selectedArchive.id);
+
+      if (error) throw error;
+
+      showSnackbar('Item restored successfully!', 'success');
+      setShowRestoreModal(false);
+      setShowViewModal(false);
+      fetchArchives();
+      fetchStats();
     } catch (error) {
       console.error('Error restoring:', error);
-      alert('Error restoring item');
+      showSnackbar('Error restoring item: ' + error.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -137,24 +275,23 @@ export default function Archives() {
 
     setActionLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/archives/${selectedArchive.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const result = await response.json();
+      // Users table uses 'uid' as primary key, others use 'id'
+      const idColumn = selectedArchive.table === 'users' ? 'uid' : 'id';
 
-      if (result.success) {
-        alert('Item permanently deleted!');
-        setShowDeleteModal(false);
-        fetchArchives();
-        fetchStats();
-      } else {
-        alert('Failed to delete: ' + result.message);
-      }
+      const { error } = await supabase
+        .from(selectedArchive.table)
+        .delete()
+        .eq(idColumn, selectedArchive.id);
+
+      if (error) throw error;
+
+      showSnackbar('Item permanently deleted!', 'success');
+      setShowDeleteModal(false);
+      fetchArchives();
+      fetchStats();
     } catch (error) {
       console.error('Error deleting:', error);
-      alert('Error deleting item');
+      showSnackbar('Error deleting item: ' + error.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -172,23 +309,23 @@ export default function Archives() {
     });
   };
 
-  // Calculate days until permanent deletion
-  const getDaysUntilDelete = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    const deleteDate = new Date(dateStr);
-    const now = new Date();
-    const diff = Math.ceil((deleteDate - now) / (1000 * 60 * 60 * 24));
-    return diff > 0 ? `${diff} days` : 'Due for deletion';
-  };
-
   const totalPages = Math.ceil(totalCount / limit);
 
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
+      {/* Snackbar Notification */}
+      {snackbar && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+          snackbar.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        } text-white text-sm font-medium animate-fade-in`}>
+          {snackbar.message}
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-[#1a2e22]">Archives</h1>
-        <p className="text-slate-500 mt-1">View and manage deleted items. Items are permanently deleted after 2 years.</p>
+        <p className="text-slate-500 mt-1">View and manage archived items. Restore or permanently delete them.</p>
       </div>
 
       {/* Stats Cards */}
@@ -200,7 +337,7 @@ export default function Archives() {
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
             <div className="text-2xl font-bold text-blue-600">{stats.records}</div>
-            <div className="text-xs text-slate-500 font-medium">Records</div>
+            <div className="text-xs text-slate-500 font-medium">Medical Records</div>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
             <div className="text-2xl font-bold text-green-600">{stats.announcements}</div>
@@ -267,38 +404,51 @@ export default function Archives() {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Original ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Deleted By</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Archived Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Auto-Delete</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Actions</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Type</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Item Name</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Details</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Deleted By</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Date</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {archives.map((archive) => (
-                  <tr key={archive.id} className="hover:bg-slate-50 transition">
-                    <td className="px-4 py-3">
+                  <tr key={`${archive.table}-${archive.id}`} className="hover:bg-slate-50 transition">
+                    <td className="px-3 py-3">
                       <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                        archive.type === 'record' ? 'bg-blue-100 text-blue-700' :
-                        archive.type === 'announcement' ? 'bg-green-100 text-green-700' :
-                        archive.type === 'user' ? 'bg-purple-100 text-purple-700' :
-                        archive.type === 'consultation' ? 'bg-orange-100 text-orange-700' :
+                        archive.archiveType === 'medical_record' ? 'bg-blue-100 text-blue-700' :
+                        archive.archiveType === 'dental_record' ? 'bg-cyan-100 text-cyan-700' :
+                        archive.archiveType === 'announcement' ? 'bg-green-100 text-green-700' :
+                        archive.archiveType === 'user' ? 'bg-purple-100 text-purple-700' :
+                        archive.archiveType === 'consultation' ? 'bg-orange-100 text-orange-700' :
+                        archive.archiveType === 'appointment' ? 'bg-pink-100 text-pink-700' :
                         'bg-slate-100 text-slate-700'
                       }`}>
-                        {ARCHIVE_TYPE_LABELS[archive.type] || archive.type}
+                        {ARCHIVE_TYPE_LABELS[archive.archiveType] || archive.archiveType}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600 font-mono">{archive.original_id?.substring(0, 12)}...</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{archive.deleted_by || 'System'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{formatDate(archive.archived_at)}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={archive.permanent_delete_at && new Date(archive.permanent_delete_at) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'text-red-600 font-medium' : 'text-slate-600'}>
-                        {getDaysUntilDelete(archive.permanent_delete_at)}
+                    <td className="px-3 py-3">
+                      <div className="text-sm font-medium text-slate-700">
+                        {archive.displayName}
+                      </div>
+                      <div className="text-xs text-slate-400">ID: {String(archive.id).substring(0, 12)}...</div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="text-sm text-slate-600 max-w-xs truncate" title={archive.detail}>
+                        {archive.detail}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="text-sm text-slate-600">
+                        {archive.deletedBy}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-3 py-3">
+                      <div className="text-sm text-slate-600">{formatDate(archive.updated_at)}</div>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex justify-end gap-1">
                         <button
                           onClick={() => handleView(archive)}
                           className="px-3 py-1.5 text-sm text-[#466460] hover:bg-[#466460]/10 rounded-lg transition"
@@ -306,7 +456,7 @@ export default function Archives() {
                           View
                         </button>
                         <button
-                          onClick={() => handleRestore(archive.id)}
+                          onClick={() => handleRestoreClick(archive)}
                           className="px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition"
                         >
                           Restore
@@ -360,32 +510,58 @@ export default function Archives() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-auto">
             <div className="p-6 border-b border-slate-100">
-              <h2 className="text-xl font-bold text-[#1a2e22]">Archive Details</h2>
-              <p className="text-sm text-slate-500 mt-1">{ARCHIVE_TYPE_LABELS[selectedArchive.type] || selectedArchive.type}</p>
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                  selectedArchive.archiveType === 'medical_record' ? 'bg-blue-100 text-blue-700' :
+                  selectedArchive.archiveType === 'dental_record' ? 'bg-cyan-100 text-cyan-700' :
+                  selectedArchive.archiveType === 'announcement' ? 'bg-green-100 text-green-700' :
+                  selectedArchive.archiveType === 'user' ? 'bg-purple-100 text-purple-700' :
+                  selectedArchive.archiveType === 'consultation' ? 'bg-orange-100 text-orange-700' :
+                  'bg-slate-100 text-slate-700'
+                }`}>
+                  {ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || selectedArchive.archiveType}
+                </span>
+                <h2 className="text-xl font-bold text-[#1a2e22]">Archive Details</h2>
+              </div>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase">Original ID</label>
-                <p className="text-sm font-mono text-slate-700">{selectedArchive.original_id}</p>
+              {/* Key Info - Different based on type */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Name/Title</label>
+                  <p className="text-sm font-medium text-slate-700">{selectedArchive.displayName}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Details</label>
+                  <p className="text-sm text-slate-600">{selectedArchive.detail}</p>
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase">Deleted By</label>
-                <p className="text-sm text-slate-700">{selectedArchive.deleted_by || 'System'}</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Deleted By</label>
+                  <p className="text-sm text-slate-700">{selectedArchive.deletedBy}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase">Archived Date</label>
+                  <p className="text-sm text-slate-700">{formatDate(selectedArchive.updated_at)}</p>
+                </div>
               </div>
+
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase">Archived Date</label>
-                <p className="text-sm text-slate-700">{formatDate(selectedArchive.archived_at)}</p>
+                <label className="text-xs font-semibold text-slate-500 uppercase">ID</label>
+                <p className="text-sm font-mono text-slate-500">{String(selectedArchive.id)}</p>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase">Scheduled Deletion</label>
-                <p className="text-sm text-slate-700">{formatDate(selectedArchive.permanent_delete_at)}</p>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase">Archived Data</label>
-                <pre className="mt-1 p-3 bg-slate-50 rounded-lg text-xs font-mono overflow-auto max-h-48">
-                  {JSON.stringify(JSON.parse(selectedArchive.data || '{}'), null, 2)}
+
+              {/* Full Data - Collapsible */}
+              <details className="group">
+                <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460]">
+                  View Full Data
+                </summary>
+                <pre className="mt-2 p-3 bg-slate-50 rounded-lg text-xs font-mono overflow-auto max-h-48">
+                  {JSON.stringify(selectedArchive, null, 2)}
                 </pre>
-              </div>
+              </details>
             </div>
             <div className="p-6 border-t border-slate-100 flex gap-3">
               <button
@@ -395,7 +571,46 @@ export default function Archives() {
                 Close
               </button>
               <button
-                onClick={() => handleRestore(selectedArchive.id)}
+                onClick={() => {
+                  setShowViewModal(false);
+                  setShowRestoreModal(true);
+                }}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl font-medium text-sm hover:bg-green-700 transition disabled:opacity-50"
+              >
+                {actionLoading ? 'Restoring...' : 'Restore'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Restore Confirmation Modal */}
+      {showRestoreModal && selectedArchive && createPortal(
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-[#1a2e22]">Restore Archive?</h2>
+              <p className="text-slate-500 mt-2">
+                Are you sure you want to restore this {ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || selectedArchive.archiveType}?
+                It will be restored and visible in its original location.
+              </p>
+            </div>
+            <div className="p-6 pt-0 flex gap-3">
+              <button
+                onClick={() => setShowRestoreModal(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRestore}
                 disabled={actionLoading}
                 className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl font-medium text-sm hover:bg-green-700 transition disabled:opacity-50"
               >
@@ -419,7 +634,7 @@ export default function Archives() {
               </div>
               <h2 className="text-xl font-bold text-[#1a2e22]">Permanently Delete?</h2>
               <p className="text-slate-500 mt-2">
-                This will permanently delete the {ARCHIVE_TYPE_LABELS[selectedArchive.type] || selectedArchive.type} from archives.
+                This will permanently delete the {ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || selectedArchive.archiveType}.
                 This action cannot be undone.
               </p>
             </div>

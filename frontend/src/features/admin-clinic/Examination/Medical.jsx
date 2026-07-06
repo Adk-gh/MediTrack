@@ -30,6 +30,64 @@ const healthConditions = [
   'Stroke', 'Kidney Disease', 'Thyroid Problem', 'Hepatitis',
 ];
 
+// ─── Academic School Year Generator ────────────────────────────────────────────
+const generateSchoolYears = () => {
+  const years = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0 = January, 11 = December
+
+  // Start from 2025-2026
+  const startYear = 2025;
+  const endLimitYear = 2058;
+
+  for (let i = startYear; i <= endLimitYear; i++) {
+    const endYear = i + 1;
+    const yearStr = `${i}-${endYear}`;
+
+    let include1stSem = false;
+    let include2ndSem = false;
+    let includeMidYear = false;
+
+    if (i > currentYear) {
+      // Future school year - include all
+      include1stSem = true;
+      include2ndSem = true;
+      includeMidYear = true;
+    } else if (i === currentYear) {
+      // Current school year - include based on current month
+      // 1st Semester: August (7) - December (11)
+      // 2nd Semester: January (0) - May (4)
+      // Mid Year: June (5) - July (6)
+
+      if (currentMonth >= 7) include1stSem = true;   // Aug-Dec
+      if (currentMonth >= 0 && currentMonth <= 4) include2ndSem = true; // Jan-May
+      if (currentMonth >= 5 && currentMonth <= 6) includeMidYear = true; // Jun-Jul
+    } else if (i === currentYear - 1) {
+      // Previous school year - only include if we're currently in that school year
+      // e.g., if we're in Aug 2025, 2024-2025 2nd sem might still be active
+      if (currentMonth >= 0 && currentMonth <= 4) include2ndSem = true; // Jan-May
+      if (currentMonth >= 5 && currentMonth <= 6) includeMidYear = true; // Jun-Jul
+    }
+    // Years before currentYear - 1 are not included (passed)
+
+    // For the 2025-2026 school year specifically (since we're in it), include all
+    if (i === 2025) {
+      include1stSem = true;
+      include2ndSem = true;
+      includeMidYear = true;
+    }
+
+    if (include1stSem) years.push(`${yearStr} 1st Semester`);
+    if (include2ndSem) years.push(`${yearStr} 2nd Semester`);
+    if (includeMidYear) years.push(`${yearStr} Mid Year`);
+  }
+
+  return years;
+};
+
+const schoolYearOptions = generateSchoolYears();
+
 // ── Shared style tokens ────────────────────────────────────────────────────────
 const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
 const labelClass   = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1";
@@ -66,6 +124,212 @@ const getLocalTime = () => {
   const date = new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(11, 16);
+};
+
+// ── Medical Visit History Component ─────────────────────────────────────────
+const MedicalVisitHistory = ({ selectedPatient }) => {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!selectedPatient?.uid) return;
+
+    const fetchRecords = async () => {
+      try {
+        const { data: medData, error: medError } = await supabase
+          .from('medical_records')
+          .select('*')
+          .eq('user_id', selectedPatient.uid)
+          .order('created_at', { ascending: false });
+
+        if (medError) console.error('Error fetching medical records:', medError);
+
+        const { data: denData, error: denError } = await supabase
+          .from('dental_records')
+          .select('*')
+          .eq('user_id', selectedPatient.uid)
+          .order('created_at', { ascending: false });
+
+        if (denError) console.error('Error fetching dental records:', denError);
+
+        const medRecords = (medData || []).map(r => ({
+          ...r,
+          kind: 'medical',
+          _date: r.exam_date || r.created_at?.split('T')[0] || '',
+          _datetime: r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+          }) : (r.exam_date || ''),
+        }));
+
+        const denRecords = (denData || []).map(r => ({
+          ...r,
+          kind: 'dental',
+          _date: r.exam_date || r.last_visit || r.created_at?.split('T')[0] || '',
+          _datetime: r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+          }) : (r.exam_date || ''),
+        }));
+
+        const all = [...medRecords, ...denRecords].sort((a, b) =>
+          (b._date || '').localeCompare(a._date || '')
+        );
+        setRecords(all);
+      } catch (err) {
+        console.error('Error fetching records:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecords();
+  }, [selectedPatient?.uid]);
+
+  const medicalRecords = records.filter(r => r.kind === 'medical');
+  const dentalRecords = records.filter(r => r.kind === 'dental');
+
+  const StatusBadge = ({ status }) => {
+    const map = {
+      approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      pending: 'bg-amber-100 text-amber-700 border-amber-200',
+      rejected: 'bg-red-100 text-red-700 border-red-200',
+    };
+    return (
+      <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+        {status || 'unknown'}
+      </span>
+    );
+  };
+
+  const getVitalSigns = (record) => {
+    const vitals = record.vital_records?.[0] || {};
+    return {
+      bp: vitals.bp || '-',
+      pr: vitals.pr || '-',
+      rr: vitals.rr || '-',
+      temp: vitals.temp || '-',
+      o2sat: vitals.o2sat || vitals.o2Sat || '-',
+    };
+  };
+
+  const getHistory = (r) => ({
+    medical: Array.isArray(r.checked_medical) ? r.checked_medical : [],
+    family: Array.isArray(r.checked_family) ? r.checked_family : [],
+    health: Array.isArray(r.checked_health) ? r.checked_health : [],
+    surgical: r.other_medical_history || '',
+  });
+
+  if (loading) {
+    return (
+      <div className="text-center py-12 text-slate-400">
+        <i className="fa-solid fa-circle-notch fa-spin text-3xl text-[#7c3aed] mb-3 block"></i>
+        Loading records…
+      </div>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+        <i className="fa-solid fa-file-medical text-4xl mb-3 block opacity-30"></i>
+        <p>No visit history found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Medical Records */}
+      {medicalRecords.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i>
+            <h4 className="text-sm font-bold text-[#466460] uppercase">Medical Records</h4>
+            <span className="text-[9px] bg-[#e07a5f]/20 text-[#e07a5f] px-2 py-0.5 rounded-full font-semibold">
+              {medicalRecords.length}
+            </span>
+          </div>
+          <div className="space-y-4">
+            {medicalRecords.map((r, idx) => {
+              const vitals = getVitalSigns(r);
+              const history = getHistory(r);
+              return (
+                <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="bg-gradient-to-r from-[#e07a5f]/10 to-[#c96a4f]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
+                    <StatusBadge status={r.status} />
+                  </div>
+                  <div className="p-3 space-y-3">
+                    <div className="grid grid-cols-4 gap-2 text-xs">
+                      <div><p className="text-[7px] text-slate-400 uppercase">Nurse</p><p className="font-medium">{r.nurse_on_duty || '-'}</p></div>
+                      <div><p className="text-[7px] text-slate-400 uppercase">BP</p><p className="font-medium">{vitals.bp}</p></div>
+                      <div><p className="text-[7px] text-slate-400 uppercase">PR</p><p className="font-medium">{vitals.pr} bpm</p></div>
+                      <div><p className="text-[7px] text-slate-400 uppercase">Temp</p><p className="font-medium">{vitals.temp}°C</p></div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {history.medical.map((item, i) => (
+                        <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">{item}</span>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {history.family.map((item, i) => (
+                        <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">{item}</span>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {history.health.map((item, i) => (
+                        <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">{item}</span>
+                      ))}
+                    </div>
+                    {(r.finding1 || r.remarks) && (
+                      <div className="bg-slate-50 rounded-lg p-2 text-xs">
+                        <p className="text-[7px] text-slate-400 uppercase mb-1">Doctor's Remarks</p>
+                        <p className="text-slate-700">{r.finding1 || ''}{r.remarks ? ` - ${r.remarks}` : ''}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Dental Records */}
+      {dentalRecords.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <i className="fa-solid fa-tooth text-[#3b82f6]"></i>
+            <h4 className="text-sm font-bold text-[#466460] uppercase">Dental Records</h4>
+            <span className="text-[9px] bg-[#3b82f6]/20 text-[#3b82f6] px-2 py-0.5 rounded-full font-semibold">
+              {dentalRecords.length}
+            </span>
+          </div>
+          <div className="space-y-4">
+            {dentalRecords.map((r, idx) => (
+              <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
+                  <StatusBadge status={r.status} />
+                </div>
+                <div className="p-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{r.examined_by || '-'}</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">Last Visit</p><p className="font-medium">{r.last_visit || '-'}</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><p className="text-[7px] text-slate-400 uppercase">Upper</p><p className="font-mono">{r.teeth_upper || '-'}</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">Lower</p><p className="font-mono">{r.teeth_lower || '-'}</p></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ── Helper: build initial formData from selectedPatient ───────────────────────
@@ -161,6 +425,7 @@ const createDefaultVital = () => ({ date: '', bp: '', pr: '', rr: '', temp: '', 
 export const Medical = ({ selectedPatient, showMessage }) => {
   const [phase, setPhase]               = useState(1);
   const [showSummary, setShowSummary]   = useState(false);
+  const [showHistory, setShowHistory]   = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [surgicalHistory, setSurgicalHistory] = useState([]);
@@ -250,6 +515,16 @@ export const Medical = ({ selectedPatient, showMessage }) => {
   const handlePhase1Next = () => {
     if (!formData.lastName) { alert("Please fill in patient's last name."); return; }
     setPhase(2);
+    // Force scroll to top using multiple methods
+    setTimeout(() => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      window.scrollTo(0, 0);
+      const phase2Element = document.getElementById('phase2-container');
+      if (phase2Element) {
+        phase2Element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 150);
   };
 
   const handleOpenSummary = () => {
@@ -375,6 +650,31 @@ export const Medical = ({ selectedPatient, showMessage }) => {
           [&::-webkit-scrollbar-thumb]:rounded-full"
       >
 
+        {/* Tabs */}
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setShowHistory(false)}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${!showHistory ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            <i className="fa-solid fa-clipboard-list mr-1"></i>
+            Examination
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowHistory(true)}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${showHistory ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            <i className="fa-solid fa-clock-rotate-left mr-1"></i>
+            Visit History
+          </button>
+        </div>
+
+        {/* Visit History View */}
+        {showHistory ? (
+          <MedicalVisitHistory selectedPatient={selectedPatient} />
+        ) : (
+        <>
         {/* Progress Bar */}
         <div className="mb-6">
           <div className="flex justify-between text-xs font-bold text-[#466460] mb-2">
@@ -394,7 +694,23 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             <div className="col-span-3"><label className={labelClass}>Last Name / Family Name</label><input type="text" id="lastName" className={inputClass} value={formData.lastName} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>First Name</label><input type="text" id="firstName" className={inputClass} value={formData.firstName} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Middle Name</label><input type="text" id="middleName" className={inputClass} value={formData.middleName} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>School Year</label><input type="text" id="schoolYear" className={inputClass} placeholder="e.g. 2024-2025" value={formData.schoolYear} onChange={handleChange} /></div>
+            <div className="col-span-3"><label className={labelClass}>School Year</label>
+              <select
+                id="schoolYear"
+                className={inputClass}
+                value={formData.schoolYear}
+                onChange={handleChange}
+                style={{
+                  maxHeight: '300px',
+                  overflowY: 'auto'
+                }}
+              >
+                <option value="">Select School Year</option>
+                {schoolYearOptions.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
             <div className="col-span-3"><label className={labelClass}>Student No.</label><input type="text" id="studentId" className={inputClass} value={formData.studentId} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Course</label><input type="text" id="course" className={inputClass} value={formData.course} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Year / Section</label><input type="text" id="yearSection" className={inputClass} value={formData.yearSection} onChange={handleChange} /></div>
@@ -557,7 +873,7 @@ export const Medical = ({ selectedPatient, showMessage }) => {
         </div>
 
         {/* ════ PHASE 2 ════ */}
-        <div className={phase === 2 ? 'block' : 'hidden'}>
+        <div id="phase2-container" className={phase === 2 ? 'block' : 'hidden'}>
 
           <div className={sectionClass}>Health History Questions</div>
           <div className="overflow-x-auto mb-4">
@@ -690,6 +1006,8 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             </div>
           </div>
         </div>
+        </>
+        )}
       </form>
 
       {/* ═══ SUMMARY MODAL ══════════════════════════════════════════════════ */}

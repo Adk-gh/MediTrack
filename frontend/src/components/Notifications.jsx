@@ -1,7 +1,7 @@
 //C:\Users\HP\MediTrack\frontend\src\components\Notifications.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import notificationsService from '../services/notifications.service.js';
+import notificationsService, { createTestNotification } from '../services/notifications.service.js';
 
 // Icon components
 const BellIcon = () => (
@@ -66,10 +66,10 @@ const getNotificationIcon = (type) => {
       return AnnouncementIcon;
     case 'approval':
       return CheckIcon;
-      case 'consultation':
-      return AppointmentIcon;
+    case 'consultation':
+    case 'consultation_response':
     case 'consultation_ended':
-      return CheckIcon;
+      return ConsultationIcon;
     default:
       return BellIcon;
   }
@@ -117,17 +117,22 @@ export function NotificationPanel({ isOpen, onClose }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const userIdRef = useRef(null);
 
-  // Get user ID from profile
+  // Get user ID from profile - use auth UID for notifications
   useEffect(() => {
     try {
-      const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
-      userIdRef.current = profile?.internalUserId || null;
+      // Use auth UID (stored as uid in localStorage) for notifications
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      userIdRef.current = user?.uid || null;
     } catch {}
   }, []);
 
-  // Fetch notifications when panel opens
+  // Fetch notifications when panel opens - always get fresh data
   useEffect(() => {
     if (isOpen) {
+      // Clear cache to ensure fresh fetch
+      sessionStorage.removeItem('meditrack_notifications');
+      sessionStorage.removeItem('meditrack_notif_count');
+      console.log('[Notifications Component] Opening, fetching fresh notifications...');
       fetchNotifications();
     }
   }, [isOpen]);
@@ -182,10 +187,12 @@ export function NotificationPanel({ isOpen, onClose }) {
   const fetchNotifications = async () => {
     setLoading(true);
     try {
+      console.log('[Notifications Component] Fetching...');
       const [notifs, count] = await Promise.all([
         notificationsService.getNotifications(20),
         notificationsService.getUnreadCount(),
       ]);
+      console.log('[Notifications Component] Got:', notifs?.length, 'notifications');
       setNotifications((notifs || []).map(normalizeNotification));
       setUnreadCount(count || 0);
     } catch (error) {
@@ -254,6 +261,17 @@ export function NotificationPanel({ isOpen, onClose }) {
             )}
           </div>
           <div className="flex items-center gap-1">
+            {/* Test button - remove in production */}
+            <button
+              onClick={async () => {
+                await createTestNotification();
+                fetchNotifications();
+              }}
+              className="text-yellow-300 hover:text-yellow-100 text-xs font-medium px-2 py-1 transition-colors"
+              title="Create test notification"
+            >
+              +Test
+            </button>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}

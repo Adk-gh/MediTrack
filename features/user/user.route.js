@@ -12,7 +12,6 @@ const { auditLog } = require('../../middleware/auditLogger');
 const {
   registerSchema,
   loginSchema,
-  firebaseAuthSchema,
 } = require("./user.validation");
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -49,6 +48,14 @@ router.post(
   userController.setupProfile
 );
 
+// PUT: Toggle profile complete status
+router.put(
+  "/profile-complete",
+  authorized,
+  auditLog('update', 'user', 'User toggled profile complete status'),
+  userController.toggleProfileComplete
+);
+
 // PUT: Log profile updates
 router.put(
   "/profile",
@@ -77,5 +84,8 @@ router.get("/users", authorized, getAllUsers);
 
 // DELETE user - move to archives
 router.delete("/users/:userId", authorized, userController.deleteUser);
+
+// PUT: Admin update any user (bypasses RLS)
+router.put("/admin-update", authorized, userController.adminUpdateUser);
 
 module.exports = router;

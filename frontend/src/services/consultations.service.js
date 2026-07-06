@@ -104,6 +104,26 @@ export const endConsultation = async (id) => {
   return result;
 };
 
+export const deleteConsultation = async (id) => {
+  // Get current user info for deleted_by
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const name = localStorage.getItem('name') || '';
+
+  // Instead of deleting, set is_archived to true
+  const { error } = await supabase
+    .from('consultations')
+    .update({
+      is_archived: true,
+      deleted_by: name || user.email || 'Admin',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id);
+
+  if (error) throw new Error(error.message || "Failed to archive consultation");
+  clearConsultationsCache();
+  return { success: true, id };
+};
+
 
 // ============================================================
 // MESSAGES (Now routed through Node.js Backend)
@@ -215,7 +235,7 @@ export const subscribeToPresence = (callback) => {
 };
 
 export default {
-  getAllConsultations, getConsultationById, createConsultation, updateConsultation, endConsultation, clearConsultationsCache,
+  getAllConsultations, getConsultationById, createConsultation, updateConsultation, endConsultation, deleteConsultation, clearConsultationsCache,
   getMessagesByConsultationId, sendMessage, clearMessagesCache,
   subscribeToConsultations, subscribeToMessages, subscribeToConsultationStatus,
   setUserPresence, getOnlineUsers, subscribeToPresence,

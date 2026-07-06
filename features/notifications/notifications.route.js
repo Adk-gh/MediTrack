@@ -11,6 +11,9 @@ const { auditLog } = require("../../middleware/auditLogger");
 router.get("/", authorized, notificationsController.getNotifications);
 router.get("/unread-count", authorized, notificationsController.getUnreadCount);
 
+// POST: Test endpoint to create a notification (no auth for testing)
+router.post("/test", notificationsController.createTestNotification);
+
 // PUT: Log marking a single notification as read
 router.put(
   "/:id/read",

@@ -235,6 +235,7 @@ export const Announcements = () => {
         const { data, error } = await supabase
           .from('announcements')
           .select('*')
+          .eq('is_archived', false)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -360,24 +361,33 @@ export const Announcements = () => {
 
   // ── Handle Delete via Supabase ──
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this announcement?')) {
+    if (!window.confirm('Are you sure you want to archive this announcement? It can be restored later from the Archives page.')) {
       setActiveMenuId(null);
       return;
     }
 
     try {
+      // Get current user info for deleted_by
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const name = localStorage.getItem('name') || '';
+
+      // Set is_archived to true instead of deleting
       const { error } = await supabase
         .from('announcements')
-        .delete()
+        .update({
+          is_archived: true,
+          deleted_by: name || user.email || 'Admin',
+          updated_at: new Date().toISOString()
+        })
         .eq('id', id);
 
       if (error) throw error;
 
       setAnnouncements(prev => prev.filter(a => a.id !== id));
-      showSnackbar('Announcement deleted');
+      showSnackbar('Announcement archived successfully. You can restore it from the Archives page.');
     } catch (err) {
-      console.error("Failed to delete announcement:", err);
-      showSnackbar('Failed to delete announcement', 'error');
+      console.error("Failed to archive announcement:", err);
+      showSnackbar('Failed to archive announcement', 'error');
     } finally {
       setActiveMenuId(null);
     }

@@ -1,4 +1,6 @@
 //C:\Users\HP\MediTrack\frontend\src\services\appointments.service.js
+import { supabase } from '../supabase';
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 // ── FRONTEND CACHE STATE ──────────────────────────────────────────────
@@ -23,8 +25,11 @@ export const clearAppointmentsCache = (date = null) => {
 };
 // ──────────────────────────────────────────────────────────────────────
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
+const getAuthHeaders = async () => {
+  // Get token from Supabase session (the app uses Supabase Auth)
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || localStorage.getItem("token");
+
   return {
     "Content-Type": "application/json",
     Authorization: token ? `Bearer ${token}` : "",
@@ -42,7 +47,7 @@ export const getAllAppointments = async (forceRefresh = false) => {
 
   console.log('[Appointments] Fetching fresh data from API...');
   const res = await fetch(`${API_URL}/appointments`, {
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
   });
 
   const data = await res.json();
@@ -67,7 +72,7 @@ export const getAppointmentsByDate = async (date, forceRefresh = false) => {
 
   console.log(`[Appointments] Fetching fresh data for ${date}...`);
   const res = await fetch(`${API_URL}/appointments/date/${date}`, {
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
   });
 
   const data = await res.json();
@@ -85,7 +90,7 @@ export const getAppointmentsByDate = async (date, forceRefresh = false) => {
 export const createAppointment = async (appointmentData) => {
   const res = await fetch(`${API_URL}/appointments`, {
     method: "POST",
-    headers: getAuthHeaders(), // Fixed: Added auth headers here
+    headers: await getAuthHeaders(),
     body: JSON.stringify(appointmentData),
   });
 
@@ -101,7 +106,7 @@ export const createAppointment = async (appointmentData) => {
 export const updateAppointment = async (id, appointmentData) => {
   const res = await fetch(`${API_URL}/appointments/${id}`, {
     method: "PUT",
-    headers: getAuthHeaders(), // Fixed: Added auth headers here
+    headers: await getAuthHeaders(),
     body: JSON.stringify(appointmentData),
   });
 
@@ -115,18 +120,26 @@ export const updateAppointment = async (id, appointmentData) => {
 };
 
 export const deleteAppointment = async (id) => {
-  const res = await fetch(`${API_URL}/appointments/${id}`, {
-    method: "DELETE",
-    headers: getAuthHeaders(),
-  });
+  // Get current user info for deleted_by
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const name = localStorage.getItem('name') || '';
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Failed to delete appointment");
+  // Instead of deleting, set is_archived to true
+  const { error } = await supabase
+    .from('appointments')
+    .update({
+      is_archived: true,
+      deleted_by: name || user.email || 'Admin',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id);
+
+  if (error) throw new Error(error.message || "Failed to archive appointment");
 
   // Clear caches to remove the deleted item
   clearAppointmentsCache();
 
-  return data;
+  return { success: true, id };
 };
 
 export default {

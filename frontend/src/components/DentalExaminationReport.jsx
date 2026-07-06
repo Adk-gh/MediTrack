@@ -54,9 +54,53 @@ const TextInput = memo(({ value, onChange, placeholder, readOnly, width = '100%'
 
 // ── Main component
 export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnly = false }) => {
-  const [parentName, setParentName] = useState(examination?.parentName || '');
+  // Debug: log examination data
+  console.log('[DentalExaminationReport] examination:', examination);
+  console.log('[DentalExaminationReport] treatments:', examination?.treatments);
+  console.log('[DentalExaminationReport] treatmentRemarks:', examination?.treatmentRemarks);
+
+  // Build full name from first, middle, last name
+  const patientFullName = [examination?.firstName, examination?.middleName, examination?.lastName].filter(Boolean).join(' ');
+  const [parentName, setParentName] = useState(patientFullName || examination?.parentName || '');
   const [restoration, setRestoration] = useState(examination?.restoration || '');
   const [extraction, setExtraction] = useState(examination?.extraction || '');
+
+  // Only initialize state from examination on first load
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (examination && !initialized) {
+      const name = [examination?.firstName, examination?.middleName, examination?.lastName].filter(Boolean).join(' ');
+      setRestoration(examination?.restoration || '');
+      setExtraction(examination?.extraction || '');
+      setParentName(name || examination?.parentName || '');
+      setTreatmentRemarks({
+        oralProphylaxis: '',
+        gumTreatment: '',
+        orthodontic: '',
+        prosthodontic: '',
+        endodontic: '',
+        tmj: '',
+        xray: '',
+        fluoride: '',
+        sealant: '',
+        ...(examination?.treatmentRemarks || {}),
+      });
+      setTreatments({
+        oralProphylaxis: false,
+        gumTreatment: false,
+        orthodontic: false,
+        prosthodontic: false,
+        endodontic: false,
+        tmj: false,
+        xray: false,
+        fluoride: false,
+        sealant: false,
+        ...(examination?.treatments || {}),
+      });
+      setInitialized(true);
+    }
+  }, [examination, initialized]);
 
   const [treatments, setTreatments] = useState({
     oralProphylaxis: examination?.treatments?.oralProphylaxis || false,
@@ -76,13 +120,28 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
     endodontic: examination?.treatmentDetails?.endodontic || '',
   });
 
+  // Treatment remarks for each treatment type
+  const [treatmentRemarks, setTreatmentRemarks] = useState({
+    oralProphylaxis: examination?.treatmentRemarks?.oralProphylaxis || '',
+    gumTreatment: examination?.treatmentRemarks?.gumTreatment || '',
+    orthodontic: examination?.treatmentRemarks?.orthodontic || '',
+    prosthodontic: examination?.treatmentRemarks?.prosthodontic || '',
+    endodontic: examination?.treatmentRemarks?.endodontic || '',
+    tmj: examination?.treatmentRemarks?.tmj || '',
+    xray: examination?.treatmentRemarks?.xray || '',
+    fluoride: examination?.treatmentRemarks?.fluoride || '',
+    sealant: examination?.treatmentRemarks?.sealant || '',
+  });
+
   const [familyDentist, setFamilyDentist] = useState(examination?.familyDentist || '');
   const [status, setStatus] = useState(examination?.status || { complete: false, notCompleted: false, followUp: '' });
 
   const [downloading, setDownloading] = useState(false);
-  const [logoUrl, setLogoUrl] = useState('');
+  const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
 
   // ── Fetch Logo from Supabase Storage ──────────────────────────────────────
+  // Using direct URL from Supabase
+  /* eslint-disable no-unused-vars */
   useEffect(() => {
     const fetchLogo = async () => {
       try {
@@ -101,10 +160,20 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   const handleRestoration = useCallback((v) => setRestoration(v), []);
   const handleExtraction = useCallback((v) => setExtraction(v), []);
   const toggleTreatment = (key) => {
-    if (readOnly) return;
-    setTreatments(prev => ({ ...prev, [key]: !prev[key] }));
+    console.log('[toggleTreatment] key:', key, 'current value:', treatments?.[key]);
+    if (readOnly) {
+      console.log('[toggleTreatment] readOnly is true, returning');
+      return;
+    }
+    setTreatments(prev => {
+      console.log('[toggleTreatment] prev:', prev);
+      const newValue = !prev[key];
+      console.log('[toggleTreatment] new value:', newValue);
+      return { ...prev, [key]: newValue };
+    });
   };
   const handleTreatmentDetail = (key, val) => setTreatmentDetails(prev => ({ ...prev, [key]: val }));
+  const handleTreatmentRemark = (key, val) => setTreatmentRemarks(prev => ({ ...prev, [key]: val }));
 
   if (!examination) return null;
 
@@ -121,7 +190,63 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   const yearSection = examination.yearSection || [examination.year || examination.yearLevel, examination.section].filter(Boolean).join(' - ') || '';
   const program = examination.course || examination.program || '';
   const gradeLevel = examination.gradeLevel || examination.year || '';
-  const examDate = examination.examDate || currentDate;
+
+  // Format examDate to Month DD, YYYY (e.g., July 02, 2026)
+  const formatDateOnly = (dateStr) => {
+    if (!dateStr) return currentDate;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return currentDate;
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${months[date.getMonth()]} ${String(date.getDate()).padStart(2, '0')}, ${date.getFullYear()}`;
+  };
+  const examDate = formatDateOnly(examination.examDate);
+
+  // Shorten course name to abbreviation
+  const shortenCourse = (courseName) => {
+    if (!courseName) return '';
+    const courseMap = {
+      // CCSE - College of Computing Science and Engineering
+      'Bachelor of Science in Information Technology': 'BSIT',
+      'Bachelor of Science in Information System': 'BSIS',
+      'Bachelor of Science in Computer Engineering': 'BSCpE',
+      'Bachelor of Science in Industrial Engineering': 'BSIE',
+      // CBAM - College of Business Administration and Management
+      'Bachelor of Science in Entrepreneurship': 'BSEntrep',
+      'Bachelor of Science in Public Administration': 'BSPA',
+      'Bachelor of Science in Office Administration': 'BSOA',
+      'Bachelor of Science in Business Administration Major in Human Resource Development Management': 'BSBA-HRDM',
+      'Bachelor of Science in Business Administration Major in Financial Management': 'BSBA-FM',
+      'Bachelor of Science in Business Administration Major in Marketing Management': 'BSBA-MM',
+      // CAS - College of Art and Sciences
+      'Bachelor of Science in Economics': 'BSEcon',
+      'Bachelor of Arts in Communication': 'BAC',
+      'Bachelor of Science in Psychology': 'BSPsych',
+      'Bachelor of Arts in Political Science': 'BAPolSci',
+      // CTHM - College of Tourism and Hospitality Management
+      'Bachelor of Science in Tourism Management': 'BSTM',
+      'Bachelor of Science in Hospitality Management': 'BSHM',
+      // COA - College of Accountancy
+      'Bachelor of Science in Accountancy': 'BSA',
+      'Bachelor of Science in Accountancy Information System': 'BSAIS',
+      'Bachelor of Science in Management Accounting': 'BSMA',
+      // CTE - College of Teacher Education
+      'Bachelor of Secondary Education Major in English': 'BSE-Eng',
+      'Bachelor of Secondary Education Major in Filipino': 'BSE-Fil',
+      'Bachelor of Secondary Education Major in Math': 'BSE-Math',
+      'Bachelor of Secondary Education Major in Science': 'BSE-Sci',
+      'Bachelor of Secondary Education Major in Social Studies': 'BSE-SS',
+      'Bachelor of Elementary Education': 'BEEd',
+      'Bachelor of Technical-Vocational Teacher Education': 'BTVTEd',
+      'Bachelor of Special Needs Education': 'BSNEd',
+      // CHK - College of Human Kinetics
+      'Bachelor of Science in Physical Education': 'BSPE',
+      'Bachelor of Science in Sports Science': 'BSS',
+      // CNAHS - College of Nursing and Allied Health Sciences
+      'Bachelor of Science in Nursing': 'BSN',
+    };
+    return courseMap[courseName] || courseName;
+  };
+  const shortProgram = shortenCourse(program);
 
   // ── PDF Generation (compact A4) ─────────────────────────────────────────
   const handleDownload = async () => {
@@ -161,27 +286,39 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
         doc.setLineWidth(0.3);
         doc.line(x, cy, x + 8, cy); // Simple underline for checks in this form style
         if (checked) {
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(15, 23, 42);
-          doc.text('✓', x + 2, cy - 0.5);
+          // Draw a proper checkmark using lines instead of unicode character
+          doc.setDrawColor(15, 23, 42);
+          doc.setLineWidth(0.5);
+          doc.line(x + 1, cy - 0.5, x + 3, cy + 1.5);
+          doc.line(x + 3, cy + 1.5, x + 7, cy - 2);
         }
       };
 
       // ── Header (compact) ────────────────────────────────────────────────
+      // Load logo from Supabase URL for PDF
+      const logoUrlPdf = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
       const logo = new Image();
       logo.crossOrigin = 'Anonymous';
-      logo.src = logoUrl || '/plsp-logo.jpg';
+      logo.src = logoUrlPdf;
 
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
         logo.onload = resolve;
-        logo.onerror = () => {
-          console.warn('Could not load logo for PDF generation');
-          resolve();
+        logo.onerror = (e) => {
+          console.warn('Could not load logo for PDF generation:', e);
+          // Try fallback
+          const fallbackLogo = new Image();
+          fallbackLogo.src = '/plsp-logo.jpg';
+          fallbackLogo.onload = resolve;
+          fallbackLogo.onerror = resolve;
         };
       });
 
       if (logo.complete && logo.naturalWidth > 0) {
-        doc.addImage(logo, 'JPEG', mar, y - 2, 16, 16);
+        try {
+          doc.addImage(logo, 'JPEG', mar, y - 2, 16, 16);
+        } catch (e) {
+          console.warn('Error adding logo to PDF:', e);
+        }
       }
 
       doc.setFont('helvetica', 'bold');
@@ -218,8 +355,8 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
 
       // Greeting
       let cx = mar;
-      cx = itext('Dear Mr./Mr. ', cx, y, 'normal', 10, [15, 23, 42]);
-      field(parentName, cx, 80, y);
+      cx = itext('Dear Mr./Ms. ', cx, y, 'normal', 10, [15, 23, 42]);
+      field(patientFullName, cx, 80, y);
 
       ln(1, 8);
 
@@ -256,27 +393,40 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       doc.text('Other Treatments Needed:', mar, y);
       ln(1, 6);
 
-      const tH = 5.5;
+      const tH = 6;
+      // Helper to display treatment with checkbox and remarks
+      const treatmentWithRemark = (label, checked, remark, xPos) => {
+        itext(label, xPos, y);
+        checkbox(xPos + 30, y, checked);
+        if (remark) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(80, 80, 80);
+          doc.text(`(${remark})`, xPos + 35, y + 1.5);
+          doc.setFont('helvetica', 'normal');
+        }
+      };
+
       // Col 1
-      itext('Oral Prophylaxis', mar, y); checkbox(mar + 30, y, treatments.oralProphylaxis);
-      itext('Fluoride Treatment', mar + 65, y); checkbox(mar + 100, y, treatments.fluoride);
-      itext('Sealant', mar + 125, y); checkbox(mar + 140, y, treatments.sealant);
+      treatmentWithRemark('Oral Prophylaxis', treatments.oralProphylaxis, treatmentRemarks.oralProphylaxis, mar);
+      treatmentWithRemark('Fluoride Treatment', treatments.fluoride, treatmentRemarks.fluoride, mar + 65);
+      treatmentWithRemark('Sealant', treatments.sealant, treatmentRemarks.sealant, mar + 125);
 
       ln(1, tH);
-      itext('Gum Treatment', mar, y); checkbox(mar + 30, y, treatments.gumTreatment);
+      treatmentWithRemark('Gum Treatment', treatments.gumTreatment, treatmentRemarks.gumTreatment, mar);
       ln(1, tH);
-      itext('Orthodontic Treatment', mar, y); checkbox(mar + 35, y, treatments.orthodontic);
+      treatmentWithRemark('Orthodontic Treatment', treatments.orthodontic, treatmentRemarks.orthodontic, mar);
       field(treatmentDetails.orthodontic, mar + 45, 45, y);
       ln(1, tH);
-      itext('Prosthodontic Treatment', mar, y); checkbox(mar + 38, y, treatments.prosthodontic);
+      treatmentWithRemark('Prosthodontic Treatment', treatments.prosthodontic, treatmentRemarks.prosthodontic, mar);
       field(treatmentDetails.prosthodontic, mar + 48, 42, y);
       ln(1, tH);
-      itext('Endodontic Treatment', mar, y); checkbox(mar + 35, y, treatments.endodontic);
+      treatmentWithRemark('Endodontic Treatment', treatments.endodontic, treatmentRemarks.endodontic, mar);
       field(treatmentDetails.endodontic, mar + 45, 45, y);
       ln(1, tH);
-      itext('TMJ Treatment', mar, y); checkbox(mar + 25, y, treatments.tmj);
+      treatmentWithRemark('TMJ Treatment', treatments.tmj, treatmentRemarks.tmj, mar);
       ln(1, tH);
-      itext('Dental X-ray', mar, y); checkbox(mar + 22, y, treatments.xray);
+      treatmentWithRemark('Dental X-ray', treatments.xray, treatmentRemarks.xray, mar);
 
       ln(1, 15);
       doc.setFont('helvetica', 'normal');
@@ -301,16 +451,28 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       // Student Info Block
       const blockY = y;
       itext('Name of Student', mar, blockY); field(fullName, mar + 28, 60, blockY);
-      itext('Course/Year/Section', mar, blockY + 7); field(`${program} ${yearSection}`, mar + 32, 56, blockY + 7);
+      itext('Course/Year/Section', mar, blockY + 7); field(`${shortProgram} ${yearSection}`, mar + 32, 56, blockY + 7);
       itext('Name of Family Dentist', mar, blockY + 14); field(familyDentist, mar + 35, 53, blockY + 14);
 
       itext('Grade Level', mar + 92, blockY + 7); field(gradeLevel, mar + 110, 30, blockY + 7);
 
       // Status Block
       ln(1, 25);
-      itext('Treatment Complete', mar + 40, y); field(status.complete ? '✓' : '', mar + 72, 30, y);
+      itext('Treatment Complete', mar + 40, y);
+      if (status.complete) {
+        doc.setDrawColor(15, 23, 42);
+        doc.setLineWidth(0.5);
+        doc.line(mar + 72, y - 0.5, mar + 75, y + 2);
+        doc.line(mar + 75, y + 2, mar + 80, y - 2);
+      }
       ln(1, 6);
-      itext('Not Completed', mar + 40, y); field(status.notCompleted ? '✓' : '', mar + 65, 37, y);
+      itext('Not Completed', mar + 40, y);
+      if (status.notCompleted) {
+        doc.setDrawColor(15, 23, 42);
+        doc.setLineWidth(0.5);
+        doc.line(mar + 65, y - 0.5, mar + 68, y + 2);
+        doc.line(mar + 68, y + 2, mar + 73, y - 2);
+      }
       ln(1, 6);
       itext('Follow-up', mar + 40, y); field(status.followUp, mar + 57, 45, y);
 
@@ -373,6 +535,10 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
         extraction,
         treatments,
         treatmentDetails,
+        treatmentRemarks,
+        toothData: examination?.toothData || {},
+        dentalHistory: examination?.dentalHistory || {},
+        intraoral: examination?.intraoral || {},
         familyDentist,
         status,
         docStatus: 'approved',
@@ -380,34 +546,53 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
     }
   };
 
-  const checkRow = (checked, key, label, hasInput = false, inputKey = null) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, height: 24 }}>
-      <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 11, color: '#334155', minWidth: 140 }}>
-        {label}
-      </span>
-      <button
-        type="button"
-        onClick={() => toggleTreatment(key)}
-        style={{
-          width: 18, height: 18, flexShrink: 0,
-          border: 'none', borderBottom: '1px solid #0f172a', borderRadius: 0,
-          background: 'transparent',
-          cursor: readOnly ? 'default' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >
-        {checked && <i className="fa-solid fa-check" style={{ color: '#0f172a', fontSize: 12 }}></i>}
-      </button>
-      {hasInput && (
-        <TextInput
-          value={treatmentDetails[inputKey]}
-          onChange={(v) => handleTreatmentDetail(inputKey, v)}
+  const checkRow = (checked, key, label, hasInput = false, inputKey = null, hasRemark = false, remarkKey = null) => {
+    console.log('[checkRow] rendering:', key, 'checked:', checked, 'treatments:', treatments);
+    return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 180 }}>
+        <input
+          type="checkbox"
+          checked={!!checked}
+          onChange={() => toggleTreatment(key)}
+          disabled={readOnly}
+          style={{
+            width: 18,
+            height: 18,
+            cursor: readOnly ? 'not-allowed' : 'pointer',
+            accentColor: '#466460',
+          }}
+        />
+        <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 11, color: '#334155' }}>
+          {label}
+        </span>
+        
+      </div>
+      {hasRemark && (
+        <input
+          type="text"
+          value={treatmentRemarks[remarkKey] || ''}
+          onChange={(e) => handleTreatmentRemark(remarkKey, e.target.value)}
           readOnly={readOnly}
-          width="180px"
+          placeholder="Doctor's remarks..."
+          style={{
+            flex: 1,
+            minWidth: 200,
+            boxSizing: 'border-box',
+            border: 'none',
+            borderBottom: '1px solid #cbd5e1',
+            background: 'transparent',
+            outline: 'none',
+            fontSize: 11,
+            color: '#0f172a',
+            fontFamily: 'helvetica, sans-serif',
+            padding: '2px 4px',
+          }}
         />
       )}
     </div>
   );
+  };
 
   return (
     <>
@@ -446,8 +631,8 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
         {/* Greeting & Intro */}
         <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 13, color: '#334155', lineHeight: 2.0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 16 }}>
-            <span style={{ fontWeight: 600, color: '#0f172a' }}>Dear Mr./Mr.</span>
-            <TextInput value={parentName} onChange={setParentName} readOnly={readOnly} width="300px" />
+            <span style={{ fontWeight: 600, color: '#0f172a' }}>Dear Mr./Ms.</span>
+            <TextInput value={patientFullName} readOnly={true} width="300px" style={{ fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #466460' }} />
           </div>
           <p style={{ textAlign: 'justify', textIndent: '40px', marginTop: 0 }}>
             We would like to inform you that we are conducting a routine dental examination to all our students to determine their oral health status and promote proper dental health care. We have given your son/daughter a dental check-up and below are the following findings and recommendations.
@@ -471,17 +656,17 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
           <p style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 16 }}>Other Treatments Needed:</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 40px' }}>
             <div style={{ flex: '1 1 400px' }}>
-              {checkRow(treatments.oralProphylaxis, 'oralProphylaxis', 'Oral Prophylaxis')}
-              {checkRow(treatments.gumTreatment, 'gumTreatment', 'Gum Treatment')}
-              {checkRow(treatments.orthodontic, 'orthodontic', 'Orthodontic Treatment', true, 'orthodontic')}
-              {checkRow(treatments.prosthodontic, 'prosthodontic', 'Prosthodontic Treatment', true, 'prosthodontic')}
-              {checkRow(treatments.endodontic, 'endodontic', 'Endodontic Treatment', true, 'endodontic')}
-              {checkRow(treatments.tmj, 'tmj', 'TMJ Treatment')}
-              {checkRow(treatments.xray, 'xray', 'Dental X-ray')}
+              {checkRow(!!treatments?.oralProphylaxis, 'oralProphylaxis', 'Oral Prophylaxis', false, null, true, 'oralProphylaxis')}
+              {checkRow(!!treatments?.gumTreatment, 'gumTreatment', 'Gum Treatment', false, null, true, 'gumTreatment')}
+              {checkRow(!!treatments?.orthodontic, 'orthodontic', 'Orthodontic Treatment', true, 'orthodontic', true, 'orthodontic')}
+              {checkRow(!!treatments?.prosthodontic, 'prosthodontic', 'Prosthodontic Treatment', true, 'prosthodontic', true, 'prosthodontic')}
+              {checkRow(!!treatments?.endodontic, 'endodontic', 'Endodontic Treatment', true, 'endodontic', true, 'endodontic')}
+              {checkRow(!!treatments?.tmj, 'tmj', 'TMJ Treatment', false, null, true, 'tmj')}
+              {checkRow(!!treatments?.xray, 'xray', 'Dental X-ray', false, null, true, 'xray')}
             </div>
             <div style={{ flex: '1 1 200px' }}>
-              {checkRow(treatments.fluoride, 'fluoride', 'Fluoride Treatment')}
-              {checkRow(treatments.sealant, 'sealant', 'Sealant')}
+              {checkRow(!!treatments?.fluoride, 'fluoride', 'Fluoride Treatment', false, null, true, 'fluoride')}
+              {checkRow(!!treatments?.sealant, 'sealant', 'Sealant', false, null, true, 'sealant')}
             </div>
           </div>
         </div>
@@ -511,7 +696,7 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
             <div></div>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120 }}>Course/Year/Section</span>
-              <TextInput value={`${program} ${yearSection}`} readOnly={readOnly} />
+              <TextInput value={`${shortProgram} ${yearSection}`} readOnly={readOnly} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 80, marginLeft: 20 }}>Grade Level</span>
@@ -637,4 +822,4 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   );
 };
 
-export default DentalExaminationReport; 
+export default DentalExaminationReport;

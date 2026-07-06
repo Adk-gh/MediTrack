@@ -1,7 +1,7 @@
 //C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import notificationsService from '../services/notifications.service.js';
+import notificationsService, { createTestNotification } from '../services/notifications.service.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -110,17 +110,35 @@ export function UserNotificationPanel({ isOpen, onClose }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const userIdRef = useRef(null);
 
-  // Get user ID from profile
+  // Get user ID - now async to get internal user ID
   useEffect(() => {
-    try {
-      const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
-      userIdRef.current = profile?.internalUserId || null;
-    } catch {}
+    const fetchUserId = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const authUid = user?.uid || user?.id;
+
+        if (!authUid) return;
+
+        // Look up internal user ID from auth UID
+        const { data: profile } = await supabase
+          .from('users')
+          .select('id')
+          .eq('uid', authUid)
+          .single();
+
+        userIdRef.current = profile?.id || null;
+      } catch {}
+    };
+
+    fetchUserId();
   }, []);
 
-  // Fetch notifications when panel opens
+  // Fetch notifications when panel opens - always get fresh data
   useEffect(() => {
     if (isOpen) {
+      // Clear cache to ensure fresh fetch
+      sessionStorage.removeItem('meditrack_notifications');
+      sessionStorage.removeItem('meditrack_notif_count');
       fetchNotifications();
     }
   }, [isOpen]);
@@ -236,6 +254,21 @@ export function UserNotificationPanel({ isOpen, onClose }) {
             )}
           </div>
           <div className="flex items-center gap-1">
+            {/* Test button - remove in production */}
+            <button
+              onClick={async () => {
+                // Clear cache first
+                sessionStorage.removeItem('meditrack_notifications');
+                sessionStorage.removeItem('meditrack_notif_count');
+                await createTestNotification();
+                // Small delay then fetch fresh
+                setTimeout(() => fetchNotifications(), 500);
+              }}
+              className="text-yellow-300 hover:text-yellow-100 text-xs font-medium px-2 py-1 transition-colors"
+              title="Create test notification"
+            >
+              +Test
+            </button>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}

@@ -61,9 +61,11 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
   const [isFit,            setIsFit]           = useState(examination?.isFit           ?? true);
   const [isNormalFindings, setIsNormalFindings] = useState(examination?.isNormalFindings ?? true);
   const [downloading, setDownloading] = useState(false);
-  const [logoUrl, setLogoUrl] = useState('');
+  const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
 
   // ── Fetch Logo from Supabase Storage ──────────────────────────────────────
+  // Using direct URL from Supabase
+  /* eslint-disable no-unused-vars */
   useEffect(() => {
     const fetchLogo = async () => {
       try {
@@ -101,7 +103,16 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
     examination.yearSection ||
     [examination.year || examination.yearLevel, examination.section].filter(Boolean).join(' - ') || '';
   const program     = examination.course || examination.program || '';
-  const examDate    = examination.examDate || currentDate;
+
+  // Format examDate to Month DD, YYYY (e.g., July 02, 2026)
+  const formatDateOnly = (dateStr) => {
+    if (!dateStr) return currentDate;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return currentDate;
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${months[date.getMonth()]} ${String(date.getDate()).padStart(2, '0')}, ${date.getFullYear()}`;
+  };
+  const examDate    = formatDateOnly(examination.examDate);
 
   // ── PDF Generation (compact A4) ─────────────────────────────────────────
   const handleDownload = async () => {
@@ -168,20 +179,30 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         }
       };
 
+      // Load logo from Supabase URL for PDF
+      const logoUrlPdf = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
       const logo = new Image();
       logo.crossOrigin = 'Anonymous';
-      logo.src = logoUrl || '/plsp-logo.jpg';
+      logo.src = logoUrlPdf;
 
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
         logo.onload = resolve;
-        logo.onerror = () => {
-          console.warn('Could not load logo for PDF generation');
-          resolve();
+        logo.onerror = (e) => {
+          console.warn('Could not load logo for PDF generation:', e);
+          // Try fallback
+          const fallbackLogo = new Image();
+          fallbackLogo.src = '/plsp-logo.jpg';
+          fallbackLogo.onload = resolve;
+          fallbackLogo.onerror = resolve;
         };
       });
 
       if (logo.complete && logo.naturalWidth > 0) {
-        doc.addImage(logo, 'JPEG', mar, y - 2, 16, 16);
+        try {
+          doc.addImage(logo, 'JPEG', mar, y - 2, 16, 16);
+        } catch (e) {
+          console.warn('Error adding logo to PDF:', e);
+        }
       }
 
       doc.setFont('helvetica', 'bold');

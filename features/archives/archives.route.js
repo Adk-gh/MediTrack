@@ -4,6 +4,9 @@ const router = express.Router();
 const archivesController = require('./archives.controller');
 const { authorized } = require('../../middleware/authorized');
 
+// Archive an item (admin only)
+router.post('/', authorized, archivesController.archiveItem);
+
 // Get all archives (admin only)
 router.get('/', authorized, archivesController.getArchives);
 

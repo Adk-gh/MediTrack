@@ -32,6 +32,7 @@ create table public.users (
   vaccinations jsonb null default '{"dose1": {}, "dose2": {}, "booster1": {}, "booster2": {}}'::jsonb,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
+  dental_history jsonb null default '{}'::jsonb,
   constraint users_pkey primary key (id),
   constraint users_email_key unique (email),
   constraint users_uid_key unique (uid),

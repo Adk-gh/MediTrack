@@ -8,6 +8,7 @@ exports.getAllConsultations = async (consultationType = null, role = null) => {
   let query = supabase
     .from('consultations')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (consultationType) {
@@ -24,6 +25,7 @@ exports.getConsultationById = async (id) => {
     .from('consultations')
     .select('*')
     .eq('id', id)
+    .eq('is_archived', false)
     .single();
 
   if (error) throw new Error(error.message);
@@ -35,6 +37,7 @@ exports.getConsultationsByPatient = async (patientId) => {
     .from('consultations')
     .select('*')
     .eq('patient_id', patientId)
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);

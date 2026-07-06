@@ -120,7 +120,7 @@ User Credentials → Firebase Auth SDK → Firestore User Profile → LocalStora
 **Related Files:**
 
 * `frontend/src/features/LoginForm.jsx` - Login form UI
-* `frontend/src/firebase.js` - Firebase configuration and exports
+* `frontend/src/supabase.js` - Supabase configuration and exports
 * `frontend/src/services/auth.service.js` - Auth service methods
 * `frontend/src/validation/schemas.js` - Login validation schema
 * `frontend/src/layouts/AuthLayout.jsx` - Auth layout wrapper
@@ -486,11 +486,13 @@ JWT_EXPIRES_IN=7d
 CLIENT_URL=http://localhost:3000
 OCR_SERVICE_URL=http://localhost:5001
 PORT=5000
-FIREBASE_API_KEY=your_firebase_web_api_key
+supabaseUrl=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key
 
 # Frontend (.env)
 VITE_API_URL=http://localhost:5000/api
-VITE_FIREBASE_API_KEY=your_firebase_web_api_key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
 ```
 
 ***
@@ -520,7 +522,7 @@ VITE_FIREBASE_API_KEY=your_firebase_web_api_key
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────┐     ┌─────────────┐     ┌──────────────┐                 │
-│  │ LoginForm   │────▶│ firebase.js │────▶│ Firebase Auth│                 │
+│  │ LoginForm   │────▶│ supabase.js │────▶│ Supabase Auth│                 │
 │  │ SignupForm  │     │ (SDK Config)│     │ (Authentication)              │
 │  └─────────────┘     └─────────────┘     └──────────────┘                 │
 │         │                                        │                          │

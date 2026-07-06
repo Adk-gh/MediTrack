@@ -9,6 +9,7 @@ exports.getAllRecords = async () => {
   const { data, error } = await supabase
     .from('users')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -20,6 +21,7 @@ exports.getRecordById = async (id) => {
     .from('users')
     .select('*')
     .eq('uid', id)
+    .eq('is_archived', false)
     .single();
 
   if (error || !data) {

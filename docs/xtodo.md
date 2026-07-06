@@ -44,10 +44,9 @@ Records:
 
 * [x] ~~make the add records work, make it similar to signup but with no OCR and there should be temporary password given that they can change later on.~~
 
+
 * [x] ~~add a filter for year level, section,~~
-
 * [x] ~~display prev records of the patients (medical and dental)~~
-
 * [x] ~~add filter for roles, year level and section. and ascending or decending order of reords.(the roles is not working properly) add filter for the program~~
 
 Records-user:
@@ -230,10 +229,4 @@ general:
 * [x] remove the Previous Dental Visit, Dental Procedures Done, Patient Signature from the Dental Examination Details.&#x20;
 
 * [x] just like the medical examination details, add "Past Dental Records" for the Dental Examination Details.
-
-* [ ] the university id should be visible to the consultation page as well next or under the name of the user.
-
-* [ ] the id and program is not visible in the appointment management in admin side
-
-* [ ] the settings page is not functional yet
 

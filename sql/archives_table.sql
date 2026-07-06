@@ -1,36 +1,20 @@
--- SQL to create the archives table in Supabase
--- Run this in your Supabase SQL Editor
+create table public.archives (
+  id uuid not null default gen_random_uuid (),
+  type character varying(50) not null,
+  original_id uuid not null,
+  data jsonb not null,
+  deleted_by character varying(255) null,
+  archived_at timestamp with time zone null default now(),
+  permanent_delete_at timestamp with time zone not null,
+  is_permanently_deleted boolean null default false,
+  restored_at timestamp with time zone null,
+  constraint archives_pkey primary key (id)
+) TABLESPACE pg_default;
 
--- Create archives table
-CREATE TABLE IF NOT EXISTS archives (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  type VARCHAR(50) NOT NULL,
-  original_id UUID NOT NULL,
-  data JSONB NOT NULL,
-  deleted_by VARCHAR(255),
-  archived_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  permanent_delete_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  is_permanently_deleted BOOLEAN DEFAULT FALSE,
-  restored_at TIMESTAMP WITH TIME ZONE
-);
+create index IF not exists idx_archives_type on public.archives using btree (type) TABLESPACE pg_default;
 
--- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_archives_type ON archives(type);
-CREATE INDEX IF NOT EXISTS idx_archives_archived_at ON archives(archived_at);
-CREATE INDEX IF NOT EXISTS idx_archives_permanent_delete_at ON archives(permanent_delete_at);
-CREATE INDEX IF NOT EXISTS idx_archives_is_permanently_deleted ON archives(is_permanently_deleted);
+create index IF not exists idx_archives_archived_at on public.archives using btree (archived_at) TABLESPACE pg_default;
 
--- Enable RLS
-ALTER TABLE archives ENABLE ROW LEVEL SECURITY;
+create index IF not exists idx_archives_permanent_delete_at on public.archives using btree (permanent_delete_at) TABLESPACE pg_default;
 
--- Create policy for admin-only access
-CREATE POLICY "Admins can manage archives" ON archives
-  FOR ALL
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid()
-      AND LOWER(users.role) IN ('admin', 'administrator')
-    )
-  );
+create index IF not exists idx_archives_is_permanently_deleted on public.archives using btree (is_permanently_deleted) TABLESPACE pg_default;

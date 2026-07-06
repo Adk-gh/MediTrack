@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
+import { DentalExaminationReport } from '../../components/DentalExaminationReport';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
@@ -245,6 +246,7 @@ export default function RecordsUsers() {
         approved_at:   d.approved_at || d.created_at,
         created_at:    d.created_at,
         dFirstName:    d.first_name,
+        dMiddleName:   d.middle_name,
         dLastName:     d.last_name,
         dAge:          d.age,
         dSex:          d.sex,
@@ -308,6 +310,82 @@ export default function RecordsUsers() {
     remarks:      rec.remarks || '',
     ...rec,
   });
+
+  const buildDentalExamination = (rec) => ({
+    patientName:  `${rec.dLastName || ''}, ${rec.dFirstName || ''}`,
+    firstName:    rec.dFirstName || '',
+    middleName:  rec.dMiddleName || '',
+    lastName:     rec.dLastName || '',
+    age:          rec.dAge,
+    sex:          rec.dSex,
+    address:      rec.dAddress || '',
+    course:       rec.dCourseYear || '',
+    yearSection:  rec.dCourseYear || '',
+    examDate:     formatDateClean(rec.dExamDate || rec.dSigDate),
+    // Pass JSONB fields directly
+    dentalHistory: rec.dentalHistory || {},
+    toothData:     rec.toothData || {},
+    intraoral:     rec.intraoral || {},
+    // Map to DentalExaminationReport expected fields
+    parentName:   '', // Parent name would need to be collected during exam
+    restoration:  extractToothConditions(rec.toothData || {}, ['caries', 'filled', 'improved']),
+    extraction:   extractToothConditions(rec.toothData || {}, ['extracted', 'root-fragment']),
+    treatments:  mapDentalProcedures(rec.dentalHistory || {}),
+    treatmentDetails: {
+      orthodontic: rec.dentalHistory?.['Orthodontic Therapy'] === 'Yes' ? 'Yes' : '',
+      prosthodontic: rec.dentalHistory?.['Prosthodontic Therapy'] === 'Yes' ? 'Yes' : '',
+      endodontic: rec.dentalHistory?.['Endodontic Treatment'] === 'Yes' ? 'Yes' : '',
+    },
+    familyDentist: rec.dPrevDentist || '',
+    lastVisit: rec.dLastVisit || '',
+    examinedBy: rec.dExaminedBy || '',
+    teethUpper: rec.dentalHistory?.teethUpper || '',
+    teethLower: rec.dentalHistory?.teethLower || '',
+    status: { complete: false, notCompleted: false, followUp: '' },
+    ...rec,
+  });
+
+  // Helper to format date cleanly (Year Month Day)
+  const formatDateClean = (dateStr) => {
+    if (!dateStr) return '';
+    // Handle ISO date string
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  // Helper to extract tooth conditions for restoration/extraction display
+  const extractToothConditions = (toothData, conditions) => {
+    if (!toothData || typeof toothData !== 'object') return '';
+    const conditionLabels = {
+      'caries': 'Caries',
+      'filled': 'Filled',
+      'improved': 'Improved',
+      'extracted': 'Extraction Needed',
+      'root-fragment': 'Root Fragment',
+      'missing': 'Missing',
+    };
+    const filtered = Object.entries(toothData)
+      .filter(([, data]) => data?.condition && conditions.includes(data.condition))
+      .map(([num, data]) => `Tooth #${num}: ${conditionLabels[data.condition] || data.condition}${data.operation ? ' (' + data.operation + ')' : ''}`);
+    return filtered.length > 0 ? filtered.join('\n') : 'None';
+  };
+
+  // Helper to map dental history JSON to treatments object
+  const mapDentalProcedures = (dentalHistory) => {
+    if (!dentalHistory || typeof dentalHistory !== 'object') return {};
+    return {
+      oralProphylaxis: dentalHistory['Oral Prophylaxis'] === 'Yes',
+      gumTreatment: dentalHistory['Periodontal Therapy'] === 'Yes',
+      orthodontic: dentalHistory['Orthodontic Therapy'] === 'Yes',
+      prosthodontic: dentalHistory['Prosthodontic Therapy'] === 'Yes',
+      endodontic: dentalHistory['Endodontic Treatment'] === 'Yes',
+      tmj: dentalHistory['TMJ Treatment'] === 'Yes',
+      xray: false, // Not in the current form
+      fluoride: dentalHistory['Fluoride Treatment'] === 'Yes' || dentalHistory['Fluoride'] === 'Yes',
+      sealant: dentalHistory['Sealant'] === 'Yes',
+    };
+  };
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading && records.length === 0) {
@@ -429,6 +507,7 @@ export default function RecordsUsers() {
 
   const tabs = [{ key: 'summary', label: 'Summary' }];
   if (isMedical) tabs.push({ key: 'certificate', label: 'Certificate' });
+  if (!isMedical) tabs.push({ key: 'certificate', label: 'Certificate' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -658,6 +737,13 @@ export default function RecordsUsers() {
                   <SectionHead label="Affected Teeth Chart" />
                   <TagList items={affectedTeeth} color="amber" />
                 </div>
+
+                <button
+                  onClick={() => setView('certificate')}
+                  style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}
+                >
+                  View Dental Certificate →
+                </button>
               </>
             )}
           </div>
@@ -668,6 +754,18 @@ export default function RecordsUsers() {
           <div style={{ padding: '8px 16px 32px' }}>
             <MedicalCertificate
               examination={buildExamination(rec)}
+              onSubmit={null}
+              onEdit={null}
+              readOnly={true}
+            />
+          </div>
+        )}
+
+        {/* ── CERTIFICATE TAB (Dental) ── */}
+        {view === 'certificate' && !isMedical && (
+          <div style={{ padding: '8px 16px 32px' }}>
+            <DentalExaminationReport
+              examination={buildDentalExamination(rec)}
               onSubmit={null}
               onEdit={null}
               readOnly={true}

@@ -207,38 +207,41 @@ const RecordHistoryViewer = ({ person }) => {
 
     const fetchRecords = async () => {
       try {
-        const { data: medData, error: medError } = await supabase
-          .from('medical_records')
-          .select('*')
-          .eq('user_id', person.uid)
-          .order('created_at', { ascending: false });
+        let records = [];
 
-        if (medError) console.error('Error fetching medical records:', medError);
+        if (activeTab === 'dental') {
+          // Only fetch dental records
+          const { data: denData, error: denError } = await supabase
+            .from('dental_records')
+            .select('*')
+            .eq('user_id', person.uid)
+            .order('created_at', { ascending: false });
 
-        const { data: denData, error: denError } = await supabase
-          .from('dental_records')
-          .select('*')
-          .eq('user_id', person.uid)
-          .order('created_at', { ascending: false });
+          if (denError) console.error('Error fetching dental records:', denError);
 
-        if (denError) console.error('Error fetching dental records:', denError);
+          records = (denData || []).map(r => ({
+            ...r,
+            kind: 'dental',
+            _date: r.exam_date || r.examDate || r.created_at?.split('T')[0] || '',
+          }));
+        } else {
+          // Only fetch medical records
+          const { data: medData, error: medError } = await supabase
+            .from('medical_records')
+            .select('*')
+            .eq('user_id', person.uid)
+            .order('created_at', { ascending: false });
 
-        const medRecords = (medData || []).map(r => ({
-          ...r,
-          kind: 'medical',
-          _date: r.exam_date || r.examDate || r.created_at?.split('T')[0] || '',
-        }));
+          if (medError) console.error('Error fetching medical records:', medError);
 
-        const denRecords = (denData || []).map(r => ({
-          ...r,
-          kind: 'dental',
-          _date: r.exam_date || r.examDate || r.created_at?.split('T')[0] || '',
-        }));
+          records = (medData || []).map(r => ({
+            ...r,
+            kind: 'medical',
+            _date: r.exam_date || r.examDate || r.created_at?.split('T')[0] || '',
+          }));
+        }
 
-        const all = [...medRecords, ...denRecords].sort((a, b) =>
-          (b._date || '').localeCompare(a._date || '')
-        );
-        setRecords(all);
+        setRecords(records);
       } catch (err) {
         console.error('Error fetching records:', err);
       } finally {
@@ -247,9 +250,10 @@ const RecordHistoryViewer = ({ person }) => {
     };
 
     fetchRecords();
-  }, [person?.uid]);
+  }, [person?.uid, activeTab]);
 
-  const filtered = records.filter(r => r.kind === activeTab);
+  // Records are already filtered by activeTab in fetch
+  // So we use records directly
 
   const StatusPill = ({ status }) => {
     const map = {
@@ -470,14 +474,14 @@ const RecordHistoryViewer = ({ person }) => {
           <i className="fa-solid fa-circle-notch fa-spin text-lg text-[#466460] mb-2 block"></i>
           Loading records…
         </div>
-      ) : filtered.length === 0 ? (
+      ) : records.length === 0 ? (
         <div className="text-center py-8 text-slate-400 text-xs">
           <i className={`fa-solid ${activeTab === 'medical' ? 'fa-stethoscope' : 'fa-tooth'} text-2xl mb-2 block opacity-20`}></i>
           No {activeTab} records found
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(r => (
+          {records.map(r => (
             <div key={r.id} className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-sm">
               <button
                 onClick={() => setExpanded(prev => prev === r.id ? null : r.id)}
@@ -519,144 +523,165 @@ const RecordHistoryViewer = ({ person }) => {
 // PROFILE PANEL
 // ============================================================
 const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, currentUserRole }) => {
-  const [consultLoading, setConsultLoading] = useState(false);
-
   if (!person) return null;
 
   // Normalize role for comparison
   const userRole = String(currentUserRole || '').toLowerCase().trim();
   const canDoMedical = ['nurse', 'doctor', 'admin', 'administrator'].includes(userRole);
   const canDoDental = ['dentist', 'admin', 'administrator'].includes(userRole);
+  const isStudent = person.role === 'student';
 
-  const handleConsult = async () => {
-    setConsultLoading(true);
-    try {
-      localStorage.setItem('selectedPatient', JSON.stringify(person));
-
-      const { data: existing, error: fetchError } = await supabase
-        .from('consultations')
-        .select('id')
-        .eq('patient_id', person.uid)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      if (existing) {
-        navigate(`/consultations?patientId=${person.uid}&convId=${existing.id}`);
-      } else {
-        const { data: newConsult, error: insertError } = await supabase
-          .from('consultations')
-          .insert({
-            consultation_type: 'medical',
-            patient_id: person.uid,
-            patient_name: person.name,
-            status: 'active',
-          })
-          .select('id')
-          .single();
-
-        if (insertError) throw insertError;
-
-        navigate(`/consultations?patientId=${person.uid}&convId=${newConsult.id}`);
-      }
-    } catch (err) {
-      console.error('Consult error:', err);
-      showSnackbar?.('Failed to open consultation', 'error');
-    } finally {
-      setConsultLoading(false);
-    }
-  };
+  // Get raw data
+  const rawData = person._raw || {};
 
   return (
     <div className="animate-[fadeInSlide_0.3s_ease-out_forwards] flex flex-col">
       {onClose && (
         <div className="flex justify-between items-center mb-3">
           <h3 className="font-bold text-[11px] uppercase text-[#466460]">Clinical Profile</h3>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-100"
-            aria-label="Close profile"
-          >
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
             <i className="fa-solid fa-xmark text-sm"></i>
           </button>
         </div>
       )}
 
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
+      {/* Header */}
+      <div className="flex items-start gap-3 mb-4 pb-4 border-b border-slate-100">
         <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center flex-shrink-0">
           <i className="fa-solid fa-user text-lg text-[#466460]"></i>
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-base text-slate-800 truncate">{person.name}</h3>
-          <p className="text-xs text-slate-500">
-            {person.id} •{' '}
-            {person.role ? person.role.charAt(0).toUpperCase() + person.role.slice(1) : person.type}
-          </p>
-          <div className="flex gap-1.5 mt-1 flex-wrap">
-            {person.department && (
-              <span className="text-[8px] px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{person.department}</span>
-            )}
-            {person.prog && (
-              <span className="text-[8px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{person.prog}</span>
-            )}
-            {person.jobTitle && (
-              <span className="text-[8px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{person.jobTitle}</span>
-            )}
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-base text-slate-800 truncate">{person.name}</h3>
+              <p className="text-xs text-slate-500">{person.id} • {person.role?.charAt(0).toUpperCase() + person.role?.slice(1) || person.type}</p>
+              <div className="flex gap-1.5 mt-1 flex-wrap">
+                {person.department && <span className="text-[8px] px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{person.department}</span>}
+                {person.prog && <span className="text-[8px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{person.prog}</span>}
+                {person.jobTitle && <span className="text-[8px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{person.jobTitle}</span>}
+              </div>
+            </div>
+            {/* Examination Buttons - Top Right */}
+            <div className="flex gap-1.5 shrink-0">
+              {canDoMedical && (
+                <button onClick={() => onExamine(person, 'medical')} className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-3 py-1.5 rounded-full text-[9px] font-bold hover:scale-105 flex items-center gap-1">
+                  <i className="fa-solid fa-stethoscope"></i> Medical
+                </button>
+              )}
+              {canDoDental && (
+                <button onClick={() => onExamine(person, 'dental')} className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-3 py-1.5 rounded-full text-[9px] font-bold hover:scale-105 flex items-center gap-1">
+                  <i className="fa-solid fa-tooth"></i> Dental
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-4">
-        {[
-          { label: 'Age',        value: person.age       || '-' },
-          { label: 'Gender',     value: person.gender    || '-' },
-          { label: 'Birthdate',  value: person.birthdate || '-' },
-          { label: 'Year Level', value: person.year      || 'N/A' },
-        ].map(({ label, value }) => (
-          <div key={label} className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[8px] text-slate-400 uppercase mb-0.5">{label}</p>
-            <p className="text-sm font-bold text-slate-700">{value}</p>
-          </div>
-        ))}
+      {/* Personal Information */}
+      <div className="mb-4">
+        <h4 className="text-[10px] font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-id-card"></i> Personal Information
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[
+            { label: 'Age', value: person.age || '-' },
+            { label: 'Gender', value: person.gender || rawData.sex || '-' },
+            { label: 'Birthdate', value: person.birthdate || rawData.birthday || '-' },
+            { label: 'Blood Type', value: rawData.blood_type || '-' },
+            { label: 'Civil Status', value: rawData.civil_status || '-' },
+            { label: 'Nationality', value: rawData.nationality || '-' },
+            { label: 'Religion', value: rawData.religion || '-' },
+            { label: 'Home Address', value: rawData.home_address || '-' },
+          ].map(({ label, value }) => (
+            <div key={label} className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+              <p className="text-[7px] text-slate-400 uppercase">{label}</p>
+              <p className="text-xs font-bold text-slate-700 truncate">{value}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mb-4">
-        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-          <p className="text-[8px] font-bold text-slate-400 uppercase mb-2">Contact</p>
-          <p className="text-xs text-slate-600 mb-1 truncate">
-            <i className="fa-solid fa-envelope w-4 mr-1 text-[#466460]"></i>
-            {person.email || '-'}
-          </p>
-          {person.phoneNumber && (
-            <p className="text-xs text-slate-600">
-              <i className="fa-solid fa-phone w-4 mr-1 text-[#466460]"></i>
-              {person.phoneNumber}
-            </p>
+      {/* Academic/Work Info */}
+      <div className="mb-4">
+        <h4 className="text-[10px] font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-graduation-cap"></i> {isStudent ? 'Academic' : 'Work'} Information
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {isStudent ? (
+            <>
+              {[
+                { label: 'Year Level', value: person.year || 'N/A' },
+                { label: 'Section', value: person.section || 'N/A' },
+                { label: 'Classification', value: rawData.student_classification || '-' },
+              ].map(({ label, value }) => (
+                <div key={label} className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                  <p className="text-[7px] text-slate-400 uppercase">{label}</p>
+                  <p className="text-xs font-bold text-slate-700">{value}</p>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              {[
+                { label: 'Job Title', value: rawData.job_title || '-' },
+                { label: 'Classification', value: rawData.classification || '-' },
+              ].map(({ label, value }) => (
+                <div key={label} className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                  <p className="text-[7px] text-slate-400 uppercase">{label}</p>
+                  <p className="text-xs font-bold text-slate-700">{value}</p>
+                </div>
+              ))}
+            </>
           )}
         </div>
-        {person.emergencyContact?.name && (
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[8px] font-bold text-slate-400 uppercase mb-2">Emergency Contact</p>
-            <p className="text-xs text-slate-600 font-semibold">
-              {person.emergencyContact.name}
-              {person.emergencyContact.relationship ? ` (${person.emergencyContact.relationship})` : ''}
-            </p>
-            {person.emergencyContact.phone && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                <i className="fa-solid fa-phone w-4 mr-1 text-[#466460]"></i>
-                {person.emergencyContact.phone}
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
-      {person.vaccinations && Object.values(person.vaccinations).some(v => v?.vaccineName) && (
-        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 mb-4">
-          <p className="text-[8px] font-bold text-slate-400 uppercase mb-2">COVID-19 Vaccination</p>
+      {/* Contact Info */}
+      <div className="mb-4">
+        <h4 className="text-[10px] font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-phone"></i> Contact Information
+        </h4>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[7px] text-slate-400 uppercase">Email</p>
+            <p className="text-xs font-bold text-slate-700 truncate">{person.email || '-'}</p>
+          </div>
+          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[7px] text-slate-400 uppercase">Phone</p>
+            <p className="text-xs font-bold text-slate-700">{person.phoneNumber || rawData.phone_number || '-'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Emergency Contact */}
+      <div className="mb-4">
+        <h4 className="text-[10px] font-bold text-red-600 uppercase mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-triangle-exclamation"></i> Emergency Contact
+        </h4>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2 bg-red-50 rounded-lg border border-red-100">
+            <p className="text-[7px] text-red-400 uppercase">Name</p>
+            <p className="text-xs font-bold text-slate-700">
+              {person.emergencyContact?.name || rawData.emergency_contact?.name || '-'}
+              {person.emergencyContact?.relationship && ` (${person.emergencyContact.relationship})`}
+            </p>
+          </div>
+          <div className="p-2 bg-red-50 rounded-lg border border-red-100">
+            <p className="text-[7px] text-red-400 uppercase">Phone</p>
+            <p className="text-xs font-bold text-slate-700">{person.emergencyContact?.phone || rawData.emergency_contact?.phone || '-'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Vaccinations */}
+      {(rawData.vaccinations || person.vaccinations) && Object.values(rawData.vaccinations || person.vaccinations || {}).some(v => v?.vaccineName) && (
+        <div className="mb-4">
+          <h4 className="text-[10px] font-bold text-green-600 uppercase mb-2 flex items-center gap-2">
+            <i className="fa-solid fa-syringe"></i> Vaccinations
+          </h4>
           <div className="flex flex-wrap gap-1.5">
-            {Object.entries(person.vaccinations).map(([key, v]) =>
+            {Object.entries(rawData.vaccinations || person.vaccinations || {}).map(([key, v]) =>
               v?.vaccineName ? (
                 <span key={key} className="text-[8px] px-2 py-1 rounded-full bg-green-100 text-green-700">
                   {key.replace('dose', 'Dose ').replace('booster', 'Booster ')}: {v.vaccineName}
@@ -666,40 +691,6 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
           </div>
         </div>
       )}
-
-      <div className="flex gap-2 flex-wrap">
-        {canDoMedical && (
-          <button
-            onClick={() => onExamine(person, 'medical')}
-            className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-5 py-2.5 rounded-full text-[10px] font-bold hover:scale-105 transition-transform flex items-center gap-1.5 shadow-md"
-          >
-            <i className="fa-solid fa-stethoscope"></i>
-            Medical
-          </button>
-        )}
-        {canDoDental && (
-          <button
-            onClick={() => onExamine(person, 'dental')}
-            className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-5 py-2.5 rounded-full text-[10px] font-bold hover:scale-105 transition-transform flex items-center gap-1.5 shadow-md"
-          >
-            <i className="fa-solid fa-tooth"></i>
-            Dental
-          </button>
-        )}
-        <button
-          onClick={handleConsult}
-          disabled={consultLoading}
-          className="bg-gradient-to-br from-[#466460] to-[#2f4a46] text-white px-5 py-2.5 rounded-full text-[10px] font-bold hover:scale-105 transition-transform flex items-center gap-1.5 shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
-        >
-          {consultLoading
-            ? <i className="fa-solid fa-spinner fa-spin"></i>
-            : <i className="fa-solid fa-comment-medical"></i>
-          }
-          {consultLoading ? 'Opening...' : 'Consult'}
-        </button>
-      </div>
-
-      <RecordHistoryViewer person={person} />
     </div>
   );
 };
@@ -910,7 +901,7 @@ export const Records = () => {
   const [peopleData, setPeopleData]         = useState([]);
   const [loading, setLoading]               = useState(true);
   const [isSubmitting, setIsSubmitting]     = useState(false);
-  const [currentDept, setCurrentDept]       = useState(null);
+  const [currentDept, setCurrentDept]       = useState('All');
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [searchQuery, setSearchQuery]       = useState('');
 
@@ -988,24 +979,36 @@ export const Records = () => {
     loadUsers();
   }, []);
 
-  const departments = [...new Set(peopleData.map(p => p.department).filter(Boolean))].sort();
+  const departments = ['All', ...new Set(peopleData.map(p => p.department).filter(Boolean))].sort((a, b) => {
+    if (a === 'All') return -1;
+    if (b === 'All') return 1;
+    return a.localeCompare(b);
+  });
 
   const uniqueYears = ['All', ...new Set(
-    peopleData.filter(p => p.department === currentDept && p.year).map(p => p.year)
+    peopleData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.year).map(p => p.year)
   )].sort();
 
   const uniqueSections = ['All', ...new Set(
     peopleData
-      .filter(p => p.department === currentDept && (filterYear === 'All' || p.year === filterYear) && p.section)
+      .filter(p => (currentDept === 'All' || p.department === currentDept) && (filterYear === 'All' || p.year === filterYear) && p.section)
       .map(p => p.section)
-  )].sort();
+  )].sort((a, b) => {
+    if (a === 'All') return -1;
+    if (b === 'All') return 1;
+    return a.localeCompare(b);
+  });
 
   const uniquePrograms = ['All', ...new Set(
-    peopleData.filter(p => p.department === currentDept && p.prog).map(p => p.prog)
-  )].sort();
+    peopleData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.prog).map(p => p.prog)
+  )].sort((a, b) => {
+    if (a === 'All') return -1;
+    if (b === 'All') return 1;
+    return a.localeCompare(b);
+  });
 
   const uniqueRoles = ['All', ...new Set(
-    peopleData.filter(p => p.department === currentDept && p.role).map(p => p.role)
+    peopleData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.role).map(p => p.role)
   )].sort((a, b) => {
     if (a === 'All') return -1;
     if (b === 'All') return 1;
@@ -1014,14 +1017,7 @@ export const Records = () => {
 
   const roleLabel = (r) => r === 'All' ? 'All Roles' : r.charAt(0).toUpperCase() + r.slice(1);
 
-  useEffect(() => {
-    if (departments.length > 0 && !currentDept) {
-      const first = departments[0];
-      setCurrentDept(first);
-      const firstPerson = peopleData.find(p => p.department === first);
-      if (firstPerson) setSelectedPerson(firstPerson);
-    }
-  }, [peopleData]);
+  // Removed auto-select behavior - now shows "Select a person from the list" by default
 
   const handleSelectDept = (dept) => {
     setCurrentDept(dept);
@@ -1042,7 +1038,7 @@ export const Records = () => {
 
   const filteredPeople = peopleData
     .filter(p => {
-      const inDept    = p.department === currentDept;
+      const inDept    = currentDept === 'All' || p.department === currentDept;
       const inYear    = filterYear    === 'All' ? true : p.year    === filterYear;
       const inSection = filterSection === 'All' ? true : p.section === filterSection;
       const inRole    = filterRole    === 'All' ? true : p.role    === filterRole;
@@ -1259,7 +1255,7 @@ export const Records = () => {
                           </svg>
                         </div>
                         <select
-                          value={currentDept || ''}
+                          value={currentDept}
                           onChange={e => handleSelectDept(e.target.value)}
                           className="w-full pl-9 pr-10 py-2.5 bg-[#f4f8f6] border border-[#c8ddd8] rounded-xl text-[12px] font-semibold text-[#1a2e22] outline-none appearance-none focus:border-[#466460] focus:bg-white transition-all cursor-pointer"
                           style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
@@ -1278,7 +1274,7 @@ export const Records = () => {
                         <span className="text-[9px] font-semibold text-[#466460] bg-[#e0eceb] px-2 py-0.5 rounded-full">
                           {filteredPeople.length} record{filteredPeople.length !== 1 ? 's' : ''}
                         </span>
-                        <span className="text-[9px] text-slate-400">in selected department</span>
+                        <span className="text-[9px] text-slate-400">{currentDept === 'All' ? 'across all departments' : 'in selected department'}</span>
                       </div>
                     </div>
                   )}
@@ -1394,7 +1390,7 @@ export const Records = () => {
                         </svg>
                       </div>
                       <select
-                        value={currentDept || ''}
+                        value={currentDept}
                         onChange={e => handleSelectDept(e.target.value)}
                         className="w-full pl-8 pr-8 py-2 bg-[#f4f8f6] border border-[#c8ddd8] rounded-lg text-[11px] font-semibold text-[#1a2e22] outline-none appearance-none focus:border-[#466460] focus:bg-white transition-all cursor-pointer"
                         style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}

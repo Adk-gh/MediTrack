@@ -4,7 +4,7 @@
 
 Cross-platform student health record management system.
 
-* **Backend**: Node.js + Express + Firebase Admin SDK (Firestore)
+* **Backend**: Node.js + Express + Supabase
 * **OCR Service**: Python Flask + PaddleOCR (port 5001)
 * **Frontend**: React + Vite + React Router + TailwindCSS + Chart.js
 
@@ -48,7 +48,7 @@ npm run lint
 routes/          # Route definitions (auth.routes.js, index.js)
 controllers/     # Controller logic (auth.controller.js)
 features/        # User feature module with validation, schema, routes, controller, service
-configs/         # Configuration (firebase-admin.js, database.js, cors.js, token.js)
+configs/         # Configuration (database.js, cors.js, token.js)
 middleware/      # Middleware (authorized.js, global-err.js)
 models/          # Data models (user.js)
 validation/      # Validation schemas
@@ -56,8 +56,8 @@ validation/      # Validation schemas
 
 ### Authentication Flow
 
-1. **Registration**: Email/password + student ID image -> OCR verification -> Firebase Auth + Firestore
-2. **Login**: Firebase Auth REST API -> JWT token returned
+1. **Registration**: Email/password + student ID image -> OCR verification -> Supabase Auth
+2. **Login**: Email/password -> JWT token returned
 3. **Protected Routes**: Use `authorized` middleware for JWT verification
 
 ### API Endpoints
@@ -68,7 +68,7 @@ validation/      # Validation schemas
 | POST   | /api/auth/login             | Login with email/password             |
 | POST   | /api/users/register         | Register with email/password          |
 | POST   | /api/users/login            | Login with email/password             |
-| POST   | /api/users/firebase-auth    | Firebase OAuth login                  |
+| POST   | /api/users/firebase-auth    | (deprecated)                          |
 | GET    | /api/users/profile          | Get user profile (auth required)      |
 | POST   | <http://localhost:5001/ocr> | OCR processing                        |
 
@@ -95,14 +95,13 @@ JWT_EXPIRES_IN=7d
 CLIENT_URL=http://localhost:3000
 OCR_SERVICE_URL=http://localhost:5001
 PORT=5000
-FIREBASE_API_KEY=your_firebase_web_api_key
 ```
 
-### Firebase
+### Supabase
 
-* Uses Firebase Admin SDK for server-side operations
-* Uses Firebase Auth REST API for client authentication
-* Firestore database for user profiles
+* Uses Supabase JS SDK for database operations
+* Uses Supabase Auth for authentication
+* PostgreSQL database for user profiles
 
 ## UI/UX Guidelines
 
@@ -135,7 +134,7 @@ FIREBASE_API_KEY=your_firebase_web_api_key
 
 * Database:
 
-* Firebase Firestore
+* Supabase (PostgreSQL)
 
 * SQLite for offline mode
 
@@ -143,7 +142,7 @@ FIREBASE_API_KEY=your_firebase_web_api_key
 
 * Desktop: Electron builds packaged with electron-builder,
 
-* Mobile: Capacitor builds deployed via Android Studio,firebase hosting web dashboard,
+* Mobile: Capacitor builds deployed via Android Studio,Supabase hosting,
 
 * Vercel(maybe render) backend API,
 
@@ -161,7 +160,7 @@ FIREBASE_API_KEY=your_firebase_web_api_key
 
 * API Testing: Postman / REST Client in VS Code
 
-* CI/CD: GitHub Actions or Firebase CI for automated deploys
+* CI/CD: GitHub Actions or Supabase CLI for automated deploys
 
 * Security: Token management (token.js), CORS setup (cors.js).
 

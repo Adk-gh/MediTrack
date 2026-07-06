@@ -409,7 +409,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
             <SectionLabel>System Configurations</SectionLabel>
             <SectionCard>
               <Row label="Backup Schedules" sub="Configure automated database backups" right={<button style={{ background: '#466460', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Schedule</button>} />
-              <Row label="API Integrations" sub="Supabase, Firebase, and Render hooks" right={<button style={{ background: '#f4f8f6', color: '#466460', border: '1px solid #e2ebe8', padding: '8px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Manage</button>} />
+              <Row label="API Integrations" sub="Supabase, OCR Service, and Render hooks" right={<button style={{ background: '#f4f8f6', color: '#466460', border: '1px solid #e2ebe8', padding: '8px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Manage</button>} />
               <Row label="Audit & Logging" sub="Configure system tracking logs" last right={<button style={{ background: '#f4f8f6', color: '#466460', border: '1px solid #e2ebe8', padding: '8px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Configure</button>} />
             </SectionCard>
           </div>

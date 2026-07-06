@@ -11,6 +11,43 @@ import notificationsService from '../services/notifications.service.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// ─── Synchronous Role Helper ─────────────────────────────────────────────────
+// This function extracts the user role synchronously from localStorage to prevent flash
+const getStoredUserRole = () => {
+  try {
+    const rawUser = localStorage.getItem('user');
+    if (rawUser) {
+      const user = JSON.parse(rawUser);
+      let role = user.role?.toLowerCase() || '';
+
+      // If role is not set or is student, check classification/job_title
+      if (!role || role === 'student') {
+        const classification = user.classification?.toLowerCase() || '';
+        const jobTitle = user.job_title?.toLowerCase() || '';
+
+        if (classification === 'dentist' || jobTitle.includes('dentist')) {
+          return 'dentist';
+        } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
+          return 'doctor';
+        } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
+          return 'nurse';
+        } else if (classification === 'admin' || classification === 'administrator') {
+          return 'admin';
+        }
+      }
+
+      // Return if valid role found
+      if (role && ['admin', 'doctor', 'dentist', 'nurse'].includes(role)) {
+        return role;
+      }
+    }
+  } catch (e) {
+    console.error('Error reading user role:', e);
+  }
+
+  return null; // Return null to indicate "loading needed"
+};
+
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 const NavHomeIcon = ({ active }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
@@ -103,6 +140,35 @@ const NavArchiveIcon = ({ active }) => (
   </svg>
 );
 
+const NavConsultMgmtIcon = ({ active }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <path d="M8 9h8" />
+    <path d="M8 13h6" />
+  </svg>
+);
+
+const NavApptMgmtIcon = ({ active }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+    <path d="M8 14h.01" />
+    <path d="M12 14h.01" />
+    <path d="M16 14h.01" />
+    <path d="M8 18h.01" />
+    <path d="M12 18h.01" />
+  </svg>
+);
+
+const NavApprovalMgmtIcon = ({ active }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" style={{ width: "100%", height: "100%" }}>
+    <path d="M9 11l3 3L22 4" />
+    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+  </svg>
+);
+
 // ─── Role-based mobile nav items ──────────────────────────────────────────────
 const ROLE_MOBILE_NAV = {
   admin: [
@@ -110,6 +176,9 @@ const ROLE_MOBILE_NAV = {
     { id: 'recordManagement', label: 'Records', Icon: NavRecordsIcon },
     { id: 'auditLogs', label: 'Audit', Icon: NavAnnounceIcon },
     { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
+    { id: 'consultationManagement', label: 'Consultations', Icon: NavConsultMgmtIcon },
+    { id: 'appointmentManagement', label: 'Appointments', Icon: NavApptMgmtIcon },
+    { id: 'approvalManagement', label: 'Approvals', Icon: NavApprovalMgmtIcon },
     { id: 'users', label: 'Users', Icon: NavUsersIcon },
     { id: 'ocrSettings', label: 'OCR Settings', Icon: NavOcrIcon },
     { id: 'reports', label: 'Reports', Icon: NavReportsIcon },
@@ -397,13 +466,50 @@ export const DashboardLayout = ({
   const [showNotifications,   setShowNotifications]   = useState(false);
   const [showHamburger,       setShowHamburger]       = useState(false);
   const [notificationCount,   setNotificationCount]   = useState(0);
-  const [userRole, setUserRole] = useState('admin');
+
+  // Initialize with stored role synchronously to prevent flash
+  const storedRole = getStoredUserRole();
+  const [userRole, setUserRole] = useState(storedRole || 'unknown');
+  const [isRoleLoading, setIsRoleLoading] = useState(storedRole === null);
 
   useEffect(() => {
     const fetchUserRole = async () => {
       try {
+        // First try to get role from localStorage user object
+        const rawUser = localStorage.getItem('user');
+        if (rawUser) {
+          const user = JSON.parse(rawUser);
+          let role = user.role?.toLowerCase() || '';
+
+          // If role is not set or is student, check classification/job_title
+          if (!role || role === 'student') {
+            const classification = user.classification?.toLowerCase() || '';
+            const jobTitle = user.job_title?.toLowerCase() || '';
+
+            if (classification === 'dentist' || jobTitle.includes('dentist')) {
+              role = 'dentist';
+            } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
+              role = 'doctor';
+            } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
+              role = 'nurse';
+            } else if (classification === 'admin' || classification === 'administrator') {
+              role = 'admin';
+            }
+          }
+
+          if (role) {
+            setUserRole(role);
+            setIsRoleLoading(false);
+            return;
+          }
+        }
+
+        // Fallback to API call if not in localStorage
         const token = localStorage.getItem('token');
-        if (!token) return;
+        if (!token) {
+          setIsRoleLoading(false);
+          return;
+        }
 
         const response = await fetch(`${API_URL}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -411,17 +517,36 @@ export const DashboardLayout = ({
         const result = await response.json();
         if (result.success && result.data?.role) {
           setUserRole(result.data.role.toLowerCase());
+        } else if (result.success && result.data?.classification) {
+          // Use classification from profile as fallback
+          const classification = result.data.classification.toLowerCase();
+          const jobTitle = (result.data.job_title || '').toLowerCase();
+
+          if (classification === 'dentist' || jobTitle.includes('dentist')) {
+            setUserRole('dentist');
+          } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
+            setUserRole('doctor');
+          } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
+            setUserRole('nurse');
+          } else if (classification === 'admin' || classification === 'administrator') {
+            setUserRole('admin');
+          }
         }
       } catch (err) {
         console.error('Error fetching user role:', err);
+      } finally {
+        setIsRoleLoading(false);
       }
     };
     fetchUserRole();
   }, []);
 
+  // Use stored role for navigation items, default to admin only after loading completes
+  const effectiveRole = isRoleLoading ? (storedRole || 'unknown') : userRole;
+
   const mobileNavItems = propMobileNavItems && propMobileNavItems.length > 0
     ? propMobileNavItems
-    : (ROLE_MOBILE_NAV[userRole] || ROLE_MOBILE_NAV.admin);
+    : (ROLE_MOBILE_NAV[effectiveRole] || ROLE_MOBILE_NAV.admin);
 
   const handleProfileClick    = () => { setShowHamburger(false); setShowProfileDrawer(true); };
   const handleCloseProfile    = () => setShowProfileDrawer(false);
@@ -472,6 +597,16 @@ export const DashboardLayout = ({
         }
         .dl-fade { animation: dl-fade 0.25s ease both; }
       `}</style>
+
+      {/* ── Loading State (prevents role flash) ── */}
+      {isRoleLoading && storedRole === null && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-[9999] flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-emerald-700 font-medium">Loading...</span>
+          </div>
+        </div>
+      )}
 
       {/* ── SINGLE UNIFIED LAYOUT CONTAINER ── */}
       <div className="flex flex-col h-screen overflow-hidden bg-slate-50 md:bg-gradient-to-br md:from-[#f4f7f6] md:to-[#eef2f0]">

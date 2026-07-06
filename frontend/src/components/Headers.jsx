@@ -11,6 +11,43 @@ import Settings from './Settings.jsx';
 
 import { supabase } from '../supabase';
 
+// ─── Synchronous Role Helper ─────────────────────────────────────────────────
+// This function extracts the user role synchronously from localStorage to prevent flash
+const getStoredUserRole = () => {
+  try {
+    const rawUser = localStorage.getItem('user');
+    if (rawUser) {
+      const user = JSON.parse(rawUser);
+      let role = user.role?.toLowerCase() || '';
+
+      // If role is not set or is student, check classification/job_title
+      if (!role || role === 'student') {
+        const classification = user.classification?.toLowerCase() || '';
+        const jobTitle = user.job_title?.toLowerCase() || '';
+
+        if (classification === 'dentist' || jobTitle.includes('dentist')) {
+          return 'dentist';
+        } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
+          return 'doctor';
+        } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
+          return 'nurse';
+        } else if (classification === 'admin' || classification === 'administrator') {
+          return 'admin';
+        }
+      }
+
+      // Return if valid role found
+      if (role && ['admin', 'doctor', 'dentist', 'nurse'].includes(role)) {
+        return role;
+      }
+    }
+  } catch (e) {
+    console.error('Error reading user role:', e);
+  }
+
+  return null; // Return null to indicate "loading needed"
+};
+
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const HomeIcon = () => (
@@ -888,10 +925,9 @@ export const DesktopHeader = ({ onOpenQR }) => {
   useEffect(() => {
     const getUserId = () => {
       try {
-        const profile = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
-        if (profile?.internalUserId) return profile.internalUserId;
+        // Use auth UID for notifications
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        return user?.id || null;
+        return user?.uid || null;
       } catch { return null; }
     };
 
@@ -1012,6 +1048,9 @@ const ROLE_NAV_CONFIG = {
     { to: '/record-management', label: 'Record Management' },
     { to: '/audit-logs', label: 'Audit Logs' },
     { to: '/announcements', label: 'Announcement Management' },
+    { to: '/consultation-management', label: 'Consultations' },
+    { to: '/appointment-management', label: 'Appointments' },
+    { to: '/approval-management', label: 'Approvals' },
     { to: '/users', label: 'User Management' },
     { to: '/reports', label: 'Reports' },
     { to: '/archives', label: 'Archives' },
@@ -1028,7 +1067,7 @@ const ROLE_NAV_CONFIG = {
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/records', label: 'Records' },
     { to: '/appointments', label: 'Appointments' },
-    { to: '/dental-approvals', label: 'Approvals' },
+    { to: '/approvals', label: 'Approvals' },
     { to: '/announcements', label: 'Announcements' },
     { to: '/consultations', label: 'Consultation' },
   ],
@@ -1043,13 +1082,18 @@ const ROLE_NAV_CONFIG = {
 
 // ─── Desktop Navigation Bar ───────────────────────────────────────────────────
 export const DesktopNav = () => {
-  const [userRole, setUserRole] = useState('admin');
+  // Initialize with stored role synchronously to prevent flash
+  const [userRole, setUserRole] = useState(() => getStoredUserRole() || 'unknown');
+  const [isLoading, setIsLoading] = useState(userRole === 'unknown');
 
   useEffect(() => {
     const fetchUserRole = async () => {
       try {
         const token = localStorage.getItem('token');
-        if (!token) return;
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
 
         const response = await fetch(`${API_URL}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -1057,13 +1101,41 @@ export const DesktopNav = () => {
         const result = await response.json();
         if (result.success && result.data?.role) {
           setUserRole(result.data.role.toLowerCase());
+        } else if (result.success && result.data?.classification) {
+          // Use classification from profile as fallback
+          const classification = result.data.classification.toLowerCase();
+          const jobTitle = (result.data.job_title || '').toLowerCase();
+
+          if (classification === 'dentist' || jobTitle.includes('dentist')) {
+            setUserRole('dentist');
+          } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
+            setUserRole('doctor');
+          } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
+            setUserRole('nurse');
+          } else if (classification === 'admin' || classification === 'administrator') {
+            setUserRole('admin');
+          }
         }
       } catch (err) {
         console.error('Error fetching user role:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchUserRole();
   }, []);
+
+  // Don't render anything until role is determined (prevents admin flash)
+  if (isLoading || userRole === 'unknown') {
+    return (
+      <nav className="bg-white border-b border-slate-200 shadow-sm flex gap-4 sm:gap-6 lg:gap-12 px-3 sm:px-6 lg:px-8 py-3 sm:py-4 z-10">
+        {/* Skeleton placeholder - same height as real nav */}
+        <div className="h-6 w-20 bg-slate-100 animate-pulse rounded" />
+        <div className="h-6 w-20 bg-slate-100 animate-pulse rounded" />
+        <div className="h-6 w-20 bg-slate-100 animate-pulse rounded" />
+      </nav>
+    );
+  }
 
   const navLinkClass = ({ isActive }) =>
     `relative font-bold tracking-[0.025em] transition-all pb-[4px] whitespace-nowrap flex-shrink-0
@@ -1170,6 +1242,9 @@ const ROLE_MOBILE_NAV_CONFIG = {
     { id: 'recordManagement', label: 'Records', icon: RecordsIcon },
     { id: 'auditLogs', label: 'Audit', icon: AnnouncementIcon },
     { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
+    { id: 'consultationManagement', label: 'Consultations', icon: ConsultIcon },
+    { id: 'appointmentManagement', label: 'Appointments', icon: CalendarIcon },
+    { id: 'approvalManagement', label: 'Approvals', icon: ApprovalsIcon },
     { id: 'users', label: 'Users', icon: UsersIcon },
   ],
   doctor: [

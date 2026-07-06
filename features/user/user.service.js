@@ -3,6 +3,14 @@ const supabase = require('../../configs/database');
 const axios = require('axios');
 const FormData = require('form-data');
 
+// ── Name Normalization ──────────────────────────────────────────────────────
+// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
+function normalizeName(name) {
+  if (!name) return '';
+  let trimmed = name.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
 function resolveRole(parsedRole, rawText) {
   const combined = `${parsedRole || ''} ${rawText || ''}`.toLowerCase();
   console.log(`>>> [Role] Combined text for detection:\n"${combined.substring(0, 300)}"\n`);
@@ -148,12 +156,12 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
     throw new Error('Failed to create user account');
   }
 
-  // 6. Save user to Supabase 'users' table
+  // 6. Save user to Supabase 'users' table - normalize names to Title Case
   const newUser = {
     uid:                    user.id,
-    first_name:             firstName,
-    last_name:              lastName,
-    middle_name:         middleName || '',
+    first_name:             normalizeName(firstName),
+    last_name:              normalizeName(lastName),
+    middle_name:         normalizeName(middleName),
     suffix:                 suffix || '',
     email:                  email.toLowerCase(),
     university_id:          ocrId,
@@ -210,6 +218,7 @@ exports.loginUser = async ({ email, password }) => {
     .from('users')
     .select('*')
     .eq('uid', user.id)
+    .eq('is_archived', false)
     .single();
 
   if (profileError || !userData) {
@@ -313,6 +322,7 @@ exports.getProfile = async (userId) => {
     .from('users')
     .select('*')
     .eq('uid', userId)
+    .eq('is_archived', false)
     .single();
 
   if (error || !data) {
@@ -354,32 +364,15 @@ exports.getProfile = async (userId) => {
   };
 };
 
-const archiveHelper = require('../archives/archiveHelper');
-const ARCHIVE_TYPE = 'user';
-
 exports.deleteUser = async (userId, deletedBy) => {
-  const { data: userData, error: fetchError } = await supabase
+  // Instead of deleting, set is_archived to true
+  const { error } = await supabase
     .from('users')
-    .select('*')
-    .eq('uid', userId)
-    .single();
+    .update({ is_archived: true, updated_at: new Date().toISOString() })
+    .eq('uid', userId);
 
-  if (fetchError) {
-    throw new Error(fetchError.message);
-  }
-
-  await archiveHelper.archiveAndDelete({
-    type: ARCHIVE_TYPE,
-    originalId: userId,
-    tableName: 'users',
-    idColumn: 'uid',
-    deletedBy
-  }, supabase);
-
-  try {
-    await supabase.auth.admin.deleteUser(userId);
-  } catch (e) {
-    console.log('Auth user already deleted or mismatch');
+  if (error) {
+    throw new Error(error.message);
   }
 
   return { uid: userId };
@@ -394,15 +387,52 @@ exports.checkUniversityId = async (universityId) => {
   return data && data.length > 0;
 };
 
+exports.toggleProfileComplete = async (userId, profileComplete) => {
+  if (!userId) throw new Error('userId is required for toggleProfileComplete');
+
+  // If profileComplete is not provided, toggle it (flip the current value)
+  let newValue;
+  if (profileComplete === undefined) {
+    // Get current value and toggle
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('profile_complete')
+      .eq('uid', userId)
+      .single();
+
+    newValue = !currentUser?.profile_complete;
+  } else {
+    newValue = profileComplete;
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({
+      profile_complete: newValue,
+      updated_at: new Date().toISOString()
+    })
+    .eq('uid', userId)
+    .select('profile_complete')
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    profileComplete: data.profile_complete
+  };
+};
+
 exports.updateProfile = async (userId, updates) => {
   if (!userId) throw new Error('userId is required for updateProfile');
 
-  // Map camelCase to snake_case for database
+  // Map camelCase to snake_case for database - normalize names to Title Case
   const dbUpdates = {};
-  if (updates.firstName !== undefined) dbUpdates.first_name = updates.firstName;
-  if (updates.lastName !== undefined) dbUpdates.last_name = updates.lastName;
-  if (updates.middleName !== undefined) dbUpdates.middle_name = updates.middleName;
-  if (updates.suffix !== undefined) dbUpdates.suffix = updates.suffix;
+  if (updates.firstName !== undefined) dbUpdates.first_name = normalizeName(updates.firstName);
+  if (updates.lastName !== undefined) dbUpdates.last_name = normalizeName(updates.lastName);
+  if (updates.middleName !== undefined) dbUpdates.middle_name = normalizeName(updates.middleName);
+  if (updates.suffix !== undefined) dbUpdates.suffix = normalizeName(updates.suffix);
   if (updates.birthday !== undefined) dbUpdates.birthday = updates.birthday;
   if (updates.age !== undefined) dbUpdates.age = updates.age;
   if (updates.sex !== undefined) dbUpdates.sex = updates.sex;
@@ -421,6 +451,8 @@ exports.updateProfile = async (userId, updates) => {
   if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
   if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
   if (updates.vaccinations !== undefined) dbUpdates.vaccinations = updates.vaccinations;
+  if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
+  if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
 
   const { data, error } = await supabase
     .from('users')
@@ -463,5 +495,165 @@ exports.updateProfile = async (userId, updates) => {
     phoneNumber:          data.phone_number || '',
     emergencyContact:     data.emergency_contact || {},
     vaccinations:         data.vaccinations || {},
+    dentalHistory:        data.dental_history || {},
+  };
+};
+
+exports.adminUpdateUser = async (targetUid, updates) => {
+  if (!targetUid) throw new Error('targetUid is required for adminUpdateUser');
+
+  // Map camelCase to snake_case for database (also accept snake_case directly from frontend)
+  const dbUpdates = { updated_at: new Date().toISOString() };
+
+  // First name - normalize to Title Case
+  if (updates.firstName !== undefined) dbUpdates.first_name = normalizeName(updates.firstName);
+  else if (updates.first_name !== undefined) dbUpdates.first_name = normalizeName(updates.first_name);
+
+  // Middle name - normalize to Title Case
+  if (updates.middleName !== undefined) dbUpdates.middle_name = normalizeName(updates.middleName);
+  else if (updates.middle_name !== undefined) dbUpdates.middle_name = normalizeName(updates.middle_name);
+
+  // Last name - normalize to Title Case
+  if (updates.lastName !== undefined) dbUpdates.last_name = normalizeName(updates.lastName);
+  else if (updates.last_name !== undefined) dbUpdates.last_name = normalizeName(updates.last_name);
+
+  // Suffix
+  if (updates.suffix !== undefined) dbUpdates.suffix = updates.suffix;
+
+  // University ID
+  if (updates.universityId !== undefined) dbUpdates.university_id = updates.universityId;
+  else if (updates.university_id !== undefined) dbUpdates.university_id = updates.university_id;
+
+  // Email
+  if (updates.email !== undefined) dbUpdates.email = updates.email;
+
+  // Phone number
+  if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
+  else if (updates.phone_number !== undefined) dbUpdates.phone_number = updates.phone_number;
+
+  // Role
+  if (updates.role !== undefined) dbUpdates.role = updates.role;
+
+  // Department
+  if (updates.department !== undefined) dbUpdates.department = updates.department;
+
+  // Program
+  if (updates.program !== undefined) dbUpdates.program = updates.program;
+
+  // Job title
+  if (updates.jobTitle !== undefined) dbUpdates.job_title = updates.jobTitle;
+  else if (updates.job_title !== undefined) dbUpdates.job_title = updates.job_title;
+
+  // Birthday
+  if (updates.birthday !== undefined) dbUpdates.birthday = updates.birthday;
+
+  // Age
+  if (updates.age !== undefined) dbUpdates.age = updates.age;
+
+  // Sex
+  if (updates.sex !== undefined) dbUpdates.sex = updates.sex;
+
+  // Blood type
+  if (updates.bloodType !== undefined) dbUpdates.blood_type = updates.bloodType;
+  else if (updates.blood_type !== undefined) dbUpdates.blood_type = updates.blood_type;
+
+  // Civil status
+  if (updates.civilStatus !== undefined) dbUpdates.civil_status = updates.civilStatus;
+  else if (updates.civil_status !== undefined) dbUpdates.civil_status = updates.civil_status;
+
+  // Religion
+  if (updates.religion !== undefined) dbUpdates.religion = updates.religion;
+
+  // Nationality
+  if (updates.nationality !== undefined) dbUpdates.nationality = updates.nationality;
+
+  // Home address
+  if (updates.homeAddress !== undefined) dbUpdates.home_address = updates.homeAddress;
+  else if (updates.home_address !== undefined) dbUpdates.home_address = updates.home_address;
+
+  // Year level
+  if (updates.yearLevel !== undefined) dbUpdates.year_level = updates.yearLevel;
+  else if (updates.year_level !== undefined) dbUpdates.year_level = updates.year_level;
+
+  // Section
+  if (updates.section !== undefined) dbUpdates.section = updates.section;
+
+  // Student classification
+  if (updates.studentClassification !== undefined) dbUpdates.student_classification = updates.studentClassification;
+  else if (updates.student_classification !== undefined) dbUpdates.student_classification = updates.student_classification;
+
+  // Classification
+  if (updates.classification !== undefined) dbUpdates.classification = updates.classification;
+
+  // Is verified
+  if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
+  else if (updates.is_verified !== undefined) dbUpdates.is_verified = updates.is_verified;
+
+  // Profile complete (both camelCase and snake_case)
+  if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
+  else if (updates.profile_complete !== undefined) dbUpdates.profile_complete = updates.profile_complete;
+
+  // Emergency contact
+  if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
+
+  // Vaccinations
+  if (updates.vaccinations !== undefined) dbUpdates.vaccinations = updates.vaccinations;
+
+  // Dental history
+  if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
+
+  // Handle password update
+  if (updates.newPassword) {
+    const { data: authData, error: authError } = await supabase.auth.admin.updateUser(targetUid, {
+      password: updates.newPassword
+    });
+    if (authError) {
+      console.error('Password update error:', authError);
+      throw new Error('Failed to update password: ' + authError.message);
+    }
+    console.log('[adminUpdateUser] Password updated successfully');
+  }
+
+  console.log('[adminUpdateUser] targetUid:', targetUid);
+  console.log('[adminUpdateUser] dbUpdates:', dbUpdates);
+
+  const { data, error } = await supabase
+    .from('users')
+    .update(dbUpdates)
+    .eq('uid', targetUid)
+    .select()
+    .single();
+
+  console.log('[adminUpdateUser] Result - data:', data, 'error:', error);
+
+  if (error) {
+    console.error('Admin update error:', error);
+    throw new Error(error.message);
+  }
+
+  return {
+    uid:                  data.uid,
+    firstName:            data.first_name,
+    lastName:             data.last_name,
+    middleName:        data.middle_name || '',
+    suffix:               data.suffix || '',
+    email:                data.email,
+    role:                 data.role,
+    universityId:         data.university_id,
+    isVerified:           data.is_verified,
+    profileComplete:      data.profile_complete,
+    birthday:             data.birthday || '',
+    age:                  data.age || '',
+    sex:                  data.sex || '',
+    bloodType:            data.blood_type || '',
+    homeAddress:          data.home_address || '',
+    department:           data.department || '',
+    program:              data.program || '',
+    yearLevel:            data.year_level || '',
+    section:              data.section || '',
+    studentClassification: data.student_classification || '',
+    classification:       data.classification || '',
+    jobTitle:             data.job_title || '',
+    phoneNumber:          data.phone_number || '',
   };
 };

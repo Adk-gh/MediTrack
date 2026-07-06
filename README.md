@@ -36,8 +36,8 @@ MediTrack is designed to streamline the management of student health records in 
 
 * **Runtime**: Node.js
 * **Framework**: Express.js
-* **Database**: Firebase Firestore (primary), SQLite (offline mode)
-* **Authentication**: Firebase Auth + JWT
+* **Database**: Supabase PostgreSQL (primary), SQLite (offline mode)
+* **Authentication**: Supabase Auth + JWT
 * **Validation**: Zod
 
 ### OCR Service
@@ -60,7 +60,7 @@ MediTrack is designed to streamline the management of student health records in 
 * **Testing**: Jest (JS), PyTest (Python)
 * **Packaging**: Electron Builder, Capacitor CLI
 * **Version Control**: Git + GitHub
-* **CI/CD**: GitHub Actions, Firebase CI
+* **CI/CD**: GitHub Actions, Supabase CLI
 
 ***
 
@@ -74,8 +74,8 @@ MediTrack is designed to streamline the management of student health records in 
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐               │
-│  │   Frontend  │────▶│  Node.js    │────▶│  Firebase   │               │
-│  │   (React)   │◀────│   Backend   │◀────│  Firestore   │               │
+│  │   Frontend  │────▶│  Node.js    │────▶│  Supabase   │               │
+│  │   (React)   │◀────│   Backend   │◀────│  PostgreSQL  │               │
 │  └─────────────┘     └─────────────┘     └─────────────┘               │
 │         │                   │                   │                        │
 │         │                   │                   │                        │
@@ -97,8 +97,8 @@ MediTrack is designed to streamline the management of student health records in 
 
 ### Authentication Flow
 
-1. **Registration**: Email/password + student ID image → OCR verification → Firebase Auth + Firestore
-2. **Login**: Firebase Auth REST API → JWT token returned
+1. **Registration**: Email/password + student ID image → OCR verification → Supabase Auth
+2. **Login**: Email/password → JWT token returned
 3. **Protected Routes**: Use `authorized` middleware for JWT verification
 
 ***
@@ -117,7 +117,7 @@ MediTrack/
 │       └── venv_ocr/           # Python virtual environment
 │
 ├── configs/                    # Configuration files
-│   ├── firebase-admin.js       # Firebase Admin SDK
+│   ├── supabase.js            # Supabase Client
 │   ├── cors.js                 # CORS configuration
 │   └── token.js                # Token management
 │
@@ -197,7 +197,7 @@ MediTrack/
 ### User Features
 
 * **Registration**: Email/password with student ID OCR verification
-* **Login**: Email/password or Firebase OAuth (Google/Facebook)
+* **Login**: Email/password (Supabase Auth)
 * **Profile Management**: View and update health profiles
 * **Medical History**: View personal medical records and logs
 
@@ -227,7 +227,7 @@ MediTrack/
 | POST   | `/api/auth/login`          | Login with email/password             | No       |
 | POST   | `/api/users/register`      | Register with email/password          | No       |
 | POST   | `/api/users/login`         | Login with email/password             | No       |
-| POST   | `/api/users/firebase-auth` | Firebase OAuth login                  | No       |
+| POST   | `/api/users/firebase-auth` | (deprecated)                          | No       |
 | GET    | `/api/users/profile`       | Get user profile                      | Required |
 
 ### Health Records
@@ -284,8 +284,8 @@ MediTrack/
 
 * Node.js 18+
 * Python 3.8+
-* MongoDB (optional, using Firebase)
-* Firebase Project
+* MongoDB (optional)
+* Supabase Project
 
 ### 1. Clone the Repository
 
@@ -365,13 +365,12 @@ CLIENT_URL=http://localhost:3000
 OCR_SERVICE_URL=http://localhost:5001
 PORT=5000
 
-# Firebase (create in Firebase Console)
-FIREBASE_API_KEY=your_firebase_web_api_key
-FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_PRIVATE_KEY=your_private_key
-FIREBASE_CLIENT_EMAIL=your_client_email
+# Supabase (create in Supabase Dashboard)
+supabaseUrl=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_KEY=your_service_key
 
-# Database (optional - using Firebase Firestore)
+# Database (optional - using Supabase)
 MONGO_URI=mongodb://localhost:27017/meditrack
 ```
 
@@ -379,8 +378,8 @@ MONGO_URI=mongodb://localhost:27017/meditrack
 
 ```env
 VITE_API_URL=http://localhost:5000/api
-VITE_FIREBASE_API_KEY=your_firebase_web_api_key
-VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
 ```
 
 ***
@@ -393,7 +392,7 @@ The project uses **Zod** for validation in both backend and frontend.
 
 Located in `features/*/validation.js`:
 
-* `user.validation.js` - Register, login, firebase auth
+* `user.validation.js` - Register, login validation
 * `records.validation.js` - Create, update records
 * `appointments.validation.js` - Create, update appointments
 * `examinations.validation.js` - Create, update examinations

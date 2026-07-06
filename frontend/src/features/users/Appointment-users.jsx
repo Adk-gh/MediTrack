@@ -154,17 +154,23 @@ export default function AppointmentUsers() {
 
   // ── Fetch appointments — extracted so PTR can call it directly ────────────
   const fetchAppointments = useCallback(async () => {
-    if (!currentPatient?.uid) return;
+    if (!currentPatient?.uid) {
+      console.log('[AppointmentUsers] No uid in currentPatient');
+      return;
+    }
     try {
       setLoadingAppts(true);
+      console.log('[AppointmentUsers] Fetching appointments for:', currentPatient.uid);
       const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
         headers: {
           'Authorization': `Bearer ${currentPatient.token}`,
           'x-user-uid':    currentPatient.uid,
         },
       });
+      console.log('[AppointmentUsers] Response:', response.data);
       if (response.data.success) {
         setMyAppointments(response.data.data);
+        console.log('[AppointmentUsers] Got appointments:', response.data.data?.length);
       }
     } catch (err) {
       console.error('[AppointmentUsers] Fetch error:', err);

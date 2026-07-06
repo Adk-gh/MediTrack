@@ -16,8 +16,4 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-const firebaseAuthSchema = z.object({
-  idToken: z.string().min(1, "ID token is required"),
-});
-
-module.exports = { registerSchema, loginSchema, firebaseAuthSchema };
+module.exports = { registerSchema, loginSchema };

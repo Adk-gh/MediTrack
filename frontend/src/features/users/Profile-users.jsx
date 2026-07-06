@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
+import AddressModal from '../../components/AddressModal.jsx';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -31,10 +32,17 @@ const SettingsGearIcon = () => (
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (val) => (!val || val === '') ? '—' : val;
 
-const SectionHeader = ({ label, onEdit }) => (
+const SectionHeader = ({ label, onEdit, hasEmpty }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: '#466460', borderLeft: '3px solid #466460', paddingLeft: 8 }}>
-      {label}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, color: hasEmpty ? '#92400e' : '#466460', borderLeft: `3px solid ${hasEmpty ? '#f59e0b' : '#466460'}`, paddingLeft: 8 }}>
+        {label}
+      </div>
+      {hasEmpty && (
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#92400e', backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: 10 }}>
+          INCOMPLETE
+        </span>
+      )}
     </div>
     {onEdit && (
       <button onClick={onEdit} style={{ background: 'none', border: 'none', color: '#466460', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6, backgroundColor: '#e0eceb' }}>
@@ -44,10 +52,10 @@ const SectionHeader = ({ label, onEdit }) => (
   </div>
 );
 
-const InfoRow = ({ label, value, last }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: last ? 'none' : '1px solid #edf3f0' }}>
+const InfoRow = ({ label, value, last, empty }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: last ? 'none' : '1px solid #edf3f0', backgroundColor: empty ? '#fffbeb' : 'transparent', marginLeft: empty ? -16 : 0, marginRight: empty ? -16 : 0, paddingLeft: empty ? 16 : 0, paddingRight: empty ? 16 : 0, borderRadius: empty ? '8px' : 0 }}>
     <span style={{ fontWeight: 600, fontSize: 12, color: '#6b8577', flexShrink: 0, marginRight: 12 }}>{label}</span>
-    <span style={{ fontWeight: 600, fontSize: 13, color: '#1a2e22', textAlign: 'right' }}>{fmt(value)}</span>
+    <span style={{ fontWeight: 600, fontSize: 13, color: empty ? '#92400e' : '#1a2e22', textAlign: 'right' }}>{fmt(value)}</span>
   </div>
 );
 
@@ -78,6 +86,35 @@ const inputStyle = {
 };
 
 const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
+
+const RELIGIONS = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'];
+const NATIONALITIES = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
+const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
+const EMERGENCY_RELATIONSHIPS = ['Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent', 'Relative', 'Guardian', 'Friend', 'Other'];
+const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+const VACCINE_BRANDS = ['Pfizer', 'Moderna', 'AstraZeneca', 'Sinovac', 'Janssen', 'Novavax', 'Covaxin', 'Sputnik', 'Other'];
+const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
+
+// Department and Program data (same as ProfileSetup)
+const DEPARTMENTS_DATA = [
+  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['BS in Information Technology', 'BS in Information System', 'BS in Computer Engineering', 'BS in Industrial Engineering'] },
+  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['BS in Entrepreneurship', 'BS in Public Administration', 'BS in Office Administration', 'BS in Business Administration (HRDM)', 'BS in Business Administration (FM)', 'BS in Business Administration (MM)'] },
+  { abbr: 'CAS', full: 'College of Art and Sciences', programs: ['BS in Economics', 'AB in Communication', 'BS in Psychology', 'AB in Political Science'] },
+  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['BS in Tourism Management', 'BS in Hospitality Management'] },
+  { abbr: 'COA', full: 'College of Accountancy', programs: ['BS in Accountancy', 'BS in Accountancy Information System', 'BS in Management Accounting'] },
+  { abbr: 'CTE', full: 'College of Teacher Education', programs: ['BSEd Major in English', 'BSEd Major in Filipino', 'BSEd Major in Math', 'BSEd Major in Science', 'BSEd Major in Social Studies', 'BEED', 'BTVTEd', 'BSNEd'] },
+  { abbr: 'CHK', full: 'College of Human Kinetics', programs: ['BS in Physical Education', 'BS in Sports Science'] },
+  { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['BS in Nursing'] },
+];
+const DEPT_ABBR_TO_FULL = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.full]));
+const PROGRAMS_BY_DEPT = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.programs]));
+const DEPARTMENTS = DEPARTMENTS_DATA.map(d => d.abbr);
+const ALL_PROGRAMS = [...new Set(DEPARTMENTS_DATA.flatMap(d => d.programs))];
+const getProgramsByDept = (deptAbbr) => PROGRAMS_BY_DEPT[deptAbbr] || [];
+
+const NON_ACADEMIC_OFFICES = ['Accounting Office', 'University Clinic', 'Human Resources', 'Library', 'Maintenance', 'Registrar Office', 'Security Services'];
+const PLSP_OFFICES = [...DEPARTMENTS, ...NON_ACADEMIC_OFFICES];
 
 const classificationColors = {
   Regular:   { bg: '#e0eceb', text: '#466460', dot: '#466460' },
@@ -190,12 +227,14 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
     dose2:    { vaccineName: profileData.vaccinations?.dose2?.vaccineName    || '', date: profileData.vaccinations?.dose2?.date    || '' },
     booster1: { vaccineName: profileData.vaccinations?.booster1?.vaccineName || '', date: profileData.vaccinations?.booster1?.date || '' },
     booster2: { vaccineName: profileData.vaccinations?.booster2?.vaccineName || '', date: profileData.vaccinations?.booster2?.date || '' },
+    declined: typeof profileData.vaccinations?.declined === 'object' ? profileData.vaccinations?.declined : (profileData.vaccinations?.declined ? { dose1: true, dose2: true, booster1: true, booster2: true } : { dose1: false, dose2: false, booster1: false, booster2: false }),
   },
   dentalHistory: {
     lastVisit:   profileData.dental_history?.lastVisit   || '',
     prevDentist: profileData.dental_history?.prevDentist || '',
     physician:   profileData.dental_history?.physician   || '',
     procedures:  profileData.dental_history?.procedures  || {},
+    declined:    profileData.dental_history?.declined    || false,
   },
 });
 
@@ -210,6 +249,13 @@ export default function ProfileUsers({ onLogout }) {
   const [editingSection, setEditingSection] = useState(null);
   const [editData, setEditData]             = useState({});
   const [isSaving, setIsSaving]             = useState(false);
+  const [dentalDeclined, setDentalDeclined] = useState(false);
+  const [vaccinationsDeclined, setVaccinationsDeclined] = useState({ dose1: false, dose2: false, booster1: false, booster2: false });
+  const [selectedEditDept, setSelectedEditDept] = useState('');
+
+  // Address modal states
+  const [addressModal, setAddressModal] = useState({ type: null, isOpen: false });
+  const [addressInitialData, setAddressInitialData] = useState({});
 
   const [xrayDate, setXrayDate]           = useState('April 22, 2026');
   const [xrayFile, setXrayFile]           = useState('X-ray_Report_2026.pdf');
@@ -239,9 +285,11 @@ export default function ProfileUsers({ onLogout }) {
       dose2:    { vaccineName: '', date: '' },
       booster1: { vaccineName: '', date: '' },
       booster2: { vaccineName: '', date: '' },
+      declined: { dose1: false, dose2: false, booster1: false, booster2: false },
     },
     dentalHistory: {
       lastVisit: '', prevDentist: '', physician: '',
+      declined: false,
       procedures: {}
     }
   });
@@ -304,6 +352,36 @@ export default function ProfileUsers({ onLogout }) {
 
   const isStudent = profile.role?.toLowerCase() === 'student';
 
+  // ── Check for empty fields in each section ─────────────────────────────────
+  const isFieldEmpty = (value) => !value || value === '';
+
+  const personalFields = [
+    profile.birthday, profile.age, profile.sex, profile.bloodType,
+    profile.civilStatus, profile.religion, profile.nationality, profile.homeAddress
+  ];
+  const hasEmptyPersonal = personalFields.some(isFieldEmpty);
+
+  const academicFields = isStudent
+    ? [profile.universityId || profile.studentId, profile.department, profile.program, profile.yearLevel, profile.section, profile.studentClassification]
+    : [profile.classification, profile.department, profile.jobTitle];
+  const hasEmptyAcademic = academicFields.some(isFieldEmpty);
+
+  const contactFields = [profile.email, profile.phoneNumber];
+  const hasEmptyContact = contactFields.some(isFieldEmpty);
+
+  const emergencyFields = [profile.emergencyContact?.name, profile.emergencyContact?.relationship, profile.emergencyContact?.phone, profile.emergencyContact?.address];
+  const hasEmptyEmergency = emergencyFields.some(isFieldEmpty);
+
+  const vaccinationFields = Object.values(profile.vaccinations || {});
+  const hasEmptyVaccinations =
+    (!profile.vaccinations?.declined?.dose1 && !profile.vaccinations?.dose1?.vaccineName && !profile.vaccinations?.dose1?.date) ||
+    (!profile.vaccinations?.declined?.dose2 && !profile.vaccinations?.dose2?.vaccineName && !profile.vaccinations?.dose2?.date) ||
+    (!profile.vaccinations?.declined?.booster1 && !profile.vaccinations?.booster1?.vaccineName && !profile.vaccinations?.booster1?.date) ||
+    (!profile.vaccinations?.declined?.booster2 && !profile.vaccinations?.booster2?.vaccineName && !profile.vaccinations?.booster2?.date);
+
+  const dentalFields = [profile.dentalHistory?.lastVisit, profile.dentalHistory?.prevDentist, profile.dentalHistory?.physician];
+  const hasEmptyDental = !profile.dentalHistory?.declined && dentalFields.every(isFieldEmpty);
+
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
@@ -314,8 +392,47 @@ export default function ProfileUsers({ onLogout }) {
   };
 
   // ── Editing Handlers ─────────────────────────────────────────────────────
-  const openEdit   = (section) => { setEditData(JSON.parse(JSON.stringify(profile))); setEditingSection(section); };
-  const closeEdit  = ()        => { setEditingSection(null); setEditData({}); };
+  const openEdit   = (section) => {
+    setEditData(JSON.parse(JSON.stringify(profile)));
+    setEditingSection(section);
+    // Initialize declined states from profile
+    setDentalDeclined(profile.dentalHistory?.declined || false);
+    setVaccinationsDeclined(profile.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false });
+    // Set initial department for program filtering
+    if (section === 'academic') {
+      const currentDept = profile.department;
+      // Find department abbreviation from full name
+      const deptAbbr = Object.entries(DEPT_ABBR_TO_FULL).find(([abbr, full]) => full === currentDept)?.[0] || '';
+      setSelectedEditDept(deptAbbr);
+    }
+  };
+  const closeEdit  = ()        => { setEditingSection(null); setEditData({}); setSelectedEditDept(''); };
+
+  // ── Address Modal Handlers ─────────────────────────────────────────────────
+  const openAddressModal = (type) => {
+    const initialData = type === 'personal'
+      ? { addressStreet: editData.homeAddress || '' }
+      : { addressStreet: editData.emergencyContact?.address || '' };
+    setAddressInitialData(initialData);
+    setAddressModal({ type, isOpen: true });
+  };
+
+  const closeAddressModal = () => {
+    setAddressModal({ type: null, isOpen: false });
+    setAddressInitialData({});
+  };
+
+  const handleAddressConfirm = (addressData) => {
+    if (addressModal.type === 'personal') {
+      setEditData(prev => ({ ...prev, homeAddress: addressData.homeAddress }));
+    } else if (addressModal.type === 'emergency') {
+      setEditData(prev => ({
+        ...prev,
+        emergencyContact: { ...prev.emergencyContact, address: addressData.homeAddress }
+      }));
+    }
+    closeAddressModal();
+  };
 
   const handleChange           = (field, value)        => setEditData(prev => ({ ...prev, [field]: value }));
   const handleNestedChange     = (parent, field, value) => setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
@@ -323,22 +440,101 @@ export default function ProfileUsers({ onLogout }) {
   const handleDentalChange     = (field, value)        => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, [field]: value } }));
   const handleDentalProcChange = (proc, value)         => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, procedures: { ...(prev.dentalHistory.procedures || {}), [proc]: value } } }));
 
+  // ── Section-to-field mapper ─────────────────────────────────────────────────
+  const getSectionFields = (section, isStudentUser) => {
+    const sectionFields = {
+      personal: [
+        'firstName', 'middleName', 'lastName', 'suffix',
+        'birthday', 'age', 'sex', 'bloodType',
+        'civilStatus', 'religion', 'nationality', 'homeAddress'
+      ],
+      academic: isStudentUser
+        ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification']
+        : ['classification', 'department', 'jobTitle'],
+      contact: ['email', 'phoneNumber'],
+      emergency: ['emergencyContact'],
+      vaccinations: ['vaccinations'],
+      dental: ['dentalHistory'],
+    };
+    return sectionFields[section] || [];
+  };
+
+  // ── Extract only the fields for the section being edited ────────────────────
+  const extractSectionData = (editData, section, isStudentUser) => {
+    const fields = getSectionFields(section, isStudentUser);
+    const sectionData = {};
+
+    fields.forEach(field => {
+      // Handle nested objects (emergencyContact, vaccinations, dentalHistory)
+      if (editData[field] && typeof editData[field] === 'object' && !Array.isArray(editData[field])) {
+        sectionData[field] = editData[field];
+      } else {
+        // Flat fields - send as camelCase (backend handles snake_case conversion)
+        sectionData[field] = editData[field];
+      }
+    });
+
+    return sectionData;
+  };
+
   const saveProfileEdits = async () => {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token');
+
+      // Only send the fields for the section being edited
+      const sectionData = extractSectionData(editData, editingSection, isStudent);
+
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(editData),
+        body: JSON.stringify(sectionData),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to update profile');
 
-      setProfile(mapDbToProfile(data.data, profile.email));
+      // Merge the updated section data with existing profile
+      const updatedProfile = { ...profile };
+
+      // Map database field names back to component field names
+      const fieldReverseMap = {
+        first_name: 'firstName',
+        middle_name: 'middleName',
+        last_name: 'lastName',
+        suffix: 'suffix',
+        birthday: 'birthday',
+        age: 'age',
+        sex: 'sex',
+        blood_type: 'bloodType',
+        civil_status: 'civilStatus',
+        religion: 'religion',
+        nationality: 'nationality',
+        home_address: 'homeAddress',
+        university_id: 'universityId',
+        department: 'department',
+        program: 'program',
+        year_level: 'yearLevel',
+        section: 'section',
+        student_classification: 'studentClassification',
+        classification: 'classification',
+        job_title: 'jobTitle',
+        email: 'email',
+        phone_number: 'phoneNumber',
+      };
+
+      // Apply the returned data to the profile (API returns camelCase)
+      Object.keys(data.data).forEach(key => {
+        if (key === 'emergencyContact' || key === 'vaccinations' || key === 'dentalHistory') {
+          updatedProfile[key] = data.data[key];
+        } else {
+          updatedProfile[key] = data.data[key];
+        }
+      });
+
+      setProfile(updatedProfile);
 
       showToast('Profile updated successfully!');
       closeEdit();
@@ -438,33 +634,33 @@ export default function ProfileUsers({ onLogout }) {
 
       {/* ── Personal Information ── */}
       <Card>
-        <SectionHeader label="Personal Information" onEdit={() => openEdit('personal')} />
-        <InfoRow label="Birthday"     value={profile.birthday} />
-        <InfoRow label="Age"          value={profile.age} />
-        <InfoRow label="Sex"          value={profile.sex} />
-        <InfoRow label="Blood Type"   value={profile.bloodType} />
-        <InfoRow label="Civil Status" value={profile.civilStatus} />
-        <InfoRow label="Religion"     value={profile.religion} />
-        <InfoRow label="Nationality"  value={profile.nationality} />
-        <InfoRow label="Home Address" value={profile.homeAddress} last />
+        <SectionHeader label="Personal Information" onEdit={() => openEdit('personal')} hasEmpty={hasEmptyPersonal} />
+        <InfoRow label="Birthday"     value={profile.birthday}     empty={isFieldEmpty(profile.birthday)} />
+        <InfoRow label="Age"          value={profile.age}          empty={isFieldEmpty(profile.age)} />
+        <InfoRow label="Sex"          value={profile.sex}          empty={isFieldEmpty(profile.sex)} />
+        <InfoRow label="Blood Type"   value={profile.bloodType}   empty={isFieldEmpty(profile.bloodType)} />
+        <InfoRow label="Civil Status" value={profile.civilStatus} empty={isFieldEmpty(profile.civilStatus)} />
+        <InfoRow label="Religion"     value={profile.religion}     empty={isFieldEmpty(profile.religion)} />
+        <InfoRow label="Nationality"  value={profile.nationality}  empty={isFieldEmpty(profile.nationality)} />
+        <InfoRow label="Home Address" value={profile.homeAddress} empty={isFieldEmpty(profile.homeAddress)} last />
       </Card>
 
       {/* ── Academic / Work Info ── */}
       <Card>
-        <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} />
+        <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} hasEmpty={hasEmptyAcademic} />
         {isStudent ? (
           <>
-            <InfoRow label="Student No."    value={profile.universityId || profile.studentId} />
-            <InfoRow label="Department"     value={profile.department} />
-            <InfoRow label="Program"        value={profile.program} />
-            <InfoRow label="Year Level"     value={profile.yearLevel} />
-            <InfoRow label="Section"        value={profile.section} />
-            <InfoRow label="Classification" value={profile.studentClassification} last />
+            <InfoRow label="Student No."    value={profile.universityId || profile.studentId} empty={isFieldEmpty(profile.universityId || profile.studentId)} />
+            <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
+            <InfoRow label="Program"        value={profile.program} empty={isFieldEmpty(profile.program)} />
+            <InfoRow label="Year Level"     value={profile.yearLevel} empty={isFieldEmpty(profile.yearLevel)} />
+            <InfoRow label="Section"        value={profile.section} empty={isFieldEmpty(profile.section)} />
+            <InfoRow label="Classification" value={profile.studentClassification} empty={isFieldEmpty(profile.studentClassification)} last />
           </>
         ) : (
           <>
-            <InfoRow label="Classification" value={profile.classification} />
-            <InfoRow label="Department"     value={profile.department} />
+            <InfoRow label="Classification" value={profile.classification} empty={isFieldEmpty(profile.classification)} />
+            <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
             <InfoRow label="Job Title"      value={profile.jobTitle} last />
           </>
         )}
@@ -472,41 +668,43 @@ export default function ProfileUsers({ onLogout }) {
 
       {/* ── Contact Details ── */}
       <Card>
-        <SectionHeader label="Contact Details" onEdit={() => openEdit('contact')} />
-        <InfoRow label="Email Address" value={profile.email} />
-        <InfoRow label="Phone Number"  value={profile.phoneNumber} last />
+        <SectionHeader label="Contact Details" onEdit={() => openEdit('contact')} hasEmpty={hasEmptyContact} />
+        <InfoRow label="Email Address" value={profile.email} empty={isFieldEmpty(profile.email)} />
+        <InfoRow label="Phone Number"  value={profile.phoneNumber} empty={isFieldEmpty(profile.phoneNumber)} last />
       </Card>
 
       {/* ── Emergency Contact ── */}
       <Card>
-        <SectionHeader label="Emergency Contact" onEdit={() => openEdit('emergency')} />
-        <InfoRow label="Name"         value={profile.emergencyContact.name} />
-        <InfoRow label="Relationship" value={profile.emergencyContact.relationship} />
-        <InfoRow label="Phone"        value={profile.emergencyContact.phone} />
-        <InfoRow label="Address"      value={profile.emergencyContact.address} last />
+        <SectionHeader label="Emergency Contact" onEdit={() => openEdit('emergency')} hasEmpty={hasEmptyEmergency} />
+        <InfoRow label="Name"         value={profile.emergencyContact.name}         empty={isFieldEmpty(profile.emergencyContact?.name)} />
+        <InfoRow label="Relationship" value={profile.emergencyContact.relationship} empty={isFieldEmpty(profile.emergencyContact?.relationship)} />
+        <InfoRow label="Phone"        value={profile.emergencyContact.phone}        empty={isFieldEmpty(profile.emergencyContact?.phone)} />
+        <InfoRow label="Address"      value={profile.emergencyContact.address}      empty={isFieldEmpty(profile.emergencyContact?.address)} last />
       </Card>
 
       {/* ── COVID-19 Vaccination History ── */}
       <Card>
-        <SectionHeader label="COVID-19 Vaccination History" onEdit={() => openEdit('vaccinations')} />
+        <SectionHeader label="COVID-19 Vaccination History" onEdit={() => openEdit('vaccinations')} hasEmpty={hasEmptyVaccinations} />
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #edf3f0' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Dose</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Vaccine Brand</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase', textAlign: 'right' }}>Date Given</span>
         </div>
         {DOSE_LABELS.map(({ key, label }, i) => {
-          const v = profile.vaccinations[key];
-          const isEmpty = !v.vaccineName && !v.date;
+          const v = profile.vaccinations?.[key];
+          const isDeclined = profile.vaccinations?.declined?.[key];
+          const doseEmpty = !v?.vaccineName && !v?.date;
+          const showEmpty = !isDeclined && doseEmpty;
           return (
-            <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #edf3f0' : 'none', alignItems: 'center' }}>
+            <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #edf3f0' : 'none', alignItems: 'center', backgroundColor: isDeclined ? '#e0eceb' : (showEmpty ? '#fffbeb' : 'transparent'), marginLeft: isDeclined || showEmpty ? -16 : 0, marginRight: isDeclined || showEmpty ? -16 : 0, paddingLeft: isDeclined || showEmpty ? 16 : 0, paddingRight: isDeclined || showEmpty ? 16 : 0, borderRadius: (isDeclined || showEmpty) ? '8px' : 0 }}>
               <span style={{ background: '#e0eceb', color: '#466460', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, textAlign: 'center', width: 'fit-content' }}>
                 {label}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: isEmpty ? '#c4dbd8' : '#1a2e22' }}>
-                {isEmpty ? 'Not recorded' : fmt(v.vaccineName)}
+              <span style={{ fontSize: 12, fontWeight: 600, color: isDeclined ? '#466460' : (showEmpty ? '#92400e' : '#1a2e22') }}>
+                {isDeclined ? 'N/A' : (doseEmpty ? 'Not recorded' : fmt(v?.vaccineName))}
               </span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isEmpty ? '#c4dbd8' : '#6b8577', textAlign: 'right' }}>
-                {isEmpty ? '—' : fmt(v.date)}
+              <span style={{ fontSize: 11, fontWeight: 600, color: isDeclined ? '#466460' : (showEmpty ? '#92400e' : '#6b8577'), textAlign: 'right' }}>
+                {isDeclined ? '' : (doseEmpty ? '—' : fmt(v?.date))}
               </span>
             </div>
           );
@@ -515,10 +713,18 @@ export default function ProfileUsers({ onLogout }) {
 
       {/* ── Dental History ── */}
       <Card>
-        <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} />
-        <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} />
-        <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} />
-        <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} last />
+        <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} hasEmpty={hasEmptyDental} />
+        {profile.dentalHistory?.declined ? (
+          <div style={{ padding: '12px 16px', background: '#e0eceb', borderRadius: 10, marginTop: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#466460' }}>No dental history / Not applicable</span>
+          </div>
+        ) : (
+        <>
+        <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} empty={isFieldEmpty(profile.dentalHistory?.lastVisit)} />
+        <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} empty={isFieldEmpty(profile.dentalHistory?.prevDentist)} />
+        <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} empty={isFieldEmpty(profile.dentalHistory?.physician)} last />
+        </>
+        )}
       </Card>
 
       {/* ── Health Documents ── */}
@@ -635,18 +841,39 @@ export default function ProfileUsers({ onLogout }) {
                   </div>
                   <FormGroup label="Civil Status">
                     <select style={inputStyle} value={editData.civilStatus} onChange={e => handleChange('civilStatus', e.target.value)}>
-                      <option value="">Select</option><option value="Single">Single</option>
-                      <option value="Married">Married</option><option value="Widowed">Widowed</option>
+                      <option value="">Select</option>
+                      {CIVIL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </FormGroup>
                   <FormGroup label="Religion">
-                    <input style={inputStyle} value={editData.religion} onChange={e => handleChange('religion', e.target.value)} />
+                    <select style={inputStyle} value={editData.religion} onChange={e => handleChange('religion', e.target.value)}>
+                      <option value="">Select</option>
+                      {RELIGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
                   </FormGroup>
                   <FormGroup label="Nationality">
-                    <input style={inputStyle} value={editData.nationality} onChange={e => handleChange('nationality', e.target.value)} />
+                    <select style={inputStyle} value={editData.nationality} onChange={e => handleChange('nationality', e.target.value)}>
+                      <option value="">Select</option>
+                      {NATIONALITIES.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
                   </FormGroup>
                   <FormGroup label="Home Address">
-                    <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        style={{ ...inputStyle, flex: 1 }}
+                        value={editData.homeAddress}
+                        onChange={e => handleChange('homeAddress', e.target.value)}
+                        placeholder="Click to select address"
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        onClick={() => openAddressModal('personal')}
+                        style={{ padding: '12px 16px', background: '#466460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Select
+                      </button>
+                    </div>
                   </FormGroup>
                 </>
               )}
@@ -658,17 +885,48 @@ export default function ProfileUsers({ onLogout }) {
                     <input style={inputStyle} value={editData.universityId || editData.studentId} onChange={e => handleChange('universityId', e.target.value)} />
                   </FormGroup>
                   <FormGroup label="Department">
-                    <input style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)} />
+                    <select
+                      style={inputStyle}
+                      value={editData.department}
+                      onChange={(e) => {
+                        const selectedValue = e.target.value;
+                        handleChange('department', selectedValue);
+                        // Find abbreviation and update program filter
+                        const deptAbbr = Object.entries(DEPT_ABBR_TO_FULL).find(([abbr, full]) => full === selectedValue)?.[0] || '';
+                        setSelectedEditDept(deptAbbr);
+                        // Reset program if department changed
+                        if (!selectedValue || !PROGRAMS_BY_DEPT[deptAbbr]?.includes(editData.program)) {
+                          handleChange('program', '');
+                        }
+                      }}
+                    >
+                      <option value="">Select</option>
+                      {DEPARTMENTS.map(d => <option key={d} value={DEPT_ABBR_TO_FULL[d]}>{DEPT_ABBR_TO_FULL[d]}</option>)}
+                    </select>
                   </FormGroup>
                   <FormGroup label="Program">
-                    <input style={inputStyle} value={editData.program} onChange={e => handleChange('program', e.target.value)} />
+                    <select
+                      style={inputStyle}
+                      value={editData.program}
+                      onChange={e => handleChange('program', e.target.value)}
+                      disabled={!selectedEditDept}
+                    >
+                      <option value="">{!selectedEditDept ? 'Select department first' : 'Select'}</option>
+                      {selectedEditDept && getProgramsByDept(selectedEditDept).map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
                   </FormGroup>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Year Level">
-                      <input style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)} />
+                      <select style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)}>
+                        <option value="">Select</option>
+                        {YEAR_LEVELS.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
                     </FormGroup>
                     <FormGroup label="Section">
-                      <input style={inputStyle} value={editData.section} onChange={e => handleChange('section', e.target.value)} />
+                      <select style={inputStyle} value={editData.section} onChange={e => handleChange('section', e.target.value)}>
+                        <option value="">Select</option>
+                        {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </FormGroup>
                   </div>
                   <FormGroup label="Student Classification">
@@ -703,8 +961,18 @@ export default function ProfileUsers({ onLogout }) {
               {/* ── Academic Section (Staff) ── */}
               {editingSection === 'academic' && !isStudent && (
                 <>
-                  <FormGroup label="Classification"><input style={inputStyle} value={editData.classification} onChange={e => handleChange('classification', e.target.value)} /></FormGroup>
-                  <FormGroup label="Department"><input style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)} /></FormGroup>
+                  <FormGroup label="Classification">
+                    <select style={inputStyle} value={editData.classification} onChange={e => handleChange('classification', e.target.value)}>
+                      <option value="">Select</option>
+                      {['Faculty', 'Admin', 'Staff', 'Nurse', 'Doctor'].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </FormGroup>
+                  <FormGroup label="Department">
+                    <select style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)}>
+                      <option value="">Select</option>
+                      {DEPARTMENTS.map(d => <option key={d} value={DEPT_ABBR_TO_FULL[d]}>{DEPT_ABBR_TO_FULL[d]}</option>)}
+                    </select>
+                  </FormGroup>
                   <FormGroup label="Job Title"><input style={inputStyle} value={editData.jobTitle} onChange={e => handleChange('jobTitle', e.target.value)} /></FormGroup>
                 </>
               )}
@@ -726,32 +994,99 @@ export default function ProfileUsers({ onLogout }) {
               {editingSection === 'emergency' && (
                 <>
                   <FormGroup label="Contact Name"><input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', e.target.value)} /></FormGroup>
-                  <FormGroup label="Relationship"><input style={inputStyle} value={editData.emergencyContact.relationship} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)} /></FormGroup>
+                  <FormGroup label="Relationship">
+                    <select style={inputStyle} value={editData.emergencyContact.relationship} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)}>
+                      <option value="">Select</option>
+                      {EMERGENCY_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </FormGroup>
                   <FormGroup label="Phone Number"><input style={inputStyle} value={editData.emergencyContact.phone} onChange={e => handleNestedChange('emergencyContact', 'phone', e.target.value)} /></FormGroup>
-                  <FormGroup label="Address"><textarea style={{ ...inputStyle, minHeight: 80 }} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} /></FormGroup>
+                  <FormGroup label="Address">
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        style={{ ...inputStyle, flex: 1 }}
+                        value={editData.emergencyContact?.address}
+                        onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)}
+                        placeholder="Click to select address"
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        onClick={() => openAddressModal('emergency')}
+                        style={{ padding: '12px 16px', background: '#466460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Select
+                      </button>
+                    </div>
+                  </FormGroup>
                 </>
               )}
 
               {/* ── Vaccinations Section ── */}
               {editingSection === 'vaccinations' && (
                 <>
-                  {DOSE_LABELS.map(({ key, label }) => (
-                    <div key={key} style={{ background: '#f4f7f5', padding: 16, borderRadius: 12, marginBottom: 16, border: '1px solid #edf3f0' }}>
-                      <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
-                      <FormGroup label="Vaccine Brand">
-                        <input style={{...inputStyle, backgroundColor: '#fff'}} value={editData.vaccinations[key].vaccineName} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)} placeholder="e.g. Pfizer, Moderna" />
-                      </FormGroup>
-                      <FormGroup label="Date Given">
-                        <DatePicker value={editData.vaccinations[key].date || ''} onChange={val => handleVaxChange(key, 'date', val)} />
-                      </FormGroup>
-                    </div>
-                  ))}
+                  {DOSE_LABELS.map(({ key, label }) => {
+                    const isDeclined = vaccinationsDeclined[key];
+                    return (
+                      <div key={key} style={{ background: isDeclined ? '#fef3c7' : '#f4f7f5', padding: 16, borderRadius: 12, marginBottom: 16, border: isDeclined ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={isDeclined}
+                              onChange={(e) => {
+                                setVaccinationsDeclined(prev => ({ ...prev, [key]: e.target.checked }));
+                                setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, declined: { ...(prev.vaccinations?.declined || {}), [key]: e.target.checked } } }));
+                              }}
+                              style={{ accentColor: '#466460', width: 16, height: 16 }}
+                            />
+                            <span style={{ fontSize: 11, fontWeight: 600, color: isDeclined ? '#92400e' : '#6b8577' }}>
+                              N/A
+                            </span>
+                          </label>
+                        </div>
+                        {!isDeclined && (
+                          <>
+                            <FormGroup label="Vaccine Brand">
+                              <select style={{...inputStyle, backgroundColor: '#fff'}} value={editData.vaccinations[key]?.vaccineName || ''} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)}>
+                                <option value="">Select</option>
+                                {VACCINE_BRANDS.map(v => <option key={v} value={v}>{v}</option>)}
+                              </select>
+                            </FormGroup>
+                            <FormGroup label="Date Given">
+                              <DatePicker value={editData.vaccinations[key]?.date || ''} onChange={val => handleVaxChange(key, 'date', val)} />
+                            </FormGroup>
+                          </>
+                        )}
+                        {isDeclined && (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>Skipped / Not applicable</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </>
               )}
 
               {/* ── Dental History Section ── */}
               {editingSection === 'dental' && (
                 <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: dentalDeclined ? '#fef3c7' : '#f4f7f5', borderRadius: 10, marginBottom: 16, cursor: 'pointer', border: dentalDeclined ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={dentalDeclined}
+                      onChange={(e) => {
+                        setDentalDeclined(e.target.checked);
+                        setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, declined: e.target.checked } }));
+                      }}
+                      style={{ accentColor: '#466460', width: 18, height: 18 }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: dentalDeclined ? '#92400e' : '#466460' }}>
+                      I don't have dental history / Not applicable
+                    </span>
+                  </label>
+                  {!dentalDeclined ? (
+                  <>
                   <FormGroup label="Last Dental Visit">
                     <DatePicker value={editData.dentalHistory.lastVisit || ''} onChange={val => handleDentalChange('lastVisit', val)} />
                   </FormGroup>
@@ -780,10 +1115,12 @@ export default function ProfileUsers({ onLogout }) {
                       </div>
                     );
                   })}
+                  </>
+                ) : null}
                 </>
               )}
 
-            </div>
+
 
             <div style={{ padding: '16px 24px', borderTop: '1px solid #edf3f0', display: 'flex', gap: 12, background: '#fff' }}>
               <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577', transition: 'background 0.2s' }}>Cancel</button>
@@ -793,7 +1130,9 @@ export default function ProfileUsers({ onLogout }) {
             </div>
           </div>
         </div>
+        </div>
       )}
+
 
       {/* ── Logout Modal ── */}
       {logoutModal && (
@@ -832,6 +1171,15 @@ export default function ProfileUsers({ onLogout }) {
           {toast}
         </div>
       )}
+
+      {/* ── Address Modal ── */}
+      <AddressModal
+        isOpen={addressModal.isOpen}
+        onClose={closeAddressModal}
+        onConfirm={handleAddressConfirm}
+        initialData={addressInitialData}
+        zIndex={5000}
+      />
     </div>
   );
 }

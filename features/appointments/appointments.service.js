@@ -5,32 +5,44 @@ const notificationsService = require('../notifications/notifications.service');
 exports.getUserAppointments = async (authUid) => {
   if (!authUid) throw new Error('Unauthorized session.');
 
-  const { data: userProfile, error: profileError } = await supabase
+  // Find the internal user ID from the auth UID
+  const { data: userProfile } = await supabase
     .from('users')
-    .select('id')
+    .select('id, uid')
     .eq('uid', authUid)
     .single();
 
-  if (profileError || !userProfile) {
-    throw new Error('User profile record not found.');
+  const internalUserId = userProfile?.id;
+  console.log('[SERVICE] authUid:', authUid, '-> internalUserId:', internalUserId);
+
+  if (!internalUserId) {
+    console.log('[SERVICE] No internal user found for authUid');
+    return [];
   }
 
+  // Query using internal user ID
   const { data, error } = await supabase
     .from('appointments')
     .select('*')
-    .eq('user_id', userProfile.id)
-    .order('year',  { ascending: false })
-    .order('month', { ascending: false })
-    .order('day',   { ascending: false });
+    .eq('user_id', internalUserId)
+    .eq('is_archived', false)
+    .order('created_at', { ascending: false });
 
-  if (error) throw error;
-  return data;
+  console.log('[SERVICE] Found appointments:', data?.length || 0);
+
+  if (error) {
+    console.log('[SERVICE] Query error:', error.message);
+    throw error;
+  }
+
+  return data || [];
 };
 
 exports.getAllAppointments = async () => {
   const { data, error } = await supabase
     .from('appointments')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -43,22 +55,20 @@ exports.getAppointmentsByDate = async (year, month, day) => {
     .select('*')
     .eq('year',  parseInt(year))
     .eq('month', parseInt(month))
-    .eq('day',   parseInt(day));
+    .eq('day',   parseInt(day))
+    .eq('is_archived', false);
 
   if (error) throw error;
   return data;
 };
 
 exports.createAppointment = async (data) => {
-  let resolvedUserId = data.userId || data.idno || '';
+  // Priority: authUid (from token) > patientId (from frontend) > idno
+  let resolvedUserId = data.patientId || data.userId || data.idno || '';
 
   if (data.authUid) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('id')
-      .eq('uid', data.authUid)
-      .single();
-    if (profile) resolvedUserId = profile.id;
+    // Always use authUid from token for security - it's the actual authenticated user
+    resolvedUserId = data.authUid;
   }
 
   const newDoc = {
@@ -126,24 +136,36 @@ exports.updateAppointment = async (id, data) => {
   if (error) throw error;
 
   if (data.status && data.status.toLowerCase() !== existingData?.status?.toLowerCase()) {
-    const internalUserId = existingData?.user_id;
-    if (internalUserId) {
-      const { data: userProfile } = await supabase
-        .from('users')
-        .select('uid')
-        .eq('id', internalUserId)
-        .single();
+    const userUUID = existingData?.user_id;
+    if (userUUID) {
+      let notificationTitle = 'Appointment Status Updated';
+      let notificationMessage = '';
 
-      if (userProfile?.uid) {
-        await notificationsService.createNotification({
-          type:          'appointment_status',
-          title:         'Appointment Status Updated',
-          message:       `Your appointment has been ${data.status.toLowerCase()}`,
-          userId:        userProfile.uid,
-          referenceId:   id,
-          referenceType: 'appointment',
-        });
+      const status = data.status.toLowerCase();
+      if (status === 'approved') {
+        notificationTitle = 'Appointment Approved!';
+        notificationMessage = 'Great news! Your appointment has been approved by the clinic staff.';
+      } else if (status === 'rejected') {
+        notificationTitle = 'Appointment Rejected';
+        notificationMessage = 'Your appointment has been rejected. Please contact the clinic for more information.';
+      } else if (status === 'completed') {
+        notificationTitle = 'Appointment Completed';
+        notificationMessage = 'Your appointment has been marked as completed.';
+      } else if (status === 'cancelled') {
+        notificationTitle = 'Appointment Cancelled';
+        notificationMessage = 'Your appointment has been cancelled.';
+      } else {
+        notificationMessage = `Your appointment status has been updated to: ${status}`;
       }
+
+      await notificationsService.createNotification({
+        type:          'appointment_status',
+        title:         notificationTitle,
+        message:       notificationMessage,
+        userId:        userUUID,
+        referenceId:   id,
+        referenceType: 'appointment',
+      });
     }
   }
 

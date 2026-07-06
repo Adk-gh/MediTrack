@@ -28,7 +28,7 @@ app.use(globalErr);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, "0.0.0.0", () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`
 =========================================
   MediTrack Node Server Running
@@ -36,6 +36,23 @@ app.listen(PORT, "0.0.0.0", () => {
   Database: Supabase Connected
 =========================================
   `);
+
+  // Prevent server from exiting
+  server.on('close', () => {
+    console.log('Server closed');
+  });
+});
+
+// Prevent process from exiting
+process.stdin.resume();
+
+// Keep the server running and log any unexpected exits
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 module.exports = app;

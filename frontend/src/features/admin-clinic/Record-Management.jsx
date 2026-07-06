@@ -325,10 +325,12 @@ export const RecordManagement = () => {
         supabase
           .from('medical_records')
           .select('*, _user:users!medical_records_user_id_fkey(id, first_name, last_name, middle_name, email, role, department, university_id, program, year_level, section)')
+          .eq('is_archived', false)
           .order('created_at', { ascending: false }),
         supabase
           .from('dental_records')
           .select('*, _user:users!dental_records_user_id_fkey(id, first_name, last_name, middle_name, email, role, department, university_id, program, year_level, section)')
+          .eq('is_archived', false)
           .order('created_at', { ascending: false }),
       ]);
 
@@ -389,11 +391,25 @@ export const RecordManagement = () => {
   };
 
   const handleDelete = async (record) => {
-    const table = record._kind === 'medical' ? 'medical_records' : 'dental_records';
-    const { error } = await supabase.from(table).delete().eq('id', record._id);
-    if (error) { showSnackbar('Failed to delete record', 'error'); throw error; }
-    setRecords(prev => prev.filter(r => r._id !== record._id));
-    showSnackbar('Record deleted');
+    try {
+      // Get current user info for deleted_by
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const name = localStorage.getItem('name') || '';
+
+      // Set is_archived to true instead of deleting
+      const table = record._kind === 'medical' ? 'medical_records' : 'dental_records';
+      const { error } = await supabase.from(table).update({
+        is_archived: true,
+        deleted_by: name || user.email || 'Admin',
+        updated_at: new Date().toISOString()
+      }).eq('id', record._id);
+      if (error) { showSnackbar('Failed to delete record', 'error'); throw error; }
+      setRecords(prev => prev.filter(r => r._id !== record._id));
+      showSnackbar('Record archived successfully. You can restore it from the Archives page.');
+    } catch (err) {
+      console.error('Failed to archive record:', err);
+      showSnackbar('Failed to archive record', 'error');
+    }
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";

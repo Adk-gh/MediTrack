@@ -50,10 +50,28 @@ const deleteNotification = async (req, res, next) => {
   }
 };
 
+const createTestNotification = async (req, res, next) => {
+  try {
+    const { userId, type, title, message } = req.body;
+
+    const notification = await notificationsService.createNotification({
+      userId,
+      type: type || 'test',
+      title: title || 'Test Notification',
+      message: message || 'This is a test notification.',
+    });
+
+    res.status(201).json({ success: true, data: notification });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getNotifications,
   getUnreadCount,
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  createTestNotification,
 };

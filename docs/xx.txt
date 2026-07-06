@@ -1,7 +1,6 @@
 pip install flask pillow paddleocr paddlepaddle
 npm install
-npm install firebase-admin
-npm install express multer node-fetch form-data
+npm install @supabase/supabase-js express multer node-fetch form-data
 pip install gunicorn
 
 vite
@@ -65,6 +64,18 @@ andoid studio
 npx cap open android
 
 npm run build then npx cap sync.
+
+
+
+
+
+
+
+
+
+
+meditrack93@gmail.com
+meditrack_pass123
 
 so when the doctor goes to the records of students then click examine it should automatically opens the prev records of the student then when they conduct the check up and update the students records the old records dont get deleted or replaced it becomes old version of the student records where it get saved within the app and becomes ready only file because it cannot get updated since its already the old record.
 

@@ -138,7 +138,39 @@ const getMessages = async (req, res, next) => {
 const sendMessage = async (req, res, next) => {
   try {
     const { consultationId } = req.params;
+    const senderRole = req.body.sender_role || req.user?.role;
+    const senderId = req.user?.uid || req.body.sender_id;
+
     const data = await consultationsService.sendMessage(consultationId, req.body);
+
+    // Get consultation details to find the patient
+    const consultation = await consultationsService.getConsultationById(consultationId);
+
+    // If clinic staff is responding, notify the patient
+    if (senderRole === 'clinic_staff' || senderRole === 'admin' || senderRole === 'doctor' || senderRole === 'nurse') {
+      const patientUserId = consultation?.patient_id;
+
+      if (patientUserId) {
+        // Get patient's auth UID for notification
+        const { data: patientProfile } = await require('../../configs/database')
+          .from('users')
+          .select('uid')
+          .eq('id', patientUserId)
+          .single();
+
+        if (patientProfile?.uid) {
+          await sendNotification({
+            userId:        patientProfile.uid,
+            type:          'consultation_response',
+            title:         'New Message from Clinic Staff',
+            message:       `You have a new message from ${req.body.sender_name || 'the clinic staff'} regarding your consultation.`,
+            referenceId:   consultationId,
+            referenceType: 'consultation',
+          });
+        }
+      }
+    }
+
     res.status(201).json({ success: true, data });
   } catch (error) {
     next(error);
