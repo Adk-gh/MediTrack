@@ -1,6 +1,7 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Appointment-users.jsx
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ── Define API URL from environment variables ─────────────────────────────────
@@ -14,11 +15,11 @@ const MONTHS = [
 
 const STATUS_STYLES = {
   Pending:  { bg: 'bg-[#FAEEDA]', text: 'text-[#854F0B]', label: 'Pending'  },
-  Approved: { bg: 'bg-[#EAF3DE]', text: 'text-[#3B6D11]', label: 'Approved' },
+  Approved: { bg: 'bg-[#E1F5EE]', text: 'text-[#466460]', label: 'Approved' },
   Done:     { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', label: 'Done'     },
   Missed:   { bg: 'bg-[#fef3c7]', text: 'text-[#92400e]', label: 'Missed'   },
   pending:  { bg: 'bg-[#FAEEDA]', text: 'text-[#854F0B]', label: 'Pending'  },
-  approved: { bg: 'bg-[#EAF3DE]', text: 'text-[#3B6D11]', label: 'Approved' },
+  approved: { bg: 'bg-[#E1F5EE]', text: 'text-[#466460]', label: 'Approved' },
   done:     { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', label: 'Done'     },
   missed:   { bg: 'bg-[#fef3c7]', text: 'text-[#92400e]', label: 'Missed'   },
 };
@@ -119,14 +120,15 @@ function useCurrentPatient() {
       const role = user.role || user.type || 'student';
 
       return {
-        uid:     user.id || user.uid || null,
-        token:   user.token || localStorage.getItem('token') || null,
-        name:    buildFullName(user),
-        idno:    user.university_id || user.universityId || user.student_id || user.idno || user.idNumber || '—',
-        type:    role,
-        dept:    user.department || user.dept    || user.college || '—',
-        prog:    user.program    || user.classification || user.student_classification || user.course || '—',
-        section: user.section    || user.year_level     || user.yearSection || '—',
+        uid:       user.id || user.uid || null,
+        token:     user.token || localStorage.getItem('token') || null,
+        name:      buildFullName(user),
+        idno:      user.university_id || user.universityId || user.student_id || user.idno || user.idNumber || '—',
+        type:      role,
+        dept:      user.department || user.dept    || user.college || '—',
+        prog:      user.program    || user.classification || user.student_classification || user.course || '—',
+        yearLevel: user.year_level || user.yearLevel || user.year || '—',
+        section:   user.section    || user.sectionName || '—',
       };
     } catch {
       return null;
@@ -141,12 +143,72 @@ export default function AppointmentUsers() {
   // ── Database State ──
   const [myAppointments, setMyAppointments] = useState([]);
   const [loadingAppts,   setLoadingAppts]   = useState(true);
+  const [userProfile,    setUserProfile]    = useState(null);
+
+  // ── Fetch user profile from database ──
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!currentPatient?.uid && !currentPatient?.idno) {
+        console.log('[AppointmentUsers] No uid or idno, skipping profile fetch');
+        return;
+      }
+      console.log('[AppointmentUsers] Fetching profile for uid:', currentPatient.uid, 'idno:', currentPatient.idno);
+      try {
+        let profile = null;
+
+        // First try by id (UUID)
+        if (currentPatient.uid) {
+          const { data, error } = await supabase
+            .from('users')
+            .select('id, university_id, department, program, year_level, section')
+            .eq('id', currentPatient.uid)
+            .maybeSingle();
+
+          if (error) {
+            console.error('[AppointmentUsers] Error fetching user profile by id:', error);
+          } else if (data) {
+            profile = data;
+            console.log('[AppointmentUsers] User profile fetched by id:', profile);
+          }
+        }
+
+        // If not found by id, try fallback by university_id
+        if (!profile && currentPatient.idno) {
+          const { data, error } = await supabase
+            .from('users')
+            .select('id, university_id, department, program, year_level, section')
+            .eq('university_id', currentPatient.idno)
+            .maybeSingle();
+
+          if (error) {
+            console.error('[AppointmentUsers] Error fetching user profile by university_id:', error);
+          } else if (data) {
+            profile = data;
+            console.log('[AppointmentUsers] User profile fetched by university_id:', profile);
+          }
+        }
+
+        if (profile) {
+          setUserProfile(profile);
+        } else {
+          console.log('[AppointmentUsers] No user profile found in database');
+        }
+      } catch (err) {
+        console.error('[AppointmentUsers] Error in fetchUserProfile:', err);
+      }
+    };
+
+    fetchUserProfile();
+  }, [currentPatient?.uid, currentPatient?.idno]);
 
   // ── Modal / Form State ──
   const [showModal,   setShowModal]   = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted,   setSubmitted]   = useState(false);
+
+  // ── Appointment Detail Modal State ──
+  const [selectedAppt, setSelectedAppt] = useState(null);
 
   // ── Multi-select Purposes ──
   const [selectedPurposes, setSelectedPurposes] = useState([]);
@@ -230,7 +292,9 @@ export default function AppointmentUsers() {
     const serviceType = selectedPurposes.includes('Dental') ? 'Dental Examination' : 'Medical Consultation';
 
     // ── UPDATED PAYLOAD TO MATCH ZOD SCHEMA EXACTLY ──
+    // Use userProfile.id if available (the correct UUID from users table), otherwise fall back to currentPatient values
     const payload = {
+      user_id: userProfile?.id || currentPatient.uid || null,
       patientId: currentPatient.idno !== '—' ? currentPatient.idno : (currentPatient.uid || 'unknown'),
       name: currentPatient.name,
       type: currentPatient.type.toLowerCase(), // Ensures it matches the "student" enum
@@ -239,6 +303,7 @@ export default function AppointmentUsers() {
     };
 
     try {
+      console.log('[AppointmentUsers] Submitting appointment with payload:', payload);
       const response = await axios.post(`${API_URL}/appointments`, payload, {
         headers: {
           'Authorization': `Bearer ${currentPatient.token}`,
@@ -357,7 +422,11 @@ export default function AppointmentUsers() {
                 if (isDone)     timeIcon = 'fa-check-double';
 
                 return (
-                  <div key={appt.id} className={`border rounded-3xl p-3 transition-all shrink-0 ${cardClasses}`}>
+                  <div
+                    key={appt.id}
+                    onClick={() => setSelectedAppt(appt)}
+                    className={`border rounded-3xl p-3 transition-all shrink-0 cursor-pointer ${cardClasses}`}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-bold text-[#1a2e22]">{appt.reason || appt.service_type}</div>
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
@@ -384,8 +453,11 @@ export default function AppointmentUsers() {
 
       {/* ── Submission Request Modal ── */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6">
-          <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]">
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6"
+          onClick={closeModal}
+        >
+          <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
 
             <div className="bg-[#466460] px-6 py-5 text-white flex-shrink-0">
               <h3 className="font-serif text-xl tracking-wide">Request Appointment</h3>
@@ -397,10 +469,10 @@ export default function AppointmentUsers() {
                 <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">Booking as</div>
                 <div className="text-[13px] font-semibold text-[#1a2e22]">{currentPatient.name}</div>
                 <div className="text-[11px] text-[#6b8577] mt-0.5 flex flex-wrap gap-1">
-                  <span className="font-medium">{currentPatient.idno !== '—' ? currentPatient.idno : 'ID Not Set'}</span>
-                  {currentPatient.prog    && currentPatient.prog    !== '—' && <><span>·</span><span>{currentPatient.prog}</span></>}
-                  {currentPatient.dept    && currentPatient.dept    !== '—' && <><span>·</span><span>{currentPatient.dept}</span></>}
-                  {currentPatient.section && currentPatient.section !== '—' && <><span>·</span><span>Sec {currentPatient.section}</span></>}
+                  <span className="font-medium">{userProfile?.university_id || currentPatient.idno || 'ID Not Set'}</span>
+                  {(userProfile?.program || currentPatient.prog) && <><span>·</span><span>{userProfile?.program || currentPatient.prog}</span></>}
+                  {(userProfile?.department || currentPatient.dept) && <><span>·</span><span>{userProfile?.department || currentPatient.dept}</span></>}
+                  {(userProfile?.section || currentPatient.section) && <><span>·</span><span>Sec {userProfile?.section || currentPatient.section}</span></>}
                 </div>
               </div>
 
@@ -474,6 +546,153 @@ export default function AppointmentUsers() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ── Appointment Detail Modal ── */}
+      {selectedAppt && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setSelectedAppt(null)}
+        >
+          <div className="w-full max-w-[420px] bg-white rounded-[24px] overflow-hidden shadow-2xl animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+            {/* Header with Status Badge */}
+            <div className="bg-[#f7faf8] px-5 py-4 border-b border-[#eef2f6]">
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] font-bold px-3 py-1.5 rounded-full ${STATUS_STYLES[selectedAppt.status]?.bg || 'bg-gray-100'} ${STATUS_STYLES[selectedAppt.status]?.text || 'text-gray-600'}`}>
+                  {STATUS_STYLES[selectedAppt.status]?.label || selectedAppt.status || 'Pending'}
+                </span>
+                <button
+                  onClick={() => setSelectedAppt(null)}
+                  className="w-8 h-8 rounded-full bg-white border border-[#e2e8f0] flex items-center justify-center text-[#94a3b8] hover:text-[#466460] hover:border-[#466460] transition-colors"
+                >
+                  <i className="fa-solid fa-xmark text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Patient Information */}
+            <div className="px-5 py-4 border-b border-[#eef2f6]">
+              <div className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Patient Information</div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#E1F5EE] flex items-center justify-center text-[#466460] font-bold text-sm">
+                    {currentPatient.name?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-[#1a2e22]">{currentPatient.name}</div>
+                    <div className="text-xs text-[#64748b]">Student</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">University ID</div>
+                    <div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.university_id || currentPatient.idno || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Department</div>
+                    <div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.department || currentPatient.dept || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Program</div>
+                    <div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.program || currentPatient.prog || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Year Level</div>
+                    <div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.year_level || currentPatient.yearLevel || '—'}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Section</div>
+                    <div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.section || currentPatient.section || '—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Appointment Details */}
+            <div className="px-5 py-4">
+              <div className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Appointment Details</div>
+              <div className="space-y-3">
+                {/* Highlighted Date */}
+                <div className={`rounded-xl p-4 text-center ${
+                  selectedAppt.status?.toLowerCase() === 'approved'
+                    ? 'bg-[#E1F5EE] border border-[#466460]'
+                    : selectedAppt.status?.toLowerCase() === 'done'
+                      ? 'bg-[#f1f5f9] border border-[#e2e8f0]'
+                      : selectedAppt.status?.toLowerCase() === 'missed'
+                        ? 'bg-[#fef3c7] border border-[#fde68a]'
+                        : 'bg-[#FAEEDA] border border-[#f0c070]'
+                }`}>
+                  <div className="text-xs text-[#64748b] mb-1">
+                    {selectedAppt.status?.toLowerCase() === 'pending' ? 'Requested Date' :
+                     selectedAppt.status?.toLowerCase() === 'missed' ? 'Missed Date' :
+                     selectedAppt.status?.toLowerCase() === 'done' ? 'Completed Date' : 'Scheduled Date'}
+                  </div>
+                  <div className={`text-lg font-bold ${
+                    selectedAppt.status?.toLowerCase() === 'approved' ? 'text-[#466460]' :
+                    selectedAppt.status?.toLowerCase() === 'done' ? 'text-[#64748b]' :
+                    selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' : 'text-[#854F0B]'
+                  }`}>
+                    {selectedAppt.year && selectedAppt.month
+                      ? `${MONTHS[selectedAppt.month - 1]} ${selectedAppt.day}, ${selectedAppt.year}`
+                      : 'Awaiting Schedule'}
+                  </div>
+                  {selectedAppt.time && (
+                    <div className={`text-sm font-medium mt-1 ${
+                      selectedAppt.status?.toLowerCase() === 'approved' ? 'text-[#466460]' :
+                      selectedAppt.status?.toLowerCase() === 'done' ? 'text-[#64748b]' :
+                      selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' : 'text-[#854F0B]'
+                    }`}>
+                      {(() => {
+                        const [h, m] = selectedAppt.time.split(':').map(Number);
+                        const period = h >= 12 ? 'PM' : 'AM';
+                        const hr = h % 12 || 12;
+                        return `${hr}:${String(m).padStart(2, '0')} ${period}`;
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reason/Purpose */}
+                <div>
+                  <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Purpose</div>
+                  <div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.reason || selectedAppt.service_type || '—'}</div>
+                </div>
+
+                {/* Service Type */}
+                {selectedAppt.service_type && (
+                  <div>
+                    <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Service Type</div>
+                    <div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.service_type}</div>
+                  </div>
+                )}
+
+                {/* Submitted Date */}
+                <div>
+                  <div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Submitted</div>
+                  <div className="text-sm font-semibold text-[#1a2e22] mt-1">
+                    {selectedAppt.created_at
+                      ? new Date(selectedAppt.created_at).toLocaleString('en-PH', {
+                          month: 'long', day: 'numeric', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <div className="px-5 py-4 border-t border-[#eef2f6] bg-[#f7faf8]">
+              <button
+                onClick={() => setSelectedAppt(null)}
+                className="w-full py-3 bg-white border border-[#e2e8f0] rounded-xl text-sm font-bold text-[#466460] hover:bg-[#E1F5EE] hover:border-[#466460] transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

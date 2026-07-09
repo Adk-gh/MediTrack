@@ -248,7 +248,7 @@ const IconBanCircle = ({ size = 14, color = "currentColor", ...props }) => (
 );
 
 // ── Drum Roll Picker ──────────────────────────────────────────────────────────
-const DrumColumn = ({ items, selIdx, onSelect }) => {
+const DrumColumn = ({ items, selIdx, onSelect, disablePastDates, getIsDisabled }) => {
   const ITEM_H    = 44;
   const VISIBLE   = 3;
   const containerRef = useRef(null);
@@ -323,14 +323,21 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
         <style>{`div::-webkit-scrollbar { display: none; }`}</style>
         {items.map((label, i) => {
           const dist = Math.abs(i - selIdx);
-          const opacity = dist === 0 ? 1 : dist === 1 ? 0.45 : 0.2;
+          // Check if this date is in the past
+          const isPast = getIsDisabled && getIsDisabled(i);
+          const isDisabled = disablePastDates && isPast;
+          // Apply subtle fade for past dates (always visible but faded)
+          const pastFade = isPast ? 0.35 : 1;
+          const opacity = (dist === 0 ? 1 : dist === 1 ? 0.45 : 0.2) * pastFade;
           const scale   = dist === 0 ? 1 : dist === 1 ? 0.88 : 0.78;
           const weight  = dist === 0 ? '700' : '400';
           const color   = dist === 0 ? '#1e293b' : '#94a3b8';
+          // Background for past dates - same as hover color (#E1F5EE)
+          const bgColor = isPast ? '#E1F5EE' : 'transparent';
           return (
             <div
               key={i}
-              onClick={() => onSelect(i)}
+              onClick={() => !isDisabled && onSelect(i)}
               style={{
                 height: ITEM_H,
                 display: 'flex',
@@ -343,9 +350,11 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
                 opacity,
                 transform: `scale(${scale})`,
                 transition: 'all 0.18s ease',
-                cursor: 'pointer',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
                 fontFamily: "'DM Sans', sans-serif",
                 userSelect: 'none',
+                backgroundColor: bgColor,
+                borderRadius: dist === 0 ? '8px' : '4px',
               }}
             >
               {label}
@@ -357,7 +366,7 @@ const DrumColumn = ({ items, selIdx, onSelect }) => {
   );
 };
 
-const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
+const DrumDatePicker = ({ value, onChange, onCancel, onSubmit, disablePastDates = false }) => {
   const today  = new Date();
   const parsed = value ? new Date(value + 'T00:00:00') : today;
 
@@ -374,6 +383,16 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
   );
   const monthItems = MONTH_SHORT;
   const yearItems  = Array.from({ length: YEAR_COUNT }, (_, i) => String(BASE_YEAR + i));
+
+  // Helper to check if a specific day is in the past
+  const isPastDate = (dayIndex) => {
+    const selectedYear = BASE_YEAR + year;
+    const selectedMonth = month;
+    const selectedDay = dayIndex + 1;
+    const selectedDate = new Date(selectedYear, selectedMonth, selectedDay);
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return selectedDate < todayDate;
+  };
 
   useEffect(() => {
     const maxDay = new Date(BASE_YEAR + year, month + 1, 0).getDate();
@@ -393,9 +412,9 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit }) => {
         Select Date
       </div>
       <div className="flex items-center justify-center gap-1 px-2" style={{ height: 44 * 7 }}>
-        <DrumColumn items={dayItems}   selIdx={day}   onSelect={setDay}   />
-        <DrumColumn items={monthItems} selIdx={month} onSelect={setMonth} />
-        <DrumColumn items={yearItems}  selIdx={year}  onSelect={setYear}  />
+        <DrumColumn items={dayItems}   selIdx={day}   onSelect={setDay}   disablePastDates={disablePastDates} getIsDisabled={isPastDate} />
+        <DrumColumn items={monthItems} selIdx={month} onSelect={setMonth} disablePastDates={disablePastDates} />
+        <DrumColumn items={yearItems}  selIdx={year}  onSelect={setYear}  disablePastDates={disablePastDates} />
       </div>
       <div className="flex border-t border-[#eef2f6] mt-2">
         <button
@@ -452,6 +471,18 @@ export const Appointments = () => {
   const navigate = useNavigate();
   const today    = new Date();
 
+  // Helper to format date like: "July 02, 2026. 11:31 PM"
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return '—';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    const month = date.toLocaleDateString('en-US', { month: 'long' });
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${month} ${day}, ${year}. ${time}`;
+  };
+
   const { appointments, approveAppointment, declineAppointment, markDone: ctxMarkDone, markMissed: ctxMarkMissed } = useAppointments();
 
   // ── Track which IDs we've already sent markMissed for (prevents infinite loop) ──
@@ -469,9 +500,69 @@ export const Appointments = () => {
   // ── Mobile view state ──
   const [mobileView, setMobileView] = useState('pending');
 
+  // ── Tab state (pending vs approved) ──
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
+
   // ── Multi-select pending ──
   const [selectedIds,   setSelectedIds]   = useState(new Set());
   const [searchTerm,    setSearchTerm]    = useState('');
+
+  // ── Filter states for approved appointments ──
+  const [filterStatus, setFilterStatus] = useState('All'); // All, approved, done, missed
+  const [filterDateRange, setFilterDateRange] = useState('All'); // All, today, thisWeek, thisMonth
+
+  // ── User data cache (fetched from users table) ──
+  const [userDataMap, setUserDataMap] = useState({});
+
+  // Fetch user data from users table when appointments load
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (appointments.length === 0) return;
+
+      // Collect all unique user_ids from appointments
+      const userIds = [...new Set(appointments.map(a => a.user_id).filter(Boolean))];
+      if (userIds.length === 0) return;
+
+      try {
+        // Fetch users by their id (which matches user_id in appointments table)
+        const { data: users, error } = await supabase
+          .from('users')
+          .select('id, university_id, department, program, section, year_level')
+          .in('id', userIds);
+
+        if (error) {
+          console.error('Error fetching user data:', error);
+          return;
+        }
+
+        // Create a map keyed by user id (uuid)
+        const map = {};
+        (users || []).forEach(user => {
+          map[user.id] = {
+            university_id: user.university_id || '',
+            department: user.department || '',
+            program: user.program || '',
+            section: user.section || '',
+            yearLevel: user.year_level || '',
+          };
+        });
+
+        console.log('[Appointments] User data map:', map);
+        setUserDataMap(map);
+      } catch (err) {
+        console.error('Error in fetchUserData:', err);
+      }
+    };
+
+    fetchUserData();
+  }, [appointments]);
+
+  // Helper to get user data for an appointment
+  const getUserData = (appt) => {
+    const userId = appt.user_id;
+    if (!userId) return { university_id: appt.idno || '', department: appt.dept || '', program: appt.prog || '', section: appt.section || '' };
+    return userDataMap[userId] || { university_id: appt.idno || '', department: appt.dept || '', program: appt.prog || '', section: appt.section || '' };
+  };
 
   // ── Batch scheduling modal ──
   const [batchModal,      setBatchModal]      = useState(false);
@@ -527,20 +618,73 @@ export const Appointments = () => {
     .filter(a => a.status === 'pending')
     .sort((a, b) => new Date(a.bookedAt) - new Date(b.bookedAt));
 
-  const filteredPending = pendingRequests.filter(r =>
-    !searchTerm ||
-    r.name.toLowerCase().includes(searchTerm)         ||
-    (r.idno || '').toLowerCase().includes(searchTerm) ||
-    (r.dept || '').toLowerCase().includes(searchTerm) ||
-    (r.prog || '').toLowerCase().includes(searchTerm) ||
-    (r.section || '').toLowerCase().includes(searchTerm) ||
-    (r.reason || '').toLowerCase().includes(searchTerm)
-  );
+  const filteredPending = pendingRequests.filter(r => {
+    const userData = getUserData(r);
+    return !searchTerm ||
+      r.name.toLowerCase().includes(searchTerm)         ||
+      (r.idno || '').toLowerCase().includes(searchTerm) ||
+      (userData.universityId || '').toLowerCase().includes(searchTerm) ||
+      (userData.department || '').toLowerCase().includes(searchTerm) ||
+      (userData.program || '').toLowerCase().includes(searchTerm) ||
+      (userData.section || '').toLowerCase().includes(searchTerm) ||
+      (r.reason || '').toLowerCase().includes(searchTerm);
+  });
 
   // Include "missed" in the scheduled panel
   const scheduledAppts = appointments.filter(
     a => a.status === 'approved' || a.status === 'done' || a.status === 'missed'
   );
+
+  // ── Approved Appointments with Filters ──
+  const allApprovedAppts = appointments.filter(
+    a => a.status === 'approved' || a.status === 'done' || a.status === 'missed'
+  );
+
+  // Apply date range filter
+  const filteredByDate = allApprovedAppts.filter(a => {
+    if (filterDateRange === 'All') return true;
+
+    const apptDate = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    if (filterDateRange === 'today') {
+      return apptDate.getTime() === today.getTime();
+    } else if (filterDateRange === 'thisWeek') {
+      return apptDate >= startOfWeek && apptDate <= endOfWeek;
+    } else if (filterDateRange === 'thisMonth') {
+      return apptDate >= startOfMonth && apptDate <= endOfMonth;
+    }
+    return true;
+  });
+
+  // Apply status and search filter
+  const filteredApproved = filteredByDate.filter(a => {
+    const matchStatus = filterStatus === 'All' || a.status === filterStatus;
+    const userData = getUserData(a);
+    const matchSearch = !searchTerm ||
+      a.name.toLowerCase().includes(searchTerm) ||
+      (a.idno || '').toLowerCase().includes(searchTerm) ||
+      (userData.universityId || '').toLowerCase().includes(searchTerm) ||
+      (userData.department || '').toLowerCase().includes(searchTerm) ||
+      (userData.program || '').toLowerCase().includes(searchTerm) ||
+      (a.reason || '').toLowerCase().includes(searchTerm);
+    return matchStatus && matchSearch;
+  }).sort((a, b) => {
+    // Sort by date (newest first), then by time
+    const dateA = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
+    const dateB = new Date(Number(b.year), Number(b.month) - 1, Number(b.day));
+    if (dateB.getTime() !== dateA.getTime()) return dateB.getTime() - dateA.getTime();
+    return a.time.localeCompare(b.time);
+  });
 
   const firstDayOfWeek = new Date(calYear, calMonth - 1, 1).getDay();
   const daysInMonth    = new Date(calYear, calMonth, 0).getDate();
@@ -696,9 +840,7 @@ export const Appointments = () => {
         ) : filteredPending.map(r => {
           const rank      = pendingRequests.findIndex(x => x.id === r.id) + 1;
           const isChecked = selectedIds.has(r.id);
-          const bTime = new Date(r.bookedAt).toLocaleString('en-PH', {
-            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-          });
+          const bTime = formatDateTime(r.bookedAt);
           return (
             <div
               key={r.id}
@@ -729,9 +871,11 @@ export const Appointments = () => {
               <div className="flex-1 min-w-0">
                 <div className="text-[12px] font-semibold text-[#1e293b] leading-[1.3]">{r.name}</div>
                 <div className="text-[10px] text-[#64748b] mt-[2px] leading-[1.5]">
-                  {r.idno} &middot; {r.prog} &middot; Sec {r.section}
+                  {getUserData(r).university_id} &middot; {getUserData(r).department}
                 </div>
-                <div className="text-[10px] text-[#64748b] leading-[1.5]">{r.dept}</div>
+                <div className="text-[10px] text-[#64748b] leading-[1.5]">
+                  {getUserData(r).program} &middot; Sec {getUserData(r).section}
+                </div>
                 <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px]
                   rounded-[20px] inline-block mt-[3px] font-medium">{r.reason}</span>
                 <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
@@ -781,6 +925,153 @@ export const Appointments = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+
+  // ── Approved Appointments List ─────────────────────────────────────────────
+  const ApprovedList = () => (
+    <div className="flex flex-col h-full overflow-hidden w-full">
+      <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
+        <div>
+          <div className="text-[13px] font-semibold text-[#1e293b]">Approved Appointments</div>
+          <div className="text-[10px] text-[#64748b] mt-[1px]">View all scheduled appointments</div>
+        </div>
+        <span className="text-[10px] font-semibold text-[#0F6E56] bg-[#E1F5EE] px-[9px] py-[2px] rounded-[20px]">
+          {allApprovedAppts.length} total
+        </span>
+      </div>
+
+      {/* Search and Filter Bar */}
+      <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0 flex flex-col gap-1.5 bg-white">
+        <input
+          type="text"
+          placeholder="Search name, ID, dept, reason..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value.toLowerCase())}
+          className="w-full px-[11px] py-[6px] border border-[#e2e8f0] rounded-lg text-[12px] bg-[#f8fafc]
+            text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
+        />
+        <div className="flex gap-2">
+          {/* Status Filter */}
+          <div className="relative flex-1">
+            <select
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+              className="w-full appearance-none px-[10px] py-[6px] pr-[24px] border border-[#e2e8f0] rounded-lg text-[11px]
+                bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
+            >
+              <option value="All">All Status</option>
+              <option value="approved">Approved</option>
+              <option value="done">Done</option>
+              <option value="missed">Missed</option>
+            </select>
+            <IconChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
+          </div>
+          {/* Date Range Filter */}
+          <div className="relative flex-1">
+            <select
+              value={filterDateRange}
+              onChange={e => setFilterDateRange(e.target.value)}
+              className="w-full appearance-none px-[10px] py-[6px] pr-[24px] border border-[#e2e8f0] rounded-lg text-[11px]
+                bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
+            >
+              <option value="All">All Dates</option>
+              <option value="today">Today</option>
+              <option value="thisWeek">This Week</option>
+              <option value="thisMonth">This Month</option>
+            </select>
+            <IconChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
+          </div>
+        </div>
+        <div className="text-[10px] text-[#64748b] px-[2px]">
+          {filteredApproved.length} appointment{filteredApproved.length !== 1 ? 's' : ''} shown
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0 bg-white
+        [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+        {filteredApproved.length === 0 ? (
+          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[12px]">
+            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+              {allApprovedAppts.length === 0
+                ? <IconInbox size={28} />
+                : <IconMagnifyingGlass size={28} />
+              }
+            </div>
+            {allApprovedAppts.length === 0 ? 'No approved appointments yet' : 'No results match your filters'}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredApproved.map(a => {
+              const isDone   = a.status === 'done';
+              const isMissed = a.status === 'missed';
+              // Build date from year/month/day fields, or fallback to created_at if available
+              const dateObj = (a.year && a.month && a.day)
+                ? new Date(Number(a.year), Number(a.month) - 1, Number(a.day))
+                : (a.created_at ? new Date(a.created_at) : new Date());
+              const apptDate = formatDateTime(dateObj);
+
+              return (
+                <div
+                  key={a.id}
+                  onClick={() => setDetailModal(a)}
+                  className={`flex items-start gap-[9px] px-[11px] py-[10px] border rounded-[10px] cursor-pointer transition-all
+                    ${isDone
+                      ? 'border-[#eef2f6] bg-[#f8fafc] hover:border-[#cbd5e1]'
+                      : isMissed
+                        ? 'border-[#fde68a] bg-[#fffbeb] hover:border-[#f59e0b]'
+                        : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
+                >
+                  <div className={`w-[17px] h-[17px] rounded-full flex items-center justify-center shrink-0 mt-[1px]
+                    ${isDone ? 'bg-[#94a3b8]' : isMissed ? 'bg-[#f59e0b]' : 'bg-[#1D9E75]'}`}>
+                    {isDone ? (
+                      <IconCheck size={9} color="white" />
+                    ) : isMissed ? (
+                      <IconBanCircle size={10} color="white" />
+                    ) : null}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[12px] font-semibold leading-[1.3]
+                      ${isDone ? 'text-[#94a3b8]' : isMissed ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
+                      {a.name}
+                    </div>
+                    <div className="text-[10px] text-[#64748b] mt-[2px]">
+                      {getUserData(a).university_id} &middot; {getUserData(a).department}
+                    </div>
+                    <div className="text-[10px] text-[#64748b]">
+                      {getUserData(a).program} &middot; Sec {getUserData(a).section}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px] rounded-[20px]">
+                        {a.reason}
+                      </span>
+                      <span className={`text-[9px] font-semibold px-[8px] py-[1px] rounded-[20px] uppercase
+                        ${isDone ? 'bg-[#f1f5f9] text-[#64748b]' : isMissed ? 'bg-[#fef3c7] text-[#92400e]' : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
+                        {a.status}
+                      </span>
+                    </div>
+                    <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
+                      <IconCalendar size={10} />
+                      {apptDate} &middot; {a.time}
+                    </div>
+                  </div>
+
+                  {!isDone && !isMissed && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleMarkDone(e, a.id); }}
+                      className="px-[8px] py-[3px] text-[9px] font-bold rounded-[6px] border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer transition-colors shrink-0 hover:bg-[#EAF3DE] flex items-center gap-[3px]"
+                    >
+                      <IconCheck size={8} style={{ stroke: '#1D9E75' }} />
+                      Done
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -1033,7 +1324,7 @@ console.log('ALL APPTS:', appointments.map(a => ({
                                     ? 'line-through text-[#b45309]'
                                     : 'text-[#1e293b]'}`}>{a.name}</div>
                               <div className="text-[10px] text-[#64748b] mt-[1px] truncate">
-                                {a.reason} &middot; {a.prog}
+                                {a.reason} &middot; {getUserData(a).program}
                               </div>
                             </div>
                             <span className={`text-[9px] font-semibold px-[8px] py-[2px] rounded-[20px]
@@ -1082,8 +1373,8 @@ console.log('ALL APPTS:', appointments.map(a => ({
       <div className="flex flex-col md:hidden flex-1 min-h-0 w-full h-full">
         <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
           <button
-            onClick={() => setMobileView('pending')}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors
+            onClick={() => { setMobileView('pending'); setActiveTab('pending'); }}
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors
               ${mobileView === 'pending' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <IconClock size={13} /> Pending
@@ -1094,23 +1385,62 @@ console.log('ALL APPTS:', appointments.map(a => ({
             )}
           </button>
           <button
+            onClick={() => { setMobileView('pending'); setActiveTab('approved'); }}
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors
+              ${mobileView === 'pending' && activeTab === 'approved' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
+          >
+            <IconCircleCheck size={13} /> Approved
+            {allApprovedAppts.length > 0 && (
+              <span className="text-[9px] font-bold bg-[#E1F5EE] text-[#0F6E56] px-1.5 py-0.5 rounded-full">
+                {allApprovedAppts.length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setMobileView('calendar')}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors
               ${mobileView === 'calendar' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <IconCalendar size={13} /> Calendar
           </button>
         </div>
         <div className="flex-1 overflow-hidden h-full flex flex-col">
-          {mobileView === 'pending' ? <PendingList /> : <CalendarPanel />}
+          {mobileView === 'pending' ? (
+            activeTab === 'pending' ? <PendingList /> : <ApprovedList />
+          ) : (
+            <CalendarPanel />
+          )}
         </div>
       </div>
 
       {/* ── TABLET ── */}
       <div className="hidden md:flex lg:hidden flex-1 min-h-0 w-full h-full">
-        <div className="flex flex-col border-r border-[#eef2f6] overflow-hidden w-[320px] shrink-0 h-full">
-          <PendingList />
+        {/* Left panel with tabs - 1/3 width like Approvals.jsx */}
+        <div className="w-1/3 border-r border-[#eef2f6] flex flex-col bg-white shadow-sm z-10">
+          {/* Tabs for tablet */}
+          <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
+            <button
+              onClick={() => setActiveTab('pending')}
+              className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Pending
+              {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+            </button>
+            <button
+              onClick={() => setActiveTab('approved')}
+              className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Approved
+              {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden min-h-0">
+            {activeTab === 'pending' ? <PendingList /> : <ApprovedList />}
+          </div>
         </div>
+        {/* Right panel - Calendar - 2/3 width */}
         <div className="flex-1 overflow-hidden h-full flex flex-col">
           <CalendarPanel />
         </div>
@@ -1118,9 +1448,37 @@ console.log('ALL APPTS:', appointments.map(a => ({
 
       {/* ── DESKTOP ── */}
       <div className="hidden lg:flex flex-1 min-h-0 w-full h-full">
-        <div className="w-[420px] shrink-0 flex flex-col border-r border-[#eef2f6] overflow-hidden h-full">
-          <PendingList />
+        {/* Left panel with tabs - 1/3 width like Approvals.jsx */}
+        <div className="w-1/3 border-r border-[#eef2f6] flex flex-col bg-white shadow-sm z-10 overflow-hidden h-full">
+          {/* Desktop Tabs */}
+          <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
+            <button
+              onClick={() => setActiveTab('pending')}
+              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <IconClock size={13} /> Pending
+              </div>
+              {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+            </button>
+            <button
+              onClick={() => setActiveTab('approved')}
+              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <IconCircleCheck size={13} /> Approved
+              </div>
+              {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+            </button>
+          </div>
+          {/* List content */}
+          <div className="flex-1 overflow-hidden">
+            {activeTab === 'pending' ? <PendingList /> : <ApprovedList />}
+          </div>
         </div>
+        {/* Right panel - Calendar */}
         <div className="flex-1 overflow-hidden h-full flex flex-col">
           <CalendarPanel />
         </div>
@@ -1230,7 +1588,7 @@ console.log('ALL APPTS:', appointments.map(a => ({
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-[#1e293b] truncate">{item.name}</div>
-                          <div className="text-[10px] text-[#64748b] truncate">{item.reason} &middot; {item.prog}</div>
+                          <div className="text-[10px] text-[#64748b] truncate">{getUserData(item).universityId} &middot; {item.reason} &middot; {getUserData(item).program}</div>
                         </div>
                       </div>
                     ))}
@@ -1283,6 +1641,7 @@ console.log('ALL APPTS:', appointments.map(a => ({
                 onChange={setBatchDate}
                 onCancel={() => setShowDatePicker(false)}
                 onSubmit={() => setShowDatePicker(false)}
+                disablePastDates={selectedIds.size > 0}
               />
             </div>
           </div>
@@ -1304,13 +1663,13 @@ console.log('ALL APPTS:', appointments.map(a => ({
             <div className="divide-y divide-[#f1f5f9]">
               {[
                 { Icon: IconUser,          label: 'Full Name',  value: detailModal.name },
-                { Icon: IconIdCard,        label: 'ID Number',  value: detailModal.idno },
+                { Icon: IconIdCard,        label: 'ID Number',  value: getUserData(detailModal).universityId },
                 { Icon: IconTag,           label: 'Type',       value: detailModal.type?.charAt(0).toUpperCase() + detailModal.type?.slice(1) },
-                { Icon: IconBuilding,      label: 'Department', value: detailModal.dept },
-                { Icon: IconGraduationCap, label: 'Program',    value: detailModal.prog },
-                { Icon: IconUsers,         label: 'Section',    value: detailModal.section },
+                { Icon: IconBuilding,      label: 'Department', value: getUserData(detailModal).department },
+                { Icon: IconGraduationCap, label: 'Program',    value: getUserData(detailModal).program },
+                { Icon: IconUsers,         label: 'Section',    value: getUserData(detailModal).section },
                 { Icon: IconStethoscope,   label: 'Purpose',    value: detailModal.reason },
-                { Icon: IconCalendar,      label: 'Date',       value: `${MONTHS[detailModal.month - 1]} ${detailModal.day}, ${detailModal.year}` },
+                { Icon: IconCalendar,      label: 'Date',       value: formatDateTime(new Date(Number(detailModal.year), Number(detailModal.month) - 1, Number(detailModal.day))) },
                 { Icon: IconClock,         label: 'Time',       value: detailModal.time },
                 { Icon: IconCircleCheck,   label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
               ].map(({ Icon, label, value }) => (

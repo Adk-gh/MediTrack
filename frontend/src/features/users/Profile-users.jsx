@@ -98,14 +98,14 @@ const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
 // Department and Program data (same as ProfileSetup)
 const DEPARTMENTS_DATA = [
-  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['BS in Information Technology', 'BS in Information System', 'BS in Computer Engineering', 'BS in Industrial Engineering'] },
-  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['BS in Entrepreneurship', 'BS in Public Administration', 'BS in Office Administration', 'BS in Business Administration (HRDM)', 'BS in Business Administration (FM)', 'BS in Business Administration (MM)'] },
-  { abbr: 'CAS', full: 'College of Art and Sciences', programs: ['BS in Economics', 'AB in Communication', 'BS in Psychology', 'AB in Political Science'] },
-  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['BS in Tourism Management', 'BS in Hospitality Management'] },
-  { abbr: 'COA', full: 'College of Accountancy', programs: ['BS in Accountancy', 'BS in Accountancy Information System', 'BS in Management Accounting'] },
-  { abbr: 'CTE', full: 'College of Teacher Education', programs: ['BSEd Major in English', 'BSEd Major in Filipino', 'BSEd Major in Math', 'BSEd Major in Science', 'BSEd Major in Social Studies', 'BEED', 'BTVTEd', 'BSNEd'] },
-  { abbr: 'CHK', full: 'College of Human Kinetics', programs: ['BS in Physical Education', 'BS in Sports Science'] },
-  { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['BS in Nursing'] },
+  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['Bachelor of Science in Information Technology', 'Bachelor of Science in Information System', 'Bachelor of Science in Computer Engineering', 'Bachelor of Science in Industrial Engineering'] },
+  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['Bachelor of Science in Entrepreneurship', 'Bachelor of Science in Public Administration', 'Bachelor of Science in Office Administration', 'Bachelor of Science in Business Administration Major in Human Resource Development Management', 'Bachelor of Science in Business Administration Major in Financial Management', 'Bachelor of Science in Business Administration Major in Marketing Management'] },
+  { abbr: 'CAS', full: 'College of Art and Sciences', programs: ['Bachelor of Science in Economics', 'Bachelor of Arts in Communication', 'Bachelor of Science in Psychology', 'Bachelor of Arts in Political Science'] },
+  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['Bachelor of Science in Tourism Management', 'Bachelor of Science in Hospitality Management'] },
+  { abbr: 'COA', full: 'College of Accountancy', programs: ['Bachelor of Science in Accountancy', 'Bachelor of Science in Accountancy Information System', 'Bachelor of Science in Management Accounting'] },
+  { abbr: 'CTE', full: 'College of Teacher Education', programs: ['Bachelor of Secondary Education Major in English', 'Bachelor of Secondary Education Major in Filipino', 'Bachelor of Secondary Education Major in Math', 'Bachelor of Secondary Education Major in Science', 'Bachelor of Secondary Education Major in Social Studies', 'Bachelor of Elementary Education', 'Bachelor of Technical-Vocational Teacher Education', 'Bachelor of Special Needs Education'] },
+  { abbr: 'CHK', full: 'College of Human Kinetics', programs: ['Bachelor of Science in Physical Education', 'Bachelor of Science in Sports Science'] },
+  { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['Bachelor of Science in Nursing'] },
 ];
 const DEPT_ABBR_TO_FULL = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.full]));
 const PROGRAMS_BY_DEPT = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.programs]));
@@ -755,33 +755,6 @@ export default function ProfileUsers({ onLogout }) {
         <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #c4dbd8' }} />
         <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
       </Card>}
-
-      {/* ── Settings Button ── */}
-      <button
-        onClick={handleOpenSettings}
-        style={{
-          width: '100%', background: '#fff',
-          border: '1px solid #c4dbd8', color: '#466460',
-          padding: 14, borderRadius: 16,
-          fontSize: 12, fontWeight: 700,
-          cursor: 'pointer', marginTop: 4,
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'center', gap: 8,
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = '#f4f7f5'}
-        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-      >
-        <SettingsGearIcon /> SETTINGS
-      </button>
-
-      {/* ── Sign Out Button ── */}
-      <button
-        onClick={() => setLogoutModal(true)}
-        style={{ width: '100%', background: '#fff', border: '1px solid #ffdde1', color: '#e53e3e', padding: 14, borderRadius: 16, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }}
-      >
-        SIGN OUT
-      </button>
 
       {/* ── Edit Profile Modal ── */}
       {editingSection && (

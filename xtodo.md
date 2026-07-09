@@ -1,6 +1,7 @@
 \[TODO]
 
-* [ ] forgot password
+
+
 * [x] add a notification for the whole system in the header.put it next to the profil
 * [x] ~~fix the profile setup to upload all the content into the database some contents are not uploading properly~~
 * [x] ~~fix the dashboard.jsx to fill the whole screen.~~
@@ -17,10 +18,6 @@
 * [x] add ui for the meditrackocr
 * [x] use the DentalExaminationReport for the dental
 * [ ] validation for the name in which number shouldn't be able to be typed in to, the ID shouldn'g have character asside from "-" and numbers.&#x20;
-
-Signup:
-
-* [ ] Validation by clinic staff
 
 Appointment:
 
@@ -52,8 +49,7 @@ Records:
 
 Records-user:
 
-* [x] display the medical and dental examinations summary                                                                                                                                                                                            &#x20;
-* [ ] settings page idea: the settings page should include a input for  the admin to set the current School year
+* [x] display the medical and dental examinations summary                                                                                                                                                                                           &#x20;
 * [x] display their medical certificate.
 * [x] make the med cert be downloadable as pdf
 * [x] add plsp logo in the medical certificate
@@ -87,7 +83,7 @@ Announcements:
 User-management:
 
 * [x] make the table scrollable.
-* [ ] add a functionality to delete or edit users informations, but it should be archived.
+* [x] add a functionality to delete or edit users informations, but it should be archived.
 
 Examination:
 
@@ -117,8 +113,7 @@ For Future development:
 
 * [x] Add Record management for admin only in which we can see all the records in the systems and be able to delete records.
 
-- [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employees)
-- [ ] Possible "settings" page.
+- [x] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employees)
 - [ ] sqlite for offline capabilities.
 -
 
@@ -162,15 +157,16 @@ user
 * [ ] then make the consultation and appointment be only accessible if theres already a medical or dental record for that account.
 * [ ] user homepage, the pending and approved booking should show
 * [x] user profile should be marked as yellow if theres a empty or null information.
-* [ ] user records should have some type of filter to sort from latest to oldest or something.
-* [ ] user notifications
+* [x] user records should have some type of filter to sort from latest to oldest or something.
+* [ ] make sure the records-user is displaying the records proplery especailly the dental
+* [x] user notifications
 * [x] the profile-users. when i tried to edit a certain container it should only update that specific part of profile user not the complete page. because its currently saving the complete data so some fields becomes null since if i only edited the emergency contact the personal and academic information becomes null since when save changes is clicked all the payload includes everything, section it so that only the edited info is posted on the database.
 * [x] for the empty info the container for that should be marked as yellow as warning indicating that it needs to be filled in.
 
 dentist/doctor
 
 * [x] records should be set as all department by default.&#x20;
-* [ ] add a search bar for the approved appointments.
+* [x] add a search bar for the approved appointments.
 * [x] fix the dental exam report.
 * [x] the appointments isnt showing up in the calendar
 
@@ -188,9 +184,7 @@ admin
 
 general:
 
-* [ ] make the settings functional&#x20;
 
-* [ ] forgot password function
 
 * [ ] normalize the text for the name so it cant be capitalized or all lowercase.
 
@@ -209,13 +203,13 @@ general:
   the C:\Users\HP\MediTrack\frontend\src\components\AddressModal.jsx for picking
   address.
 
-* [ ] add a button for clinic staffs to choose the type of semester its on. use school calendar, 2025-2026 1st  sem, 2nd sem, or something like that.
+* [x] add a button for clinic staffs to choose the type of semester its on. use school calendar, 2025-2026 1st  sem, 2nd sem, or something like that.
 
 * [ ] make sure to use school year for the dashboard,(with everything)
 
 * [x] the exam date should be the same as "created at"
 
-* [ ] the program should be complete name, Bachealor of Science in.. for th profile user edit information
+* [x] the program should be complete name, Bachealor of Science in.. for th profile user edit information profile user
 
 * [ ] add suffix to medical and dental records
 
@@ -231,9 +225,67 @@ general:
 
 * [x] just like the medical examination details, add "Past Dental Records" for the Dental Examination Details.
 
-* [ ] the university id should be visible to the consultation page as well next or under the name of the user.
+* [x] the university id should be visible to the consultation page as well next or under the name of the user.
 
-* [ ] the id and program is not visible in the appointment management in admin side
+* [x] the id and program is not visible in the appointment management in admin side
 
 * [ ] the settings page is not functional yet
+
+* [x] remove the settings and sign out in the profile-users
+
+* [ ] nurse, dentist and doctors license number should be set in the profile drawer in header. so i need to update the database to store the lincese no.
+
+* [x] for the appointments in user side once they clicked the appointment schedule it should show like a card modal that pops out wherein the information of the appointment is easily visible. so that they can easily see those appointment schedule.
+
+* [ ] for the appointments i want it so when a pending appointments is selected you cannot select date that have passed already, but if theres no pending appointment selected i can click any dates even though it already passed. and make the date that have already passed looked faded but not too much just subtle fade to differentiate the dates easily
+
+* [ ] In Records.jsx the Create New User & Profile the role is not entirely accurate. it should be admin, nurse, doctor, dentist, student, employee,
+
+* [x] once a consultation thread is opened there should be a button to go back to the empty state or to close the consultation thread
+
+* [ ] make it so that whenever admin creates an announcment it creates a notification.
+
+* [ ] for the announcements whenever the announcement targets a specific department all users under that department should receive a notification for it.
+
+* [ ] admin can view that records informations in records management for admin.
+
+* [ ]  for the C:\Users\HP\MediTrack\frontend\src\features\users\HomePage-users.jsx the part wherein the upcomming appointment should be displayed it should display the if theres an appointment for that specific
+  user that is approved. else it should stays as no upcoming appoinment.
+
+* [x] homepage-user it should only display the announcements that arent on archive (is\_archived == False) only.
+
+
+
+***
+
+###### 07/10/26
+
+
+
+* [ ] forgot password
+* [ ] make it so that whenever admin creates an announcment it creates a notification.
+* [ ] for the announcements whenever the announcement targets a specific department all users under that department should receive a notification for it.
+* [ ] admin can view that records informations in records management for admin.
+* [ ]  for the C:\Users\HP\MediTrack\frontend\src\features\users\HomePage-users.jsx the part wherein the upcomming appointment should be displayed it should display the if theres an appointment for that specific
+  user that is approved. else it should stays as no upcoming appoinment.
+* [ ] for the appointments i want it so when a pending appointments is selected you cannot select date that have passed already, but if theres no pending appointment selected i can click any dates even though it already passed. and make the date that have already passed looked faded but not too much just subtle fade to differentiate the dates easily
+* [ ] In Records.jsx the Create New User & Profile the role is not entirely accurate. it should be admin, nurse, doctor, dentist, student, employee,
+* [ ] the settings page is not functional yet
+* [ ] archive : add functionality for all the tables to saved the name of the deleted\_by just like the medical and dental
+* [ ] for the audit logs i want to have atleast 1 week retention for the logs before it get sent to the archive and then after another 1 week it gets permanently deleted.
+* [ ] make sure to use school year for the dashboard,(with everything)
+* [ ] add suffix to medical and dental records
+* [ ] normalize the text for the name so it cant be capitalized or all lowercase.
+* [ ] when admin edits the info it should show as well who updates the informations.
+* [ ] make sure the records-user is displaying the records proplery especailly the dental
+* [ ] then make the consultation and appointment be only accessible if theres already a medical or dental record for that account.
+* [ ] user homepage, the pending and approved booking should show
+* [ ] sqlite for offline capabilities.
+* [ ] the uploading of health documents is not working
+* [ ] add a notification indicator for new messages arriving
+* [ ] add seen indicator for when the other party seened the message
+* [ ] make it so it also filter the appointment for dentist to only see appointments with dental related concerns
+* [ ] caching (redis/ sql lite)
+
+
 

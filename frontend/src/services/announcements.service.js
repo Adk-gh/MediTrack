@@ -62,6 +62,7 @@ export const getAllAnnouncements = async (forceRefresh = false) => {
   const { data, error } = await supabase
     .from('announcements')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message || 'Failed to fetch announcements');

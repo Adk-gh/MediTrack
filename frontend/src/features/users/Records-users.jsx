@@ -141,6 +141,8 @@ export default function RecordsUsers() {
   const [fromCache, setFromCache]           = useState(false);
   const [records, setRecords]               = useState([]);
   const [filter, setFilter]                 = useState('All');
+  const [sortBy, setSortBy]                 = useState('newest');
+  const [searchQuery, setSearchQuery]       = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [view, setView]                     = useState('list');
   const [currentUserId, setCurrentUserId]   = useState(null);
@@ -295,9 +297,96 @@ export default function RecordsUsers() {
   const openRecord = (rec) => { setSelectedRecord(rec); setView('summary'); };
   const close      = ()    => { setSelectedRecord(null); setView('list'); };
 
-  const filteredRecords = records.filter(r =>
-    filter === 'All' || r.recordType.toLowerCase() === filter.toLowerCase()
-  );
+  // Helper to format date for search comparison
+  // Helper to parse and format date for flexible search
+  const getDateSearchString = (dateStr) => {
+    if (!dateStr) return '';
+
+    // Start with the raw string (lowercase)
+    let searchStr = dateStr.toLowerCase().replace(/,/g, '').trim();
+
+    // Try to parse and add more formats
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+      const monthShort = monthNames[date.getMonth()];
+      const monthFull = date.toLocaleDateString('en-US', { month: 'long' });
+
+      // Add all format variations
+      searchStr += ' ' + [
+        String(yyyy),
+        `${mm}/${dd}/${yyyy}`,
+        `${mm}-${dd}-${yyyy}`,
+        `${dd}/${mm}/${yyyy}`,
+        `${monthFull} ${dd} ${yyyy}`,
+        `${monthShort} ${dd} ${yyyy}`,
+        `${monthFull} ${dd}`,
+        `${monthShort} ${dd}`,
+        `${mm}/${dd}`,
+        `${dd}/${mm}`,
+        `${monthFull}`,
+        `${monthShort}`,
+      ].join(' ').toLowerCase();
+    }
+
+    return searchStr;
+  };
+
+  const filteredRecords = records
+    .filter(r => {
+      // Filter by category
+      if (filter !== 'All' && r.recordType.toLowerCase() !== filter.toLowerCase()) return false;
+
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().replace(/,/g, '').trim();
+
+        // Search in record type
+        if (r.recordType?.toLowerCase().includes(query)) return true;
+
+        // Search in patient name (various name fields)
+        const patientName = [
+          r.lastName, r.firstName, r.middleName,
+          r.dLastName, r.dFirstName, r.dMiddleName,
+          r.dLastName + ' ' + r.dFirstName,
+          r.lastName + ' ' + r.firstName
+        ].filter(Boolean).map(n => n.toLowerCase()).join(' ');
+
+        if (patientName.includes(query)) return true;
+
+        // Search in all possible date fields
+        const dateFields = [
+          r.created_at, r.updated_at, r.approved_at,
+          r.examDate, r.exam_date,
+          r.dExamDate, r.dSigDate,
+          r.labCbcDate, r.labCbc_date,
+          r.labUaDate, r.labUa_date,
+          r.labXrayDate, r.labXray_date,
+        ].filter(Boolean);
+        const dateSearch = dateFields.some(d => {
+          if (!d) return false;
+          const searchStr = getDateSearchString(d);
+          // Direct include check
+          if (searchStr.includes(query)) return true;
+          // Check if query parts match (e.g., "july 6" matches "july" and "6")
+          const queryParts = query.split(' ').filter(p => p.length > 0);
+          return queryParts.every(part => searchStr.includes(part));
+        });
+
+        if (dateSearch) return true;
+
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at || a.examDate || 0);
+      const dateB = new Date(b.created_at || b.examDate || 0);
+      return sortBy === 'newest' ? dateB - dateA : dateA - dateB;
+    });
 
   const buildExamination = (rec) => ({
     patientName:  `${rec.lastName || ''}, ${rec.firstName || ''}`,
@@ -419,22 +508,63 @@ export default function RecordsUsers() {
             </div>
           </div>
 
-          {/* Filter Tabs */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20, marginTop: 16 }}>
-            {['All', 'Medical', 'Dental'].map(f => (
+          {/* Search Bar */}
+          <div style={{ position: 'relative', marginBottom: 16, marginTop: 16 }}>
+            <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9bb5a5', fontSize: 12 }}></i>
+            <input
+              type="text"
+              placeholder="Search by name, date (e.g. 2024, Jan 15, 01/15/2024)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%', padding: '10px 14px 10px 38px', borderRadius: 14, fontSize: 12,
+                border: '1px solid #ddeee5', outline: 'none', background: '#fff',
+                color: '#1a2e22', boxSizing: 'border-box',
+              }}
+            />
+            {searchQuery && (
               <button
-                key={f}
-                onClick={() => setFilter(f)}
+                onClick={() => setSearchQuery('')}
                 style={{
-                  padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                  cursor: 'pointer', transition: 'all 0.2s', border: 'none',
-                  background: filter === f ? '#1a5c3a' : '#e8f5ee',
-                  color:      filter === f ? '#fff'     : '#1a5c3a',
+                  position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', color: '#9bb5a5', cursor: 'pointer', fontSize: 14,
                 }}
               >
-                {f}
+                <i className="fa-solid fa-xmark"></i>
               </button>
-            ))}
+            )}
+          </div>
+
+          {/* Filter Tabs */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['All', 'Medical', 'Dental'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  style={{
+                    padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+                    background: filter === f ? '#1a5c3a' : '#e8f5ee',
+                    color:      filter === f ? '#fff'     : '#1a5c3a',
+                  }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                padding: '6px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a',
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
           </div>
 
           {filteredRecords.length === 0 ? (

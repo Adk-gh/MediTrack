@@ -89,11 +89,11 @@ export const AppointmentManagement = () => {
         return;
       }
 
-      // Fetch patient profiles - use uid as key since user_id is now UUID
+      // Fetch patient profiles - use id as key since user_id is UUID
       const { data: profiles } = await supabase.from('users').select('*');
       console.log('[AppointmentManagement] Got profiles:', profiles?.length, 'items');
       const profileMap = {};
-      profiles?.forEach(p => { profileMap[p.uid] = p; });
+      profiles?.forEach(p => { profileMap[p.id] = p; });
       setPatientProfiles(profileMap);
 
       // Enrich appointments with patient info
@@ -129,7 +129,7 @@ export const AppointmentManagement = () => {
           a.patientUniversityId?.toLowerCase().includes(term) ||
           a.patientProgram?.toLowerCase().includes(term) ||
           a.patientEmail?.toLowerCase().includes(term) ||
-          a.notes?.toLowerCase().includes(term)
+          a.reason?.toLowerCase().includes(term)
         );
       }
 
@@ -423,7 +423,7 @@ export const AppointmentManagement = () => {
             </svg>
             <input
               type="text"
-              placeholder="Search patient, ID, notes..."
+              placeholder="Search patient, ID, reason..."
               value={searchInput}
               onChange={handleSearchChange}
               className="pl-9 pr-4 py-2 w-full border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
@@ -442,7 +442,7 @@ export const AppointmentManagement = () => {
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Date & Time</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Notes</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Reason</th>
                 <th className="bg-slate-50 text-right p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
@@ -508,9 +508,9 @@ export const AppointmentManagement = () => {
                         </span>
                       </td>
 
-                      {/* Notes */}
+                      {/* Reason */}
                       <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[200px]">
-                        <span className="truncate block" title={apt.notes}>{apt.notes || '—'}</span>
+                        <span className="truncate block" title={apt.reason}>{apt.reason || '—'}</span>
                       </td>
 
                       {/* Actions */}

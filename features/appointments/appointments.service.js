@@ -63,12 +63,20 @@ exports.getAppointmentsByDate = async (year, month, day) => {
 };
 
 exports.createAppointment = async (data) => {
-  // Priority: authUid (from token) > patientId (from frontend) > idno
-  let resolvedUserId = data.patientId || data.userId || data.idno || '';
+  // Priority: user_id from frontend (already resolved) > authUid (from token) > patientId
+  let resolvedUserId = data.userId || data.patientId || data.idno || '';
 
   if (data.authUid) {
-    // Always use authUid from token for security - it's the actual authenticated user
-    resolvedUserId = data.authUid;
+    // authUid is the authentication UID (stored in users.uid), need to map to internal user id
+    const { data: userProfile } = await supabase
+      .from('users')
+      .select('id, uid')
+      .eq('uid', data.authUid)
+      .single();
+
+    if (userProfile?.id) {
+      resolvedUserId = userProfile.id;
+    }
   }
 
   const newDoc = {

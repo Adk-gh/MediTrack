@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 
 // ============================================================
@@ -6,7 +7,91 @@ import { supabase } from '../../supabase';
 // ============================================================
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const DEPARTMENTS = ['All Departments', 'College of Computing', 'College of Engineering', 'College of Arts & Sciences', 'College of Health Sciences', 'College of Education', 'College of Business', 'Faculty', 'Staff'];
+// --- PLSP Department Data ---
+const departmentsData = [
+  {
+    abbr: 'CCSE',
+    full: 'College of Computing Science and Engineering',
+    programs: [
+      'Bachelor of Science in Information Technology',
+      'Bachelor of Science in Information System',
+      'Bachelor of Science in Computer Engineering',
+      'Bachelor of Science in Industrial Engineering',
+    ],
+  },
+  {
+    abbr: 'CBAM',
+    full: 'College of Business Administration and Management',
+    programs: [
+      'Bachelor of Science in Entrepreneurship',
+      'Bachelor of Science in Public Administration',
+      'Bachelor of Science in Office Administration',
+      'Bachelor of Science in Business Administration Major in Human Resource Development Management',
+      'Bachelor of Science in Business Administration Major in Financial Management',
+      'Bachelor of Science in Business Administration Major in Marketing Management',
+    ],
+  },
+  {
+    abbr: 'CAS',
+    full: 'College of Art and Sciences',
+    programs: [
+      'Bachelor of Science in Economics',
+      'Bachelor of Arts in Communication',
+      'Bachelor of Science in Psychology',
+      'Bachelor of Arts in Political Science',
+    ],
+  },
+  {
+    abbr: 'CTHM',
+    full: 'College of Tourism and Hospitality Management',
+    programs: [
+      'Bachelor of Science in Tourism Management',
+      'Bachelor of Science in Hospitality Management',
+    ],
+  },
+  {
+    abbr: 'COA',
+    full: 'College of Accountancy',
+    programs: [
+      'Bachelor of Science in Accountancy',
+      'Bachelor of Science in Accountancy Information System',
+      'Bachelor of Science in Management Accounting',
+    ],
+  },
+  {
+    abbr: 'CTE',
+    full: 'College of Teacher Education',
+    programs: [
+      'Bachelor of Secondary Education Major in English',
+      'Bachelor of Secondary Education Major in Filipino',
+      'Bachelor of Secondary Education Major in Math',
+      'Bachelor of Secondary Education Major in Science',
+      'Bachelor of Secondary Education Major in Social Studies',
+      'Bachelor of Elementary Education',
+      'Bachelor of Technical-Vocational Teacher Education',
+      'Bachelor of Special Needs Education',
+    ],
+  },
+  {
+    abbr: 'CHK',
+    full: 'College of Human Kinetics',
+    programs: [
+      'Bachelor of Science in Physical Education',
+      'Bachelor of Science in Sports Science',
+    ],
+  },
+  {
+    abbr: 'CNAHS',
+    full: 'College of Nursing and Allied Health Sciences',
+    programs: [
+      'Bachelor of Science in Nursing',
+    ],
+  },
+];
+
+// All available departments (without "All Departments" option - that's handled by selecting all)
+const DEPT_OPTIONS = departmentsData.map(d => d.full);
+const ALL_DEPT_LABEL = 'All Departments';
 const CATEGORIES = ['General', 'Vaccination', 'Screening', 'Dental', 'Mental Health', 'Emergency', 'Schedule', 'Event'];
 
 const CATEGORY_COLORS = {
@@ -59,10 +144,33 @@ const getRoleFromStorage = () => {
   return null;
 };
 
+// Helper to format dept for display (handles array, JSON string, or plain string)
+const formatDeptDisplay = (deptValue) => {
+  let deptArray = [];
+  if (!deptValue) return [ALL_DEPT_LABEL];
+  if (Array.isArray(deptValue)) {
+    deptArray = deptValue;
+  } else if (typeof deptValue === 'string') {
+    try {
+      const parsed = JSON.parse(deptValue);
+      deptArray = Array.isArray(parsed) ? parsed : [deptValue];
+    } catch {
+      deptArray = [deptValue];
+    }
+  }
+
+  // If all 8 departments are selected, display as "All Departments"
+  if (deptArray.length === DEPT_OPTIONS.length && DEPT_OPTIONS.every(d => deptArray.includes(d))) {
+    return [ALL_DEPT_LABEL];
+  }
+
+  return deptArray.length > 0 ? deptArray : [ALL_DEPT_LABEL];
+};
+
 const EMPTY_FORM = {
   title:    '',
   content:  '',
-  dept:     'All Departments',
+  dept:     [], // Array of selected departments
   category: 'General',
   priority: 'normal',
   location: '',
@@ -140,6 +248,8 @@ export const Announcements = () => {
   const [activeMenuId, setActiveMenuId]   = useState(null);
   const [filterCategory, setFilterCategory] = useState('All');
   const [filterPriority, setFilterPriority] = useState('All');
+  const [filterDept, setFilterDept] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -250,6 +360,18 @@ export const Announcements = () => {
     fetchAnnouncements();
   }, []);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      const dropdown = document.getElementById('dept-dropdown');
+      if (dropdown && !dropdown.contains(e.target) && !e.target.closest('.cursor-pointer')) {
+        dropdown.classList.add('hidden');
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const handler = () => setActiveMenuId(null);
     document.addEventListener('click', handler);
@@ -265,10 +387,23 @@ export const Announcements = () => {
   const handleOpenForm = (editId = null) => {
     if (editId) {
       const target = announcements.find(a => a.id === editId);
+      // Handle dept - could be array (new) or string/JSON (old)
+      let deptArray = [];
+      if (target.dept) {
+        if (Array.isArray(target.dept)) {
+          deptArray = target.dept;
+        } else if (typeof target.dept === 'string') {
+          try {
+            deptArray = JSON.parse(target.dept);
+          } catch {
+            deptArray = [target.dept]; // Single dept string
+          }
+        }
+      }
       setFormData({
         title:         target.title         || '',
         content:       target.content       || '',
-        dept:          target.dept          || 'All Departments',
+        dept:          deptArray,
         category:      target.category      || 'General',
         priority:      target.priority      || 'normal',
         location:      target.location      || '',
@@ -304,23 +439,25 @@ export const Announcements = () => {
         const filePath = `${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('announcements') // Ensure this bucket exists in Supabase
-          .upload(filePath, formData.imageFile);
+          .from('MediStorage') // Your Supabase storage bucket name
+          .upload(`announcements/${filePath}`, formData.imageFile);
 
         if (uploadError) throw new Error('Image upload failed: ' + uploadError.message);
 
         const { data: publicUrlData } = supabase.storage
-          .from('announcements')
-          .getPublicUrl(filePath);
+          .from('MediStorage')
+          .getPublicUrl(`announcements/${filePath}`);
 
         finalImageUrl = publicUrlData.publicUrl;
       }
 
       // Map JS camelCase back to DB snake_case
+      // Store dept as JSON array string
+      const deptValue = formData.dept && formData.dept.length > 0 ? JSON.stringify(formData.dept) : 'All Departments';
       const payload = {
         title:          formData.title.trim(),
         content:        formData.content.trim(),
-        dept:           formData.dept           || 'All Departments',
+        dept:           deptValue,
         category:       formData.category       || 'General',
         priority:       formData.priority       || 'normal',
         location:       formData.location.trim(),
@@ -400,14 +537,49 @@ export const Announcements = () => {
 
   const setField = (key, val) => setFormData(f => ({ ...f, [key]: val }));
 
+  // Debug: log filter values and some data to help diagnose
+  console.log('[Announcements] Filter Category:', filterCategory, 'Filter Priority:', filterPriority, 'Search:', searchTerm);
+  console.log('[Announcements] Sample data:', announcements.slice(0, 2).map(a => ({ category: a.category, priority: a.priority })));
+
   const filtered = announcements.filter(a => {
-    const catOk  = filterCategory === 'All' || a.category === filterCategory;
-    const priOk  = filterPriority === 'All' || a.priority === filterPriority;
-    return catOk && priOk;
+    // Case-insensitive comparison for category and priority
+    // Also handle empty/undefined values
+    const annCategory = a.category || '';
+    const annPriority = a.priority || '';
+    const catOk  = filterCategory === 'All' ||
+      annCategory.toLowerCase() === filterCategory.toLowerCase() ||
+      annCategory === filterCategory;
+    const priOk  = filterPriority === 'All' ||
+      annPriority.toLowerCase() === filterPriority.toLowerCase() ||
+      annPriority === filterPriority;
+
+    // Department filter - handle JSON array or string
+    let annDepts = [];
+    const deptValue = a.dept;
+    if (deptValue) {
+      if (Array.isArray(deptValue)) {
+        annDepts = deptValue;
+      } else if (typeof deptValue === 'string') {
+        try {
+          annDepts = JSON.parse(deptValue);
+        } catch {
+          annDepts = [deptValue];
+        }
+      }
+    }
+    const deptOk = filterDept === 'All' || annDepts.includes(filterDept);
+
+    // Search filter - searches title and content
+    const searchLower = searchTerm.toLowerCase();
+    const searchOk = !searchTerm ||
+      (a.title || '').toLowerCase().includes(searchLower) ||
+      (a.content || '').toLowerCase().includes(searchLower) ||
+      annCategory.toLowerCase().includes(searchLower);
+    return catOk && priOk && deptOk && searchOk;
   });
 
-  const inputCls = 'w-full mt-1.5 px-3 py-2 sm:py-2.5 border border-[#e2e8f0] rounded-xl text-[12px] sm:text-[13px] outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white box-border';
-  const labelCls = 'block text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-3 sm:mt-3.5';
+  const inputCls = 'w-full mt-1.5 px-4 py-3 sm:py-3 border border-[#e2e8f0] rounded-xl text-[13px] sm:text-[14px] outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white box-border';
+  const labelCls = 'block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wide mt-5 sm:mt-6';
 
   return (
     <div className="bg-white min-h-[calc(100vh-120px)] animate-[fadeInSlide_0.4s_ease-out_forwards]">
@@ -423,6 +595,17 @@ export const Announcements = () => {
           {canManage ? 'Announcement Management' : 'Announcements'}
         </h3>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          {/* Search Bar */}
+          <div className="relative flex-1 sm:flex-none sm:w-48">
+            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search announcements..."
+              className="w-full text-xs border border-[#e2e8f0] rounded-full pl-9 pr-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600"
+            />
+          </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="flex-1 sm:flex-none text-[11px] border border-[#e2e8f0] rounded-full px-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600">
               <option value="All">All Categories</option>
@@ -433,6 +616,10 @@ export const Announcements = () => {
               <option value="urgent">Urgent</option>
               <option value="high">High</option>
               <option value="normal">Normal</option>
+            </select>
+            <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className="flex-1 sm:flex-none text-[11px] border border-[#e2e8f0] rounded-full px-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600">
+              <option value="All">All Depts</option>
+              {DEPT_OPTIONS.map(d => <option key={d}>{d}</option>)}
             </select>
           </div>
           {canManage && (
@@ -501,7 +688,9 @@ export const Announcements = () => {
                       </span>
                     )}
                     <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catCls}`}>{item.category || 'General'}</span>
-                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{item.dept}</span>
+                    {formatDeptDisplay(item.dept).map((d, i) => (
+                      <span key={i} className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
+                    ))}
                   </div>
 
                   <h3 className="text-[#466460] font-bold text-[13px] sm:text-[14px] mb-1 pr-8 leading-snug truncate sm:whitespace-normal sm:line-clamp-2">{item.title}</h3>
@@ -521,71 +710,137 @@ export const Announcements = () => {
       </div>
 
       {/* ── CREATE / EDIT MODAL ── */}
-      {isFormModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsFormModalOpen(false)}>
+      {isFormModalOpen && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-start justify-center pt-0 sm:pt-8">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsFormModalOpen(false)}></div>
 
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-            style={{ opacity: formDrawer.isDragging ? Math.max(0, 1 - formDrawer.dragY / 500) : 1 }}
-          />
-
+          {/* Modal Content */}
           <div
             ref={formDrawer.sheetRef}
-            className="relative bg-white w-full sm:max-w-lg flex flex-col shadow-2xl overflow-hidden rounded-t-[28px] sm:rounded-[24px] max-h-[92vh] sm:max-h-[90vh] animate-slideUp sm:animate-[fadeInSlide_0.2s_ease-out_forwards]"
-            style={{
-              transform: formDrawer.isDragging && formDrawer.dragY > 0 ? `translateY(${formDrawer.dragY}px)` : 'translateY(0)',
-              transition: formDrawer.isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
-            }}
+            className="relative bg-white w-full sm:max-w-5xl mx-4 my-4 flex flex-col shadow-2xl overflow-hidden rounded-2xl max-h-[92vh] animate-[fadeInSlide_0.3s_ease-out_forwards]"
             onClick={e => e.stopPropagation()}
           >
+            {/* Header */}
             <div
-              className="sm:hidden flex justify-center pt-4 pb-2 cursor-grab active:cursor-grabbing w-full bg-white shrink-0"
+              className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between"
               onTouchStart={formDrawer.handleTouchStart}
               onTouchMove={formDrawer.handleTouchMove}
               onTouchEnd={formDrawer.handleTouchEnd}
             >
-              <div className="w-12 h-1.5 rounded-full transition-colors" style={{ background: formDrawer.isDragging ? '#466460' : '#cbd5e1' }} />
-            </div>
-
-            <div
-              className="flex items-center justify-between px-5 sm:px-6 pb-4 sm:py-4 border-b border-slate-100 shrink-0 bg-white"
-              onTouchStart={formDrawer.handleTouchStart}
-              onTouchMove={formDrawer.handleTouchMove}
-              onTouchEnd={formDrawer.handleTouchEnd}
-            >
-              <h3 className="text-base font-bold text-[#466460]">
+              <h3 className="text-lg font-bold text-slate-800">
                 <i className={`fa-solid ${currentEditId ? 'fa-pen-to-square' : 'fa-bullhorn'} mr-2`}></i>
                 {currentEditId ? 'Edit Announcement' : 'New Announcement'}
               </h3>
-              <button onClick={() => setIsFormModalOpen(false)} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"><i className="fa-solid fa-xmark text-sm"></i></button>
+              <button onClick={() => setIsFormModalOpen(false)} className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center">
+                <i className="fa-solid fa-xmark text-xl"></i>
+              </button>
             </div>
 
-            <div className="px-5 sm:px-6 py-5 overflow-y-auto grow scrollbar-none">
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+              <div className="p-4 sm:p-6 lg:p-8 bg-white rounded-xl shadow-sm">
               <label className={labelCls}>Title <span className="text-red-400">*</span></label>
               <input type="text" placeholder="Announcement title" className={inputCls} value={formData.title} onChange={e => setField('title', e.target.value)} />
 
               <label className={labelCls}>Details <span className="text-red-400">*</span></label>
               <textarea placeholder="Write the full details..." rows={3} className={`${inputCls} resize-none`} value={formData.content} onChange={e => setField('content', e.target.value)} />
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-                <div className="col-span-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                <div>
                   <label className={labelCls}>Category</label>
                   <select className={inputCls} value={formData.category} onChange={e => setField('category', e.target.value)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
                 </div>
-                <div className="col-span-1">
+                <div>
                   <label className={labelCls}>Priority</label>
                   <select className={inputCls} value={formData.priority} onChange={e => setField('priority', e.target.value)}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
+                <div>
                   <label className={labelCls}>Target Dept</label>
-                  <select className={inputCls} value={formData.dept} onChange={e => setField('dept', e.target.value)}>{DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select>
+                  <div className="relative">
+                    <div
+                      className={`${inputCls} cursor-pointer flex items-center gap-2 min-h-[46px] sm:min-h-[42px] pr-3`}
+                      onClick={() => document.getElementById('dept-dropdown').classList.toggle('hidden')}
+                    >
+                      {formData.dept.length === 0 ? (
+                        <span className="text-slate-500">Select departments...</span>
+                      ) : (
+                        <>
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[#e0eceb] text-[#466460] shrink-0">
+                            {formData.dept[0].length > 25 ? formData.dept[0].substring(0, 25) + '...' : formData.dept[0]}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setField('dept', formData.dept.filter(x => x !== formData.dept[0])); }}
+                              className="hover:text-red-500 ml-0.5"
+                            >
+                              <i className="fa-solid fa-xmark text-[10px]"></i>
+                            </button>
+                          </span>
+                          {formData.dept.length > 1 && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-[#466460] text-white shrink-0">
+                              +{formData.dept.length - 1} more
+                            </span>
+                          )}
+                        </>
+                      )}
+                      <span className="ml-auto text-slate-400 flex-shrink-0 flex items-center">
+                        <i className="fa-solid fa-chevron-down text-xs"></i>
+                      </span>
+                    </div>
+                    {/* Dropdown content */}
+                    <div id="dept-dropdown" className="hidden absolute z-20 w-full mt-1 border border-[#e2e8f0] rounded-xl bg-white shadow-lg max-h-48 overflow-y-auto">
+                      {/* Select All option */}
+                      <label
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 font-semibold bg-slate-50"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.dept.length === DEPT_OPTIONS.length}
+                          ref={(el) => {
+                            if (el) el.indeterminate = formData.dept.length > 0 && formData.dept.length < DEPT_OPTIONS.length;
+                          }}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setField('dept', [...DEPT_OPTIONS]);
+                            } else {
+                              setField('dept', []);
+                            }
+                          }}
+                          className="w-4 h-4 text-[#466460] rounded border-slate-300 focus:ring-[#466460]"
+                        />
+                        <span className="text-sm text-slate-700 truncate">Select All</span>
+                      </label>
+                      {DEPT_OPTIONS.map(d => (
+                        <label
+                          key={d}
+                          className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.dept.includes(d)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setField('dept', [...formData.dept, d]);
+                              } else {
+                                setField('dept', formData.dept.filter(x => x !== d));
+                              }
+                            }}
+                            className="w-4 h-4 text-[#466460] rounded border-slate-300 focus:ring-[#466460]"
+                          />
+                          <span className="text-sm text-slate-600 truncate">{d}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <label className={labelCls}>Location / Venue <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
-              <input type="text" placeholder="e.g. Clinic Room 2" className={inputCls} value={formData.location} onChange={e => setField('location', e.target.value)} />
-
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                <div>
+                  <label className={labelCls}>Location / Venue <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
+                  <input type="text" placeholder="e.g. Clinic Room 2" className={inputCls} value={formData.location} onChange={e => setField('location', e.target.value)} />
+                </div>
                 <div>
                   <label className={labelCls}>Contact Person <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
                   <input type="text" placeholder="Dr. Santos" className={inputCls} value={formData.contactPerson} onChange={e => setField('contactPerson', e.target.value)} />
@@ -609,15 +864,17 @@ export const Announcements = () => {
                 }}
               />
             </div>
+            </div>
 
-            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-2.5 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
-              <button onClick={() => setIsFormModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Cancel</button>
-              <button onClick={handleSave} disabled={formSaving} className="w-full sm:w-auto sm:flex-1 bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+            <div className="shrink-0 bg-white border-t border-[#d1e7e5] px-6 py-4 flex items-center justify-end gap-3">
+              <button onClick={() => setIsFormModalOpen(false)} className="px-6 py-2.5 rounded-xl font-semibold text-sm text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+              <button onClick={handleSave} disabled={formSaving} className="px-6 py-2.5 bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2">
                 {formSaving ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving…</> : <><i className="fa-solid fa-paper-plane"></i> {currentEditId ? 'Save Changes' : 'Post'}</>}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── VIEW MODAL ── */}
@@ -668,7 +925,7 @@ export const Announcements = () => {
                   <div className="w-12 h-1.5 bg-slate-300 rounded-full transition-colors" style={{ background: viewDrawer.isDragging ? '#466460' : '#cbd5e1' }} />
                 </div>
                 <div
-                  className="flex items-center justify-between px-5 sm:px-6 pb-4 sm:py-4 border-b border-slate-100 shrink-0 bg-white"
+                  className="flex items-center justify-between px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-100 shrink-0 bg-white"
                   onTouchStart={viewDrawer.handleTouchStart}
                   onTouchMove={viewDrawer.handleTouchMove}
                   onTouchEnd={viewDrawer.handleTouchEnd}
@@ -685,7 +942,9 @@ export const Announcements = () => {
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {viewData.priority && viewData.priority !== 'normal' && <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_CONFIG[viewData.priority]?.color}`}><i className="fa-solid fa-circle-exclamation mr-0.5"></i>{PRIORITY_CONFIG[viewData.priority]?.label}</span>}
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[viewData.category] || CATEGORY_COLORS.General}`}>{viewData.category || 'General'}</span>
-                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{viewData.dept}</span>
+                {formatDeptDisplay(viewData.dept).map((d, i) => (
+                  <span key={i} className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
+                ))}
               </div>
               <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-1 leading-snug">{viewData.title}</h3>
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-y-1.5 sm:gap-y-1 gap-x-4 text-[11px] sm:text-[10px] text-slate-400 mb-4">
@@ -697,7 +956,7 @@ export const Announcements = () => {
               <div className="border-t border-slate-100 pt-4"><p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
             </div>
 
-            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-2.5 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
+            <div className="px-6 sm:px-8 py-5 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-3 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
               <button onClick={() => setIsViewModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Close</button>
               {/* Edit button in view modal — only for admins/nurses */}
               {canManage && (

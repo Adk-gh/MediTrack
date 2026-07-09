@@ -44,9 +44,10 @@ Records:
 
 * [x] ~~make the add records work, make it similar to signup but with no OCR and there should be temporary password given that they can change later on.~~
 
-
 * [x] ~~add a filter for year level, section,~~
+
 * [x] ~~display prev records of the patients (medical and dental)~~
+
 * [x] ~~add filter for roles, year level and section. and ascending or decending order of reords.(the roles is not working properly) add filter for the program~~
 
 Records-user:

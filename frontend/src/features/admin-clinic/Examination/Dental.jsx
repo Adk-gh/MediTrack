@@ -299,67 +299,11 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     // 1. Populate top-level form fields
     setDentalFormData(buildDentalForm(selectedPatient));
 
-    // 2. Fetch latest dental record (including tooth_data) from the database
-    const fetchLatestDentalRecord = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('dental_records')
-          .select('*')
-          .eq('user_id', selectedPatient?.uid)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) {
-          console.error('Error fetching latest dental record:', error);
-        }
-
-        if (data) {
-          // Set tooth chart data from the latest dental record
-          // Parse tooth_data if it's stored as a string
-          let toothDataFromDB = data.tooth_data || {};
-          if (typeof toothDataFromDB === 'string') {
-            try {
-              toothDataFromDB = JSON.parse(toothDataFromDB);
-            } catch (e) {
-              console.error('Error parsing tooth_data:', e);
-              toothDataFromDB = {};
-            }
-          }
-          console.log('[Dental] toothDataFromDB:', toothDataFromDB);
-          setToothData(toothDataFromDB);
-
-          // Set dental history/procedures
-          const defaultProcedures = Object.fromEntries(dentalProcedures.map(p => [p, 'No']));
-          const dbDentalHistory = typeof data.dental_history === 'string'
-            ? JSON.parse(data.dental_history)
-            : (data.dental_history || {});
-          setDentalHistory({ ...defaultProcedures, ...dbDentalHistory });
-
-          // Set intraoral findings
-          const defaultIntraoral = { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false };
-          const dbIntraoral = typeof data.intraoral === 'string'
-            ? JSON.parse(data.intraoral)
-            : (data.intraoral || {});
-          setIntraoral({ ...defaultIntraoral, ...dbIntraoral });
-        } else {
-          // No previous records, use defaults
-          setToothData({});
-          setDentalHistory(Object.fromEntries(dentalProcedures.map(p => [p, 'No'])));
-          setIntraoral({ gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
-        }
-      } catch (err) {
-        console.error('Error in fetchLatestDentalRecord:', err);
-        // Fallback to defaults
-        setToothData({});
-        setDentalHistory(Object.fromEntries(dentalProcedures.map(p => [p, 'No'])));
-        setIntraoral({ gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
-      }
-    };
-
-    if (selectedPatient?.uid) {
-      fetchLatestDentalRecord();
-    }
+    // 2. Reset Intraoral Findings and Patient Dental Chart for new examination
+    // This ensures the examination form starts empty - previous records are only shown in Visit History
+    setToothData({});
+    setDentalHistory(Object.fromEntries(dentalProcedures.map(p => [p, 'No'])));
+    setIntraoral({ gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
   }, [selectedPatient?.uid]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────

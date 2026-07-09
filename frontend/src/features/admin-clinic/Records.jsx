@@ -534,42 +534,56 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
   // Get raw data
   const rawData = person._raw || {};
 
+  // Get initials from name (LastName, FirstName MiddleName format)
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.split(',').map(p => p.trim());
+    const lastName = parts[0] || '';
+    const firstName = parts[1] || '';
+    const lastInitial = lastName.charAt(0).toUpperCase();
+    const firstInitial = firstName.charAt(0).toUpperCase();
+    return lastInitial + firstInitial || lastInitial || '?';
+  };
+
+  const initials = getInitials(person.name);
+
   return (
     <div className="animate-[fadeInSlide_0.3s_ease-out_forwards] flex flex-col">
       {onClose && (
         <div className="flex justify-between items-center mb-3">
-          <h3 className="font-bold text-[11px] uppercase text-[#466460]">Clinical Profile</h3>
+          <h3 className="font-bold text-sm uppercase text-[#466460]">Clinical Profile</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
-            <i className="fa-solid fa-xmark text-sm"></i>
+            <i className="fa-solid fa-xmark text-lg"></i>
           </button>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex items-start gap-3 mb-4 pb-4 border-b border-slate-100">
-        <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center flex-shrink-0">
-          <i className="fa-solid fa-user text-lg text-[#466460]"></i>
+      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
+        <div className="w-14 h-14 rounded-full bg-[#e0eceb] flex items-center justify-center flex-shrink-0">
+          <span className="text-lg font-bold text-[#466460]">{initials}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-bold text-base text-slate-800 truncate">{person.name}</h3>
-              <p className="text-xs text-slate-500">{person.id} • {person.role?.charAt(0).toUpperCase() + person.role?.slice(1) || person.type}</p>
-              <div className="flex gap-1.5 mt-1 flex-wrap">
-                {person.department && <span className="text-[8px] px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{person.department}</span>}
-                {person.prog && <span className="text-[8px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{person.prog}</span>}
-                {person.jobTitle && <span className="text-[8px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{person.jobTitle}</span>}
+          <div className="flex items-center justify-between gap-3">
+            {/* Left side - Name and info */}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-lg text-slate-800 truncate">{person.name}</h3>
+              <p className="text-sm text-slate-500">{person.id} • {person.role?.charAt(0).toUpperCase() + person.role?.slice(1) || person.type}</p>
+              <div className="flex gap-2 mt-1 flex-wrap">
+                {person.department && <span className="text-xs px-2.5 py-1 rounded-full bg-[#e0eceb] text-[#466460]">{person.department}</span>}
+                {person.prog && <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">{person.prog}</span>}
+                {person.jobTitle && <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">{person.jobTitle}</span>}
               </div>
             </div>
-            {/* Examination Buttons - Top Right */}
-            <div className="flex gap-1.5 shrink-0">
+            {/* Right side - Examination Buttons */}
+            <div className="flex gap-2 shrink-0 items-center">
               {canDoMedical && (
-                <button onClick={() => onExamine(person, 'medical')} className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-3 py-1.5 rounded-full text-[9px] font-bold hover:scale-105 flex items-center gap-1">
+                <button onClick={() => onExamine(person, 'medical')} className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-4 py-2 rounded-full text-xs font-bold hover:scale-105 flex items-center gap-1.5">
                   <i className="fa-solid fa-stethoscope"></i> Medical
                 </button>
               )}
               {canDoDental && (
-                <button onClick={() => onExamine(person, 'dental')} className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-3 py-1.5 rounded-full text-[9px] font-bold hover:scale-105 flex items-center gap-1">
+                <button onClick={() => onExamine(person, 'dental')} className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-4 py-2 rounded-full text-xs font-bold hover:scale-105 flex items-center gap-1.5">
                   <i className="fa-solid fa-tooth"></i> Dental
                 </button>
               )}
@@ -580,10 +594,10 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
 
       {/* Personal Information */}
       <div className="mb-4">
-        <h4 className="text-[10px] font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+        <h4 className="text-xs font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
           <i className="fa-solid fa-id-card"></i> Personal Information
         </h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: 'Age', value: person.age || '-' },
             { label: 'Gender', value: person.gender || rawData.sex || '-' },
@@ -594,9 +608,9 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
             { label: 'Religion', value: rawData.religion || '-' },
             { label: 'Home Address', value: rawData.home_address || '-' },
           ].map(({ label, value }) => (
-            <div key={label} className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-              <p className="text-[7px] text-slate-400 uppercase">{label}</p>
-              <p className="text-xs font-bold text-slate-700 truncate">{value}</p>
+            <div key={label} className={`p-3 bg-slate-50 rounded-lg border border-slate-100 ${label === 'Home Address' ? 'col-span-2' : ''}`}>
+              <p className="text-[10px] text-slate-500 uppercase font-semibold">{label}</p>
+              <p className={`text-sm font-bold text-slate-700 ${label === 'Home Address' ? 'whitespace-normal break-words' : 'truncate'}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -604,10 +618,10 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
 
       {/* Academic/Work Info */}
       <div className="mb-4">
-        <h4 className="text-[10px] font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+        <h4 className="text-xs font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
           <i className="fa-solid fa-graduation-cap"></i> {isStudent ? 'Academic' : 'Work'} Information
         </h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {isStudent ? (
             <>
               {[
@@ -615,9 +629,9 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
                 { label: 'Section', value: person.section || 'N/A' },
                 { label: 'Classification', value: rawData.student_classification || '-' },
               ].map(({ label, value }) => (
-                <div key={label} className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                  <p className="text-[7px] text-slate-400 uppercase">{label}</p>
-                  <p className="text-xs font-bold text-slate-700">{value}</p>
+                <div key={label} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <p className="text-[10px] text-slate-500 uppercase font-semibold">{label}</p>
+                  <p className="text-sm font-bold text-slate-700">{value}</p>
                 </div>
               ))}
             </>
@@ -627,9 +641,9 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
                 { label: 'Job Title', value: rawData.job_title || '-' },
                 { label: 'Classification', value: rawData.classification || '-' },
               ].map(({ label, value }) => (
-                <div key={label} className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-                  <p className="text-[7px] text-slate-400 uppercase">{label}</p>
-                  <p className="text-xs font-bold text-slate-700">{value}</p>
+                <div key={label} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <p className="text-[10px] text-slate-500 uppercase font-semibold">{label}</p>
+                  <p className="text-sm font-bold text-slate-700">{value}</p>
                 </div>
               ))}
             </>
@@ -639,37 +653,37 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
 
       {/* Contact Info */}
       <div className="mb-4">
-        <h4 className="text-[10px] font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+        <h4 className="text-xs font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
           <i className="fa-solid fa-phone"></i> Contact Information
         </h4>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[7px] text-slate-400 uppercase">Email</p>
-            <p className="text-xs font-bold text-slate-700 truncate">{person.email || '-'}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold">Email</p>
+            <p className="text-sm font-bold text-slate-700 truncate">{person.email || '-'}</p>
           </div>
-          <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[7px] text-slate-400 uppercase">Phone</p>
-            <p className="text-xs font-bold text-slate-700">{person.phoneNumber || rawData.phone_number || '-'}</p>
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold">Phone</p>
+            <p className="text-sm font-bold text-slate-700">{person.phoneNumber || rawData.phone_number || '-'}</p>
           </div>
         </div>
       </div>
 
       {/* Emergency Contact */}
       <div className="mb-4">
-        <h4 className="text-[10px] font-bold text-red-600 uppercase mb-2 flex items-center gap-2">
+        <h4 className="text-xs font-bold text-red-600 uppercase mb-2 flex items-center gap-2">
           <i className="fa-solid fa-triangle-exclamation"></i> Emergency Contact
         </h4>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2 bg-red-50 rounded-lg border border-red-100">
-            <p className="text-[7px] text-red-400 uppercase">Name</p>
-            <p className="text-xs font-bold text-slate-700">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+            <p className="text-[10px] text-red-500 uppercase font-semibold">Name</p>
+            <p className="text-sm font-bold text-slate-700">
               {person.emergencyContact?.name || rawData.emergency_contact?.name || '-'}
               {person.emergencyContact?.relationship && ` (${person.emergencyContact.relationship})`}
             </p>
           </div>
-          <div className="p-2 bg-red-50 rounded-lg border border-red-100">
-            <p className="text-[7px] text-red-400 uppercase">Phone</p>
-            <p className="text-xs font-bold text-slate-700">{person.emergencyContact?.phone || rawData.emergency_contact?.phone || '-'}</p>
+          <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+            <p className="text-[10px] text-red-500 uppercase font-semibold">Phone</p>
+            <p className="text-sm font-bold text-slate-700">{person.emergencyContact?.phone || rawData.emergency_contact?.phone || '-'}</p>
           </div>
         </div>
       </div>
@@ -677,13 +691,13 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
       {/* Vaccinations */}
       {(rawData.vaccinations || person.vaccinations) && Object.values(rawData.vaccinations || person.vaccinations || {}).some(v => v?.vaccineName) && (
         <div className="mb-4">
-          <h4 className="text-[10px] font-bold text-green-600 uppercase mb-2 flex items-center gap-2">
+          <h4 className="text-xs font-bold text-green-600 uppercase mb-2 flex items-center gap-2">
             <i className="fa-solid fa-syringe"></i> Vaccinations
           </h4>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {Object.entries(rawData.vaccinations || person.vaccinations || {}).map(([key, v]) =>
               v?.vaccineName ? (
-                <span key={key} className="text-[8px] px-2 py-1 rounded-full bg-green-100 text-green-700">
+                <span key={key} className="text-xs px-3 py-1.5 rounded-full bg-green-100 text-green-700 font-medium">
                   {key.replace('dose', 'Dose ').replace('booster', 'Booster ')}: {v.vaccineName}
                 </span>
               ) : null
@@ -819,23 +833,23 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
       {/* Modal Content */}
       <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
         {/* Header */}
-        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-4 flex items-center justify-between">
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-[#466460] flex items-center justify-center">
-              <i className="fa-solid fa-user text-white"></i>
+            <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
+              <i className="fa-solid fa-user text-white text-lg"></i>
             </div>
             <div>
-              <h3 className="font-bold text-base text-slate-800">{displayPatient.name}</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="font-bold text-lg text-slate-800">{displayPatient.name}</h3>
+              <p className="text-sm text-slate-500 mt-0.5">
                 {displayPatient.id} • {displayPatient.department || ''} {displayPatient.prog ? `• ${displayPatient.prog}` : ''}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+            className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
           >
-            <i className="fa-solid fa-xmark text-lg"></i>
+            <i className="fa-solid fa-xmark text-xl"></i>
           </button>
         </div>
 
@@ -845,7 +859,7 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
             <button
               key={key}
               onClick={() => setExamType(key)}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${
+              className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
                 examType === key
                   ? 'bg-[#466460] text-white shadow-md'
                   : 'text-slate-600 hover:bg-white hover:shadow-sm'
@@ -911,6 +925,9 @@ export const Records = () => {
   const [filterRole, setFilterRole]       = useState('All');
   const [sortOrder, setSortOrder]         = useState('asc');
   const [profileOpen, setProfileOpen]     = useState(false);
+
+  // Add New Record Modal State
+  const [showAddModal, setShowAddModal]   = useState(false);
 
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const snackbarTimer = useRef(null);
@@ -1164,7 +1181,7 @@ export const Records = () => {
       const newPerson = normalizeUser({ uid: createdUser.id, ...payload });
       setPeopleData(prev => [...prev, newPerson]);
       handleClearForm();
-      setActiveSubTab('view');
+      setShowAddModal(false);
     } catch (err) {
       console.error('Error adding user record:', err);
       showSnackbar(err.message || 'Network error. Failed to add record.', 'error');
@@ -1188,21 +1205,27 @@ export const Records = () => {
     const base = size === 'sm'
       ? 'px-2 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate'
       : 'px-1 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[10px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate';
-    const fixedCls = `${base} w-[78px] shrink-0`;
-    const progCls  = `${base} flex-1 min-w-0 max-w-[160px]`;
+    const roleCls = `${base} flex-1 min-w-[70px] max-w-[100px]`;
+    const deptCls = `${base} flex-1 min-w-[80px] max-w-[120px]`;
+    const progCls = `${base} flex-1 min-w-[100px] max-w-[200px]`;
+    const yearCls = `${base} flex-1 min-w-[60px] max-w-[90px]`;
+    const secCls = `${base} flex-1 min-w-[60px] max-w-[90px]`;
 
     return (
       <>
-        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className={fixedCls}>
+        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className={roleCls}>
           {uniqueRoles.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
+        </select>
+        <select value={currentDept} onChange={e => handleSelectDept(e.target.value)} className={deptCls}>
+          {departments.map(d => <option key={d} value={d}>{d === 'All' ? 'All Depts' : d}</option>)}
         </select>
         <select value={filterProgram} onChange={e => { setFilterProgram(e.target.value); setFilterYear('All'); setFilterSection('All'); }} className={progCls}>
           {uniquePrograms.map(p => <option key={p} value={p}>{p === 'All' ? 'All Programs' : p}</option>)}
         </select>
-        <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setFilterSection('All'); }} className={fixedCls}>
+        <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setFilterSection('All'); }} className={yearCls}>
           {uniqueYears.map(y => <option key={y} value={y}>{y === 'All' ? 'All Years' : y}</option>)}
         </select>
-        <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className={fixedCls}>
+        <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className={secCls}>
           {uniqueSections.map(s => <option key={s} value={s}>{s === 'All' ? 'All Secs' : `Sec ${s}`}</option>)}
         </select>
       </>
@@ -1215,29 +1238,11 @@ export const Records = () => {
   const availablePrograms = form.departmentAbbr ? (programsByDeptAbbr[form.departmentAbbr] || []) : [];
 
   return (
-    <>
-      <div className="h-full flex flex-col bg-white overflow-hidden">
-        {/* TAB BAR */}
-        <div className="shrink-0 border-b border-slate-200 px-4 sm:px-6 py-2 flex gap-2 bg-white">
-          {['view', 'add'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveSubTab(tab)}
-              className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full transition-all ${
-                activeSubTab === tab ? 'bg-[#466460] text-white' : 'text-slate-500 hover:bg-[#e0eceb] hover:text-[#466460]'
-              }`}
-            >
-              {tab === 'view' ? 'Current' : 'Add New Record'}
-            </button>
-          ))}
-        </div>
 
+      <div className="h-full flex flex-col bg-white overflow-hidden">
         <div className="flex-1 min-h-0 overflow-hidden">
 
-          {/* VIEW TAB */}
-          {activeSubTab === 'view' && (
-            <>
-              {/* MOBILE */}
+          {/* Always show view tab content */}
               <div className="flex flex-col lg:hidden h-full bg-white overflow-hidden">
                 <div className="shrink-0 border-b border-[#eef2f6] px-3 py-3">
                   {loading ? (
@@ -1331,7 +1336,7 @@ export const Records = () => {
                         <div
                           key={person.uid}
                           onClick={() => handleSelectPerson(person)}
-                          className={`p-3 cursor-pointer rounded-xl transition-all border ${
+                          className={`p-4 cursor-pointer rounded-xl transition-all border ${
                             selectedPerson?.uid === person.uid
                               ? 'bg-gradient-to-r from-[#e0eceb] to-white border-l-[3px] border-l-[#466460] border-t-transparent border-r-transparent border-b-transparent'
                               : 'border-slate-100 hover:bg-slate-50 active:bg-[#e0eceb]'
@@ -1339,16 +1344,16 @@ export const Records = () => {
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0">
-                              <p className="font-bold text-xs text-slate-700 truncate">{person.name}</p>
-                              <p className="text-[9px] text-slate-500 mt-0.5 truncate">
+                              <p className="font-bold text-sm text-slate-700 truncate">{person.name}</p>
+                              <p className="text-xs text-slate-500 mt-1 truncate">
                                 {person.id}{person.prog ? ` • ${person.prog}` : ''}{person.year ? ` ${person.year}` : ''}{person.section ? ` • Sec ${person.section}` : ''}
                               </p>
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className={`text-[8px] px-2 py-0.5 rounded-full ${typeBadgeClass(person.role || person.type)}`}>
+                              <span className={`text-[9px] px-2.5 py-0.5 rounded-full ${typeBadgeClass(person.role || person.type)}`}>
                                 {person.role || person.type}
                               </span>
-                              <i className="fa-solid fa-chevron-right text-[9px] text-slate-300"></i>
+                              <i className="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
                             </div>
                           </div>
                         </div>
@@ -1373,39 +1378,12 @@ export const Records = () => {
               {/* DESKTOP — 2-column layout: People | Clinical Profile */}
               <div className="hidden lg:flex h-full bg-white overflow-hidden">
 
-                {/* Column 1 — People (with department selector integrated into filters) */}
-                <div className="flex-[1.5] border-r border-[#eef2f6] flex flex-col min-w-[220px] max-w-[340px] overflow-hidden">
+                {/* Column 1 — People */}
+                <div className="w-1/3 border-r border-[#eef2f6] flex flex-col overflow-hidden">
                   <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-4">
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="font-bold text-[11px] uppercase text-[#466460]">People</h3>
                       <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">{filteredPeople.length}</span>
-                    </div>
-
-                    {/* Department selector — moved from sidebar into People header */}
-                    <div className="relative mb-3">
-                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                          <polyline points="9 22 9 12 15 12 15 22"/>
-                        </svg>
-                      </div>
-                      <select
-                        value={currentDept}
-                        onChange={e => handleSelectDept(e.target.value)}
-                        className="w-full pl-8 pr-8 py-2 bg-[#f4f8f6] border border-[#c8ddd8] rounded-lg text-[11px] font-semibold text-[#1a2e22] outline-none appearance-none focus:border-[#466460] focus:bg-white transition-all cursor-pointer"
-                        style={{ WebkitAppearance: 'none', MozAppearance: 'none' }}
-                      >
-                        {loading ? (
-                          <option>Loading...</option>
-                        ) : departments.map(dept => (
-                          <option key={dept} value={dept}>{dept}</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="6 9 12 15 18 9"/>
-                        </svg>
-                      </div>
                     </div>
 
                     <div className="flex items-center gap-2 mb-2">
@@ -1457,7 +1435,7 @@ export const Records = () => {
                           <div
                             key={person.uid}
                             onClick={() => setSelectedPerson(person)}
-                            className={`p-3 mb-1 cursor-pointer rounded-xl transition-all border relative ${
+                            className={`p-4 mb-1 cursor-pointer rounded-xl transition-all border relative ${
                               selectedPerson?.uid === person.uid
                                 ? 'bg-gradient-to-r from-[#e0eceb] to-white border-l-[3px] border-l-[#466460] border-t-transparent border-r-transparent border-b-transparent'
                                 : 'border-transparent hover:bg-gradient-to-r hover:from-slate-50 hover:to-white hover:border-[#8aacaa] hover:translate-x-0.5'
@@ -1465,12 +1443,12 @@ export const Records = () => {
                           >
                             <div className="flex justify-between items-start">
                               <div className="min-w-0">
-                                <p className="font-bold text-xs text-slate-700 truncate">{person.name}</p>
-                                <p className="text-[9px] text-slate-500 mt-0.5">
+                                <p className="font-bold text-sm text-slate-700 truncate">{person.name}</p>
+                                <p className="text-xs text-slate-500 mt-1">
                                   {person.id} {person.prog ? `• ${person.prog}` : ''} {person.year || ''} {person.section ? `• Sec ${person.section}` : ''}
                                 </p>
                               </div>
-                              <span className={`text-[8px] px-2 py-0.5 rounded-full flex-shrink-0 ml-1 ${typeBadgeClass(person.role)}`}>{person.role}</span>
+                              <span className={`text-[9px] px-2.5 py-0.5 rounded-full flex-shrink-0 ml-1 ${typeBadgeClass(person.role)}`}>{person.role}</span>
                             </div>
                           </div>
                         ))}
@@ -1481,8 +1459,15 @@ export const Records = () => {
 
                 {/* Column 2 — Clinical Profile (expanded to fill all remaining space) */}
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                  <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5">
-                    <h3 className="font-bold text-[11px] uppercase text-[#466460]">Clinical Profile</h3>
+                  <div className="shrink-0 bg-gradient-to-br from-[#fafbfc] to-white border-b border-[#eef2f6] p-5 flex items-center justify-between">
+                    <h3 className="font-bold text-sm uppercase text-[#466460]">Clinical Profile</h3>
+                    <button
+                      onClick={() => setShowAddModal(true)}
+                      className="px-4 py-2.5 bg-[#466460] text-white text-sm font-semibold rounded-lg hover:bg-[#3a524f] transition-all flex items-center gap-2 shadow-md"
+                    >
+                      <i className="fa-solid fa-plus"></i>
+                      Add New Record
+                    </button>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto p-6 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                     {!selectedPerson ? (
@@ -1495,17 +1480,39 @@ export const Records = () => {
                     )}
                   </div>
                 </div>
-
               </div>
-            </>
-          )}
+        </div>
 
-          {/* ADD NEW RECORD TAB */}
-          {activeSubTab === 'add' && (
-            <div className="h-full overflow-y-auto [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
-              <div className="p-4 sm:p-6 lg:p-8 bg-white max-w-5xl">
-                <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-5">Create New User & Profile</h3>
+      {/* Add New Record Modal - Covers entire application */}
+      {showAddModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)}></div>
 
+          {/* Modal Content */}
+          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+            {/* Header */}
+            <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
+                  <i className="fa-solid fa-user-plus text-white text-lg"></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800">Create New User & Profile</h3>
+                  <p className="text-sm text-slate-500 mt-0.5">Fill in the patient information below</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+              >
+                <i className="fa-solid fa-xmark text-xl"></i>
+              </button>
+            </div>
+
+            {/* Form Content */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+              <div className="p-4 sm:p-6 lg:p-8 bg-white rounded-xl shadow-sm max-w-5xl mx-auto">
                 <h4 className="text-xs font-bold text-slate-700 uppercase mb-3 mt-4 border-b pb-2">Personal Information</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
                   <div>
@@ -1679,9 +1686,10 @@ export const Records = () => {
                 </div>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Examination Modal - Using Portal to render at document root level */}
       {examModalOpen && createPortal(
@@ -1699,7 +1707,7 @@ export const Records = () => {
       )}
 
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />
-    </>
+    </div>
   );
 };
 

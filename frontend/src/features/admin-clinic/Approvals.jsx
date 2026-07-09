@@ -411,6 +411,18 @@ export const Approvals = () => {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
+  // Helper to format date like: "July 02, 2026. 11:31 PM"
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return '—';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    const month = date.toLocaleDateString('en-US', { month: 'long' });
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${month} ${day}, ${year}. ${time}`;
+  };
+
   // Helper to extract tooth conditions for restoration/extraction display
   const extractToothConditions = (toothData, conditions) => {
     if (!toothData || typeof toothData !== 'object') return '';
@@ -684,7 +696,7 @@ export const Approvals = () => {
         {exam.patientId} • {exam.program !== 'N/A' ? exam.program : exam.department}
       </p>
       <div className="flex justify-between items-center mt-1">
-        <p className="text-[10px] text-slate-400">{exam.examDate}</p>
+        <p className="text-[10px] text-slate-400">{formatDateTime(exam.examDate)}</p>
         {exam.certificateIssued && (
           <span className="text-[9px] font-bold text-[#466460] bg-[#e0eceb] px-1.5 py-0.5 rounded-sm">CERT SENT</span>
         )}
@@ -713,7 +725,7 @@ export const Approvals = () => {
         {exam.patientId} • {exam.courseYear}
       </p>
       <div className="flex justify-between items-center mt-1">
-        <p className="text-[10px] text-slate-400">{exam.examDate}</p>
+        <p className="text-[10px] text-slate-400">{formatDateTime(exam.examDate)}</p>
         {exam.reportForwarded && (
           <span className="text-[9px] font-bold text-[#466460] bg-[#e0eceb] px-1.5 py-0.5 rounded-sm">REPORT SENT</span>
         )}
@@ -737,7 +749,11 @@ export const Approvals = () => {
       if (!dateStr) return '—';
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return dateStr;
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const month = date.toLocaleDateString('en-US', { month: 'long' });
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = date.getFullYear();
+      const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      return `${month} ${day}, ${year}. ${time}`;
     };
 
     // Get dental history object - ensure it's an object even if stored as string
@@ -1240,23 +1256,25 @@ export const Approvals = () => {
             )}
           </div>
 
-          <div className="flex gap-6 mb-4 border-b border-slate-100">
+          <div className="flex border-b border-slate-100">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`pb-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 relative ${
-                activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'
-              }`}
+              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              Pending
+              <div className="flex items-center justify-center gap-2">
+                <i className="fa-solid fa-clock"></i> Pending
+              </div>
               {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`pb-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 relative ${
-                activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'
-              }`}
+              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              Approved
+              <div className="flex items-center justify-center gap-2">
+                <i className="fa-solid fa-circle-check"></i> Approved
+              </div>
               {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
             </button>
           </div>

@@ -72,6 +72,9 @@ export const Consultations = () => {
   }, [userRole]);
 
   const [activeTab, setActiveTab]               = useState(allowedTabs[0]?.key || 'medical');
+  const [searchTerm, setSearchTerm]             = useState('');
+  const [filterStatus, setFilterStatus]       = useState('all'); // 'all', 'active', 'ended'
+  const [sortOrder, setSortOrder]             = useState('desc'); // 'desc' = newest first, 'asc' = oldest first
   const [conversations, setConversations]       = useState([]);
   const [selectedConvId, setSelectedConvId]     = useState(null);
   const [messages, setMessages]                 = useState([]);
@@ -386,10 +389,36 @@ export const Consultations = () => {
       ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
     .map(([, p]) => p.name || 'Staff');
 
-  const visibleConversations = conversations.filter(conv =>
-    conv.consultation_type === activeTab &&
-    (conv.last_message || conv.id === selectedConvId)
-  );
+  const visibleConversations = conversations.filter(conv => {
+    // Filter by tab
+    if (conv.consultation_type !== activeTab) return false;
+
+    // Filter by status
+    if (filterStatus === 'active' && conv.status === 'ended') return false;
+    if (filterStatus === 'ended' && conv.status !== 'ended') return false;
+
+    // Get profile for search
+    const profile = patientProfiles[conv.patient_id] || {};
+
+    // Filter by search term
+    if (searchTerm) {
+      const displayName = profile.first_name
+        ? `${profile.last_name || ''}, ${profile.first_name || ''}`.trim()
+        : conv.patient_name || '';
+      const searchLower = searchTerm.toLowerCase();
+      const matchesName = displayName.toLowerCase().includes(searchLower);
+      const matchesId = (profile.university_id || '').toLowerCase().includes(searchLower);
+      const matchesProgram = (profile.program || '').toLowerCase().includes(searchLower);
+      if (!matchesName && !matchesId && !matchesProgram) return false;
+    }
+
+    return conv.last_message || conv.id === selectedConvId;
+  }).sort((a, b) => {
+    // Sort by last_timestamp: newest first (desc) or oldest first (asc)
+    const timeA = a.last_timestamp || 0;
+    const timeB = b.last_timestamp || 0;
+    return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+  });
 
   const unreadByTab = {};
   allowedTabs.forEach(tab => {
@@ -428,7 +457,7 @@ export const Consultations = () => {
       )}
 
       {/* ── Left: Sidebar ── */}
-      <div className={`w-full md:w-[340px] border-r border-slate-200 flex-col flex-shrink-0 ${
+      <div className={`w-full md:w-1/3 border-r border-slate-200 flex-col flex-shrink-0 ${
         selectedConvId ? 'hidden md:flex' : 'flex'
       }`}>
         <div className="p-4 border-b border-slate-200 bg-white">
@@ -477,19 +506,60 @@ export const Consultations = () => {
           })}
         </div>
 
-        <div className="px-4 pt-2 pb-1">
-          <p className="text-[10px] text-slate-400">
-            {visibleConversations.length} total thread{visibleConversations.length !== 1 ? 's' : ''}
-          </p>
+        {/* Search and Filter */}
+        <div className="px-4 pt-3 pb-2 border-b border-slate-100 bg-white">
+          <div className="flex gap-2 mb-2">
+            <div className="relative flex-1">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search name, ID, or program..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#466460] focus:bg-white transition"
+              />
+            </div>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              title={sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center text-sm font-bold"
+            >
+              {sortOrder === 'desc' ? (
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-[#466460]">
+                  <path d="M3 5V15M3 15L8 10M3 15L-2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 10V2M9 2L14 7M9 2L4 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M3 13V3M3 3L8 8M3 3L-2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 8V16M9 16L14 11M9 16L4 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="flex-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:border-[#466460] text-slate-600 cursor-pointer"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="ended">Ended</option>
+            </select>
+            <p className="text-sm text-slate-400 flex items-center whitespace-nowrap">
+              {visibleConversations.length} thread{visibleConversations.length !== 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
 
         {/* Conversation list */}
         <div className="flex-1 overflow-y-auto">
           {visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 p-6 text-center">
-              <i className="fa-regular fa-comment-dots text-4xl text-slate-200"></i>
-              <p className="text-sm">No {tabCfg.label.toLowerCase()} consultations yet</p>
-              <p className="text-xs">Patients will appear here when they send a message</p>
+              <i className="fa-regular fa-comment-dots text-5xl text-slate-200"></i>
+              <p className="text-base">No {tabCfg.label.toLowerCase()} consultations yet</p>
+              <p className="text-sm">Patients will appear here when they send a message</p>
             </div>
           ) : visibleConversations.map(conv => {
             const profile = patientProfiles[conv.patient_id] || {};
@@ -512,7 +582,7 @@ export const Consultations = () => {
               >
                 <div className="relative flex-shrink-0">
                   <div
-                    className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-base ${isEnded ? 'grayscale' : ''}`}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${isEnded ? 'grayscale' : ''}`}
                     style={{ backgroundColor: tab.light, color: tab.accent }}
                   >
                     {initial}
@@ -523,21 +593,28 @@ export const Consultations = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-sm text-slate-800 truncate flex items-center gap-2">
+                    <p className="font-bold text-base text-slate-800 truncate flex items-center gap-2">
                       {displayName}
                       {isEnded && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>
                       )}
                     </p>
-                    <span className="text-[9px] text-slate-400 flex-shrink-0 ml-2">
+                    <span className="text-xs text-slate-400 flex-shrink-0 ml-2">
                       {conv.last_timestamp ? formatTime(conv.last_timestamp) : ''}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patient_role)}`}>
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-sm text-slate-500 truncate">
+                      {profile.university_id && `${profile.university_id} • `}
+                      {profile.program && `${profile.program}`}
+                      {profile.section && ` Sec ${profile.section}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patient_role)}`}>
                       {conv.patient_role || 'patient'}
                     </span>
-                    <p className="text-[10px] text-slate-400 truncate">{conv.last_message || 'No messages'}</p>
+                    <p className="text-sm text-slate-400 truncate">{conv.last_message || 'No messages'}</p>
                   </div>
                 </div>
               </div>
@@ -554,9 +631,10 @@ export const Consultations = () => {
           <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3 flex-shrink-0">
             <button
               onClick={() => { setSelectedConvId(null); setShowPatientPanel(false); }}
-              className="md:hidden w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors flex-shrink-0"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
+              title="Close conversation"
             >
-              <i className="fa-solid fa-chevron-left"></i>
+              <i className="fa-solid fa-xmark"></i>
             </button>
 
             {selectedConv ? (
@@ -586,12 +664,16 @@ export const Consultations = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-slate-800 truncate">{patientName}</p>
                   <p className="text-[10px] text-slate-400 truncate">
+                    {patientProfile.university_id && `${patientProfile.university_id} • `}
+                    {patientProfile.program && `${patientProfile.program}`}
+                    {patientProfile.section && ` Sec ${patientProfile.section}`}
+                  </p>
+                  <p className="text-[10px] text-slate-400 truncate">
                     {isConvEnded
                       ? <span className="text-slate-500 font-semibold">● Session Ended</span>
                       : isPatientOnline
                         ? <span className="text-emerald-500 font-semibold">● Online</span>
                         : <span>● Offline</span>}
-                    {patientProfile.program ? ` · ${patientProfile.program}` : ''}
                   </p>
                 </div>
 
