@@ -76,6 +76,7 @@ export const Consultations = () => {
   const [filterStatus, setFilterStatus]       = useState('all'); // 'all', 'active', 'ended'
   const [sortOrder, setSortOrder]             = useState('desc'); // 'desc' = newest first, 'asc' = oldest first
   const [conversations, setConversations]       = useState([]);
+  const [unreadCounts, setUnreadCounts]         = useState({}); // { convId: count }
   const [selectedConvId, setSelectedConvId]     = useState(null);
   const [messages, setMessages]                 = useState([]);
   const [messageInput, setMessageInput]         = useState('');
@@ -181,15 +182,23 @@ export const Consultations = () => {
         const data = await consultationsService.getAllConsultations(null, true); // Force refresh
         console.log('[Clinic] Raw data from API:', data?.map(c => ({ id: c.id, status: c.status, patient_id: c.patient_id })));
 
+        // Load conversations with last message and unread count
         const consultationsWithLastMessage = await Promise.all(
           (data || []).map(async (conv) => {
             try {
               const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
               const lastMsg = msgs?.slice(-1)[0];
+              // Count unread messages (from patients, not from staff)
+              // Only count if internalStaffId is available and sender_id exists
+              const unreadCount = internalStaffId
+                ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
+                : 0;
+              console.log('[Clinic] Conv', conv.id, '- total msgs:', msgs?.length || 0, 'unread:', unreadCount);
               return {
                 ...conv,
                 last_message: lastMsg?.message || '',
                 last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
+                unread_count: unreadCount,
               };
             } catch {
               return conv;
@@ -197,8 +206,14 @@ export const Consultations = () => {
           })
         );
         consultationsWithLastMessage.sort((a, b) => b.last_timestamp - a.last_timestamp);
-        console.log('[Clinic] Processed consultations:', consultationsWithLastMessage.map(c => ({ id: c.id, status: c.status, last_msg: c.last_message?.substring(0, 30) })));
         setConversations(consultationsWithLastMessage);
+
+        // Build unread counts map
+        const unreadMap = {};
+        consultationsWithLastMessage.forEach(c => {
+          if (c.unread_count > 0) unreadMap[c.id] = c.unread_count;
+        });
+        setUnreadCounts(unreadMap);
 
         // REMOVED: Auto-select first active conversation - user selects manually
       } catch (err) {
@@ -217,8 +232,45 @@ export const Consultations = () => {
       }
     });
 
+    // Poll for unread count updates more frequently (every 3 seconds) to detect when patient reads messages
+    const pollInterval = setInterval(async () => {
+      try {
+        const data = await consultationsService.getAllConsultations(null, true);
+        if (!data) return;
+
+        // Update only the unread counts in conversations (don't re-fetch all messages)
+        const unreadMap = {};
+        const updatedConversations = await Promise.all(
+          (data || []).map(async (conv) => {
+            try {
+              const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
+              const lastMsg = msgs?.slice(-1)[0];
+              const unreadCount = internalStaffId
+                ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
+                : 0;
+              if (unreadCount > 0) unreadMap[conv.id] = unreadCount;
+              return {
+                ...conv,
+                last_message: lastMsg?.message || '',
+                last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
+                unread_count: unreadCount,
+              };
+            } catch {
+              return conv;
+            }
+          })
+        );
+        updatedConversations.sort((a, b) => b.last_timestamp - a.last_timestamp);
+        setConversations(updatedConversations);
+        setUnreadCounts(unreadMap);
+      } catch (err) {
+        // Silent fail for polling
+      }
+    }, 3000);
+
     return () => {
       if (convChannelRef.current) convChannelRef.current();
+      clearInterval(pollInterval);
     };
   }, [sessionReady]);
 
@@ -260,7 +312,8 @@ export const Consultations = () => {
           ...msg,
           text: msg.message,
           timestamp: new Date(msg.created_at).getTime(),
-          sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+          sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+          read_at: msg.read_at, // Include read_at for seen indicator
         }));
         setMessages(formatted);
       } catch (err) {
@@ -276,27 +329,71 @@ export const Consultations = () => {
         // Skip realtime add if we're currently sending (we handle it via fetch)
         if (isSendingRef.current) return;
         // Check for duplicate before adding
+        const isFromPatient = !['doctor', 'nurse', 'dentist', 'sysadmin', 'system', null].includes(newMessage.sender_role?.toLowerCase()) && newMessage.sender_id !== internalStaffId;
         setMessages(prev => {
           if (prev.some(m => m.id === newMessage.id)) return prev;
           const formatted = {
             ...newMessage,
             text: newMessage.message,
             timestamp: new Date(newMessage.created_at).getTime(),
-            sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(newMessage.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+            sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(newMessage.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+            read_at: newMessage.read_at,
           };
           return [...prev, formatted];
         });
+        // If new message is from patient (not staff), increment unread count
+        if (isFromPatient) {
+          setUnreadCounts(prev => ({
+            ...prev,
+            [selectedConvId]: (prev[selectedConvId] || 0) + 1,
+          }));
+          setConversations(prev => prev.map(c =>
+            c.id === selectedConvId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c
+          ));
+        }
       });
-    }
 
-    return () => {
-      if (msgChannelRef.current) msgChannelRef.current();
-    };
+      // Subscribe to message read updates
+      const readChannel = supabase
+        .channel(`messages-read-${selectedConvId}`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'consultation_messages',
+          filter: `consultation_id=eq.${selectedConvId}`,
+        }, (payload) => {
+          console.log('[Clinic] Message read update received:', payload.new);
+          // Update the message in local state to show read status
+          if (payload.new?.read_at) {
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === payload.new.id
+                  ? { ...msg, read_at: payload.new.read_at }
+                  : msg
+              )
+            );
+          }
+        })
+        .subscribe();
+
+      return () => {
+        if (msgChannelRef.current) msgChannelRef.current();
+        supabase.removeChannel(readChannel);
+      };
+    }
   }, [selectedConvId, sessionReady]);
 
   useEffect(() => { setShowPatientPanel(false); }, [selectedConvId]);
   useEffect(() => { selectedConvIdRef.current = selectedConvId; }, [selectedConvId]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // ── Mark messages as read when viewing consultation ───────────────────
+  useEffect(() => {
+    const isEnded = conversations.find(c => c.id === selectedConvId)?.status === 'ended';
+    if (selectedConvId && !isEnded && internalStaffId) {
+      markMessagesAsRead();
+    }
+  }, [selectedConvId, messages, conversations, internalStaffId]);
 
   // ── Send Message ──────────────────────────────────────────────────────
   const sendMessage = async () => {
@@ -326,7 +423,7 @@ export const Consultations = () => {
         ...msg,
         text: msg.message,
         timestamp: new Date(msg.created_at).getTime(),
-        sender: ['doctor', 'nurse', 'dentist', 'admin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+        sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
       }));
       setMessages(formatted);
     } catch (err) {
@@ -334,6 +431,48 @@ export const Consultations = () => {
       showToast('Failed to send message', 'error');
     } finally {
       isSendingRef.current = false; // Re-enable realtime
+    }
+  };
+
+  // ── Mark messages as read ──────────────────────────────────────────────
+  const markMessagesAsRead = async () => {
+    const isEnded = conversations.find(c => c.id === selectedConvId)?.status === 'ended';
+    if (!selectedConvId || !internalStaffId || isEnded) return;
+
+    console.log('[Clinic] Marking messages as read for consultation:', selectedConvId, 'staffId:', internalStaffId);
+
+    const token = localStorage.getItem('token');
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+    try {
+      const response = await fetch(`${API_URL}/consultations/${selectedConvId}/messages/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          sender_id: internalStaffId,
+          sender_role: currentUser?.role || 'doctor',
+        }),
+      });
+      const result = await response.json();
+      console.log('[Clinic] Marked messages as read result:', result);
+
+      // Update unread counts - remove this conversation from the map
+      if (result && result.length > 0) {
+        setUnreadCounts(prev => {
+          const newMap = { ...prev };
+          delete newMap[selectedConvId];
+          return newMap;
+        });
+        // Also update the conversation's unread_count
+        setConversations(prev => prev.map(c =>
+          c.id === selectedConvId ? { ...c, unread_count: 0 } : c
+        ));
+      }
+    } catch (err) {
+      console.error('[Clinic] Error marking messages as read:', err);
     }
   };
 
@@ -386,7 +525,7 @@ export const Consultations = () => {
 
   const onlineClinicStaff = Object.entries(onlinePresence)
     .filter(([uid, p]) => p.status === 'online' && uid !== internalStaffId && // 🔴 FIXED
-      ['doctor','nurse','dentist','admin','administrator'].includes(p.role?.toLowerCase()))
+      ['doctor','nurse','dentist','sysadmin','administrator'].includes(p.role?.toLowerCase()))
     .map(([, p]) => p.name || 'Staff');
 
   const visibleConversations = conversations.filter(conv => {
@@ -423,6 +562,12 @@ export const Consultations = () => {
   const unreadByTab = {};
   allowedTabs.forEach(tab => {
     unreadByTab[tab.key] = 0;
+  });
+  // Accumulate unread counts from conversations (using visibleConversations after it's defined)
+  conversations.forEach(conv => {
+    if (conv.consultation_type && conv.unread_count > 0) {
+      unreadByTab[conv.consultation_type] = (unreadByTab[conv.consultation_type] || 0) + conv.unread_count;
+    }
   });
 
   const handleOpenExamination = () => {
@@ -571,6 +716,8 @@ export const Consultations = () => {
             const isActive = selectedConvId === conv.id;
             const tab = TABS.find(t => t.key === conv.consultation_type) || TABS[0];
             const isEnded = conv.status === 'ended';
+            const unreadCount = conv.unread_count || 0;
+            const hasUnread = unreadCount > 0 && !isEnded;
 
             return (
               <div
@@ -578,7 +725,7 @@ export const Consultations = () => {
                 onClick={() => setSelectedConvId(conv.id)}
                 className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
                   isActive ? 'md:bg-gradient-to-r md:from-[#e0eceb] md:to-white md:border-l-4 md:border-l-[#466460]' : ''
-                } ${isEnded ? 'opacity-70' : ''}`}
+                } ${hasUnread ? 'bg-yellow-50' : ''} ${isEnded ? 'opacity-70' : ''}`}
               >
                 <div className="relative flex-shrink-0">
                   <div
@@ -593,15 +740,22 @@ export const Consultations = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-base text-slate-800 truncate flex items-center gap-2">
+                    <p className={`font-bold text-base truncate flex items-center gap-2 ${hasUnread ? 'text-[#466460]' : 'text-slate-800'}`}>
                       {displayName}
                       {isEnded && (
                         <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>
                       )}
                     </p>
-                    <span className="text-xs text-slate-400 flex-shrink-0 ml-2">
-                      {conv.last_timestamp ? formatTime(conv.last_timestamp) : ''}
-                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      {hasUnread && (
+                        <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-400">
+                        {conv.last_timestamp ? formatTime(conv.last_timestamp) : ''}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="text-sm text-slate-500 truncate">
@@ -614,7 +768,9 @@ export const Consultations = () => {
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patient_role)}`}>
                       {conv.patient_role || 'patient'}
                     </span>
-                    <p className="text-sm text-slate-400 truncate">{conv.last_message || 'No messages'}</p>
+                    <p className={`text-sm truncate ${hasUnread ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
+                      {conv.last_message || 'No messages'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -766,6 +922,12 @@ export const Consultations = () => {
                       </div>
                       <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
                         <span>{formatTime(item.timestamp)}</span>
+                        {/* Seen indicator - only show for clinic messages */}
+                        {isClinic && (
+                          <span className={item.read_at ? 'text-blue-500' : ''} title={item.read_at ? `Seen at ${new Date(item.read_at).toLocaleString()}` : 'Sent'}>
+                            {item.read_at ? '✓✓' : '✓'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

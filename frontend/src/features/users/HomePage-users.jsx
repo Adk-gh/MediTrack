@@ -1,10 +1,14 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\HomePageUsers.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import authService from '../../services/auth.service.js';
 import * as announcementsService from '../../services/announcements.service';
-import { useAppointments } from '../../context/AppointmentContext';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { supabase } from '../../supabase';
+
+// API URL
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Lucide React icons
 import {
@@ -394,29 +398,166 @@ const HomePageUsers = () => {
   const navigate    = useNavigate();
   const currentUser = authService.getCurrentUser();
   const userName    = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
-  const studentId   = currentUser?.universityId ?? currentUser?.idno ?? currentUser?.idNumber;
 
-  const isMissingVaccination      = !currentUser?.vaccinationStatus && !currentUser?.vaccinationHistory;
-  const isMissingEmergencyContact = !currentUser?.emergencyContact;
+  // Fetch user profile to check for incomplete sections
+  const [profileData, setProfileData] = useState(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const uid = user?.uid;
+
+        if (!uid) {
+          setLoadingProfile(false);
+          return;
+        }
+
+        // Fetch profile from Supabase directly (same as Profile-users.jsx)
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('uid', uid)
+          .limit(1);
+
+        if (error) throw error;
+
+        if (data && data[0]) {
+          setProfileData(data[0]);
+        }
+      } catch (err) {
+        console.error('[HomePage] Error fetching profile:', err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  // Check if profile sections are incomplete (using database column names - snake_case)
+  const isFieldEmpty = (val) => !val || val === '' || val === null || val === undefined;
+
+  const hasEmptyAcademic = profileData && (
+    isFieldEmpty(profileData.university_id) ||
+    isFieldEmpty(profileData.department) ||
+    isFieldEmpty(profileData.program) ||
+    isFieldEmpty(profileData.year_level) ||
+    isFieldEmpty(profileData.section)
+  );
+
+  const hasEmptyContact = profileData && (
+    isFieldEmpty(profileData.email) ||
+    isFieldEmpty(profileData.phone_number)
+  );
+
+  const hasEmptyEmergency = profileData && (
+    isFieldEmpty(profileData.emergency_contact?.name) ||
+    isFieldEmpty(profileData.emergency_contact?.relationship) ||
+    isFieldEmpty(profileData.emergency_contact?.phone) ||
+    isFieldEmpty(profileData.emergency_contact?.address)
+  );
+
+  // Vaccination is incomplete if NOT declined AND no vaccineName AND no date for any dose
+  const hasEmptyVaccinations = profileData && (
+    (!profileData.vaccinations?.declined?.dose1 && !profileData.vaccinations?.dose1?.vaccineName && !profileData.vaccinations?.dose1?.date) ||
+    (!profileData.vaccinations?.declined?.dose2 && !profileData.vaccinations?.dose2?.vaccineName && !profileData.vaccinations?.dose2?.date) ||
+    (!profileData.vaccinations?.declined?.booster1 && !profileData.vaccinations?.booster1?.vaccineName && !profileData.vaccinations?.booster1?.date) ||
+    (!profileData.vaccinations?.declined?.booster2 && !profileData.vaccinations?.booster2?.vaccineName && !profileData.vaccinations?.booster2?.date)
+  );
+
+  // Dental is incomplete if NOT declined AND all fields are empty
+  const hasEmptyDental = profileData && (
+    !profileData.dental_history?.declined &&
+    isFieldEmpty(profileData.dental_history?.lastVisit) &&
+    isFieldEmpty(profileData.dental_history?.prevDentist) &&
+    isFieldEmpty(profileData.dental_history?.physician)
+  );
+
+  const hasIncompleteProfile = !loadingProfile && profileData && (
+    hasEmptyAcademic || hasEmptyContact || hasEmptyEmergency || hasEmptyVaccinations || hasEmptyDental
+  );
+
+  // Determine what action to show (prioritize the most important missing info)
   let pendingAction = null;
-  if (isMissingVaccination) {
+  if (hasEmptyVaccinations) {
     pendingAction = {
       title:     "Action Required",
       desc:      "Please update your vaccination history in your profile for campus safety compliance.",
       btnText:   "Update Profile",
       targetTab: "profile",
+      scrollTo:  "vaccinations",
     };
-  } else if (isMissingEmergencyContact) {
+  } else if (hasEmptyEmergency) {
     pendingAction = {
       title:     "Action Required",
       desc:      "Please add an emergency contact to your profile.",
       btnText:   "Add Contact",
       targetTab: "profile",
+      scrollTo:  "emergency",
+    };
+  } else if (hasEmptyAcademic) {
+    pendingAction = {
+      title:     "Action Required",
+      desc:      "Please complete your academic information in your profile.",
+      btnText:   "Update Profile",
+      targetTab: "profile",
+      scrollTo:  "academic",
+    };
+  } else if (hasEmptyContact) {
+    pendingAction = {
+      title:     "Action Required",
+      desc:      "Please add your contact information in your profile.",
+      btnText:   "Update Profile",
+      targetTab: "profile",
+      scrollTo:  "contact",
+    };
+  } else if (hasEmptyDental) {
+    pendingAction = {
+      title:     "Action Required",
+      desc:      "Please add your dental history in your profile.",
+      btnText:   "Add Dental History",
+      targetTab: "profile",
+      scrollTo:  "dental",
     };
   }
 
-  const { getPatientAppointments, loadingAppts } = useAppointments();
+  // Fetch appointments via API
+  const [myAppointments, setMyAppointments] = useState([]);
+  const [loadingAppts, setLoadingAppts] = useState(true);
+
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const uid = user?.uid;
+
+        if (!uid || !token) {
+          setLoadingAppts(false);
+          return;
+        }
+
+        const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'x-user-uid': uid,
+          },
+        });
+
+        if (response.data.success) {
+          setMyAppointments(response.data.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching appointments:', err.response || err);
+      } finally {
+        setLoadingAppts(false);
+      }
+    };
+
+    fetchAppointments();
+  }, []);
 
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnn,    setLoadingAnn]    = useState(true);
@@ -453,9 +594,10 @@ const HomePageUsers = () => {
   const { scrollElRef, indicatorRef, onTouchStart, onTouchMove, onTouchEnd } =
     usePullToRefresh(handleRefresh);
 
-  const studentAppointments = studentId ? getPatientAppointments(studentId) : [];
-  const upcomingAppt = studentAppointments.find(a => a.status === 'approved')
-                    || studentAppointments.find(a => a.status === 'pending');
+  const studentAppointments = myAppointments;
+  const upcomingAppt = studentAppointments.find(a => a.status?.toLowerCase() === 'approved')
+                    || studentAppointments.find(a => a.status?.toLowerCase() === 'pending');
+  const approvedAppts = studentAppointments.filter(a => a.status?.toLowerCase() === 'approved');
 
   const tip       = HEALTH_TIPS[tipIndex];
   const urgentAnn = announcements.find(a => a.priority === 'urgent');
@@ -524,7 +666,7 @@ const HomePageUsers = () => {
                 <p className="text-[11px] text-amber-700 mt-0.5">{pendingAction.desc}</p>
               </div>
               <button
-                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'profile' } })}
+                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'profile', scrollTo: pendingAction.scrollTo } })}
                 className="text-[10px] font-bold bg-amber-200 text-amber-800 px-3 py-1.5 rounded-full hover:bg-amber-300 transition-colors flex-shrink-0 shadow-sm"
               >
                 {pendingAction.btnText}
@@ -535,25 +677,38 @@ const HomePageUsers = () => {
 
         {/* ── Upcoming Appointment ── */}
         <div className="animate-[slideUp_0.4s_ease_both]">
-          <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">Up Next</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">Up Next</div>
+            {approvedAppts.length > 0 && (
+              <button
+                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
+                className="text-[9px] font-bold text-[#466460] bg-[#eef2f1] px-2 py-1 rounded-full hover:bg-[#dde8e5] transition-colors"
+              >
+                {approvedAppts.length} Approved {approvedAppts.length === 1 ? 'Appointment' : 'Appointments'}
+              </button>
+            )}
+          </div>
 
           {loadingAppts ? (
             <div className="bg-white border border-[#dfe6e5] rounded-2xl p-4 animate-pulse h-[72px]"></div>
           ) : upcomingAppt ? (
-            <div className={`bg-white border rounded-2xl p-3 flex items-center justify-between shadow-sm border-l-4 ${upcomingAppt.status === 'approved' ? 'border-l-[#466460]' : 'border-l-[#f0c070]'}`}>
+            <div
+              onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
+              className={`bg-white border rounded-2xl p-3 flex items-center justify-between shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-shadow ${upcomingAppt.status?.toLowerCase() === 'approved' ? 'border-l-[#466460]' : 'border-l-[#f0c070]'}`}
+            >
               <div className="flex items-center gap-3">
-                <div className={`rounded-xl py-2 px-3 text-center min-w-[50px] ${upcomingAppt.status === 'approved' ? 'bg-[#eef2f1] text-[#466460]' : 'bg-[#fffdf7] text-[#b07020]'}`}>
+                <div className={`rounded-xl py-2 px-3 text-center min-w-[50px] ${upcomingAppt.status?.toLowerCase() === 'approved' ? 'bg-[#eef2f1] text-[#466460]' : 'bg-[#fffdf7] text-[#b07020]'}`}>
                   <div className="text-[9px] uppercase font-bold">
-                    {upcomingAppt.status === 'approved' && upcomingAppt.month ? MONTHS_SHORT[upcomingAppt.month - 1] : 'TBD'}
+                    {upcomingAppt.status?.toLowerCase() === 'approved' && upcomingAppt.month ? MONTHS_SHORT[upcomingAppt.month - 1] : 'TBD'}
                   </div>
                   <div className="text-lg font-black leading-none mt-0.5">
-                    {upcomingAppt.status === 'approved' ? upcomingAppt.day : '—'}
+                    {upcomingAppt.status?.toLowerCase() === 'approved' ? upcomingAppt.day : '—'}
                   </div>
                 </div>
                 <div>
                   <h4 className="text-[13px] font-bold text-[#1f2d2b] line-clamp-1">{upcomingAppt.reason}</h4>
                   <p className="text-[10px] text-[#98a8a5] mt-0.5 flex items-center gap-1">
-                    {upcomingAppt.status === 'pending' ? (
+                    {upcomingAppt.status?.toLowerCase() === 'pending' ? (
                       <><Clock size={11} className="text-[#f0c070]" strokeWidth={2} /> Awaiting Schedule</>
                     ) : (
                       <><Clock size={11} strokeWidth={2} /> {formatApptTime(upcomingAppt.time)} · University Clinic</>
@@ -561,12 +716,14 @@ const HomePageUsers = () => {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-[#466460]"
-              >
-                <ArrowRight size={16} strokeWidth={2.5} />
-              </button>
+              <div className="flex items-center gap-2">
+                {upcomingAppt.status?.toLowerCase() === 'approved' && (
+                  <span className="text-[9px] font-bold text-[#466460] bg-[#eef2f1] px-2 py-1 rounded-full">VIEW</span>
+                )}
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 transition-colors text-[#466460]">
+                  <ArrowRight size={16} strokeWidth={2.5} />
+                </div>
+              </div>
             </div>
           ) : (
             <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2">

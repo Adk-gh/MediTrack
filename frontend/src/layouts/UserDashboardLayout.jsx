@@ -273,7 +273,7 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
 }
 
 // ─── Floating Pill Nav ────────────────────────────────────────────────────────
-function MobilePillNav({ activeTab, onTabChange, hidden }) {
+function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 }) {
   const [vw, setVw] = useState(window.innerWidth);
 
   useEffect(() => {
@@ -321,6 +321,7 @@ function MobilePillNav({ activeTab, onTabChange, hidden }) {
       >
         {MOBILE_NAV.map(({ id, label, Icon }) => {
           const isActive = activeTab === id;
+          const showUnreadBadge = id === 'consult' && consultUnreadCount > 0;
           return (
             <button
               key={id}
@@ -353,9 +354,24 @@ function MobilePillNav({ activeTab, onTabChange, hidden }) {
                   color: isActive ? "#ffffff" : "#94a3b8",
                   transition: "all 0.28s cubic-bezier(.34,1.56,.64,1)",
                   flexShrink: 0,
+                  position: "relative",
                 }}
               >
                 <Icon size={isActive ? iconLg : iconSm} />
+                {showUnreadBadge && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -Math.round(2 * scale),
+                      right: -Math.round(2 * scale),
+                      width: Math.round(10 * scale),
+                      height: Math.round(10 * scale),
+                      background: "#ef4444",
+                      borderRadius: "50%",
+                      border: "2px solid #ffffff",
+                    }}
+                  />
+                )}
               </div>
               <span
                 style={{
@@ -450,7 +466,7 @@ export function PreviewModal({ record, onClose, isDesktop }) {
 }
 
 // ─── Desktop shell ─────────────────────────────────────────────────────────────
-function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout }) {
+function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout, consultUnreadCount }) {
   return (
     <div className="min-h-screen bg-transparent flex flex-col">
       <header className="bg-transparent px-5 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -466,6 +482,7 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
           <nav className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3 sticky top-24">
             {DESKTOP_NAV.map(({ id, label, Icon }) => {
               const isActive = activeTab === id;
+              const showUnreadBadge = id === 'consult' && consultUnreadCount > 0;
               return (
                 <button
                   key={id}
@@ -476,10 +493,18 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
                       : "text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 relative">
                     <Icon active={isActive} />
+                    {showUnreadBadge && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                    )}
                   </div>
                   <span className="text-[12px] font-bold">{label}</span>
+                  {showUnreadBadge && (
+                    <span className="ml-auto text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">
+                      {consultUnreadCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -514,7 +539,7 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
 }
 
 // ─── Mobile shell ─────────────────────────────────────────────────────────────
-function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout }) {
+function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout, consultUnreadCount }) {
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
   return (
@@ -560,6 +585,7 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
         activeTab={activeTab}
         onTabChange={onTabChange}
         hidden={logoutModalOpen}
+        consultUnreadCount={consultUnreadCount}
       />
     </div>
   );
@@ -579,6 +605,7 @@ export default function UserDashboardLayout({
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 641);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [consultUnreadCount, setConsultUnreadCount] = useState(0);
 
   const handleNotificationClick = () => setShowNotifications(true);
   const handleCloseNotifications = () => setShowNotifications(false);
@@ -594,6 +621,60 @@ export default function UserDashboardLayout({
     };
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch consult unread count from localStorage (set by Consultation-users.jsx)
+  // Also query database for accurate count in case user hasn't visited consult page yet
+  useEffect(() => {
+    const updateConsultUnreadCount = async () => {
+      try {
+        // First check localStorage (set by active consultation page)
+        let count = parseInt(localStorage.getItem('consultUnreadCount') || '0', 10);
+
+        // Also try to get from database for more accurate count
+        try {
+          const profileCache = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
+          const internalUserId = profileCache?.internalUserId;
+
+          if (internalUserId) {
+            // Get only ACTIVE consultations for this patient
+            const { data: consultations } = await supabase
+              .from('consultations')
+              .select('id')
+              .eq('patient_id', internalUserId)
+              .eq('status', 'active');
+
+            if (consultations && consultations.length > 0) {
+              const consultIds = consultations.map(c => c.id);
+
+              // Get all messages from clinic (not from patient) that are unread
+              const { data: unreadMsgs } = await supabase
+                .from('consultation_messages')
+                .select('id')
+                .in('consultation_id', consultIds)
+                .neq('sender_id', internalUserId)
+                .is('read_at', null);
+
+              if (unreadMsgs) {
+                count = unreadMsgs.length;
+              } else {
+                count = 0;
+              }
+            } else {
+              count = 0;
+            }
+          }
+        } catch (dbErr) {
+          // Database query failed, use localStorage value
+        }
+
+        setConsultUnreadCount(count);
+      } catch {}
+    };
+    updateConsultUnreadCount();
+    // Poll more frequently since messages come in via realtime
+    const interval = setInterval(updateConsultUnreadCount, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -651,6 +732,7 @@ export default function UserDashboardLayout({
     children,
     notificationCount,
     onNotificationClick: handleNotificationClick,
+    consultUnreadCount,
   };
 
   return (

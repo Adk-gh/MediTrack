@@ -29,10 +29,10 @@ const FACULTY_ROLES = new Set(['instructor','lecturer','teacher','professor','de
 const isClinicStaff = r => CLINIC_ROLES.has(r?.toLowerCase());
 const isFaculty     = r => FACULTY_ROLES.has(r?.toLowerCase());
 const isStudent     = r => r?.toLowerCase() === 'student';
-const isAdmin       = r => ['admin','administrator'].includes(r?.toLowerCase());
+const isAdmin       = r => ['sysadmin','administrator'].includes(r?.toLowerCase());
 
 const CLASSIFICATION_MAP = {
-  admin:'Administrator', administrator:'Administrator',
+  admin:'System Administrator', administrator:'System Administrator',
   nurse:'Nurse Personnel', doctor:'Physician / Doctor',
   staff:'Non-Teaching Personnel', employee:'Non-Teaching Personnel',
   librarian:'Non-Teaching Personnel', technician:'Non-Teaching Personnel',
@@ -41,7 +41,7 @@ const CLASSIFICATION_MAP = {
   student:'Student',
 };
 const JOB_TITLE_MAP = {
-  nurse:'Nurse', doctor:'Physician', admin:'Administrator', administrator:'Administrator',
+  nurse:'Nurse', doctor:'Physician', admin:'SysAdmin', administrator:'SysAdmin',
   lecturer:'Lecturer', professor:'Professor', instructor:'Instructor',
   librarian:'Librarian', staff:'Staff',
 };
@@ -433,7 +433,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
                     <div>
                       <label className={labelCls}>Classification</label>
                       <select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>
-                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Physician / Doctor','Administrator'].map(c => <option key={c} value={c}>{c}</option>)}
+                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Physician / Doctor','System Administrator'].map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                   )}
@@ -557,7 +557,7 @@ export const UserManagement = () => {
 
   const getRoleBadgeStyle = (role) => {
     const r = role?.toLowerCase();
-    if (['admin','administrator'].includes(r)) return { background: '#fef9c3', color: '#854d0e' };
+    if (['sysadmin','administrator'].includes(r)) return { background: '#fef9c3', color: '#854d0e' };
     if (isClinicStaff(r)) return { background: '#dbeafe', color: '#1d4ed8' };
     if (r === 'student') return { background: '#f3e8ff', color: '#6b21a8' };
     if (isFaculty(r)) return { background: '#fff7ed', color: '#9a3412' };
@@ -776,7 +776,7 @@ export const UserManagement = () => {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const statTotal       = users.length;
-  const statAdmin       = users.filter(u => ['admin','administrator'].includes(u.role?.toLowerCase())).length;
+  const statAdmin       = users.filter(u => ['sysadmin','administrator'].includes(u.role?.toLowerCase())).length;
   const statClinicStaff = users.filter(u => isClinicStaff(u.role)).length;
   const statStudent     = users.filter(u => u.role?.toLowerCase() === 'student').length;
   const statFaculty     = users.filter(u => isFaculty(u.role)).length;
@@ -812,7 +812,7 @@ export const UserManagement = () => {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
           {[
             { label: 'Total Users',    value: statTotal },
-            { label: 'Administrators', value: statAdmin },
+            { label: 'System Administrators', value: statAdmin },
             { label: 'Clinic Staff',   value: statClinicStaff },
             { label: 'Students',       value: statStudent },
             { label: 'Faculty',        value: statFaculty },
@@ -831,7 +831,7 @@ export const UserManagement = () => {
           <select value={currentFilter} onChange={e => setCurrentFilter(e.target.value)}
             className="w-full sm:w-48 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm">
             <option value="all">All Roles</option>
-            <option value="admin">Administrators</option>
+            <option value="sysadmin">System Administrators</option>
             <option value="clinic_staff">Clinic Staff</option>
             <option value="student">Students</option>
             <option value="faculty">Faculty</option>

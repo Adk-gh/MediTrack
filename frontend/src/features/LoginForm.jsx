@@ -57,7 +57,7 @@ const LoginForm = () => {
         localStorage.setItem('user', JSON.stringify(user));
         const role = user.role?.toLowerCase().trim() || 'student';
         hideLoading();
-        if (['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role)) {
+        if (['nurse', 'doctor', 'dentist', 'sysadmin', 'administrator'].includes(role)) {
           navigate('/dashboard');
         } else {
           navigate('/student/meditrack');

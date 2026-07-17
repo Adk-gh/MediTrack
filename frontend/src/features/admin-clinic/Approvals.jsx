@@ -25,8 +25,8 @@ const Snackbar = ({ message, type, visible }) => (
 const StatusBadge = ({ status }) => {
   const statusClass = {
     pending: 'bg-amber-100 text-amber-700',
-    approved: 'bg-emerald-100 text-emerald-700',
-    done: 'bg-emerald-100 text-emerald-700',
+    approved: 'bg-emerald-100 text-[#466460]',
+    done: 'bg-emerald-100 text-[#466460]',
     rejected: 'bg-red-100 text-red-700'
   }[status?.toLowerCase()] || 'bg-slate-100 text-slate-600';
 
@@ -56,7 +56,7 @@ export const Approvals = () => {
     if (classification === 'dentist' || jobTitle.includes('dentist')) return 'dentist';
     if (classification === 'doctor' || jobTitle.includes('doctor')) return 'doctor';
     if (classification === 'nurse' || jobTitle.includes('nurse')) return 'nurse';
-    if (classification === 'admin' || classification === 'administrator' || role === 'admin') return 'admin';
+    if (classification === 'sysadmin' || classification === 'administrator' || role === 'sysadmin') return 'sysadmin';
     return role || 'staff';
   };
 
@@ -64,7 +64,7 @@ export const Approvals = () => {
   const userRole = getUserRoleFromData(currentUser);
   const isDentist = userRole === 'dentist';
   const isDoctor = userRole === 'doctor' || userRole === 'nurse';
-  const isAdmin = userRole === 'admin';
+  const isAdmin = userRole === 'sysadmin';
 
   // Filtering States
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,6 +82,8 @@ export const Approvals = () => {
   // States for Certificate Toggle
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showCertForm, setShowCertForm] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editData, setEditData] = useState({ status: 'pending', issue_cert: false });
   const [showReportForm, setShowReportForm] = useState(false);
 
   // Fetch current user info and set default exam type
@@ -296,6 +298,8 @@ export const Approvals = () => {
             lastVisit: record.last_visit,
             prevDentist: record.prev_dentist,
             university_id: record.university_id,
+            teeth_upper: record.teeth_upper || '',
+            teeth_lower: record.teeth_lower || '',
           };
         });
 
@@ -328,33 +332,55 @@ export const Approvals = () => {
         return;
       }
 
+      const userId = selectedExam.userId;
+      if (!userId) {
+        console.warn('[Approvals] No userId in selectedExam:', selectedExam);
+        setConsultationHistory([]);
+        setLoadingHistory(false);
+        return;
+      }
+
       setLoadingHistory(true);
       try {
         // Use captured examType to avoid stale closure
         const currentExamType = examType;
-        const userId = selectedExam.userId;
+        const currentRecordId = selectedExam.recordId || selectedExam.id;
+
+        console.log('[Approvals] Fetching history for userId:', userId, 'currentRecordId:', currentRecordId, 'examType:', currentExamType);
 
         let data;
         if (currentExamType === 'dental') {
           // Fetch dental records history for dental exams
-          const { data: dentalData, error } = await supabase
+          let query = supabase
             .from('dental_records')
             .select('*')
-            .eq('user_id', userId)
-            .neq('id', selectedExam.recordId)
-            .order('created_at', { ascending: false });
+            .eq('user_id', userId);
+
+          // Exclude current record if we have a valid ID
+          if (currentRecordId) {
+            query = query.neq('id', currentRecordId);
+          }
+
+          const { data: dentalData, error } = await query.order('created_at', { ascending: false });
           if (error) throw error;
           data = dentalData;
+          console.log('[Approvals] Dental history fetched:', data?.length, 'records');
         } else {
           // Fetch medical records history for medical exams
-          const { data: medicalData, error } = await supabase
+          let query = supabase
             .from('medical_records')
             .select('*')
-            .eq('user_id', userId)
-            .neq('id', selectedExam.recordId)
-            .order('created_at', { ascending: false });
+            .eq('user_id', userId);
+
+          // Exclude current record if we have a valid ID
+          if (currentRecordId) {
+            query = query.neq('id', currentRecordId);
+          }
+
+          const { data: medicalData, error } = await query.order('created_at', { ascending: false });
           if (error) throw error;
           data = medicalData;
+          console.log('[Approvals] Medical history fetched:', data?.length, 'records');
         }
 
         if (isMounted) {
@@ -457,8 +483,12 @@ export const Approvals = () => {
   };
 
   const handleSelectExam = (exam) => {
+    // Auto-detect exam type based on exam data (dentalHistory, toothData, intraoral indicate dental)
+    const hasDentalData = exam.dentalHistory || exam.toothData || exam.intraoral || exam.dental_history || exam.tooth_data || exam.intraoral;
+    const detectedExamType = hasDentalData ? 'dental' : examType;
+
     // Map dental exam data for DentalExaminationReport
-    if (examType === 'dental') {
+    if (detectedExamType === 'dental') {
       const mappedExam = {
         ...exam,
         // Use first, middle, last name for proper display
@@ -513,7 +543,8 @@ export const Approvals = () => {
       const { error } = await supabase.from('medical_records').update({
         status: 'approved',
         is_approved: true,
-        approved_at: new Date().toISOString()
+        approved_at: new Date().toISOString(),
+        issue_cert: false,
       }).eq('id', exam.recordId || exam.id);
 
       if (error) throw error;
@@ -540,7 +571,8 @@ export const Approvals = () => {
       const { error } = await supabase.from('dental_records').update({
         status: 'approved',
         is_approved: true,
-        approved_at: new Date().toISOString()
+        approved_at: new Date().toISOString(),
+        issue_cert: false,
       }).eq('id', exam.recordId || exam.id);
 
       if (error) throw error;
@@ -602,6 +634,7 @@ export const Approvals = () => {
           sig_date: data.sigDate || null,
           examined_by: data.examinedBy || null,
           exam_date: data.examDate || null,
+          issue_cert: true,
         })
         .eq('id', selectedExam.recordId || selectedExam.id);
 
@@ -622,8 +655,14 @@ export const Approvals = () => {
         reportForwarded: true,
       };
 
-      setDentalExaminations(dentalExaminations.map(e => e.id === selectedExam.id ? updatedExam : e));
-      setSelectedExam(updatedExam);
+      // If in pending tab, remove from list, otherwise update the record
+      if (activeTab === 'pending') {
+        setDentalExaminations(dentalExaminations.filter(e => e.id !== selectedExam.id));
+        setSelectedExam(null);
+      } else {
+        setDentalExaminations(dentalExaminations.map(e => e.id === selectedExam.id ? updatedExam : e));
+        setSelectedExam(updatedExam);
+      }
       setShowReportForm(false);
       showSnackbar('Dental report saved and forwarded successfully!', 'success');
     } catch (err) {
@@ -643,6 +682,7 @@ export const Approvals = () => {
         is_fit:            data.isFit           ?? true,
         is_normal_findings: data.isNormalFindings  ?? true,
         approved_at:       selectedExam.status === 'approved' ? undefined : new Date().toISOString(),
+        issue_cert:        true,
       }).eq('id', selectedExam.recordId || selectedExam.id);
 
       if (error) throw error;
@@ -804,7 +844,7 @@ export const Approvals = () => {
           </div>
 
           {/* Patient Details */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
             <div>
               <p className="text-[10px] text-slate-400 uppercase font-bold">Age</p>
               <p className="font-semibold text-slate-700">{exam.age || exam.dAge || '—'}</p>
@@ -820,6 +860,14 @@ export const Approvals = () => {
             <div>
               <p className="text-[10px] text-slate-400 uppercase font-bold">Examined By</p>
               <p className="font-semibold text-slate-700">{exam.examinedBy || exam.examined_by || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase font-bold">Upper Teeth</p>
+              <p className="font-semibold text-slate-700">{exam.teethUpper || exam.teeth_upper || '—'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase font-bold">Lower Teeth</p>
+              <p className="font-semibold text-slate-700">{exam.teethLower || exam.teeth_lower || '—'}</p>
             </div>
           </div>
         </div>
@@ -904,18 +952,150 @@ export const Approvals = () => {
           </div>
         )}
 
-        {/* Patient Signature */}
-        {(exam.patientSignature || exam.patient_signature) && (
-          <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
-            <h4 className="text-sm font-bold text-[#466460] mb-3 uppercase tracking-wide border-b border-slate-200 pb-2">
-              <i className="fa-solid fa-signature mr-2"></i>Patient Signature
-            </h4>
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-slate-700">{exam.patientSignature || exam.patient_signature}</span>
-              <span className="text-slate-400">{formatDate(exam.sigDate || exam.sig_date)}</span>
+      
+
+        {/* --- Past Records History Section --- */}
+        <div className="bg-[#466460]/10 rounded-xl p-5 mb-4 border-2 border-[#466460]/30 shadow-sm">
+          <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-[#466460]/30 pb-2">
+            <i className="fa-solid fa-clock-rotate-left mr-2"></i>Past Dental Records (History)
+          </h4>
+
+          {loadingHistory ? (
+            <div className="text-center py-6 text-slate-400 text-xs">
+              <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
             </div>
-          </div>
-        )}
+          ) : consultationHistory.length === 0 ? (
+            <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50">
+              <p className="text-xs text-slate-400">No previous dental records found for this patient.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {consultationHistory.map((consult, idx) => {
+                const isDentalRecord = consult.dental_history || consult.tooth_data || consult.intraoral;
+                const parseJson = (str, fallback = {}) => {
+                  if (!str) return fallback;
+                  if (typeof str === 'object') return str;
+                  try { return JSON.parse(str); } catch { return fallback; }
+                };
+                const formatFullDate = (dateStr) => {
+                  if (!dateStr) return '-';
+                  const d = new Date(dateStr);
+                  if (isNaN(d.getTime())) return dateStr;
+                  const month = d.toLocaleDateString('en-US', { month: 'long' });
+                  const day = String(d.getDate()).padStart(2, '0');
+                  const year = d.getFullYear();
+                  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                  return `${month} ${day}, ${year} ${time}`;
+                };
+                const rawDate = consult.exam_date || consult.created_at;
+                const dateTime = formatFullDate(rawDate);
+                const intraoral = isDentalRecord ? parseJson(consult.intraoral, {}) : {};
+                const toothData = isDentalRecord ? parseJson(consult.tooth_data, {}) : {};
+                const dentalHistory = isDentalRecord ? parseJson(consult.dental_history, {}) : {};
+
+                return (
+                  <div key={consult.id || idx} className="bg-[#466460]/10 rounded-xl border-2 border-dashed border-[#466460]/40 overflow-hidden">
+                    <div className="bg-gradient-to-r from-[#466460]/20 to-[#466460]/5 px-4 py-2 border-b border-[#466460]/30 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-[#466460]">{dateTime}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 bg-[#466460]/20 text-[#466460] rounded-full font-medium">PAST RECORD</span>
+                      </div>
+                      <StatusBadge status={consult.status} />
+                    </div>
+                    <div className="p-4 text-xs space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <p className="text-[7px] text-slate-400 uppercase">Examined By</p>
+                          <p className="font-medium">{consult.examined_by || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[7px] text-slate-400 uppercase">Exam Date</p>
+                          <p className="font-medium">{dateTime}</p>
+                        </div>
+                        <div>
+                          <p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p>
+                          <p className="font-mono">{consult.teeth_upper || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p>
+                          <p className="font-mono">{consult.teeth_lower || '-'}</p>
+                        </div>
+                      </div>
+                      {intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
+                          </h5>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
+                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
+                                <span className="font-medium text-slate-700">{String(val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {toothData && Object.keys(toothData).length > 0 && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
+                          </h5>
+                          <div className="flex gap-2 mb-3 text-xs">
+                            {(() => {
+                              const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
+                              Object.values(toothData).forEach(d => {
+                                if (d.condition && conditions.hasOwnProperty(d.condition)) {
+                                  conditions[d.condition]++;
+                                }
+                              });
+                              return (
+                                <>
+                                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
+                                  <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
+                                  <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            {Object.entries(toothData).map(([tooth, data]) => {
+                              const conditionColors = {
+                                'caries': 'bg-red-100 text-red-700 border-red-300',
+                                'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+                                'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
+                                'missing': 'bg-slate-100 text-slate-600 border-slate-300',
+                                'improved': 'bg-blue-100 text-blue-700 border-blue-300',
+                              };
+                              return (
+                                <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                                  <span className="block font-bold text-xs">#{tooth}</span>
+                                  <span className="block text-[9px] capitalize">{data.condition || '-'}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
+                          </h5>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
+                              <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-[#466460] rounded-full">{key}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -1145,10 +1325,10 @@ export const Approvals = () => {
         </div>
 
         {/* --- Past Records History Section --- */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
-          <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-slate-200 pb-2">
+        <div className="bg-[#466460]/10 rounded-xl p-5 mb-4 border-2 border-[#466460]/30 shadow-sm">
+          <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-[#466460]/30 pb-2">
             <i className="fa-solid fa-clock-rotate-left mr-2"></i>
-            {examType === 'dental' ? 'Past Dental Records' : 'Past Medical Records'}
+            {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'Past Dental Records (History)' : (examType === 'dental' ? 'Past Dental Records (History)' : 'Past Medical Records (History)')}
           </h4>
 
           {loadingHistory ? (
@@ -1158,61 +1338,196 @@ export const Approvals = () => {
           ) : consultationHistory.length === 0 ? (
             <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50">
               <p className="text-xs text-slate-400">
-                {examType === 'dental'
+                {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data)
                   ? 'No previous dental records found for this patient.'
                   : 'No previous medical records found for this patient.'}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border border-slate-200 rounded-lg">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">Date & Time</th>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">Purpose</th>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">
-                      {examType === 'dental' ? 'Dentist' : 'Doctor/Nurse'}
-                    </th>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {consultationHistory.map((consult, idx) => {
-                    const rawDate = consult.exam_date || consult.created_at;
-                    const dateObj = rawDate ? new Date(rawDate) : new Date();
+            <div className="space-y-4">
+              {consultationHistory.map((consult, idx) => {
+                // Detect if this is a dental record based on fields present
+                const isDentalRecord = consult.dental_history || consult.tooth_data || consult.intraoral;
 
-                    const formattedDate = dateObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+                // Helper to parse JSON fields safely
+                const parseJson = (str, fallback = {}) => {
+                  if (!str) return fallback;
+                  if (typeof str === 'object') return str;
+                  try { return JSON.parse(str); } catch { return fallback; }
+                };
 
-                    const formattedTime = rawDate === consult.created_at
-                      ? dateObj.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
-                      : '—';
+                const formatFullDate = (dateStr) => {
+                  if (!dateStr) return '-';
+                  const d = new Date(dateStr);
+                  if (isNaN(d.getTime())) return dateStr;
+                  const month = d.toLocaleDateString('en-US', { month: 'long' });
+                  const day = String(d.getDate()).padStart(2, '0');
+                  const year = d.getFullYear();
+                  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                  return `${month} ${day}, ${year} ${time}`;
+                };
 
-                    // For dental records, use examined_by; for medical, use physician/nurse_on_duty
-                    const practitioner = examType === 'dental'
-                      ? (consult.examined_by || 'N/A')
-                      : (consult.physician || consult.nurse_on_duty || 'N/A');
+                const rawDate = consult.exam_date || consult.created_at;
+                const dateTime = formatFullDate(rawDate);
 
-                    // Purpose varies by exam type
-                    const purpose = examType === 'dental'
-                      ? (consult.dental_history?.['Oral Prophylaxis'] === 'Yes' ? 'Dental Procedures' : 'Dental Examination')
-                      : 'Medical Examination';
+                // For dental records, parse JSON fields
+                const intraoral = isDentalRecord ? parseJson(consult.intraoral, {}) : {};
+                const toothData = isDentalRecord ? parseJson(consult.tooth_data, {}) : {};
+                const dentalHistory = isDentalRecord ? parseJson(consult.dental_history, {}) : {};
 
-                    return (
-                      <tr key={consult.id || idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-2.5 border-b">
-                          <span className="font-bold text-slate-700 block">{formattedDate}</span>
-                          <span className="text-[10px] text-slate-400">{formattedTime}</span>
-                        </td>
-                        <td className="p-2.5 border-b font-semibold text-slate-700">{purpose}</td>
-                        <td className="p-2.5 border-b text-slate-600 font-medium">{practitioner}</td>
-                        <td className="p-2.5 border-b">
-                          <StatusBadge status={consult.status} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                // For medical records, parse other fields
+                const labResults = !isDentalRecord ? parseJson(consult.lab_results, {}) : {};
+
+                // Use detected type from selected exam for rendering
+                const renderExamType = (selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'dental' : examType;
+
+                return (
+                  <div key={consult.id || idx} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    {/* Header with date and status */}
+                    <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700">{dateTime}</span>
+                      <StatusBadge status={consult.status} />
+                    </div>
+
+                    <div className="p-4 text-xs space-y-4">
+                      {/* Basic Info - same as in Approvals.jsx but reformatted */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <p className="text-[7px] text-slate-400 uppercase">
+                            {renderExamType === 'dental' ? 'Examined By' : 'Physician'}
+                          </p>
+                          <p className="font-medium">
+                            {renderExamType === 'dental'
+                              ? (consult.examined_by || '-')
+                              : (consult.physician || consult.nurse_on_duty || '-')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[7px] text-slate-400 uppercase">Exam Date</p>
+                          <p className="font-medium">{dateTime}</p>
+                        </div>
+                        {renderExamType === 'dental' && (
+                          <>
+                            <div>
+                              <p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p>
+                              <p className="font-mono">{consult.teeth_upper || '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p>
+                              <p className="font-mono">{consult.teeth_lower || '-'}</p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* DENTAL: Intraoral Examination */}
+                      {renderExamType === 'dental' && intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
+                          </h5>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
+                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
+                                <span className="font-medium text-slate-700">{String(val)}</span>
+                              </div>
+                            ))}
+                            {intraoral.tmjExam && (
+                              <div className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400">TMJ: </span>
+                                <span className="font-medium text-slate-700">Examined</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* DENTAL: Tooth Conditions Chart */}
+                      {renderExamType === 'dental' && toothData && Object.keys(toothData).length > 0 && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
+                          </h5>
+
+                          {/* Summary counts */}
+                          <div className="flex gap-2 mb-3 text-xs">
+                            {(() => {
+                              const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
+                              Object.values(toothData).forEach(d => {
+                                if (d.condition && conditions.hasOwnProperty(d.condition)) {
+                                  conditions[d.condition]++;
+                                }
+                              });
+                              return (
+                                <>
+                                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
+                                  <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
+                                  <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Individual teeth */}
+                          <div className="grid grid-cols-4 gap-2">
+                            {Object.entries(toothData).map(([tooth, data]) => {
+                              const conditionColors = {
+                                'caries': 'bg-red-100 text-red-700 border-red-300',
+                                'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+                                'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
+                                'missing': 'bg-slate-100 text-slate-600 border-slate-300',
+                                'improved': 'bg-blue-100 text-blue-700 border-blue-300',
+                              };
+
+                              return (
+                                <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                                  <span className="block font-bold text-xs">#{tooth}</span>
+                                  <span className="block text-[9px] capitalize">{data.condition || '-'}</span>
+                                  {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* DENTAL: Procedures Done */}
+                      {renderExamType === 'dental' && dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
+                          </h5>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
+                              <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-[#466460] rounded-full">
+                                {key}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MEDICAL: Lab Results */}
+                      {renderExamType === 'medical' && labResults && Object.keys(labResults).some(k => labResults[k]) && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-flask mr-1"></i>Lab Results
+                          </h5>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {Object.entries(labResults).filter(([k, v]) => v).map(([key, val]) => (
+                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400 capitalize">{key}: </span>
+                                <span className="font-medium text-slate-700">{String(val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1378,13 +1693,27 @@ export const Approvals = () => {
             </h3>
             {selectedExam && (
               <div className="flex gap-2">
+                {/* Edit Button - for both dental and medical */}
+                <button
+                  onClick={() => {
+                    setEditData({
+                      status: selectedExam.status || 'pending',
+                      issue_cert: selectedExam.issue_cert || selectedExam.certificateIssued || selectedExam.reportForwarded || false
+                    });
+                    setShowEditModal(true);
+                  }}
+                  className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1.5"
+                >
+                  <i className="fa-solid fa-pen-to-square"></i> Edit
+                </button>
+
                 {/* Dental Actions */}
                 {examType === 'dental' ? (
                   <>
                     {activeTab === 'pending' && (
                       <>
                         <button
-                          onClick={() => handleDentalApprove(selectedExam)}
+                          onClick={() => setShowApproveModal(true)}
                           disabled={loading}
                           className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white border-none px-5 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                         >
@@ -1409,7 +1738,7 @@ export const Approvals = () => {
                     )}
                     {activeTab === 'approved' && selectedExam.reportForwarded && (
                       <div className="flex items-center gap-2 border-l border-slate-200 pl-2">
-                        <span className="text-[10px] text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-1.5 rounded-md font-bold flex items-center gap-1.5">
+                        <span className="text-[10px] text-[#466460] bg-emerald-100 border border-[#466460]/30 px-2 py-1.5 rounded-md font-bold flex items-center gap-1.5">
                           <i className="fa-solid fa-paper-plane"></i> Report Forwarded
                         </span>
                         <button
@@ -1455,7 +1784,7 @@ export const Approvals = () => {
 
                   {activeTab === 'approved' && selectedExam.certificateIssued && (
                     <div className="flex items-center gap-2 border-l border-slate-200 pl-2">
-                      <span className="text-[10px] text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-1.5 rounded-md font-bold flex items-center gap-1.5">
+                      <span className="text-[10px] text-[#466460] bg-emerald-100 border border-[#466460]/30 px-2 py-1.5 rounded-md font-bold flex items-center gap-1.5">
                         <i className="fa-solid fa-paper-plane"></i> Cert Forwarded
                       </span>
                       <button
@@ -1490,15 +1819,31 @@ export const Approvals = () => {
               </button>
             </div>
             <div className="p-6">
-              <p className="text-sm text-slate-600 mb-4">
-                You are about to approve the medical examination for <span className="font-bold text-slate-800">{selectedExam?.patientName}</span>.
-              </p>
-              <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3.5 flex gap-3 items-start">
-                <i className="fa-solid fa-circle-question text-emerald-600 mt-0.5"></i>
-                <p className="text-[13px] text-emerald-800 font-medium leading-relaxed">
-                  Would you like to issue a Medical Certificate for this patient before finalizing the approval?
-                </p>
-              </div>
+              {examType === 'dental' ? (
+                <>
+                  <p className="text-sm text-slate-600 mb-4">
+                    You are about to approve the dental examination for <span className="font-bold text-slate-800">{selectedExam?.patientName}</span>.
+                  </p>
+                  <div className="bg-[#466460]/10 border border-[#466460]/30 rounded-lg p-3.5 flex gap-3 items-start">
+                    <i className="fa-solid fa-circle-question text-[#466460] mt-0.5"></i>
+                    <p className="text-[13px] text-[#466460] font-medium leading-relaxed">
+                      Would you like to send the Dental Report to the patient before finalizing the approval?
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 mb-4">
+                    You are about to approve the medical examination for <span className="font-bold text-slate-800">{selectedExam?.patientName}</span>.
+                  </p>
+                  <div className="bg-[#466460]/10 border border-[#466460]/30 rounded-lg p-3.5 flex gap-3 items-start">
+                    <i className="fa-solid fa-circle-question text-[#466460] mt-0.5"></i>
+                    <p className="text-[13px] text-[#466460] font-medium leading-relaxed">
+                      Would you like to issue a Medical Certificate for this patient before finalizing the approval?
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
             <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
               <button
@@ -1510,7 +1855,11 @@ export const Approvals = () => {
               <button
                 onClick={() => {
                   setShowApproveModal(false);
-                  handleApprove(selectedExam);
+                  if (examType === 'dental') {
+                    handleDentalApprove(selectedExam);
+                  } else {
+                    handleApprove(selectedExam);
+                  }
                 }}
                 className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-[#466460] rounded-lg transition shadow-sm"
               >
@@ -1519,11 +1868,156 @@ export const Approvals = () => {
               <button
                 onClick={() => {
                   setShowApproveModal(false);
-                  setShowCertForm(true);
+                  if (examType === 'dental') {
+                    setShowReportForm(true);
+                  } else {
+                    setShowCertForm(true);
+                  }
                 }}
                 className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white hover:opacity-90 rounded-lg transition shadow-sm flex items-center gap-1.5"
               >
-                <i className="fa-solid fa-file-medical"></i> Yes, Issue Certificate
+                {examType === 'dental' ? (
+                  <>
+                    <i className="fa-solid fa-file-pdf"></i> Yes, Send Report
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-file-medical"></i> Yes, Issue Certificate
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- EDIT RECORD MODAL --- */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-xl shadow-2xl w-[420px] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-[#466460] text-sm flex items-center gap-2">
+                <i className="fa-solid fa-pen-to-square"></i> Edit Record
+              </h3>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <i className="fa-solid fa-xmark text-lg"></i>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Status Toggle */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditData({ ...editData, status: 'pending' })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.status === 'pending'
+                        ? 'bg-amber-100 text-amber-700 border-2 border-amber-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-clock mr-1"></i> Pending
+                  </button>
+                  <button
+                    onClick={() => setEditData({ ...editData, status: 'approved' })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.status === 'approved'
+                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-check-circle mr-1"></i> Approved
+                  </button>
+                </div>
+              </div>
+
+              {/* Issue Cert Toggle */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                  {examType === 'dental' ? 'Dental Report Sent' : 'Certificate Issued'}
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditData({ ...editData, issue_cert: false })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      !editData.issue_cert
+                        ? 'bg-red-100 text-red-700 border-2 border-red-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-xmark mr-1"></i> No
+                  </button>
+                  <button
+                    onClick={() => setEditData({ ...editData, issue_cert: true })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.issue_cert
+                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-check mr-1"></i> Yes
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const table = examType === 'dental' ? 'dental_records' : 'medical_records';
+                    const { error } = await supabase
+                      .from(table)
+                      .update({
+                        status: editData.status,
+                        is_approved: editData.status === 'approved',
+                        approved_at: editData.status === 'approved' ? new Date().toISOString() : null,
+                        issue_cert: editData.issue_cert,
+                      })
+                      .eq('id', selectedExam.recordId || selectedExam.id);
+
+                    if (error) throw error;
+
+                    // Update local state
+                    const updatedExam = {
+                      ...selectedExam,
+                      status: editData.status,
+                      is_approved: editData.status === 'approved',
+                      issue_cert: editData.issue_cert,
+                      certificateIssued: editData.issue_cert,
+                      reportForwarded: editData.issue_cert,
+                    };
+
+                    if (examType === 'dental') {
+                      setDentalExaminations(dentalExaminations.map(e =>
+                        e.id === selectedExam.id ? updatedExam : e
+                      ));
+                    } else {
+                      setExaminations(examinations.map(e =>
+                        e.id === selectedExam.id ? updatedExam : e
+                      ));
+                    }
+                    setSelectedExam(updatedExam);
+                    setShowEditModal(false);
+                    showSnackbar('Record updated successfully!', 'success');
+                  } catch (err) {
+                    console.error('Error updating record:', err);
+                    showSnackbar('Failed to update record', 'error');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white hover:opacity-90 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
+                Save Changes
               </button>
             </div>
           </div>

@@ -31,13 +31,13 @@ const getStoredUserRole = () => {
           return 'doctor';
         } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
           return 'nurse';
-        } else if (classification === 'admin' || classification === 'administrator') {
-          return 'admin';
+        } else if (classification === 'System Administrator') {
+          return 'sysadmin';
         }
       }
 
       // Return if valid role found
-      if (role && ['admin', 'doctor', 'dentist', 'nurse'].includes(role)) {
+      if (role && ['sysadmin', 'doctor', 'dentist', 'nurse'].includes(role)) {
         return role;
       }
     }
@@ -171,7 +171,7 @@ const NavApprovalMgmtIcon = ({ active }) => (
 
 // ─── Role-based mobile nav items ──────────────────────────────────────────────
 const ROLE_MOBILE_NAV = {
-  admin: [
+  sysadmin: [
     { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
     { id: 'recordManagement', label: 'Records', Icon: NavRecordsIcon },
     { id: 'auditLogs', label: 'Audit', Icon: NavAnnounceIcon },
@@ -492,8 +492,8 @@ export const DashboardLayout = ({
               role = 'doctor';
             } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
               role = 'nurse';
-            } else if (classification === 'admin' || classification === 'administrator') {
-              role = 'admin';
+            } else if (classification === 'System Administrator' || classification === 'administrator') {
+              role = 'sysadmin';
             }
           }
 
@@ -528,8 +528,8 @@ export const DashboardLayout = ({
             setUserRole('doctor');
           } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
             setUserRole('nurse');
-          } else if (classification === 'admin' || classification === 'administrator') {
-            setUserRole('admin');
+          } else if (classification === 'System Administrator' || classification === 'administrator') {
+            setUserRole('sysadmin');
           }
         }
       } catch (err) {
@@ -546,7 +546,7 @@ export const DashboardLayout = ({
 
   const mobileNavItems = propMobileNavItems && propMobileNavItems.length > 0
     ? propMobileNavItems
-    : (ROLE_MOBILE_NAV[effectiveRole] || ROLE_MOBILE_NAV.admin);
+    : (ROLE_MOBILE_NAV[effectiveRole] || ROLE_MOBILE_NAV.sysadmin);
 
   const handleProfileClick    = () => { setShowHamburger(false); setShowProfileDrawer(true); };
   const handleCloseProfile    = () => setShowProfileDrawer(false);

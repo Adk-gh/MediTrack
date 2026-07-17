@@ -261,6 +261,10 @@ export const ApprovalManagement = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editRecord, setEditRecord] = useState(null);
+  const [editData, setEditData] = useState({ status: 'pending', issue_cert: false });
+  const [saving, setSaving] = useState(false);
 
   const handleDeleteClick = (record) => {
     setRecordToDelete(record);
@@ -318,7 +322,7 @@ export const ApprovalManagement = () => {
 
   const filterSelectCls = "px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
 
-  if (userRole !== 'admin') {
+  if (userRole !== 'sysadmin') {
     return (
       <div className="flex items-center justify-center h-full text-slate-500">
         <div className="text-center">
@@ -501,14 +505,31 @@ export const ApprovalManagement = () => {
 
                       {/* Actions */}
                       <td className="p-3 text-right">
-                        <button
-                          onClick={() => handleDeleteClick(record)}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all font-semibold"
-                          title="Delete Record"
-                        >
-                          <i className="fa-solid fa-trash-can mr-1"></i>
-                          Delete
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              setEditRecord(record);
+                              setEditData({
+                                status: record.status || 'pending',
+                                issue_cert: record.issue_cert || false
+                              });
+                              setShowEditModal(true);
+                            }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-[#466460] hover:text-white transition-all font-semibold"
+                            title="Edit Record"
+                          >
+                            <i className="fa-solid fa-pen-to-square mr-1"></i>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(record)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all font-semibold"
+                            title="Delete Record"
+                          >
+                            <i className="fa-solid fa-trash-can mr-1"></i>
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -584,6 +605,150 @@ export const ApprovalManagement = () => {
                   <>
                     <i className="fa-solid fa-archive"></i>
                     Archive
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Record Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-[#466460]/10 flex items-center justify-center">
+                <i className="fa-solid fa-pen-to-square text-[#466460] text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Edit Record</h3>
+                <p className="text-sm text-slate-500">{editRecord?.patientName}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Status Toggle */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditData({ ...editData, status: 'pending' })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.status === 'pending'
+                        ? 'bg-amber-100 text-amber-700 border-2 border-amber-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-clock mr-1"></i> Pending
+                  </button>
+                  <button
+                    onClick={() => setEditData({ ...editData, status: 'approved' })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.status === 'approved'
+                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-check-circle mr-1"></i> Approved
+                  </button>
+                  <button
+                    onClick={() => setEditData({ ...editData, status: 'rejected' })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.status === 'rejected'
+                        ? 'bg-red-100 text-red-700 border-2 border-red-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-xmark-circle mr-1"></i> Rejected
+                  </button>
+                </div>
+              </div>
+
+              {/* Issue Cert Toggle */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                  {editRecord?.recordType === 'dental' ? 'Dental Report Sent' : 'Certificate Issued'}
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditData({ ...editData, issue_cert: false })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      !editData.issue_cert
+                        ? 'bg-red-100 text-red-700 border-2 border-red-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-xmark mr-1"></i> No
+                  </button>
+                  <button
+                    onClick={() => setEditData({ ...editData, issue_cert: true })}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editData.issue_cert
+                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-check mr-1"></i> Yes
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => { setShowEditModal(false); setEditRecord(null); }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const table = editRecord?.recordType === 'dental' ? 'dental_records' : 'medical_records';
+                    const { error } = await supabase
+                      .from(table)
+                      .update({
+                        status: editData.status,
+                        is_approved: editData.status === 'approved',
+                        approved_at: editData.status === 'approved' ? new Date().toISOString() : null,
+                        issue_cert: editData.issue_cert,
+                      })
+                      .eq('id', editRecord.id);
+
+                    if (error) throw error;
+
+                    // Update local state
+                    setRecords(records.map(r =>
+                      r.id === editRecord.id
+                        ? { ...r, status: editData.status, issue_cert: editData.issue_cert, is_approved: editData.status === 'approved' }
+                        : r
+                    ));
+
+                    setShowEditModal(false);
+                    setEditRecord(null);
+                    showSnackbar('Record updated successfully!', 'success');
+                  } catch (err) {
+                    console.error('Error updating record:', err);
+                    showSnackbar('Failed to update record', 'error');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-check"></i>
+                    Save Changes
                   </>
                 )}
               </button>

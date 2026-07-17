@@ -358,6 +358,7 @@ exports.getProfile = async (userId) => {
     studentClassification: data.student_classification || '',
     classification:       data.classification || '',
     jobTitle:             data.job_title || '',
+    licenseNumber:        data.license_number || '',
     phoneNumber:          data.phone_number || '',
     emergencyContact:     data.emergency_contact || {},
     vaccinations:         data.vaccinations || {},
@@ -448,11 +449,57 @@ exports.updateProfile = async (userId, updates) => {
   if (updates.studentClassification !== undefined) dbUpdates.student_classification = updates.studentClassification;
   if (updates.classification !== undefined) dbUpdates.classification = updates.classification;
   if (updates.jobTitle !== undefined) dbUpdates.job_title = updates.jobTitle;
+  if (updates.licenseNumber !== undefined) dbUpdates.license_number = updates.licenseNumber;
   if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
   if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
   if (updates.vaccinations !== undefined) dbUpdates.vaccinations = updates.vaccinations;
   if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
   if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
+
+  // If no updates, return current profile
+  if (Object.keys(dbUpdates).length === 0) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('uid', userId)
+      .single();
+    if (fetchError) throw new Error(fetchError.message);
+    return {
+      uid:                  existing.uid,
+      firstName:            existing.first_name,
+      lastName:             existing.last_name,
+      middleName:        existing.middle_name || '',
+      suffix:               existing.suffix || '',
+      email:                existing.email,
+      role:                 existing.role,
+      universityId:         existing.university_id,
+      isVerified:           existing.is_verified,
+      isProfileSetup:       existing.is_profile_setup,
+      profileComplete:      existing.profile_complete,
+      birthday:             existing.birthday || '',
+      age:                  existing.age || '',
+      sex:                  existing.sex || '',
+      bloodType:            existing.blood_type || '',
+      homeAddress:          existing.home_address || '',
+      religion:             existing.religion || '',
+      nationality:           existing.nationality || '',
+      civilStatus:           existing.civil_status || '',
+      department:           existing.department || '',
+      program:              existing.program || '',
+      yearLevel:            existing.year_level || '',
+      section:              existing.section || '',
+      studentClassification: existing.student_classification || '',
+      classification:       existing.classification || '',
+      jobTitle:             existing.job_title || '',
+      licenseNumber:        existing.license_number || '',
+      phoneNumber:          existing.phone_number || '',
+      emergencyContact:     existing.emergency_contact || {},
+      vaccinations:         existing.vaccinations || {},
+      dentalHistory:        existing.dental_history || {},
+    };
+  }
+
+  dbUpdates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase
     .from('users')
@@ -492,6 +539,7 @@ exports.updateProfile = async (userId, updates) => {
     studentClassification: data.student_classification || '',
     classification:       data.classification || '',
     jobTitle:             data.job_title || '',
+    licenseNumber:        data.license_number || '',
     phoneNumber:          data.phone_number || '',
     emergencyContact:     data.emergency_contact || {},
     vaccinations:         data.vaccinations || {},
@@ -543,6 +591,10 @@ exports.adminUpdateUser = async (targetUid, updates) => {
   // Job title
   if (updates.jobTitle !== undefined) dbUpdates.job_title = updates.jobTitle;
   else if (updates.job_title !== undefined) dbUpdates.job_title = updates.job_title;
+
+  // License number
+  if (updates.licenseNumber !== undefined) dbUpdates.license_number = updates.licenseNumber;
+  else if (updates.license_number !== undefined) dbUpdates.license_number = updates.license_number;
 
   // Birthday
   if (updates.birthday !== undefined) dbUpdates.birthday = updates.birthday;
@@ -654,6 +706,7 @@ exports.adminUpdateUser = async (targetUid, updates) => {
     studentClassification: data.student_classification || '',
     classification:       data.classification || '',
     jobTitle:             data.job_title || '',
+    licenseNumber:        data.license_number || '',
     phoneNumber:          data.phone_number || '',
   };
 };

@@ -112,7 +112,7 @@ const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 
 function getDefaultClassification(role) {
   const classMap = {
-    administrator: 'Administrator', admin: 'Administrator',
+    administrator: 'System Administrator', admin: 'System Administrator',
     nurse: 'Nurse Personnel', doctor: 'Physician / Doctor',
     staff: 'Non-Teaching Personnel', employee: 'Non-Teaching Personnel',
     guard: 'Security Personnel', technician: 'Non-Teaching Personnel',
@@ -124,7 +124,7 @@ function getDefaultClassification(role) {
 
 function getDefaultJobTitle(role) {
   const titleMap = {
-    nurse: 'Nurse', doctor: 'Physician', admin: 'Administrator',
+    nurse: 'Nurse', doctor: 'Physician', admin: 'SysAdmin',
     administrator: 'Administrator', lecturer: 'Lecturer', professor: 'Professor',
     instructor: 'Instructor', librarian: 'Librarian', technician: 'Technician',
     guard: 'Security Guard', staff: 'Staff',
@@ -527,8 +527,8 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
 
   // Normalize role for comparison
   const userRole = String(currentUserRole || '').toLowerCase().trim();
-  const canDoMedical = ['nurse', 'doctor', 'admin', 'administrator'].includes(userRole);
-  const canDoDental = ['dentist', 'admin', 'administrator'].includes(userRole);
+  const canDoMedical = ['nurse', 'doctor', 'sysadmin', 'administrator'].includes(userRole);
+  const canDoDental = ['dentist', 'sysadmin', 'administrator'].includes(userRole);
   const isStudent = person.role === 'student';
 
   // Get raw data
@@ -768,8 +768,8 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
 
   // Filter tabs based on user role
   const userRole = String(currentUserRole || '').toLowerCase().trim();
-  const canDoMedical = ['nurse', 'doctor', 'admin', 'administrator'].includes(userRole);
-  const canDoDental = ['dentist', 'admin', 'administrator'].includes(userRole);
+  const canDoMedical = ['nurse', 'doctor', 'sysadmin', 'administrator'].includes(userRole);
+  const canDoDental = ['dentist', 'sysadmin', 'administrator'].includes(userRole);
 
   // Determine available tabs
   const availableTabs = [
@@ -1644,7 +1644,7 @@ export const Records = () => {
                       <div>
                         <label className={formLabelCls}>Classification</label>
                         <select name="classification" value={form.classification} onChange={handleFormChange} className={formSelectCls}>
-                          {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
+                          {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'System Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     </>

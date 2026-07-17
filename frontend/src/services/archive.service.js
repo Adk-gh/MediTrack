@@ -16,7 +16,7 @@ const getAuthHeaders = () => {
 const getCurrentUser = () => {
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return user.name || user.email || user.role || 'Admin';
+    return user.name || user.email || user.role || 'SysAdmin';
   } catch {
     return 'Admin';
   }

@@ -23,5 +23,6 @@ router.delete('/:id', consultationsController.deleteConsultation);
 // Messages
 router.get('/:consultationId/messages', consultationsController.getMessages);
 router.post('/:consultationId/messages', consultationsController.sendMessage);
+router.post('/:consultationId/messages/read', consultationsController.markMessagesAsRead);
 
 module.exports = router;

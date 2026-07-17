@@ -319,7 +319,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
     const normalizedRole = role.toLowerCase();
 
     // Admin Settings
-    if (normalizedRole === 'admin' || normalizedRole === 'administrator') {
+    if (normalizedRole === 'sysadmin' || normalizedRole === 'administrator') {
       return [
         { id: 'ocr', label: 'OCR Settings', icon: OcrIcon },
         { id: 'security', label: 'Security', icon: LockIcon },
@@ -417,7 +417,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
 
       case 'general':
         // Determine if the current user should see the System Preferences block
-        const isStaffOrAdmin = ['admin', 'administrator', 'nurse', 'doctor', 'dentist', 'staff', 'registrar'].includes(activeRole.toLowerCase());
+        const isStaffOrAdmin = ['sysadmin', 'administrator', 'nurse', 'doctor', 'dentist', 'staff', 'registrar'].includes(activeRole.toLowerCase());
 
         return (
           <div style={{ padding: isMobile ? '16px 12px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>

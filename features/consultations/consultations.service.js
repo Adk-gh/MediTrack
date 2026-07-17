@@ -47,7 +47,9 @@ exports.getConsultationsByPatient = async (patientId) => {
 exports.createConsultation = async (consultationData) => {
   const { patient_id, consultation_type } = consultationData;
 
+  console.log('[createConsultation] === START ===');
   console.log('[createConsultation] Searching for:', { patient_id, consultation_type });
+  console.log('[createConsultation] Full input data:', JSON.stringify(consultationData));
 
   // ── STEP 1: Return existing active session immediately ────────────────
   const { data: activeRows, error: activeError } = await supabase
@@ -62,9 +64,11 @@ exports.createConsultation = async (consultationData) => {
   if (activeError) throw new Error(activeError.message);
 
   if (activeRows?.[0]) {
-    console.log(`[createConsultation] Already active, returning: ${activeRows[0].id}`);
+    console.log(`[createConsultation] STEP 1: Already active, returning: ${activeRows[0].id} status: ${activeRows[0].status}`);
     return activeRows[0];
   }
+
+  console.log('[createConsultation] STEP 1: No active consultation found');
 
   // ── STEP 2: Reactivate the most recent ended session ──────────────────
   const { data: endedRows, error: endedError } = await supabase
@@ -81,9 +85,10 @@ exports.createConsultation = async (consultationData) => {
   const existingChat = endedRows?.[0] || null;
 
   if (existingChat) {
-    console.log(`[createConsultation] Reactivating ended session: ${existingChat.id}`);
+    console.log(`[createConsultation] STEP 2: Found ended session: ${existingChat.id} status: ${existingChat.status}`);
 
-    // First update
+    // First update - explicitly set status to 'active' and clear ended_at
+    console.log('[createConsultation] Attempting to update status to active...');
     const { error: updateError } = await supabase
       .from('consultations')
       .update({
@@ -92,40 +97,42 @@ exports.createConsultation = async (consultationData) => {
       })
       .eq('id', existingChat.id);
 
+    console.log('[createConsultation] Update completed, error:', updateError);
+
+    // Log the current state after update
+    const { data: afterUpdate } = await supabase
+      .from('consultations')
+      .select('id, status, ended_at')
+      .eq('id', existingChat.id)
+      .single();
+    console.log('[createConsultation] State right after update:', afterUpdate);
+
     if (updateError) {
       console.error('[createConsultation] Update error:', updateError);
       throw new Error(updateError.message);
     }
 
-    // Then fetch fresh to get updated data
-    const { data: updated, error: fetchError } = await supabase
+    // Fetch fresh data AFTER update to ensure we get the correct status
+    console.log('[createConsultation] Fetching reactivated consultation...');
+    const { data: reactivated, error: fetchError } = await supabase
       .from('consultations')
       .select('*')
       .eq('id', existingChat.id)
       .single();
 
+    console.log('[createConsultation] Reactivated data:', JSON.stringify(reactivated));
+    console.log('[createConsultation] Final status being returned:', reactivated?.status);
+
     if (fetchError) {
       console.error('[createConsultation] Fetch error:', fetchError);
+      throw new Error(fetchError.message);
     }
 
-    // If update succeeded but fetch failed, fetch again
-    if (!updated) {
-      const { data: retryData } = await supabase
-        .from('consultations')
-        .select('*')
-        .eq('id', existingChat.id)
-        .single();
-      if (retryData) {
-        console.log('[createConsultation] Reactivated (retry):', retryData);
-        return retryData;
-      }
-    }
-
-    console.log('[createConsultation] Reactivated:', updated);
-    return updated;
+    return reactivated;
   }
 
   // ── STEP 3: No history — create a brand new session ───────────────────
+  console.log('[createConsultation] STEP 3: No existing session, creating new one');
   // FIX: Only insert columns that exist in public.consultations:
   //   id (auto), consultation_type, created_by, patient_id,
   //   patient_name, status, created_at, ended_at
@@ -134,14 +141,15 @@ exports.createConsultation = async (consultationData) => {
   console.log(`[createConsultation] Creating new thread for patient: ${patient_id}`);
 
   const insertPayload = {
-    patient_id,
-    consultation_type,
+    patient_id: patient_id,
+    consultation_type: consultation_type,
     patient_name: consultationData.patient_name || null,
-    created_by:   consultationData.created_by   || null,
-    status:       'active',
-    ended_at:     null,
-    created_at:   new Date().toISOString(),
+    created_by: consultationData.created_by || null,
+    status: 'active',
+    ended_at: null,
   };
+
+  console.log('[createConsultation] Insert payload:', JSON.stringify(insertPayload));
 
   const { data, error } = await supabase
     .from('consultations')
@@ -153,6 +161,8 @@ exports.createConsultation = async (consultationData) => {
     console.error('[createConsultation] Insert error:', error);
     throw new Error(error.message);
   }
+
+  console.log('[createConsultation] Insert result:', JSON.stringify(data));
 
   return data;
 };
@@ -221,6 +231,57 @@ exports.sendMessage = async (consultationId, messageData) => {
     .single();
 
   if (error) throw new Error(error.message);
+  return data;
+};
+
+// Mark messages as read
+exports.markMessagesAsRead = async (consultationId, readerId, readerRole) => {
+  console.log('[markMessagesAsRead] Called with:', { consultationId, readerId, readerRole });
+
+  // First, get all unread messages for this consultation
+  const { data: unreadMessages, error: fetchError } = await supabase
+    .from('consultation_messages')
+    .select('id, sender_id, read_at')
+    .eq('consultation_id', consultationId)
+    .is('read_at', null)
+    .not('sender_id', 'is', null);
+
+  console.log('[markMessagesAsRead] Unread messages:', unreadMessages);
+
+  if (fetchError) {
+    console.error('[markMessagesAsRead] Fetch error:', fetchError);
+    throw new Error(fetchError.message);
+  }
+
+  if (!unreadMessages || unreadMessages.length === 0) {
+    console.log('[markMessagesAsRead] No unread messages to mark');
+    return [];
+  }
+
+  // Mark only messages where sender_id is NOT equal to readerId
+  const messagesToMark = unreadMessages.filter(msg => msg.sender_id !== readerId);
+  console.log('[markMessagesAsRead] Messages to mark as read:', messagesToMark);
+
+  if (messagesToMark.length === 0) {
+    console.log('[markMessagesAsRead] No messages from other sender');
+    return [];
+  }
+
+  const messageIds = messagesToMark.map(msg => msg.id);
+
+  // Update only those messages
+  const { data, error } = await supabase
+    .from('consultation_messages')
+    .update({ read_at: new Date().toISOString() })
+    .in('id', messageIds)
+    .select();
+
+  if (error) {
+    console.error('[markMessagesAsRead] Update error:', error);
+    throw new Error(error.message);
+  }
+
+  console.log(`[markMessagesAsRead] Marked ${data?.length || 0} messages as read`);
   return data;
 };
 

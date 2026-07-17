@@ -39,7 +39,9 @@ const getConsultationsByPatient = async (req, res, next) => {
 // ─── TRIGGER 1: CREATION ──────────────────────────────────────────────
 const createConsultation = async (req, res, next) => {
   try {
+    console.log('[Controller] Before createConsultation');
     const data = await consultationsService.createConsultation(req.body);
+    console.log('[Controller] After createConsultation, data.status:', data?.status);
 
     const targetUserId = data?.patient_id || data?.user_id || req.user?.uid;
 
@@ -196,6 +198,39 @@ const setPresence = async (req, res, next) => {
   }
 };
 
+// Mark messages as read
+const markMessagesAsRead = async (req, res, next) => {
+  try {
+    const { consultationId } = req.params;
+    let readerId = req.body.sender_id; // Try to get from body first (internal ID)
+    const readerRole = req.user?.role || req.body.sender_role;
+
+    // If no internal ID in body, we need to convert auth UID to internal ID
+    if (!readerId && req.user?.uid) {
+      // Look up internal user ID from auth UID
+      const { data: userProfile } = await require('../../configs/database')
+        .from('users')
+        .select('id')
+        .eq('uid', req.user.uid)
+        .single();
+
+      if (userProfile?.id) {
+        readerId = userProfile.id;
+      }
+    }
+
+    if (!readerId) {
+      return res.status(400).json({ success: false, message: 'Reader ID not found' });
+    }
+
+    console.log('[Controller] markMessagesAsRead - readerId (internal):', readerId);
+    const data = await consultationsService.markMessagesAsRead(consultationId, readerId, readerRole);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getPresence = async (req, res, next) => {
   try {
     const data = await consultationsService.getPresence();
@@ -224,6 +259,7 @@ module.exports = {
   deleteConsultation,
   getMessages,
   sendMessage,
+  markMessagesAsRead,
   setPresence,
   getPresence,
   getOnlineUsers,

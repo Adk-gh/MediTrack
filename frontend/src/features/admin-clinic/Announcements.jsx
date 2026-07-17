@@ -293,7 +293,7 @@ export const Announcements = () => {
     fetchUserRole();
   }, []);
 
-  const canManage = ['admin', 'administrator', 'nurse'].includes(userRole);
+  const canManage = ['sysadmin', 'administrator', 'nurse'].includes(userRole);
 
   // ── CUSTOM HOOK FOR DRAGGING MOBILE DRAWERS ──
   const useDrawerDrag = (onCloseCallback) => {

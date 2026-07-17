@@ -94,6 +94,70 @@ function BotText({ text }) {
   );
 }
 
+// ── Linkify: Converts URLs in text to clickable links ────────────────────────
+function LinkifiedText({ text, isPatient = false }) {
+  // Regex to match URLs
+  const urlRegex = /(https?:\/\/[^\s<]+)/g;
+
+  // Link color based on sender
+  const linkColor = isPatient ? '#a8d5ba' : '#1a5c3a';
+  const linkHoverColor = isPatient ? '#c8e6cf' : '#237a4a';
+
+  if (!text) return null;
+
+  const parts = text.split(urlRegex);
+
+  if (parts.length === 1) {
+    // No URLs found, process text with bold formatting and newlines
+    const lines = text.split('\n');
+    return (
+      <span>
+        {lines.map((line, i) => (
+          <React.Fragment key={i}>
+            <BotText text={line} />
+            {i < lines.length - 1 && <br />}
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  }
+
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          // This is a URL
+          return (
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline break-all hover:opacity-80"
+              style={{ color: linkColor }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+            </a>
+          );
+        }
+        // Regular text - process bold formatting and newlines
+        const lines = part.split('\n');
+        return (
+          <React.Fragment key={i}>
+            {lines.map((line, j) => (
+              <React.Fragment key={j}>
+                <BotText text={line} />
+                {j < lines.length - 1 && <br />}
+              </React.Fragment>
+            ))}
+          </React.Fragment>
+        );
+      })}
+    </span>
+  );
+}
+
 const INITIAL_OPTIONS = [
   { label: '🤒 Illness / Fever',         type: 'medical' },
   { label: '🤕 Injury / Pain',           type: 'medical' },
@@ -194,6 +258,38 @@ export default function ConsultationUsers() {
   const [loadingHistory,  setLoadingHistory]  = useState(true);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMore,     setLoadingMore]     = useState(false);
+  const [showHistoryMenu, setShowHistoryMenu] = useState(false);
+  const [clinicUnreadCount, setClinicUnreadCount] = useState(0);
+
+  // Update localStorage with clinic unread count for nav indicator
+  useEffect(() => {
+    try {
+      localStorage.setItem('consultUnreadCount', String(clinicUnreadCount));
+    } catch {}
+  }, [clinicUnreadCount]);
+
+  // Compute unread messages from clinic (not from patient)
+  useEffect(() => {
+    // If consultation ended, clear the unread count
+    if (isEnded) {
+      setClinicUnreadCount(0);
+      return;
+    }
+    if (!messages.length || !internalUserId) {
+      setClinicUnreadCount(0);
+      return;
+    }
+    const clinicMessages = messages.filter(m =>
+      m.sender_id && String(m.sender_id) !== String(internalUserId)
+    );
+    const unread = clinicMessages.filter(m => !m.read_at).length;
+    setClinicUnreadCount(unread);
+  }, [messages, internalUserId, isEnded]);
+
+  // Clear consultation cache on mount to ensure fresh data fetch
+  useEffect(() => {
+    sessionStorage.removeItem(CONSULT_CACHE_KEY);
+  }, []);
 
   // State to track which option button was clicked and lock the UI
   const [startingOption,  setStartingOption]  = useState(null);
@@ -210,6 +306,13 @@ export default function ConsultationUsers() {
 
   useEffect(() => { isEndedRef.current = isEnded; }, [isEnded]);
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
+
+  // Fetch fresh messages with read_at when switching rooms
+  useEffect(() => {
+    if (activeRoomId) {
+      fetchMessages(activeRoomId, null, true); // force refresh to get read_at
+    }
+  }, [activeRoomId]);
 
   useEffect(() => {
     if (internalUserId && internalName && internalName !== 'Patient') {
@@ -394,9 +497,9 @@ export default function ConsultationUsers() {
   }, [internalUserId]);
 
   // ── 2. Message fetcher function (exposed for toggle handlers) ─────────
-  const fetchMessages = useCallback(async (roomId, beforeId = null) => {
-    // Try cache first for initial load (no beforeId)
-    if (!beforeId) {
+  const fetchMessages = useCallback(async (roomId, beforeId = null, forceRefresh = false) => {
+    // Try cache first for initial load (no beforeId and not forcing refresh)
+    if (!beforeId && !forceRefresh) {
       const cached = getCachedMessages(roomId);
       if (cached) {
         setMessages(cached);
@@ -430,8 +533,13 @@ export default function ConsultationUsers() {
       setMessages(prev => [...ordered, ...prev]);
     } else {
       setMessages(ordered);
-      // Cache the initial messages
+      // Cache the initial messages (or refresh the cache on force refresh)
       setCachedMessages(roomId, ordered);
+    }
+
+    // Log read_at status for debugging seen indicator
+    if (ordered.some(m => m.read_at)) {
+      console.log('[Chat] Messages with read_at:', ordered.filter(m => m.read_at).map(m => ({ id: m.id, read_at: m.read_at })));
     }
 
     setHasMoreMessages(data.length === MSG_PAGE_SIZE);
@@ -460,6 +568,9 @@ export default function ConsultationUsers() {
       try {
         // FOR REAL-TIME DATA: Always query the database first, don't rely on cache
         // This ensures we get the correct status after page refresh
+        // Add a small delay to ensure any pending database updates are processed
+        await new Promise(resolve => setTimeout(resolve, 300));
+
         const { data: activeConsults, error: activeError } = await supabase
           .from('consultations')
           .select('*')
@@ -587,13 +698,36 @@ export default function ConsultationUsers() {
             setActiveRoomId(activeRow.id);
             setConsultType(activeRow.consultation_type || null);
             await fetchMessages(activeRow.id);
+          } else {
+            // Already viewing this consultation - refresh messages to check for read_at updates (seen indicator)
+            console.log('[Chat] Poll: Refreshing messages to check for read status...');
+            await fetchMessages(activeRow.id, null, true); // force refresh to get read_at
           }
-          // If we're already viewing this active consultation, do nothing
           return;
         }
 
-        // No active consultation - we're either already ended or there's no consultation at all
-        // Only update if we think we're in an active session but there's actually none
+        // No active consultation - verify it's truly ended before switching
+        // Add a small delay to avoid race conditions
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Double-check: query again after delay to ensure we have the latest status
+        const { data: recheckActive } = await supabase
+          .from('consultations')
+          .select('id, status')
+          .eq('patient_id', internalUserId)
+          .eq('status', 'active')
+          .limit(1);
+
+        // If a new active consultation appeared during the delay, use that instead
+        if (recheckActive?.[0]) {
+          console.log('[Chat] Poll: Active consultation appeared after delay:', recheckActive[0].id);
+          setIsEnded(false);
+          setActiveRoomId(recheckActive[0].id);
+          setConsultType(recheckActive[0].consultation_type || null);
+          await fetchMessages(recheckActive[0].id);
+          return;
+        }
+
         const currentlyEnded = isEndedRef.current;
         if (!currentlyEnded) {
           console.log('[Chat] Poll: No active consultation found, showing ended/history');
@@ -623,22 +757,78 @@ export default function ConsultationUsers() {
       }
     }, 15000);
 
+    // ── READ STATUS POLL (5s — ensures seen indicator updates) ─────────────
+    const readStatusPoll = setInterval(async () => {
+      if (!activeRoomId || isEndedRef.current) return;
+      try {
+        // Just fetch the messages with read_at to update the seen indicator
+        const { data } = await supabase
+          .from('consultation_messages')
+          .select('id, read_at')
+          .eq('consultation_id', activeRoomId);
+        if (data && data.length > 0) {
+          setMessages(msgs =>
+            msgs.map(msg => {
+              const updated = data.find(m => m.id === msg.id);
+              return updated && updated.read_at !== msg.read_at ? { ...msg, read_at: updated.read_at } : msg;
+            })
+          );
+        }
+      } catch (err) {
+        // Silent fail for polling
+      }
+    }, 5000);
+
     // ── NEW MESSAGE LISTENER ──────────────────────────────────────────
     const messagesChannel = supabase
       .channel(`consultation-msgs-${internalUserId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'consultation_messages' },
-        (payload) => {
+        async (payload) => {
           console.log('[Chat] Realtime message received:', payload.new);
-          if (String(payload.new.consultation_id) !== String(activeRoomIdRef.current)) {
-            console.log('[Chat] Message for different room, ignoring');
-            return;
+
+          const currentRoomId = activeRoomIdRef.current;
+          const newMsgRoomId = String(payload.new.consultation_id);
+
+          // If message is for current room, add it
+          if (newMsgRoomId === String(currentRoomId)) {
+            // Skip realtime add if we're currently sending (we handle it via fetch)
+            if (isSendingRef.current) return;
+            setMessages(msgs => {
+              if (msgs.some(m => m.id === payload.new.id)) return msgs;
+              return [...msgs, payload.new];
+            });
+          } else if (isEndedRef.current && currentRoomId) {
+            // If we're in ended/history mode and a new message arrives for a different room,
+            // check if it's for a newer consultation
+            const { data: consultData } = await supabase
+              .from('consultations')
+              .select('id, status')
+              .eq('id', newMsgRoomId)
+              .single();
+
+            if (consultData?.status === 'active') {
+              // A new active consultation has messages - switch to it
+              console.log('[Chat] New active consultation has messages, switching:', newMsgRoomId);
+              setIsEnded(false);
+              setActiveRoomId(newMsgRoomId);
+              await fetchMessages(newMsgRoomId);
+            }
           }
-          // Skip realtime add if we're currently sending (we handle it via fetch)
-          if (isSendingRef.current) return;
-          setMessages(msgs => {
-            if (msgs.some(m => m.id === payload.new.id)) return msgs;
-            return [...msgs, payload.new];
-          });
+        })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' },
+        (payload) => {
+          console.log('[Chat] Message UPDATE received:', payload.new);
+          // Update the message in the local state to show the read status
+          if (payload.new?.read_at) {
+            console.log('[Chat] Read_at updated for message:', payload.new.id, payload.new.read_at);
+            setMessages(msgs =>
+              msgs.map(msg =>
+                msg.id === payload.new.id
+                  ? { ...msg, read_at: payload.new.read_at }
+                  : msg
+              )
+            );
+          }
         })
       .subscribe((status) => {
         console.log('[Chat] Messages channel status:', status);
@@ -654,9 +844,16 @@ export default function ConsultationUsers() {
 
           const currentRoomId = activeRoomIdRef.current;
 
-          // Only process updates for the consultation we're currently viewing
+          // Handle status update - even if it's a different room, check if we need to switch
           if (String(payload.new.id) !== String(currentRoomId)) {
-            console.log('[Chat] Status update for different consultation, ignoring');
+            // If a new consultation became active and we're not in one, switch to it
+            if (payload.new.status === 'active') {
+              console.log('[Chat] New consultation became active, switching:', payload.new.id);
+              setIsEnded(false);
+              setActiveRoomId(payload.new.id);
+              setConsultType(payload.new.consultation_type || null);
+              await fetchMessages(payload.new.id);
+            }
             return;
           }
 
@@ -666,6 +863,8 @@ export default function ConsultationUsers() {
             setActiveRoomId(payload.new.id);
             setConsultType(null);
             setIsEnded(true);
+            // Clear the cache so next refresh doesn't show ended session
+            setCachedConsultations(internalUserId, { activeConsult: null, lastEnded: payload.new });
           } else if (payload.new.status === 'active') {
             console.log('[Chat] Consultation activated');
             setIsEnded(false);
@@ -677,6 +876,7 @@ export default function ConsultationUsers() {
 
     return () => {
       clearInterval(pollInterval);
+      clearInterval(readStatusPoll);
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(statusChannel);
     };
@@ -717,7 +917,7 @@ export default function ConsultationUsers() {
       if (!isMounted) return;
 
       const clinicOnline = (staffRows || []).some(u =>
-        ['doctor', 'nurse', 'dentist', 'admin', 'administrator'].includes(u.role?.toLowerCase())
+        ['doctor', 'nurse', 'dentist', 'sysadmin', 'administrator'].includes(u.role?.toLowerCase())
       );
       setIsClinicOnline(clinicOnline);
       setCachedPresence(clinicOnline);
@@ -846,7 +1046,13 @@ export default function ConsultationUsers() {
       });
 
       const result = await response.json();
+      console.log('[Chat] Consultation response FULL:', JSON.stringify(result));
       console.log('[Chat] Consultation response status:', response.status, 'data:', result);
+
+      // Debug: verify status is being returned
+      if (result.data?.status !== 'active') {
+        console.error('[Chat] WARNING: Consultation status is not active!', result.data?.status);
+      }
 
       if (!response.ok) {
         console.error('[Chat] FAILED to create consultation:', result);
@@ -857,6 +1063,32 @@ export default function ConsultationUsers() {
       const roomId = consultation.id;
 
       console.log('[Chat] Setting active room:', roomId, 'status:', consultation.status);
+
+      // Double-check: fetch the consultation directly from DB to verify status
+      const { data: verifyData } = await supabase
+        .from('consultations')
+        .select('id, status')
+        .eq('id', roomId)
+        .single();
+
+      console.log('[Chat] Verified consultation from DB:', verifyData);
+
+      // FIX: If status is not 'active', manually update it
+      if (verifyData?.status !== 'active') {
+        console.log('[Chat] Fix: Manually updating status to active...');
+        await supabase
+          .from('consultations')
+          .update({ status: 'active', ended_at: null })
+          .eq('id', roomId);
+
+        // Re-fetch to verify
+        const { data: reVerify } = await supabase
+          .from('consultations')
+          .select('id, status')
+          .eq('id', roomId)
+          .single();
+        console.log('[Chat] After fix:', reVerify);
+      }
 
       // Update state BEFORE inserting messages
       setActiveRoomId(roomId);
@@ -945,6 +1177,13 @@ export default function ConsultationUsers() {
           return acc;
         }, []);
         setMessages(uniqueMessages);
+        // Scroll to bottom after new message is sent
+        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+
+        // After sending, poll for read_at updates (clinic may mark as read and reply)
+        setTimeout(async () => {
+          await fetchMessages(activeRoomId, null, true); // force refresh to get read_at
+        }, 2000);
       }
       // Invalidate message cache so next fetch gets fresh data
       setCachedMessages(activeRoomId, null);
@@ -954,6 +1193,43 @@ export default function ConsultationUsers() {
       isSendingRef.current = false; // Re-enable realtime
     }
   };
+
+  // ── Mark messages as read ────────────────────────────────────────────────
+  const markMessagesAsRead = useCallback(async () => {
+    if (!activeRoomId || !internalUserId || isEnded) return;
+
+    console.log('[Chat] Marking messages as read - internalUserId:', internalUserId, 'currentUser.uid:', currentUser.uid, 'activeRoomId:', activeRoomId);
+
+    const token = localStorage.getItem('token');
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+    // IMPORTANT: Use internalUserId (the users table ID), NOT currentUser.uid (auth UID)
+    const bodyToSend = {
+      sender_id: internalUserId,  // Internal ID from users table
+      sender_role: currentUser.role || 'student',
+    };
+    console.log('[Chat] Sending body:', bodyToSend);
+
+    try {
+      await fetch(`${API_URL}/consultations/${activeRoomId}/messages/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(bodyToSend),
+      });
+    } catch (err) {
+      console.error('[Chat] Error marking messages as read:', err);
+    }
+  }, [activeRoomId, internalUserId, isEnded, currentUser.role]);
+
+  // ── Mark messages as read when consultation is active ───────────────────
+  useEffect(() => {
+    if (activeRoomId && !isEnded && internalUserId) {
+      markMessagesAsRead();
+    }
+  }, [activeRoomId, messages, isEnded, markMessagesAsRead]);
 
   // ── History filter switcher ────────────────────────────────────────────
   const handleHistoryFilterSwitch = async (filterType) => {
@@ -1029,7 +1305,7 @@ export default function ConsultationUsers() {
             </svg>
           </div>
           <div className="max-w-[78%] px-4 py-2.5 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm break-words bg-white text-[#1a2e22] border border-[#c4dbd8]">
-            <BotText text={item.message} />
+            <LinkifiedText text={item.message} isPatient={false} />
           </div>
         </div>
       );
@@ -1064,10 +1340,16 @@ export default function ConsultationUsers() {
             : { backgroundColor: '#fff', color: '#1a2e22', border: `1px solid ${msgCfg.accentBorder}`, borderBottomLeftRadius: 4 }
           }
         >
-          {item.message}
+          <LinkifiedText text={item.message} isPatient={isPatient} />
         </div>
         <div className={`text-[9px] text-[#9bb5a5] mt-1 mx-2 flex items-center gap-1 ${isPatient ? 'justify-end' : ''}`}>
           <span>{formatTime(item.created_at)}</span>
+          {/* Seen indicator - only show for patient messages */}
+          {isPatient && (
+            <span className={item.read_at ? 'text-blue-500' : ''} title={item.read_at ? `Seen at ${new Date(item.read_at).toLocaleString()}` : 'Sent'}>
+              {item.read_at ? '✓✓' : '✓'}
+            </span>
+          )}
         </div>
       </div>
     );
@@ -1121,6 +1403,67 @@ export default function ConsultationUsers() {
             {isClinicOnline ? 'Clinic Online' : 'Clinic Offline'}
           </span>
         </div>
+
+        {/* Hamburger Menu for Chat History */}
+        {isEnded && (
+          <div className="relative">
+            <button
+              onClick={() => setShowHistoryMenu(!showHistoryMenu)}
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors"
+              title="View Chat History"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-[#466460]">
+                <circle cx="12" cy="5" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="19" r="1.5" />
+              </svg>
+            </button>
+
+            {/* Dropdown Menu */}
+            {showHistoryMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowHistoryMenu(false)}
+                />
+                <div
+                  className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-20"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
+                    Chat History
+                  </div>
+                  <button
+                    onClick={() => { handleHistoryFilterSwitch('medical'); setShowHistoryMenu(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${
+                      historyFilter === 'medical'
+                        ? 'bg-[#1a5c3a]/10 text-[#1a5c3a]'
+                        : 'text-[#466460] hover:bg-slate-50'
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Medical History
+                  </button>
+                  <button
+                    onClick={() => { handleHistoryFilterSwitch('dental'); setShowHistoryMenu(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${
+                      historyFilter === 'dental'
+                        ? 'bg-[#1a4a7a]/10 text-[#1a4a7a]'
+                        : 'text-[#466460] hover:bg-slate-50'
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Dental History
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 2. SCROLLABLE MESSAGES */}
@@ -1191,32 +1534,6 @@ export default function ConsultationUsers() {
           </>
         )}
 
-        {/* History Filter Toggle - only visible when consultation has ended */}
-        {!loadingHistory && isEnded && (
-          <div className="flex items-center justify-center gap-2 py-2 px-4">
-            <button
-              onClick={() => handleHistoryFilterSwitch('medical')}
-              className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-all ${
-                historyFilter === 'medical'
-                  ? 'bg-[#1a5c3a] text-white'
-                  : 'bg-white text-slate-500 border border-slate-200'
-              }`}
-            >
-              Medical
-            </button>
-            <button
-              onClick={() => handleHistoryFilterSwitch('dental')}
-              className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-all ${
-                historyFilter === 'dental'
-                  ? 'bg-[#1a4a7a] text-white'
-                  : 'bg-white text-slate-500 border border-slate-200'
-              }`}
-            >
-              Dental
-            </button>
-          </div>
-        )}
-
         {/* Greeting — shown when consultation has ended (including when viewing history) */}
         {!loadingHistory && isEnded && (
           <div className="mt-2 mb-2 flex flex-col gap-3">
@@ -1230,7 +1547,8 @@ export default function ConsultationUsers() {
                 </svg>
               </div>
               <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm bg-white border border-[#c4dbd8] text-[#1a2e22]">
-                👋 Hello! I'm the MediTrack assistant.<br />
+                <span>👋 Hello! I'm the MediTrack assistant.</span>
+                <br />
                 <strong>What brings you in today?</strong> Please select the type of consultation you need:
               </div>
             </div>

@@ -55,8 +55,8 @@ const normalizePatient = (uid, d) => {
   };
 };
 
-// Added currentUserRole prop (defaults to 'admin' so everything shows if not provided)
-export const Examinations = ({ currentUserRole = 'admin' }) => {
+// Added currentUserRole prop (defaults to 'sysadmin' so everything shows if not provided)
+export const Examinations = ({ currentUserRole = 'sysadmin' }) => {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const patientId      = searchParams.get('patientId');

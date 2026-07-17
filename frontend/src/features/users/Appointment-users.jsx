@@ -214,6 +214,18 @@ export default function AppointmentUsers() {
   const [selectedPurposes, setSelectedPurposes] = useState([]);
   const [otherPurpose,     setOtherPurpose]     = useState('');
 
+  // ── Sort State ──
+  const [sortBy, setSortBy] = useState('newest');
+
+  // ── Sorted Appointments ──
+  const sortedAppointments = useMemo(() => {
+    return [...myAppointments].sort((a, b) => {
+      const dateA = new Date(a.created_at || a.bookedAt || 0);
+      const dateB = new Date(b.created_at || b.bookedAt || 0);
+      return sortBy === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+  }, [myAppointments, sortBy]);
+
   // ── Fetch appointments — extracted so PTR can call it directly ────────────
   const fetchAppointments = useCallback(async () => {
     if (!currentPatient?.uid) {
@@ -375,7 +387,21 @@ export default function AppointmentUsers() {
               Request Appointment
             </button>
           </div>
-          <div className="text-[13px] font-bold text-[#1a2e22]">My Appointment Requests</div>
+          <div className="flex items-center justify-between">
+            <div className="text-[13px] font-bold text-[#1a2e22]">My Appointment Requests</div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                padding: '6px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a',
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+          </div>
         </div>
 
         {/* ── Scrollable list — PTR listeners live here ── */}
@@ -391,14 +417,14 @@ export default function AppointmentUsers() {
               <i className="fa-solid fa-spinner fa-spin block text-2xl mb-2 text-[#c6dfd0]"></i>
               Loading your appointments…
             </div>
-          ) : myAppointments.length === 0 ? (
+          ) : sortedAppointments.length === 0 ? (
             <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
               <i className="fa-regular fa-calendar block text-2xl mb-2 text-[#c6dfd0]"></i>
               No appointment requests yet
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {myAppointments.map((appt) => {
+              {sortedAppointments.map((appt) => {
                 const style      = STATUS_STYLES[appt.status] ?? STATUS_STYLES.pending;
                 const statusStr  = appt.status?.toLowerCase();
                 const isApproved = statusStr === 'approved';

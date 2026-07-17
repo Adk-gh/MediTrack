@@ -5,6 +5,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import authService from '../services/auth.service.js';
 import { useLoading } from '../context/LoadingContext.jsx';
 import DatePicker from './Datepicker.jsx';
+import AddressModal from './AddressModal.jsx';
 import { NotificationBell, NotificationPanel } from './Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
 import Settings from './Settings.jsx';
@@ -31,13 +32,13 @@ const getStoredUserRole = () => {
           return 'doctor';
         } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
           return 'nurse';
-        } else if (classification === 'admin' || classification === 'administrator') {
-          return 'admin';
+        } else if (classification === 'System Administrator') {
+          return 'sysadmin';
         }
       }
 
       // Return if valid role found
-      if (role && ['admin', 'doctor', 'dentist', 'nurse'].includes(role)) {
+      if (role && ['sysadmin', 'doctor', 'dentist', 'nurse'].includes(role)) {
         return role;
       }
     }
@@ -295,9 +296,15 @@ function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate, onEdit
 // ─── Profile Drawer ───────────────────────────────────────────────────────────
 export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBottomSheet = false, onProfileUpdate }) {
   const [isMounted, setIsMounted] = React.useState(false);
-  const [isEditing, setIsEditing] = React.useState(false);
+  const [editingSection, setEditingSection] = React.useState(null);
+  const [editData, setEditData] = React.useState({});
+  const [isSaving, setIsSaving] = React.useState(false);
   const [formData, setFormData] = React.useState({});
   const [showSettings, setShowSettings] = React.useState(false);
+  const [vaccinationsDeclined, setVaccinationsDeclined] = React.useState({ dose1: false, dose2: false, booster1: false, booster2: false });
+  const [dentalDeclined, setDentalDeclined] = React.useState(false);
+  const [showAddressModal, setShowAddressModal] = React.useState(false);
+  const [addressType, setAddressType] = React.useState(null); // 'personal' or 'emergency'
 
   // ── Drag state ──────────────────────────────────────────────────────────────
   const [dragY, setDragY] = React.useState(0);
@@ -312,8 +319,10 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     if (isOpen) {
       setIsMounted(true);
       setFormData(userProfile || {});
-      setIsEditing(false);
+      setEditingSection(null);
       setDragY(0);
+      setVaccinationsDeclined(userProfile?.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false });
+      setDentalDeclined(userProfile?.dentalHistory?.declined || false);
     }
   }, [isOpen, userProfile]);
 
@@ -382,88 +391,247 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     { key: 'booster2', label: 'Booster 2' },
   ];
 
-  // ── Input Handlers ──────────────────────────────────────────────────────────
-  const handleChange = (field, value, nestedField = null) => {
-    setFormData(prev => {
-      if (nestedField) {
-        return { ...prev, [field]: { ...(prev[field] || {}), [nestedField]: value } };
-      }
-      return { ...prev, [field]: value };
+  // ── Constants for dropdowns ─────────────────────────────────────────────────
+  const NON_ACADEMIC_OFFICES = [
+    'Accounting Office',
+    'University Clinic',
+    'Human Resources',
+    'Library',
+    'Maintenance',
+    'Registrar Office',
+    'Security Services',
+  ];
+
+  const CLASSIFICATIONS = [
+    'Teaching Personnel',
+    'Nurse Personnel',
+    'Physician / Doctor',
+    'System Administrator',
+    'Non-Teaching Personnel',
+    'Security Personnel',
+  ];
+
+  const JOB_TITLES = [
+    'Nurse',
+    'Physician',
+    'Administrator',
+    'Lecturer',
+    'Professor',
+    'Instructor',
+    'Librarian',
+    'Technician',
+    'Security Guard',
+    'Staff',
+  ];
+
+  const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
+
+  // ── Validation helpers ──────────────────────────────────────────────────────
+  // Title Case: First letter capitalized, rest lowercase
+  const toTitleCase = (str) => {
+    if (!str) return '';
+    return str.replace(/\w\S*/g, (txt) => {
+      return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
     });
   };
 
+  // Validate phone number: exactly 11 digits
+  const isValidPhoneNumber = (phone) => {
+    if (!phone) return true; // Empty is allowed (optional)
+    const phoneRegex = /^09\d{9}$/; // Philippine format: 09XXXXXXXXX
+    return phoneRegex.test(phone);
+  };
+
+  // Format phone number to Philippine standard
+  const formatPhoneNumber = (phone) => {
+    if (!phone) return '';
+    // Remove all non-digit characters
+    const digits = phone.replace(/\D/g, '');
+    // If starts with 9 and has 10 digits, add 0 at front
+    if (digits.length === 10 && digits.startsWith('9')) {
+      return '0' + digits;
+    }
+    // If starts with 63, replace with 0
+    if (digits.startsWith('63')) {
+      return '0' + digits.substring(2);
+    }
+    // If already has 11 digits starting with 09, return as is
+    if (digits.length === 11 && digits.startsWith('09')) {
+      return digits;
+    }
+    return digits;
+  };
+
+  // Calculate age from birthday
+  const calculateAge = (birthday) => {
+    if (!birthday) return '';
+    const today = new Date();
+    const birthDate = new Date(birthday);
+
+    if (isNaN(birthDate.getTime())) return '';
+
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    // If birthday hasn't occurred yet this year, subtract 1
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+
+    return age > 0 ? age.toString() : '';
+  };
+
+  // ── Section-to-field mapper ─────────────────────────────────────────────────
+  const getSectionFields = (section, isStudentUser) => {
+    const sectionFields = {
+      personal: [
+        'firstName', 'middleName', 'lastName', 'suffix',
+        'birthday', 'age', 'sex', 'bloodType',
+        'civilStatus', 'religion', 'nationality', 'homeAddress'
+      ],
+      professional: isStudentUser
+        ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification']
+        : ['classification', 'department', 'jobTitle', 'licenseNumber'],
+      contact: ['email', 'phoneNumber'],
+      emergency: ['emergencyContact'],
+      vaccinations: ['vaccinations'],
+      dental: ['dentalHistory'],
+    };
+    return sectionFields[section] || [];
+  };
+
+  // ── Extract only the fields for the section being edited ────────────────────
+  const extractSectionData = (sectionData, section, isStudentUser) => {
+    const fields = getSectionFields(section, isStudentUser);
+    const result = {};
+
+    fields.forEach(field => {
+      const value = sectionData[field];
+      // Only include if defined and not an empty object
+      if (value !== undefined) {
+        if (typeof value === 'object' && value !== null) {
+          // Check if object has any values
+          const hasValues = Object.values(value).some(v => v !== undefined && v !== null && v !== '');
+          if (hasValues) {
+            result[field] = value;
+          }
+        } else if (value !== '') {
+          result[field] = value;
+        }
+      }
+    });
+
+    return result;
+  };
+
+  const openEdit = (section) => {
+    setEditData(JSON.parse(JSON.stringify(formData)));
+    setEditingSection(section);
+    setVaccinationsDeclined(formData.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false });
+    setDentalDeclined(formData.dentalHistory?.declined || false);
+  };
+
+  const closeEdit = () => {
+    setEditingSection(null);
+    setEditData({});
+  };
+
+  const handleChange = (field, value) => {
+    // Auto-calculate age when birthday changes
+    if (field === 'birthday') {
+      const calculatedAge = calculateAge(value);
+      setEditData(prev => ({ ...prev, birthday: value, age: calculatedAge }));
+    } else {
+      setEditData(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const handleNestedChange = (parent, field, value) => {
+    setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
+  };
+
   const handleVaccineChange = (key, field, value) => {
-    setFormData(prev => ({
+    setEditData(prev => ({
       ...prev,
       vaccinations: {
         ...(prev.vaccinations || {}),
         [key]: { ...(prev.vaccinations?.[key] || {}), [field]: value },
+        declined: vaccinationsDeclined,
       },
     }));
   };
 
   const handleDentalHistoryUpdate = (newDh) => {
-    setFormData(prev => ({ ...prev, dentalHistory: newDh }));
+    setEditData(prev => ({ ...prev, dentalHistory: newDh }));
   };
 
-const handleSaveProfile = async () => {
-    showLoading('Saving profile...', 'light');
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("No authenticated user");
+  const handleVaxDeclineChange = (key, checked) => {
+    setVaccinationsDeclined(prev => ({ ...prev, [key]: checked }));
+    setEditData(prev => ({
+      ...prev,
+      vaccinations: {
+        ...(prev.vaccinations || {}),
+        declined: { ...vaccinationsDeclined, [key]: checked },
+      },
+    }));
+  };
 
-      // 1. Update Email in Supabase Auth if it changed
-      if (formData.email && formData.email !== userProfile.email) {
+  const saveProfileEdits = async () => {
+    setIsSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+
+      // Only send the fields for the section being edited
+      const sectionData = extractSectionData(editData, editingSection, isStudent);
+      console.log('[ProfileDrawer] Saving section:', editingSection, 'with data:', sectionData);
+
+      // If no data to update, return
+      if (Object.keys(sectionData).length === 0) {
+        alert('No changes to save');
+        setIsSaving(false);
+        return;
+      }
+
+      // If updating email, handle it separately
+      if (sectionData.email && sectionData.email !== userProfile.email) {
         try {
-          const { error: emailErr } = await supabase.auth.updateUser({ email: formData.email });
+          const { error: emailErr } = await supabase.auth.updateUser({ email: sectionData.email });
           if (emailErr) {
             alert(`Error updating email: ${emailErr.message}`);
-            hideLoading();
+            setIsSaving(false);
             return;
           }
         } catch (emailErr) {
           alert(`Error updating email: ${emailErr.message}`);
-          hideLoading();
+          setIsSaving(false);
           return;
         }
       }
 
-      // 2. Update Supabase users table
-      const { error: updateErr } = await supabase.from('users').update({
-        first_name: formData.firstName,
-        middle_name: formData.middleName,
-        last_name: formData.lastName,
-        suffix: formData.suffix,
-        birthday: formData.birthday,
-        age: formData.age,
-        sex: formData.sex,
-        blood_type: formData.bloodType,
-        home_address: formData.homeAddress,
-        phone_number: formData.phoneNumber,
-        religion: formData.religion,
-        nationality: formData.nationality,
-        civil_status: formData.civilStatus,
-        department: formData.department,
-        program: formData.program,
-        year_level: formData.yearLevel,
-        section: formData.section,
-        classification: formData.classification,
-        job_title: formData.jobTitle,
-        emergency_contact: formData.emergencyContact,
-        vaccinations: formData.vaccinations,
-        updated_at: new Date().toISOString(),
-      }).eq('id', user.id);
-      if (updateErr) throw updateErr;
+      const res = await fetch(`${API_URL}/user/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(sectionData),
+      });
+      const data = await res.json();
+      console.log('[ProfileDrawer] Save response:', res.status, data);
+      if (!res.ok) throw new Error(data.message || 'Failed to update profile');
 
-      setIsEditing(false);
-      if (onProfileUpdate) onProfileUpdate(formData); // Syncs UI back to normal mode
+      // Merge the updated section data with existing profile
+      const updatedProfile = { ...formData, ...data.data };
+      setFormData(updatedProfile);
 
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      alert('An error occurred while saving.');
-    } finally {
-      hideLoading();
+      if (onProfileUpdate) onProfileUpdate(updatedProfile);
+
+      closeEdit();
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      alert('Error updating profile.');
     }
+    setIsSaving(false);
   };
 
   const isBottomSheet = isMobile;
@@ -554,13 +722,6 @@ const handleSaveProfile = async () => {
             <i className="fa-solid fa-xmark"></i>
           </button>
 
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className={`absolute top-4 ${isMobile ? 'right-4' : 'right-14'} bg-white/10 border-none text-white px-3 py-1.5 rounded-full cursor-pointer text-xs font-semibold flex items-center gap-1.5 hover:bg-white/25 transition-all`}
-          >
-            <i className={`fa-solid ${isEditing ? 'fa-eye' : 'fa-pen'}`}></i>
-            {isEditing ? 'View' : 'Edit'}
-          </button>
 
           <div className="flex items-center gap-4 mt-4 sm:mt-0">
             <div className="w-[60px] h-[60px] sm:w-[70px] sm:h-[70px] rounded-full border-2 border-white/40 overflow-hidden bg-white/10 flex-shrink-0">
@@ -571,26 +732,7 @@ const handleSaveProfile = async () => {
               />
             </div>
             <div className="min-w-0 flex-1">
-              {isEditing ? (
-                <div className="flex gap-2 mb-1">
-                  <input
-                    type="text"
-                    value={formData.firstName || ''}
-                    onChange={(e) => handleChange('firstName', e.target.value)}
-                    placeholder="First"
-                    className="w-full bg-white/20 text-white placeholder-white/50 border border-white/30 rounded px-2 py-1 text-sm focus:outline-none focus:border-white"
-                  />
-                  <input
-                    type="text"
-                    value={formData.lastName || ''}
-                    onChange={(e) => handleChange('lastName', e.target.value)}
-                    placeholder="Last"
-                    className="w-full bg-white/20 text-white placeholder-white/50 border border-white/30 rounded px-2 py-1 text-sm focus:outline-none focus:border-white"
-                  />
-                </div>
-              ) : (
-                <h2 className="text-lg sm:text-xl font-extrabold mb-0.5 break-words leading-tight">{displayName}</h2>
-              )}
+              <h2 className="text-lg sm:text-xl font-extrabold mb-0.5 break-words leading-tight">{displayName}</h2>
               <p className="text-xs opacity-75 truncate">{formData.email || 'No email provided'}</p>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <span className="inline-block bg-white/20 px-3 py-1 rounded-full text-[9px] font-bold tracking-wide uppercase">
@@ -611,39 +753,39 @@ const handleSaveProfile = async () => {
 
           {/* ── Personal Details ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
-            <DrawerSectionHeader label="Personal Details" />
+            <div className="flex items-center justify-between mb-3">
+              <DrawerSectionHeader label="Personal Details" />
+              <button
+                onClick={() => openEdit('personal')}
+                className="bg-[#e8f5ee] border-none text-[#466460] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#d1e7dd] transition-colors"
+              >
+                <i className="fa-solid fa-pen text-[8px]"></i> Edit
+              </button>
+            </div>
 
-            {isEditing ? (
-              <div className="flex items-center justify-between py-2 text-xs border-b border-slate-50 gap-3 min-h-[40px]">
-                <div className="flex items-center gap-2.5 text-slate-500 shrink-0 min-w-[110px]">
-                  <i className="fa-solid fa-cake-candles text-[#466460] w-4 text-center opacity-70 flex-shrink-0"></i>
-                  <span className="whitespace-nowrap">Birthday</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <DatePicker
-                    value={formData.birthday || ''}
-                    onChange={(val) => handleChange('birthday', val)}
-                  />
-                </div>
-              </div>
-            ) : (
-              <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-cake-candles" label="Birthday" field="birthday" value={formData.birthday} />
-            )}
-
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-hashtag"    label="Age"          field="age"         type="number" value={formData.age} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-venus-mars" label="Sex"          field="sex"         value={formData.sex}         options={['Male', 'Female']} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-droplet"    label="Blood Type"   field="bloodType"   value={formData.bloodType}   options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-ring"       label="Civil Status" field="civilStatus" value={formData.civilStatus} options={['Single', 'Married', 'Widowed', 'Separated']} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-church"     label="Religion"     field="religion"    value={formData.religion} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-flag"       label="Nationality"  field="nationality" value={formData.nationality} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-house"      label="Home Address" field="homeAddress" value={formData.homeAddress} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-cake-candles" label="Birthday" field="birthday" value={formData.birthday} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-hashtag"    label="Age"          field="age"         type="number" value={formData.age} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-venus-mars" label="Sex"          field="sex"         value={formData.sex}         options={['Male', 'Female']} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-droplet"    label="Blood Type"   field="bloodType"   value={formData.bloodType}   options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-ring"       label="Civil Status" field="civilStatus" value={formData.civilStatus} options={['Single', 'Married', 'Widowed', 'Separated']} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-church"     label="Religion"     field="religion"    value={formData.religion} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-flag"       label="Nationality"  field="nationality" value={formData.nationality} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-house"      label="Home Address" field="homeAddress" value={formData.homeAddress} />
           </div>
 
           {/* ── Academic / Professional ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
-            <DrawerSectionHeader label={isStudent ? 'Academic Information' : 'Professional Information'} />
+            <div className="flex items-center justify-between mb-3">
+              <DrawerSectionHeader label={isStudent ? 'Academic Information' : 'Professional Information'} />
+              <button
+                onClick={() => openEdit('professional')}
+                className="bg-[#e8f5ee] border-none text-[#466460] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#d1e7dd] transition-colors"
+              >
+                <i className="fa-solid fa-pen text-[8px]"></i> Edit
+              </button>
+            </div>
 
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange}
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange}
               icon="fa-id-card"
               label={isStudent ? 'Student No.' : 'Employee ID'}
               field="universityId"
@@ -652,51 +794,74 @@ const handleSaveProfile = async () => {
 
             {isStudent ? (
               <>
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-building"      label="Department" field="department" value={formData.department} />
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-graduation-cap" label="Program"   field="program"    value={formData.program} />
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-layer-group"   label="Year Level" field="yearLevel"  value={formData.yearLevel} />
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-users"         label="Section"    field="section"    value={formData.section} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-building"      label="Department" field="department" value={formData.department} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-graduation-cap" label="Program"   field="program"    value={formData.program} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-layer-group"   label="Year Level" field="yearLevel"  value={formData.yearLevel} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-users"         label="Section"    field="section"    value={formData.section} />
               </>
             ) : (
               <>
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-user-tie"  label="Classification" field="classification" value={formData.classification} />
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-building"  label="Department"     field="department"     value={formData.department} />
-                <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-briefcase" label="Job Title"      field="jobTitle"       value={formData.jobTitle} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-user-tie"  label="Classification" field="classification" value={formData.classification} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-building"  label="Department"     field="department"     value={formData.department} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-briefcase" label="Job Title"      field="jobTitle"       value={formData.jobTitle} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-id-card"   label="License No."    field="licenseNumber" value={formData.licenseNumber} />
               </>
             )}
           </div>
 
           {/* ── Contact ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
-            <DrawerSectionHeader label="Contact Information" />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-phone"    label="Phone Number"  field="phoneNumber" type="tel"   value={formData.phoneNumber} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-envelope" label="Email Address" field="email"       type="email" value={formData.email} />
+            <div className="flex items-center justify-between mb-3">
+              <DrawerSectionHeader label="Contact Information" />
+              <button
+                onClick={() => openEdit('contact')}
+                className="bg-[#e8f5ee] border-none text-[#466460] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#d1e7dd] transition-colors"
+              >
+                <i className="fa-solid fa-pen text-[8px]"></i> Edit
+              </button>
+            </div>
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-phone"    label="Phone Number"  field="phoneNumber" type="tel"   value={formData.phoneNumber} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-envelope" label="Email Address" field="email"       type="email" value={formData.email} />
           </div>
 
           {/* ── Emergency Contact ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-red-50/30">
-            <DrawerSectionHeader label="Emergency Contact" color="text-red-400" />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-address-book"  label="Full Name"    field="emergencyContact" nestedField="name"         value={formData.emergencyContact?.name} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-heart"         label="Relationship" field="emergencyContact" nestedField="relationship" value={formData.emergencyContact?.relationship} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-phone-volume"  label="Phone Number" field="emergencyContact" nestedField="phone"        type="tel" value={formData.emergencyContact?.phone} />
-            <DrawerEditableInfoRow isEditing={isEditing} onChange={handleChange} icon="fa-location-dot" label="Address"      field="emergencyContact" nestedField="address"      value={formData.emergencyContact?.address} />
+            <div className="flex items-center justify-between mb-3">
+              <DrawerSectionHeader label="Emergency Contact" color="text-red-400" />
+              <button
+                onClick={() => openEdit('emergency')}
+                className="bg-red-50 border-none text-red-600 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-red-100 transition-colors"
+              >
+                <i className="fa-solid fa-pen text-[8px]"></i> Edit
+              </button>
+            </div>
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-address-book"  label="Full Name"    field="emergencyContact" nestedField="name"         value={formData.emergencyContact?.name} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-heart"         label="Relationship" field="emergencyContact" nestedField="relationship" value={formData.emergencyContact?.relationship} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-phone-volume"  label="Phone Number" field="emergencyContact" nestedField="phone"        type="tel" value={formData.emergencyContact?.phone} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-location-dot" label="Address"      field="emergencyContact" nestedField="address"      value={formData.emergencyContact?.address} />
           </div>
 
           {/* ── COVID-19 Vaccination ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-blue-50/20">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="COVID-19 Vaccination" color="text-blue-400" />
-              {!isEditing && (
-                <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full -mt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                   {vaccineDoseCount} / 5 doses
                 </span>
-              )}
+                <button
+                  onClick={() => openEdit('vaccinations')}
+                  className="bg-blue-50 border-none text-blue-600 px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-blue-100 transition-colors"
+                >
+                  <i className="fa-solid fa-pen text-[8px]"></i> Edit
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
               {VACCINE_DOSE_KEYS.map(({ key, label }) => {
                 const dose = formData.vaccinations?.[key] || {};
-                if (!isEditing && !dose.vaccineName) return null;
+                if (!dose.vaccineName) return null;
 
                 return (
                   <div key={key} className="flex flex-col bg-white rounded-lg px-3 py-2 border border-slate-100 gap-2">
@@ -704,41 +869,22 @@ const handleSaveProfile = async () => {
                       <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase tracking-wide flex-shrink-0 w-16 text-center">
                         {label}
                       </span>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          placeholder="Vaccine Brand (e.g., Pfizer)"
-                          value={dose.vaccineName || ''}
-                          onChange={(e) => handleVaccineChange(key, 'vaccineName', e.target.value)}
-                          className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-[#466460] text-slate-800"
-                        />
-                      ) : (
-                        <span className="text-[11px] text-slate-700 font-medium truncate flex-1">{dose.vaccineName}</span>
-                      )}
+                      <span className="text-[11px] text-slate-700 font-medium truncate flex-1">{dose.vaccineName}</span>
                     </div>
 
-                    {isEditing ? (
-                      <div className="pl-[72px]">
-                        <DatePicker
-                          value={dose.date || ''}
-                          onChange={(val) => handleVaccineChange(key, 'date', val)}
-                        />
-                      </div>
-                    ) : (
-                      dose.date && (
-                        <div className="text-[10px] text-slate-400 pl-[72px]">{dose.date}</div>
-                      )
+                    {dose.date && (
+                      <div className="text-[10px] text-slate-400 pl-[72px]">{dose.date}</div>
                     )}
                   </div>
                 );
               })}
 
-              {!isEditing && vaccineDoseCount === 0 && (
+              {vaccineDoseCount === 0 && (
                 <div className="flex flex-col items-center py-3 bg-white rounded-lg border border-slate-200 border-dashed">
                   <p className="text-[10px] text-slate-400 italic mb-2">No vaccination records on file.</p>
                   <button
                     type="button"
-                    onClick={() => setIsEditing(true)}
+                    onClick={() => openEdit('vaccinations')}
                     className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold hover:bg-blue-100 transition-colors shadow-sm"
                   >
                     <i className="fa-solid fa-plus mr-1"></i> Add Vaccination Record
@@ -751,32 +897,15 @@ const handleSaveProfile = async () => {
           {/* ── Dental History ── */}
           <DentalHistoryDrawerSection
             dentalHistory={formData.dentalHistory || {}}
-            isEditing={isEditing}
-            onUpdate={handleDentalHistoryUpdate}
-            onEditRequest={() => setIsEditing(true)}
+            isEditing={false}
+            onUpdate={(newDh) => setFormData(prev => ({ ...prev, dentalHistory: newDh }))}
+            onEditRequest={() => openEdit('dental')}
           />
 
         </div>
 
         {/* ── Footer Actions ── */}
         <div className="px-4 sm:px-6 py-6 border-t border-slate-100 bg-white flex-shrink-0">
-          {isEditing ? (
-            <div className="flex gap-3 animate-fadeIn">
-              <button
-                onClick={() => { setFormData(userProfile || {}); setIsEditing(false); }}
-                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors active:scale-[0.98]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveProfile}
-                className="flex-1 py-3 bg-[#466460] text-white rounded-xl font-bold text-sm hover:bg-[#38524d] transition-colors shadow-md active:scale-[0.98] flex justify-center items-center gap-2"
-              >
-                <i className="fa-solid fa-floppy-disk"></i>
-                Save Changes
-              </button>
-            </div>
-          ) : (
             <div className="animate-fadeIn">
               <div className="flex items-center justify-between text-[10px] text-slate-400 mb-4 px-1">
                 <span>MediTrack v2.4.1</span>
@@ -801,15 +930,381 @@ const handleSaveProfile = async () => {
                 Sign Out
               </button>
             </div>
-          )}
+          
         </div>
       </div>
+
+      {/* ── Edit Profile Modal ── */}
+      {editingSection && (
+        <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <span className="text-base font-extrabold text-[#466460] capitalize">Edit {editingSection} Info</span>
+              <button onClick={closeEdit} className="bg-none border-none text-slate-400 cursor-pointer text-lg flex items-center justify-center hover:text-slate-600">✕</button>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              {/* ── Personal Section ── */}
+              {editingSection === 'personal' && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">First Name</label>
+                    <input
+                      type="text"
+                      value={editData.firstName || ''}
+                      onChange={e => handleChange('firstName', toTitleCase(e.target.value))}
+                      onBlur={e => handleChange('firstName', toTitleCase(e.target.value))}
+                      placeholder="First Name"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Middle Name</label>
+                    <input
+                      type="text"
+                      value={editData.middleName || ''}
+                      onChange={e => handleChange('middleName', toTitleCase(e.target.value))}
+                      onBlur={e => handleChange('middleName', toTitleCase(e.target.value))}
+                      placeholder="Middle Name"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Name</label>
+                    <input
+                      type="text"
+                      value={editData.lastName || ''}
+                      onChange={e => handleChange('lastName', toTitleCase(e.target.value))}
+                      onBlur={e => handleChange('lastName', toTitleCase(e.target.value))}
+                      placeholder="Last Name"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Suffix</label>
+                    <select
+                      value={editData.suffix || ''}
+                      onChange={e => handleChange('suffix', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    >
+                      <option value="">Select</option>
+                      {SUFFIXES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Birthday</label>
+                    <DatePicker value={editData.birthday || ''} onChange={val => handleChange('birthday', val)} />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Age (Auto-calculated)</label>
+                    <input
+                      type="text"
+                      value={editData.age || ''}
+                      readOnly
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-500 cursor-not-allowed"
+                    />
+                    <span className="text-[10px] text-slate-400">Age is automatically calculated from birthday</span>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Sex</label>
+                    <select value={editData.sex || ''} onChange={e => handleChange('sex', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Blood Type</label>
+                    <select value={editData.bloodType || ''} onChange={e => handleChange('bloodType', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bt => <option key={bt} value={bt}>{bt}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Civil Status</label>
+                    <select value={editData.civilStatus || ''} onChange={e => handleChange('civilStatus', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['Single', 'Married', 'Widowed', 'Separated'].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Religion</label>
+                    <select value={editData.religion || ''} onChange={e => handleChange('religion', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Nationality</label>
+                    <select value={editData.nationality || ''} onChange={e => handleChange('nationality', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Home Address</label>
+                    <button
+                      type="button"
+                      onClick={() => { setAddressType('personal'); setShowAddressModal(true); }}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50"
+                    >
+                      {editData.homeAddress ? (
+                        <span className="text-slate-700">{editData.homeAddress}</span>
+                      ) : (
+                        <span className="text-slate-400">Click to set address</span>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* ── Professional Section (Staff) ── */}
+              {editingSection === 'professional' && !isStudent && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Classification</label>
+                    <select value={editData.classification || ''} onChange={e => handleChange('classification', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Department</label>
+                    <select value={editData.department || ''} onChange={e => handleChange('department', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {NON_ACADEMIC_OFFICES.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Job Title</label>
+                    <select value={editData.jobTitle || ''} onChange={e => handleChange('jobTitle', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">License Number</label>
+                    <input type="text" value={editData.licenseNumber || ''} onChange={e => handleChange('licenseNumber', e.target.value.toUpperCase())} placeholder="e.g., PRC-123456" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  </div>
+                </>
+              )}
+
+              {/* ── Professional Section (Student) ── */}
+              {editingSection === 'professional' && isStudent && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Student No.</label>
+                    <input type="text" value={editData.universityId || ''} onChange={e => handleChange('universityId', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Department</label>
+                    <input type="text" value={editData.department || ''} onChange={e => handleChange('department', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Program</label>
+                    <input type="text" value={editData.program || ''} onChange={e => handleChange('program', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Year Level</label>
+                    <select value={editData.yearLevel || ''} onChange={e => handleChange('yearLevel', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Section</label>
+                    <select value={editData.section || ''} onChange={e => handleChange('section', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['A', 'B', 'C', 'D', 'E', 'F'].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* ── Contact Section ── */}
+              {editingSection === 'contact' && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Email Address</label>
+                    <input type="email" value={editData.email || ''} onChange={e => handleChange('email', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
+                    <input
+                      type="tel"
+                      value={editData.phoneNumber || ''}
+                      onChange={e => {
+                        const formatted = formatPhoneNumber(e.target.value);
+                        handleChange('phoneNumber', formatted);
+                      }}
+                      onBlur={e => {
+                        if (e.target.value && !isValidPhoneNumber(e.target.value)) {
+                          alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
+                        }
+                      }}
+                      placeholder="09123456789"
+                      maxLength={11}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    />
+                    <span className="text-[10px] text-slate-400">Format: 09XXXXXXXXX (11 digits)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">Note: Changing your email may require you to verify your identity.</p>
+                </>
+              )}
+
+              {/* ── Emergency Section ── */}
+              {editingSection === 'emergency' && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Contact Name</label>
+                    <input
+                      type="text"
+                      value={editData.emergencyContact?.name || ''}
+                      onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))}
+                      onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Relationship</label>
+                    <select value={editData.emergencyContact?.relationship || ''} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
+                      <option value="">Select</option>
+                      {['Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent', 'Relative', 'Guardian', 'Friend', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
+                    <input
+                      type="tel"
+                      value={editData.emergencyContact?.phone || ''}
+                      onChange={e => {
+                        const formatted = formatPhoneNumber(e.target.value);
+                        handleNestedChange('emergencyContact', 'phone', formatted);
+                      }}
+                      onBlur={e => {
+                        if (e.target.value && !isValidPhoneNumber(e.target.value)) {
+                          alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
+                        }
+                      }}
+                      placeholder="09123456789"
+                      maxLength={11}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Address</label>
+                    <button
+                      type="button"
+                      onClick={() => { setAddressType('emergency'); setShowAddressModal(true); }}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50"
+                    >
+                      {editData.emergencyContact?.address ? (
+                        <span className="text-slate-700">{editData.emergencyContact.address}</span>
+                      ) : (
+                        <span className="text-slate-400">Click to set address</span>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* ── Vaccinations Section ── */}
+              {editingSection === 'vaccinations' && (
+                <>
+                  {VACCINE_DOSE_KEYS.map(({ key, label }) => {
+                    const isDeclined = vaccinationsDeclined[key];
+                    return (
+                      <div key={key} className={`p-4 rounded-xl mb-4 border ${isDeclined ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-[11px] font-extrabold text-[#466460] uppercase">{label}</span>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={isDeclined} onChange={e => handleVaxDeclineChange(key, e.target.checked)} className="accent-[#466460]" />
+                            <span className={`text-[11px] font-semibold ${isDeclined ? 'text-amber-700' : 'text-slate-500'}`}>N/A</span>
+                          </label>
+                        </div>
+                        {!isDeclined && (
+                          <>
+                            <div className="mb-3">
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Vaccine Brand</label>
+                              <select value={editData.vaccinations?.[key]?.vaccineName || ''} onChange={e => handleVaccineChange(key, 'vaccineName', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460] bg-white">
+                                <option value="">Select</option>
+                                {['Pfizer', 'Moderna', 'AstraZeneca', 'Sinovac', 'Janssen', 'Novavax', 'Covaxin', 'Sputnik', 'Other'].map(v => <option key={v} value={v}>{v}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Date Given</label>
+                              <DatePicker value={editData.vaccinations?.[key]?.date || ''} onChange={val => handleVaccineChange(key, 'date', val)} />
+                            </div>
+                          </>
+                        )}
+                        {isDeclined && <span className="text-[11px] font-semibold text-amber-700">Skipped / Not applicable</span>}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* ── Dental Section ── */}
+              {editingSection === 'dental' && (
+                <>
+                  <label className="flex items-center gap-3 p-4 rounded-xl mb-4 cursor-pointer bg-slate-50 border border-slate-200">
+                    <input type="checkbox" checked={dentalDeclined} onChange={e => setDentalDeclined(e.target.checked)} className="accent-[#466460]" />
+                    <span className={`text-[12px] font-semibold ${dentalDeclined ? 'text-amber-700' : 'text-[#466460]'}`}>I don't have dental history / Not applicable</span>
+                  </label>
+                  {!dentalDeclined && (
+                    <>
+                      <div className="mb-4">
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Dental Visit</label>
+                        <DatePicker value={editData.dentalHistory?.lastVisit || ''} onChange={val => handleDentalHistoryUpdate({ ...editData.dentalHistory, lastVisit: val })} />
+                      </div>
+                      <div className="mb-4">
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Previous Dentist (Dr.)</label>
+                        <input type="text" value={editData.dentalHistory?.prevDentist || ''} onChange={e => handleDentalHistoryUpdate({ ...editData.dentalHistory, prevDentist: e.target.value })} placeholder="e.g. Smith" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                      </div>
+                      <div className="mb-4">
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Physician (Dr.)</label>
+                        <input type="text" value={editData.dentalHistory?.physician || ''} onChange={e => handleDentalHistoryUpdate({ ...editData.dentalHistory, physician: e.target.value })} placeholder="e.g. Doe" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={closeEdit} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors">Cancel</button>
+              <button onClick={saveProfileEdits} disabled={isSaving} className="flex-1 py-3 bg-[#466460] text-white rounded-xl font-bold text-sm hover:bg-[#38524d] transition-colors shadow-md disabled:opacity-70 flex justify-center items-center gap-2">
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Settings Overlay ── */}
       {showSettings && (
         <div className="fixed inset-0 z-[3000]">
           <Settings onLogout={onLogout} onClose={() => setShowSettings(false)} />
         </div>
+      )}
+
+      {/* ── Address Modal ── */}
+      {showAddressModal && (
+        <AddressModal
+          isOpen={showAddressModal}
+          onClose={() => { setShowAddressModal(false); setAddressType(null); }}
+          onConfirm={(addressData) => {
+            if (addressType === 'personal') {
+              handleChange('homeAddress', addressData.homeAddress);
+            } else if (addressType === 'emergency') {
+              handleNestedChange('emergencyContact', 'address', addressData.homeAddress);
+            }
+            setShowAddressModal(false);
+            setAddressType(null);
+          }}
+          initialData={addressType === 'personal' ? { homeAddress: editData.homeAddress } : { homeAddress: editData.emergencyContact?.address }}
+          zIndex={4000}
+        />
       )}
     </>
   );
@@ -962,7 +1457,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
   const displayName = (fullProfile.firstName && fullProfile.lastName)
     ? `${fullProfile.firstName} ${fullProfile.lastName}`
     : (fullProfile.name || 'Admin User');
-  const displayRole = fullProfile.role || 'Administrator';
+  const displayRole = fullProfile.role || 'System Administrator';
 
   const handleLogoutClick = () => {
     setShowProfileDrawer(false);
@@ -1043,7 +1538,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
 
 // ─── Role-based Navigation Configuration ─────────────────────────────────────
 const ROLE_NAV_CONFIG = {
-  admin: [
+  sysadmin: [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/record-management', label: 'Record Management' },
     { to: '/audit-logs', label: 'Audit Logs' },
@@ -1112,8 +1607,8 @@ export const DesktopNav = () => {
             setUserRole('doctor');
           } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
             setUserRole('nurse');
-          } else if (classification === 'admin' || classification === 'administrator') {
-            setUserRole('admin');
+          } else if (classification === 'System Administrator') {
+            setUserRole('sysadmin');
           }
         }
       } catch (err) {
@@ -1146,7 +1641,7 @@ export const DesktopNav = () => {
         : 'text-[#466460] opacity-60 hover:opacity-100 hover:text-[#e07a5f]'
     }`;
 
-  const navItems = ROLE_NAV_CONFIG[userRole] || ROLE_NAV_CONFIG.admin;
+  const navItems = ROLE_NAV_CONFIG[userRole] || ROLE_NAV_CONFIG.sysadmin;
 
   return (
     <nav className="
@@ -1237,7 +1732,7 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
 
 // ─── Mobile Role-based Navigation Items ──────────────────────────────────────
 const ROLE_MOBILE_NAV_CONFIG = {
-  admin: [
+  sysadmin: [
     { id: 'dashboard', label: 'Home', icon: HomeIcon },
     { id: 'recordManagement', label: 'Records', icon: RecordsIcon },
     { id: 'auditLogs', label: 'Audit', icon: AnnouncementIcon },
@@ -1290,7 +1785,7 @@ export const MobileNav = ({
   items: propItems,
   useRoleBased = true,
 }) => {
-  const [userRole, setUserRole] = useState('admin');
+  const [userRole, setUserRole] = useState('sysadmin');
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -1315,7 +1810,7 @@ export const MobileNav = ({
   const getItems = () => {
     if (propItems && propItems.length > 0) return propItems;
     if (!useRoleBased) return DEFAULT_MOBILE_ITEMS;
-    return ROLE_MOBILE_NAV_CONFIG[userRole] || ROLE_MOBILE_NAV_CONFIG.admin;
+    return ROLE_MOBILE_NAV_CONFIG[userRole] || ROLE_MOBILE_NAV_CONFIG.sysadmin;
   };
 
   const items = getItems();

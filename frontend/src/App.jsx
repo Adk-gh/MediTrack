@@ -62,7 +62,7 @@ const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
 
   if (adminOnly) {
     const role = user.role?.toLowerCase().trim() || '';
-    const isStaffRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
+    const isStaffRole = ['nurse', 'doctor', 'dentist', 'sysadmin'].includes(role);
     if (!isStaffRole) {
       console.log(`Access Denied to Dashboard. Role parsed as: "${role}"`);
       return <Navigate to="/student/meditrack" replace />;
@@ -84,8 +84,8 @@ const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
         effectiveRole = 'doctor';
       } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
         effectiveRole = 'nurse';
-      } else if (classification === 'admin' || classification === 'administrator' || jobTitle.includes('admin')) {
-        effectiveRole = 'admin';
+      } else if (classification === 'System Administrator' || role === 'sysadmin') {
+        effectiveRole = 'sysadmin';
       }
     }
 
@@ -225,7 +225,7 @@ const OnboardingPage = () => {
     localStorage.setItem('user', JSON.stringify(updatedUser));
 
     const role = user.role?.toLowerCase().trim() || '';
-    const isStaffRole = ['nurse', 'doctor', 'dentist', 'admin', 'administrator'].includes(role);
+    const isStaffRole = ['nurse', 'doctor', 'dentist', 'sysadmin'].includes(role);
     navigate(isStaffRole ? '/dashboard' : '/student/meditrack');
   };
 
@@ -305,12 +305,12 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/examinations" element={
-              <ProtectedRoute adminOnly={true} allowedRoles={['admin', 'doctor', 'nurse', 'dentist']}>
+              <ProtectedRoute adminOnly={true} allowedRoles={['sysadmin', 'doctor', 'nurse', 'dentist']}>
                 <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />
             <Route path="/approvals" element={
-              <ProtectedRoute adminOnly={true} allowedRoles={['admin', 'doctor', 'nurse', 'dentist']}>
+              <ProtectedRoute adminOnly={true} allowedRoles={['sysadmin', 'doctor', 'nurse', 'dentist']}>
                 <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />

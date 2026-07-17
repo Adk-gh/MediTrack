@@ -1,9 +1,8 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Profile-users.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
-import AddressModal from '../../components/AddressModal.jsx';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -19,13 +18,6 @@ const EditIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
     <path d="M12 20h9"></path>
     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-  </svg>
-);
-
-const SettingsGearIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 );
 
@@ -59,8 +51,8 @@ const InfoRow = ({ label, value, last, empty }) => (
   </div>
 );
 
-const Card = ({ children, style }) => (
-  <div style={{ background: '#fff', borderRadius: 20, padding: 16, border: '1px solid #edf3f0', ...style }}>
+const Card = ({ children, style, id }) => (
+  <div id={id} style={{ background: '#fff', borderRadius: 20, padding: 16, border: '1px solid #edf3f0', ...style }}>
     {children}
   </div>
 );
@@ -98,23 +90,91 @@ const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
 // Department and Program data (same as ProfileSetup)
 const DEPARTMENTS_DATA = [
-  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['Bachelor of Science in Information Technology', 'Bachelor of Science in Information System', 'Bachelor of Science in Computer Engineering', 'Bachelor of Science in Industrial Engineering'] },
-  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['Bachelor of Science in Entrepreneurship', 'Bachelor of Science in Public Administration', 'Bachelor of Science in Office Administration', 'Bachelor of Science in Business Administration Major in Human Resource Development Management', 'Bachelor of Science in Business Administration Major in Financial Management', 'Bachelor of Science in Business Administration Major in Marketing Management'] },
-  { abbr: 'CAS', full: 'College of Art and Sciences', programs: ['Bachelor of Science in Economics', 'Bachelor of Arts in Communication', 'Bachelor of Science in Psychology', 'Bachelor of Arts in Political Science'] },
-  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['Bachelor of Science in Tourism Management', 'Bachelor of Science in Hospitality Management'] },
-  { abbr: 'COA', full: 'College of Accountancy', programs: ['Bachelor of Science in Accountancy', 'Bachelor of Science in Accountancy Information System', 'Bachelor of Science in Management Accounting'] },
-  { abbr: 'CTE', full: 'College of Teacher Education', programs: ['Bachelor of Secondary Education Major in English', 'Bachelor of Secondary Education Major in Filipino', 'Bachelor of Secondary Education Major in Math', 'Bachelor of Secondary Education Major in Science', 'Bachelor of Secondary Education Major in Social Studies', 'Bachelor of Elementary Education', 'Bachelor of Technical-Vocational Teacher Education', 'Bachelor of Special Needs Education'] },
-  { abbr: 'CHK', full: 'College of Human Kinetics', programs: ['Bachelor of Science in Physical Education', 'Bachelor of Science in Sports Science'] },
-  { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['Bachelor of Science in Nursing'] },
+  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['BS in Information Technology', 'BS in Information System', 'BS in Computer Engineering', 'BS in Industrial Engineering'] },
+  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['BS in Entrepreneurship', 'BS in Public Administration', 'BS in Office Administration', 'BS in Business Administration (HRDM)', 'BS in Business Administration (FM)', 'BS in Business Administration (MM)'] },
+  { abbr: 'CAS', full: 'College of Art and Sciences', programs: ['BS in Economics', 'AB in Communication', 'BS in Psychology', 'AB in Political Science'] },
+  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['BS in Tourism Management', 'BS in Hospitality Management'] },
+  { abbr: 'COA', full: 'College of Accountancy', programs: ['BS in Accountancy', 'BS in Accountancy Information System', 'BS in Management Accounting'] },
+  { abbr: 'CTE', full: 'College of Teacher Education', programs: ['BSEd Major in English', 'BSEd Major in Filipino', 'BSEd Major in Math', 'BSEd Major in Science', 'BSEd Major in Social Studies', 'BEED', 'BTVTEd', 'BSNEd'] },
+  { abbr: 'CHK', full: 'College of Human Kinetics', programs: ['BS in Physical Education', 'BS in Sports Science'] },
+  { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['BS in Nursing'] },
 ];
 const DEPT_ABBR_TO_FULL = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.full]));
 const PROGRAMS_BY_DEPT = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.programs]));
 const DEPARTMENTS = DEPARTMENTS_DATA.map(d => d.abbr);
 const ALL_PROGRAMS = [...new Set(DEPARTMENTS_DATA.flatMap(d => d.programs))];
-const getProgramsByDept = (deptAbbr) => PROGRAMS_BY_DEPT[deptAbbr] || [];
 
 const NON_ACADEMIC_OFFICES = ['Accounting Office', 'University Clinic', 'Human Resources', 'Library', 'Maintenance', 'Registrar Office', 'Security Services'];
 const PLSP_OFFICES = [...DEPARTMENTS, ...NON_ACADEMIC_OFFICES];
+
+const CLASSIFICATIONS = [
+  'Teaching Personnel',
+  'Nurse Personnel',
+  'Physician / Doctor',
+  'System Administrator',
+  'Non-Teaching Personnel',
+  'Security Personnel',
+];
+
+const JOB_TITLES = [
+  'Nurse',
+  'Physician',
+  'Administrator',
+  'Lecturer',
+  'Professor',
+  'Instructor',
+  'Librarian',
+  'Technician',
+  'Security Guard',
+  'Staff',
+];
+
+// Validation helpers
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str.replace(/\w\S*/g, (txt) => {
+    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+  });
+};
+
+const isValidPhoneNumber = (phone) => {
+  if (!phone) return true;
+  const phoneRegex = /^09\d{9}$/;
+  return phoneRegex.test(phone);
+};
+
+const formatPhoneNumber = (phone) => {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10 && digits.startsWith('9')) {
+    return '0' + digits;
+  }
+  if (digits.startsWith('63')) {
+    return '0' + digits.substring(2);
+  }
+  if (digits.length === 11 && digits.startsWith('09')) {
+    return digits;
+  }
+  return digits;
+};
+
+// Calculate age from birthday
+const calculateAge = (birthday) => {
+  if (!birthday) return '';
+  const today = new Date();
+  const birthDate = new Date(birthday);
+
+  if (isNaN(birthDate.getTime())) return '';
+
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+
+  return age > 0 ? age.toString() : '';
+};
 
 const classificationColors = {
   Regular:   { bg: '#e0eceb', text: '#466460', dot: '#466460' },
@@ -214,6 +274,7 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
   studentClassification: profileData.student_classification  || 'Regular',
   classification:        profileData.classification          || '',
   jobTitle:              profileData.job_title               || '',
+  licenseNumber:         profileData.license_number          || '',
   email:                 profileData.email                   || fallbackEmail,
   phoneNumber:           profileData.phone_number            || '',
   emergencyContact: {
@@ -241,9 +302,10 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [loading, setLoading]         = useState(true);
-  const [logoutModal, setLogoutModal] = useState(false);
+  const [scrollToSection, setScrollToSection] = useState(null);
   const [toast, setToast]             = useState(null);
 
   const [editingSection, setEditingSection] = useState(null);
@@ -251,11 +313,6 @@ export default function ProfileUsers({ onLogout }) {
   const [isSaving, setIsSaving]             = useState(false);
   const [dentalDeclined, setDentalDeclined] = useState(false);
   const [vaccinationsDeclined, setVaccinationsDeclined] = useState({ dose1: false, dose2: false, booster1: false, booster2: false });
-  const [selectedEditDept, setSelectedEditDept] = useState('');
-
-  // Address modal states
-  const [addressModal, setAddressModal] = useState({ type: null, isOpen: false });
-  const [addressInitialData, setAddressInitialData] = useState({});
 
   const [xrayDate, setXrayDate]           = useState('April 22, 2026');
   const [xrayFile, setXrayFile]           = useState('X-ray_Report_2026.pdf');
@@ -277,7 +334,7 @@ export default function ProfileUsers({ onLogout }) {
     universityId: '', role: '',
     studentId: '', department: '', program: '', yearLevel: '', section: '',
     studentClassification: '',
-    classification: '', jobTitle: '',
+    classification: '', jobTitle: '', licenseNumber: '',
     email: '', phoneNumber: '',
     emergencyContact: { name: '', relationship: '', phone: '', address: '' },
     vaccinations: {
@@ -343,6 +400,50 @@ export default function ProfileUsers({ onLogout }) {
     fetchProfile();
   }, [fetchProfile]);
 
+  // ── Capture scroll target from navigation state ───────────────────────────────
+  useEffect(() => {
+    if (location.state?.scrollTo && !scrollToSection) {
+      console.log('[ProfileUsers] Captured scroll target:', location.state.scrollTo);
+      setScrollToSection(location.state.scrollTo);
+    }
+  }, [location.state, scrollToSection]);
+
+  // ── Auto-scroll to section ────────────────────────────────────────────────────
+  useEffect(() => {
+    console.log('[ProfileUsers] Auto-scroll check - loading:', loading, 'scrollToSection:', scrollToSection);
+
+    if (!loading && scrollToSection) {
+      const section = scrollToSection;
+      console.log('[ProfileUsers] Scroll to section:', section);
+
+      const sectionRefs = {
+        academic: 'academic-section',
+        contact: 'contact-section',
+        emergency: 'emergency-section',
+        vaccinations: 'vaccinations-section',
+        dental: 'dental-section',
+      };
+      const elementId = sectionRefs[section];
+      console.log('[ProfileUsers] Looking for element:', elementId);
+
+      if (elementId) {
+        // Wait for render to complete
+        setTimeout(() => {
+          const element = document.getElementById(elementId);
+          console.log('[ProfileUsers] Found element:', element);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          } else {
+            console.log('[ProfileUsers] Element NOT found, trying fallback scroll');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }, 300);
+      }
+      // Clear the scroll target
+      setScrollToSection(null);
+    }
+  }, [loading, scrollToSection]);
+
   const fullName = [
     profile.firstName,
     profile.middleName || '',
@@ -387,10 +488,6 @@ export default function ProfileUsers({ onLogout }) {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const handleOpenSettings = () => {
-    navigate('/student/settings', { state: { activeTab: 'general' } });
-  };
-
   // ── Editing Handlers ─────────────────────────────────────────────────────
   const openEdit   = (section) => {
     setEditData(JSON.parse(JSON.stringify(profile)));
@@ -398,43 +495,18 @@ export default function ProfileUsers({ onLogout }) {
     // Initialize declined states from profile
     setDentalDeclined(profile.dentalHistory?.declined || false);
     setVaccinationsDeclined(profile.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false });
-    // Set initial department for program filtering
-    if (section === 'academic') {
-      const currentDept = profile.department;
-      // Find department abbreviation from full name
-      const deptAbbr = Object.entries(DEPT_ABBR_TO_FULL).find(([abbr, full]) => full === currentDept)?.[0] || '';
-      setSelectedEditDept(deptAbbr);
+  };
+  const closeEdit  = ()        => { setEditingSection(null); setEditData({}); };
+
+  const handleChange = (field, value) => {
+    // Auto-calculate age when birthday changes
+    if (field === 'birthday') {
+      const calculatedAge = calculateAge(value);
+      setEditData(prev => ({ ...prev, birthday: value, age: calculatedAge }));
+    } else {
+      setEditData(prev => ({ ...prev, [field]: value }));
     }
   };
-  const closeEdit  = ()        => { setEditingSection(null); setEditData({}); setSelectedEditDept(''); };
-
-  // ── Address Modal Handlers ─────────────────────────────────────────────────
-  const openAddressModal = (type) => {
-    const initialData = type === 'personal'
-      ? { addressStreet: editData.homeAddress || '' }
-      : { addressStreet: editData.emergencyContact?.address || '' };
-    setAddressInitialData(initialData);
-    setAddressModal({ type, isOpen: true });
-  };
-
-  const closeAddressModal = () => {
-    setAddressModal({ type: null, isOpen: false });
-    setAddressInitialData({});
-  };
-
-  const handleAddressConfirm = (addressData) => {
-    if (addressModal.type === 'personal') {
-      setEditData(prev => ({ ...prev, homeAddress: addressData.homeAddress }));
-    } else if (addressModal.type === 'emergency') {
-      setEditData(prev => ({
-        ...prev,
-        emergencyContact: { ...prev.emergencyContact, address: addressData.homeAddress }
-      }));
-    }
-    closeAddressModal();
-  };
-
-  const handleChange           = (field, value)        => setEditData(prev => ({ ...prev, [field]: value }));
   const handleNestedChange     = (parent, field, value) => setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
   const handleVaxChange        = (dose, field, value)  => setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, [dose]: { ...prev.vaccinations[dose], [field]: value } } }));
   const handleDentalChange     = (field, value)        => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, [field]: value } }));
@@ -450,7 +522,7 @@ export default function ProfileUsers({ onLogout }) {
       ],
       academic: isStudentUser
         ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification']
-        : ['classification', 'department', 'jobTitle'],
+        : ['classification', 'department', 'jobTitle', 'licenseNumber'],
       contact: ['email', 'phoneNumber'],
       emergency: ['emergencyContact'],
       vaccinations: ['vaccinations'],
@@ -646,7 +718,7 @@ export default function ProfileUsers({ onLogout }) {
       </Card>
 
       {/* ── Academic / Work Info ── */}
-      <Card>
+      <Card id="academic-section">
         <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} hasEmpty={hasEmptyAcademic} />
         {isStudent ? (
           <>
@@ -674,7 +746,7 @@ export default function ProfileUsers({ onLogout }) {
       </Card>
 
       {/* ── Emergency Contact ── */}
-      <Card>
+      <Card id="emergency-section">
         <SectionHeader label="Emergency Contact" onEdit={() => openEdit('emergency')} hasEmpty={hasEmptyEmergency} />
         <InfoRow label="Name"         value={profile.emergencyContact.name}         empty={isFieldEmpty(profile.emergencyContact?.name)} />
         <InfoRow label="Relationship" value={profile.emergencyContact.relationship} empty={isFieldEmpty(profile.emergencyContact?.relationship)} />
@@ -683,7 +755,7 @@ export default function ProfileUsers({ onLogout }) {
       </Card>
 
       {/* ── COVID-19 Vaccination History ── */}
-      <Card>
+      <Card id="vaccinations-section">
         <SectionHeader label="COVID-19 Vaccination History" onEdit={() => openEdit('vaccinations')} hasEmpty={hasEmptyVaccinations} />
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #edf3f0' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Dose</span>
@@ -712,7 +784,7 @@ export default function ProfileUsers({ onLogout }) {
       </Card>
 
       {/* ── Dental History ── */}
-      <Card>
+      <Card id="dental-section">
         <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} hasEmpty={hasEmptyDental} />
         {profile.dentalHistory?.declined ? (
           <div style={{ padding: '12px 16px', background: '#e0eceb', borderRadius: 10, marginTop: 8 }}>
@@ -773,18 +845,21 @@ export default function ProfileUsers({ onLogout }) {
                 <>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="First Name">
-                      <input style={inputStyle} value={editData.firstName} onChange={e => handleChange('firstName', e.target.value)} />
+                      <input style={inputStyle} value={editData.firstName} onChange={e => handleChange('firstName', toTitleCase(e.target.value))} onBlur={e => handleChange('firstName', toTitleCase(e.target.value))} />
                     </FormGroup>
-                    <FormGroup label="M.I.">
-                      <input style={{ ...inputStyle, width: 120 }} value={editData.middleName} onChange={e => handleChange('middleName', e.target.value)} />
+                    <FormGroup label="Middle Name">
+                      <input style={{ ...inputStyle, width: 120 }} value={editData.middleName} onChange={e => handleChange('middleName', toTitleCase(e.target.value))} onBlur={e => handleChange('middleName', toTitleCase(e.target.value))} />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Last Name">
-                      <input style={{ ...inputStyle, flex: 1 }} value={editData.lastName} onChange={e => handleChange('lastName', e.target.value)} />
+                      <input style={{ ...inputStyle, flex: 1 }} value={editData.lastName} onChange={e => handleChange('lastName', toTitleCase(e.target.value))} onBlur={e => handleChange('lastName', toTitleCase(e.target.value))} />
                     </FormGroup>
                     <FormGroup label="Suffix">
-                      <input style={{ ...inputStyle, width: 80 }} placeholder="Jr, III" value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)} />
+                      <select style={{ ...inputStyle, width: 80 }} value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)}>
+                        <option value="">Select</option>
+                        {SUFFIXES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
@@ -793,8 +868,13 @@ export default function ProfileUsers({ onLogout }) {
                         <DatePicker value={editData.birthday || ''} onChange={val => handleChange('birthday', val)} />
                       </FormGroup>
                     </div>
-                    <FormGroup label="Age">
-                      <input type="number" style={{ ...inputStyle, width: 80 }} value={editData.age} onChange={e => handleChange('age', e.target.value)} />
+                    <FormGroup label="Age (Auto)">
+                      <input
+                        type="text"
+                        style={{ ...inputStyle, width: 80, backgroundColor: '#f4f7f5', cursor: 'not-allowed' }}
+                        value={editData.age}
+                        readOnly
+                      />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -831,22 +911,7 @@ export default function ProfileUsers({ onLogout }) {
                     </select>
                   </FormGroup>
                   <FormGroup label="Home Address">
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        style={{ ...inputStyle, flex: 1 }}
-                        value={editData.homeAddress}
-                        onChange={e => handleChange('homeAddress', e.target.value)}
-                        placeholder="Click to select address"
-                        readOnly
-                      />
-                      <button
-                        type="button"
-                        onClick={() => openAddressModal('personal')}
-                        style={{ padding: '12px 16px', background: '#466460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        Select
-                      </button>
-                    </div>
+                    <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} />
                   </FormGroup>
                 </>
               )}
@@ -858,34 +923,15 @@ export default function ProfileUsers({ onLogout }) {
                     <input style={inputStyle} value={editData.universityId || editData.studentId} onChange={e => handleChange('universityId', e.target.value)} />
                   </FormGroup>
                   <FormGroup label="Department">
-                    <select
-                      style={inputStyle}
-                      value={editData.department}
-                      onChange={(e) => {
-                        const selectedValue = e.target.value;
-                        handleChange('department', selectedValue);
-                        // Find abbreviation and update program filter
-                        const deptAbbr = Object.entries(DEPT_ABBR_TO_FULL).find(([abbr, full]) => full === selectedValue)?.[0] || '';
-                        setSelectedEditDept(deptAbbr);
-                        // Reset program if department changed
-                        if (!selectedValue || !PROGRAMS_BY_DEPT[deptAbbr]?.includes(editData.program)) {
-                          handleChange('program', '');
-                        }
-                      }}
-                    >
+                    <select style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)}>
                       <option value="">Select</option>
                       {DEPARTMENTS.map(d => <option key={d} value={DEPT_ABBR_TO_FULL[d]}>{DEPT_ABBR_TO_FULL[d]}</option>)}
                     </select>
                   </FormGroup>
                   <FormGroup label="Program">
-                    <select
-                      style={inputStyle}
-                      value={editData.program}
-                      onChange={e => handleChange('program', e.target.value)}
-                      disabled={!selectedEditDept}
-                    >
-                      <option value="">{!selectedEditDept ? 'Select department first' : 'Select'}</option>
-                      {selectedEditDept && getProgramsByDept(selectedEditDept).map(p => <option key={p} value={p}>{p}</option>)}
+                    <select style={inputStyle} value={editData.program} onChange={e => handleChange('program', e.target.value)}>
+                      <option value="">Select</option>
+                      {ALL_PROGRAMS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                   </FormGroup>
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -937,16 +983,22 @@ export default function ProfileUsers({ onLogout }) {
                   <FormGroup label="Classification">
                     <select style={inputStyle} value={editData.classification} onChange={e => handleChange('classification', e.target.value)}>
                       <option value="">Select</option>
-                      {['Faculty', 'Admin', 'Staff', 'Nurse', 'Doctor'].map(c => <option key={c} value={c}>{c}</option>)}
+                      {CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </FormGroup>
                   <FormGroup label="Department">
                     <select style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)}>
                       <option value="">Select</option>
-                      {DEPARTMENTS.map(d => <option key={d} value={DEPT_ABBR_TO_FULL[d]}>{DEPT_ABBR_TO_FULL[d]}</option>)}
+                      {NON_ACADEMIC_OFFICES.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </FormGroup>
-                  <FormGroup label="Job Title"><input style={inputStyle} value={editData.jobTitle} onChange={e => handleChange('jobTitle', e.target.value)} /></FormGroup>
+                  <FormGroup label="Job Title">
+                    <select style={inputStyle} value={editData.jobTitle} onChange={e => handleChange('jobTitle', e.target.value)}>
+                      <option value="">Select</option>
+                      {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
+                    </select>
+                  </FormGroup>
+                  <FormGroup label="License Number"><input style={inputStyle} value={editData.licenseNumber || ''} placeholder="e.g., PRC-123456" onChange={e => handleChange('licenseNumber', e.target.value.toUpperCase())} /></FormGroup>
                 </>
               )}
 
@@ -956,8 +1008,20 @@ export default function ProfileUsers({ onLogout }) {
                   <FormGroup label="Email Address">
                     <input style={inputStyle} type="email" value={editData.email} onChange={e => handleChange('email', e.target.value)} />
                   </FormGroup>
-                  <FormGroup label="Phone Number">
-                    <input style={inputStyle} value={editData.phoneNumber} onChange={e => handleChange('phoneNumber', e.target.value)} />
+                  <FormGroup label="Phone Number (11 digits)">
+                    <input
+                      style={inputStyle}
+                      value={editData.phoneNumber}
+                      onChange={e => handleChange('phoneNumber', formatPhoneNumber(e.target.value))}
+                      onBlur={e => {
+                        if (e.target.value && !isValidPhoneNumber(e.target.value)) {
+                          alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
+                        }
+                      }}
+                      placeholder="09123456789"
+                      maxLength={11}
+                    />
+                    <span style={{ fontSize: 10, color: '#9bb5a5' }}>Format: 09XXXXXXXXX (11 digits)</span>
                   </FormGroup>
                   <p style={{ fontSize: 11, color: '#9bb5a5', marginTop: -4 }}>Note: Changing your email may require you to verify your identity by signing in again.</p>
                 </>
@@ -966,32 +1030,28 @@ export default function ProfileUsers({ onLogout }) {
               {/* ── Emergency Section ── */}
               {editingSection === 'emergency' && (
                 <>
-                  <FormGroup label="Contact Name"><input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', e.target.value)} /></FormGroup>
+                  <FormGroup label="Contact Name"><input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} /></FormGroup>
                   <FormGroup label="Relationship">
                     <select style={inputStyle} value={editData.emergencyContact.relationship} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)}>
                       <option value="">Select</option>
                       {EMERGENCY_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </FormGroup>
-                  <FormGroup label="Phone Number"><input style={inputStyle} value={editData.emergencyContact.phone} onChange={e => handleNestedChange('emergencyContact', 'phone', e.target.value)} /></FormGroup>
-                  <FormGroup label="Address">
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        style={{ ...inputStyle, flex: 1 }}
-                        value={editData.emergencyContact?.address}
-                        onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)}
-                        placeholder="Click to select address"
-                        readOnly
-                      />
-                      <button
-                        type="button"
-                        onClick={() => openAddressModal('emergency')}
-                        style={{ padding: '12px 16px', background: '#466460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        Select
-                      </button>
-                    </div>
+                  <FormGroup label="Phone Number (11 digits)">
+                    <input
+                      style={inputStyle}
+                      value={editData.emergencyContact.phone}
+                      onChange={e => handleNestedChange('emergencyContact', 'phone', formatPhoneNumber(e.target.value))}
+                      onBlur={e => {
+                        if (e.target.value && !isValidPhoneNumber(e.target.value)) {
+                          alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
+                        }
+                      }}
+                      placeholder="09123456789"
+                      maxLength={11}
+                    />
                   </FormGroup>
+                  <FormGroup label="Address"><textarea style={{ ...inputStyle, minHeight: 80 }} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} /></FormGroup>
                 </>
               )}
 
@@ -1107,20 +1167,6 @@ export default function ProfileUsers({ onLogout }) {
       )}
 
 
-      {/* ── Logout Modal ── */}
-      {logoutModal && (
-        <div onClick={e => e.target === e.currentTarget && setLogoutModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', padding: 32, borderRadius: 20, width: 320, textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
-            <h3 style={{ margin: '0 0 8px', color: '#1a2e22', fontSize: 18, fontWeight: 800 }}>Confirm Sign Out</h3>
-            <p style={{ margin: '0 0 24px', color: '#6b8577', fontSize: 13 }}>Are you sure you want to log out?</p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => setLogoutModal(false)} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#f4f7f5', color: '#6b8577', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-              <button onClick={() => { setLogoutModal(false); if (onLogout) onLogout(); }} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#e53e3e', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>Sign Out</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── File Preview Modal ── */}
       {previewModal && (
         <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.8)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1144,15 +1190,6 @@ export default function ProfileUsers({ onLogout }) {
           {toast}
         </div>
       )}
-
-      {/* ── Address Modal ── */}
-      <AddressModal
-        isOpen={addressModal.isOpen}
-        onClose={closeAddressModal}
-        onConfirm={handleAddressConfirm}
-        initialData={addressInitialData}
-        zIndex={5000}
-      />
     </div>
   );
 }
