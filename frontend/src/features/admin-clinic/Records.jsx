@@ -155,6 +155,70 @@ const typeBadgeClass = (roleStr) => {
   return 'bg-green-100 text-green-600';
 };
 
+// Helper to extract patient_info from medical_records (supports both old columns and new JSONB)
+const getPatientInfo = (record) => {
+  if (!record) return {};
+
+  // New JSONB structure
+  if (record.patient_info) {
+    return record.patient_info;
+  }
+
+  // Fallback to old columns (for backward compatibility)
+  return {
+    sex: record.sex,
+    birthday: record.birthday,
+    age: record.age,
+    address: record.address,
+    contact_no: record.contact_no,
+    religion: record.religion,
+    nationality: record.nationality,
+    civil_status: record.civil_status,
+    emergency_name: record.emergency_name,
+    emergency_relation: record.emergency_relation,
+    emergency_address: record.emergency_address,
+    emergency_contact: record.emergency_contact,
+  };
+};
+
+// Helper to extract laboratory_results from medical_records
+const getLabResults = (record) => {
+  if (!record) return {};
+
+  if (record.laboratory_results) {
+    return record.laboratory_results;
+  }
+
+  // Fallback to old columns
+  return {
+    cbc: { result: record.lab_cbc, facility: record.lab_cbc_facility, date: record.lab_cbc_date },
+    ua: { result: record.lab_ua, facility: record.lab_ua_facility, date: record.lab_ua_date },
+    xray: { result: record.lab_xray, facility: record.lab_xray_facility, date: record.lab_xray_date },
+  };
+};
+
+// Helper to extract vital_records from medical_records
+const getVitalRecords = (record) => {
+  if (!record) return {};
+
+  if (record.vital_records) {
+    return record.vital_records;
+  }
+
+  // Fallback to old columns (for array format)
+  if (Array.isArray(record.vital_records) && record.vital_records.length > 0) {
+    return record.vital_records[0];
+  }
+
+  return {
+    height: record.height,
+    weight: record.weight,
+    bmi: record.bmi,
+    waist: record.waist,
+    lmp: record.lmp,
+  };
+};
+
 const normalizeUser = (doc) => {
   const d = doc;
   const firstName = d.first_name    || d.firstName    || '';
@@ -578,13 +642,13 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
             {/* Right side - Examination Buttons */}
             <div className="flex gap-2 shrink-0 items-center">
               {canDoMedical && (
-                <button onClick={() => onExamine(person, 'medical')} className="bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white px-4 py-2 rounded-full text-xs font-bold hover:scale-105 flex items-center gap-1.5">
-                  <i className="fa-solid fa-stethoscope"></i> Medical
+                <button onClick={() => onExamine(person, 'medical')} className="bg-gradient-to-br from-[#e07a5f] to-[#c96a5f] text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:scale-105 hover:shadow-lg transition-all flex items-center gap-2 shadow-md border border-[#e07a5f]">
+                  <i className="fa-solid fa-stethoscope"></i> Medical Exam
                 </button>
               )}
               {canDoDental && (
-                <button onClick={() => onExamine(person, 'dental')} className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-4 py-2 rounded-full text-xs font-bold hover:scale-105 flex items-center gap-1.5">
-                  <i className="fa-solid fa-tooth"></i> Dental
+                <button onClick={() => onExamine(person, 'dental')} className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:scale-105 hover:shadow-lg transition-all flex items-center gap-2 shadow-md border border-[#3b82f6]">
+                  <i className="fa-solid fa-tooth"></i> Dental Exam
                 </button>
               )}
             </div>
@@ -765,6 +829,26 @@ const normalizePatientData = (uid, d) => {
 const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onExamSubmitted, resetKey, currentUserRole }) => {
   const [loading, setLoading] = useState(true);
   const [normalizedPatient, setNormalizedPatient] = useState(null);
+  const [schoolYear, setSchoolYear] = useState(() => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    // Academic year: Aug-Jan = current Year, Feb-Jul = current Year-1 to current Year
+    if (currentMonth >= 7) return `${currentYear}-${currentYear + 1}`;
+    return `${currentYear - 1}-${currentYear}`;
+  });
+  const [semester, setSemester] = useState(() => {
+    const currentMonth = new Date().getMonth();
+    // Aug-Dec = 1st semester, Jan-May = 2nd semester, Jun-Jul = Mid Year
+    if (currentMonth >= 7 && currentMonth <= 11) return '1st Semester';
+    if (currentMonth >= 0 && currentMonth <= 4) return '2nd Semester';
+    return 'Mid Year';
+  });
+
+  // School year options
+  const schoolYearOptions = Array.from({ length: 10 }, (_, i) => {
+    const y = new Date().getFullYear() - 5 + i;
+    return `${y}-${y + 1}`;
+  });
 
   // Filter tabs based on user role
   const userRole = String(currentUserRole || '').toLowerCase().trim();
@@ -853,22 +937,45 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50">
-          {availableTabs.map(({ key, icon, label }) => (
-            <button
-              key={key}
-              onClick={() => setExamType(key)}
-              className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
-                examType === key
-                  ? 'bg-[#466460] text-white shadow-md'
-                  : 'text-slate-600 hover:bg-white hover:shadow-sm'
-              }`}
+        {/* Tabs and School Year */}
+        <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
+          <div className="flex gap-2">
+            {availableTabs.map(({ key, icon, label }) => (
+              <button
+                key={key}
+                onClick={() => setExamType(key)}
+                className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                  examType === key
+                    ? 'bg-[#466460] text-white shadow-md'
+                    : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <i className={`fa-solid ${icon}`}></i>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-500">School Year:</span>
+            <select
+              value={schoolYear}
+              onChange={(e) => setSchoolYear(e.target.value)}
+              className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
             >
-              <i className={`fa-solid ${icon}`}></i>
-              {label}
-            </button>
-          ))}
+              {schoolYearOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <select
+              value={semester}
+              onChange={(e) => setSemester(e.target.value)}
+              className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+            >
+              <option value="1st Semester">1st Semester</option>
+              <option value="2nd Semester">2nd Semester</option>
+              <option value="Mid Year">Mid Year</option>
+            </select>
+          </div>
         </div>
 
         {/* Form Content */}
@@ -887,6 +994,8 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
                   key={`medical-${resetKey}`}
                   selectedPatient={displayPatient}
                   showMessage={onExamSubmitted}
+                  defaultSchoolYear={schoolYear}
+                  defaultSemester={semester}
                 />
               )}
               {examType === 'dental' && (
@@ -894,6 +1003,8 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
                   key={`dental-${resetKey}`}
                   selectedPatient={displayPatient}
                   showMessage={onExamSubmitted}
+                  defaultSchoolYear={schoolYear}
+                  defaultSemester={semester}
                 />
               )}
             </>
@@ -1463,10 +1574,10 @@ export const Records = () => {
                     <h3 className="font-bold text-sm uppercase text-[#466460]">Clinical Profile</h3>
                     <button
                       onClick={() => setShowAddModal(true)}
-                      className="px-4 py-2.5 bg-[#466460] text-white text-sm font-semibold rounded-lg hover:bg-[#3a524f] transition-all flex items-center gap-2 shadow-md"
+                      className="px-3 py-1.5 bg-[#466460] text-white text-xs font-medium rounded-md hover:bg-[#3a524f] transition-all flex items-center gap-1.5 shadow-sm"
                     >
                       <i className="fa-solid fa-plus"></i>
-                      Add New Record
+                      Add New
                     </button>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto p-6 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">

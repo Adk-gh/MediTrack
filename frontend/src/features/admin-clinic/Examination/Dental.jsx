@@ -99,7 +99,7 @@ const SumSection = ({ icon, title, children }) => (
 );
 
 // ── Helper: build initial dental form from patient ─────────────────────────────
-const buildDentalForm = (p) => {
+const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
   const lastName  = p?.lastName  || (p?.name ? p.name.split(', ')[0] : '');
   const firstName = p?.firstName || (p?.name ? (p.name.split(', ')[1] || '') : '');
 
@@ -140,6 +140,8 @@ const buildDentalForm = (p) => {
     dExamTime: new Date().toISOString().slice(11, 16),
     dSigDate: new Date().toISOString().slice(0, 10),
     dExaminedBy: '',
+    dSchoolYear: defaultSchoolYear,
+    dSemester: defaultSemester || '1st Semester',
   };
 };
 
@@ -368,7 +370,7 @@ const DentalVisitHistory = ({ selectedPatient }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Dental = ({ selectedPatient, showMessage }) => {
+export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester }) => {
   const [toothData, setToothData]           = useState({});
   const [toothModal, setToothModal]         = useState({ open: false, toothNum: null });
   const [toothCondition, setToothCondition] = useState('');
@@ -388,12 +390,12 @@ export const Dental = ({ selectedPatient, showMessage }) => {
     occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false,
   });
 
-  const [dentalFormData, setDentalFormData] = useState(() => buildDentalForm(selectedPatient));
+  const [dentalFormData, setDentalFormData] = useState(() => buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester));
 
   // Re-populate when selectedPatient changes
   useEffect(() => {
     // 1. Populate top-level form fields
-    setDentalFormData(buildDentalForm(selectedPatient));
+    setDentalFormData(buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester));
 
     // 2. Reset Intraoral Findings and Patient Dental Chart for new examination
     // This ensures the examination form starts empty - previous records are only shown in Visit History
@@ -526,6 +528,8 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         patient_signature: payload.dPatientSig || null,
         exam_date: payload.examDateTime || null,
         sig_date: payload.sigDateTime || null,
+        school_year: payload.dSchoolYear || null,
+        semester: payload.dSemester || null,
         status: "pending",
         is_approved: false,
         created_at: new Date().toISOString(),
@@ -559,7 +563,7 @@ export const Dental = ({ selectedPatient, showMessage }) => {
           [&::-webkit-scrollbar-thumb]:rounded-full"
       >
 
-        
+
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4">
@@ -726,22 +730,7 @@ export const Dental = ({ selectedPatient, showMessage }) => {
           </div>
         </div>
 
-        {/* ─── COVID-19 Vaccine ─────────────────────────────────────────────── */}
-        <div className={sectionClass}>COVID-19 Vaccine (Dental Record)</div>
-        <div className="grid grid-cols-12 gap-4 mb-6">
-          <div className="col-span-3">
-            <label className={labelClass}>First Dose Date</label>
-            <DatePicker value={dentalFormData.dVax1Date} onChange={(val) => handleDentalDateChange('dVax1Date', val)} />
-          </div>
-          <div className="col-span-3">
-            <label className={labelClass}>Second Dose Date</label>
-            <DatePicker value={dentalFormData.dVax2Date} onChange={(val) => handleDentalDateChange('dVax2Date', val)} />
-          </div>
-          <div className="col-span-3">
-            <label className={labelClass}>Booster Dose Date</label>
-            <DatePicker value={dentalFormData.dBoosterDate} onChange={(val) => handleDentalDateChange('dBoosterDate', val)} />
-          </div>
-        </div>
+
 
         {/* ─── Patient Dental Chart ─────────────────────────────────────────── */}
         <div className={sectionClass}>Patient Dental Chart</div>
@@ -811,11 +800,6 @@ export const Dental = ({ selectedPatient, showMessage }) => {
         {/* ─── Signature ────────────────────────────────────────────────────── */}
         <div className={sectionClass}>Signature & Examiner</div>
         <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6"><label className={labelClass}>Patient Signature</label><input type="text" id="dPatientSig" className={inputClass} placeholder="Type full name as signature" value={dentalFormData.dPatientSig} onChange={handleDentalChange} /></div>
-          <div className="col-span-3">
-            <label className={labelClass}>Date</label>
-            <DatePicker value={dentalFormData.dSigDate} onChange={(val) => handleDentalDateChange('dSigDate', val)} />
-          </div>
           <div className="col-span-3">
             <label className={labelClass}>Examination Date</label>
             <DatePicker value={dentalFormData.dExamDate ? dentalFormData.dExamDate.slice(0, 10) : ''} onChange={(val) => handleDentalDateChange('dExamDate', val)} />
@@ -875,6 +859,8 @@ export const Dental = ({ selectedPatient, showMessage }) => {
                   <SumItem label="Address"         value={dentalFormData.dAddress}    />
                   <SumItem label="Cellphone"       value={dentalFormData.dCellphone}  />
                   <SumItem label="Course/Yr/Sec"   value={dentalFormData.dCourseYear} />
+                  <SumItem label="School Year"     value={dentalFormData.dSchoolYear} />
+                  <SumItem label="Semester"        value={dentalFormData.dSemester} />
                   <SumItem label="Nationality"     value={dentalFormData.dNationality}/>
                 </div>
               </SumSection>
@@ -908,13 +894,6 @@ export const Dental = ({ selectedPatient, showMessage }) => {
                 </div>
               </SumSection>
 
-              <SumSection icon="fa-syringe" title="COVID-19 Vaccine Dates">
-                <div className="grid grid-cols-3 gap-2">
-                  <SumItem label="First Dose"   value={dentalFormData.dVax1Date}    />
-                  <SumItem label="Second Dose"  value={dentalFormData.dVax2Date}    />
-                  <SumItem label="Booster Dose" value={dentalFormData.dBoosterDate} />
-                </div>
-              </SumSection>
 
               <SumSection icon="fa-teeth" title={`Dental Chart — ${affectedTeeth.length} tooth/teeth with noted conditions`}>
                 {affectedTeeth.length === 0 ? (
@@ -942,8 +921,6 @@ export const Dental = ({ selectedPatient, showMessage }) => {
 
               <SumSection icon="fa-signature" title="Signature & Examiner">
                 <div className="grid grid-cols-3 gap-2">
-                  <SumItem label="Patient Signature" value={dentalFormData.dPatientSig} />
-                  <SumItem label="Date"              value={dentalFormData.dSigDate}    />
                   <SumItem label="Examined By"       value={dentalFormData.dExaminedBy} />
                 </div>
               </SumSection>

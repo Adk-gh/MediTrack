@@ -1,6 +1,7 @@
 // frontend/src/features/admin-clinic/User-Management.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
+import { createPortal } from 'react-dom';
 import DatePicker from '../../components/Datepicker';
 import AddressModal from '../../components/AddressModal';
 
@@ -29,21 +30,22 @@ const FACULTY_ROLES = new Set(['instructor','lecturer','teacher','professor','de
 const isClinicStaff = r => CLINIC_ROLES.has(r?.toLowerCase());
 const isFaculty     = r => FACULTY_ROLES.has(r?.toLowerCase());
 const isStudent     = r => r?.toLowerCase() === 'student';
-const isAdmin       = r => ['sysadmin','administrator'].includes(r?.toLowerCase());
+const isAdmin       = r => ['sysadmin','administrator','admin'].includes(r?.toLowerCase());
 
 const CLASSIFICATION_MAP = {
-  admin:'System Administrator', administrator:'System Administrator',
-  nurse:'Nurse Personnel', doctor:'Physician / Doctor',
+  sysadmin:'System Administrator', admin:'System Administrator', administrator:'System Administrator',
+  doctor:'Physician / Doctor', dentist:'Dentist', nurse:'Nurse Personnel',
   staff:'Non-Teaching Personnel', employee:'Non-Teaching Personnel',
   librarian:'Non-Teaching Personnel', technician:'Non-Teaching Personnel',
   lecturer:'Teaching Personnel', professor:'Teaching Personnel',
-  instructor:'Teaching Personnel', teacher:'Teaching Personnel',
+  instructor:'Teaching Personnel', teacher:'Teaching Personnel', faculty:'Teaching Personnel',
   student:'Student',
 };
 const JOB_TITLE_MAP = {
-  nurse:'Nurse', doctor:'Physician', admin:'SysAdmin', administrator:'SysAdmin',
-  lecturer:'Lecturer', professor:'Professor', instructor:'Instructor',
-  librarian:'Librarian', staff:'Staff',
+  sysadmin:'System Administrator', admin:'SysAdmin', administrator:'SysAdmin',
+  doctor:'Physician', dentist:'Dentist', nurse:'Nurse',
+  lecturer:'Lecturer', professor:'Professor', instructor:'Instructor', teacher:'Teacher',
+  librarian:'Librarian', staff:'Staff', employee:'Employee',
 };
 
 const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
@@ -97,35 +99,43 @@ const EyeIcon = ({ open }) => open
 // ─────────────────────────────────────────────────────────────────────────────
 const RoleOptions = () => (
   <>
-    <optgroup label="Administration"><option value="admin">Administrator</option></optgroup>
+    <optgroup label="System Administration">
+      <option value="sysadmin">System Administrator</option>
+    </optgroup>
     <optgroup label="Clinic Staff">
-      <option value="doctor">Doctor</option><option value="nurse">Nurse</option>
-      <option value="dentist">Dentist</option><option value="staff">Staff</option>
-      <option value="midwife">Midwife</option><option value="pharmacist">Pharmacist</option>
-      <option value="medical technologist">Medical Technologist</option>
+      <option value="doctor">Doctor</option>
+      <option value="dentist">Dentist</option>
+      <option value="nurse">Nurse</option>
+      <option value="midwife">Midwife</option>
+      <option value="pharmacist">Pharmacist</option>
+      <option value="medical_technologist">Medical Technologist</option>
       <option value="radiologist">Radiologist</option>
-      <option value="physical therapist">Physical Therapist</option>
-      <option value="clinic staff">Clinic Staff (General)</option>
+      <option value="physical_therapist">Physical Therapist</option>
     </optgroup>
     <optgroup label="Faculty">
-      <option value="instructor">Instructor</option><option value="lecturer">Lecturer</option>
-      <option value="teacher">Teacher</option><option value="professor">Professor</option>
-      <option value="assistant professor">Assistant Professor</option>
-      <option value="associate professor">Associate Professor</option>
-      <option value="dean">Dean</option><option value="department head">Department Head</option>
-      <option value="program chair">Program Chair</option>
+      <option value="lecturer">Lecturer</option>
+      <option value="instructor">Instructor</option>
+      <option value="teacher">Teacher</option>
+      <option value="professor">Professor</option>
+      <option value="faculty">Faculty</option>
+      <option value="assistant_professor">Assistant Professor</option>
+      <option value="associate_professor">Associate Professor</option>
+      <option value="dean">Dean</option>
+      <option value="department_head">Department Head</option>
+      <option value="program_chair">Program Chair</option>
       <option value="coordinator">Coordinator</option>
-      <option value="clinical instructor">Clinical Instructor</option>
-      <option value="part-time instructor">Part-time Instructor</option>
-      <option value="visiting professor">Visiting Professor</option>
-      <option value="adjunct professor">Adjunct Professor</option>
+      <option value="clinical_instructor">Clinical Instructor</option>
+      <option value="part_time_instructor">Part-time Instructor</option>
+      <option value="visiting_professor">Visiting Professor</option>
+      <option value="adjunct_professor">Adjunct Professor</option>
       <option value="registrar">Registrar</option>
-      <option value="guidance counselor">Guidance Counselor</option>
+      <option value="guidance_counselor">Guidance Counselor</option>
       <option value="counselor">Counselor</option>
       <option value="librarian">Librarian</option>
-      <option value="faculty">Faculty (General)</option>
     </optgroup>
-    <optgroup label="Student"><option value="student">Student</option></optgroup>
+    <optgroup label="Student">
+      <option value="student">Student</option>
+    </optgroup>
   </>
 );
 
@@ -243,9 +253,9 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
 
   const secHead = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
@@ -319,8 +329,10 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
               </div>
               <div>
                 <label className={labelCls}>Birthday</label>
-                <input className={inputCls} type="date" value={form.birthday}
-                  onChange={e => handleBirthdayChange(e.target.value)} />
+                <DatePicker
+                  value={form.birthday}
+                  onChange={(val) => handleBirthdayChange(val)}
+                />
               </div>
               <div>
                 <label className={labelCls}>Age</label>
@@ -481,7 +493,8 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
         </div>
 
       </div>
-    </div>
+    </div>,
+  document.body
   );
 };
 
@@ -678,6 +691,8 @@ export const UserManagement = () => {
     try {
       // Prepare payload - remove empty password to keep existing
       const { password, first_name, middle_name, last_name, ...payloadWithoutPassword } = editForm;
+
+      // Create clean payload with normalized values
       const payload = {
         ...payloadWithoutPassword,
         // Normalize names: first letter capitalized, rest lowercase
@@ -689,7 +704,10 @@ export const UserManagement = () => {
         // Only include password if it's not empty
         ...(editForm.password ? { newPassword: editForm.password } : {})
       };
-      console.log('Saving payload via API:', payload);
+
+      // Use the correct identifier - use uid from editTarget
+      const targetUid = editTarget?.uid || editTarget?.id;
+      console.log('Saving payload - targetUid:', targetUid, 'payload:', payload);
 
       const token = localStorage.getItem('token');
 
@@ -701,7 +719,7 @@ export const UserManagement = () => {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          targetUid: editTarget.uid,
+          targetUid: targetUid,
           ...payload
         })
       });
@@ -731,10 +749,17 @@ export const UserManagement = () => {
           is_verified: result.data.isVerified,
           profile_complete: result.data.profileComplete,
         };
-        setUsers(users.map(u => u.uid === editTarget.uid ? { ...u, ...updatedUser } : u));
+        // Update the correct user by uid
+        setUsers(users.map(u => {
+          const userId = u.uid || u.id;
+          const targetId = editTarget?.uid || editTarget?.id;
+          return userId === targetId ? { ...u, ...updatedUser } : u;
+        }));
       }
       showSnackbar('User updated successfully', 'success');
       setShowEditModal(false);
+      // Refresh user list to ensure data consistency
+      fetchUsers();
     } catch (err) {
       console.error('Error updating user:', err);
       showSnackbar('Error updating user: ' + (err.message || ''), 'error');
@@ -928,9 +953,9 @@ export const UserManagement = () => {
       )}
 
       {/* ── Edit Modal (same structure as Create) ── */}
-      {showEditModal && editTarget && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
+      {showEditModal && editTarget && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10"
+    onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
             <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
@@ -1073,7 +1098,8 @@ export const UserManagement = () => {
               <button type="submit" form="edit-form" className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition">Save Changes</button>
             </div>
           </div>
-        </div>
+        </div>,
+    document.body
       )}
 
       {/* ── Address Modal for Edit ── */}

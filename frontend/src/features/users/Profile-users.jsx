@@ -669,166 +669,168 @@ export default function ProfileUsers({ onLogout }) {
   const clsColors = classificationColors[profile.studentClassification] || classificationColors.Regular;
 
   return (
-    <div
-      ref={scrollElRef}
-      style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none' }}
-    >
-      <style>{ptrStyles}</style>
-      <PullIndicator indicatorRef={indicatorRef} />
+    <>
+      <div
+        ref={scrollElRef}
+        style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none', touchAction: 'pan-y' }}
+      >
+        <style>{ptrStyles}</style>
+        <PullIndicator indicatorRef={indicatorRef} />
 
-      {/* ── Profile Header ── */}
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
-          <div>
-            <div style={{ fontSize: 19, fontWeight: 700, color: '#1a2e22', fontFamily: "'DM Serif Display', serif", lineHeight: 1.2 }}>
-              {fullName || 'No Name Set'}
-            </div>
-            <div style={{ fontSize: 11, color: '#6b8577', marginTop: 3, fontWeight: 500 }}>
-              {isStudent ? (profile.program || profile.department || 'Student') : (profile.jobTitle || profile.classification || 'Personnel')}
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-            <div style={{ background: '#e0eceb', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#466460' }}>
-              {isStudent ? `ID: ${profile.universityId}` : profile.classification}
-            </div>
-            {isStudent && profile.studentClassification && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: clsColors.bg, padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: clsColors.text }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: clsColors.dot, display: 'inline-block' }} />
-                {profile.studentClassification}
+        {/* ── Profile Header ── */}
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+            <div>
+              <div style={{ fontSize: 19, fontWeight: 700, color: '#1a2e22', fontFamily: "'DM Serif Display', serif", lineHeight: 1.2 }}>
+                {fullName || 'No Name Set'}
               </div>
-            )}
-            <div style={{ background: '#f4f7f5', padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 600, color: '#6b8577', textTransform: 'capitalize' }}>
-              {profile.role || 'student'}
+              <div style={{ fontSize: 11, color: '#6b8577', marginTop: 3, fontWeight: 500 }}>
+                {isStudent ? (profile.program || profile.department || 'Student') : (profile.jobTitle || profile.classification || 'Personnel')}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <div style={{ background: '#e0eceb', padding: '4px 12px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: '#466460' }}>
+                {isStudent ? `ID: ${profile.universityId}` : profile.classification}
+              </div>
+              {isStudent && profile.studentClassification && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: clsColors.bg, padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 700, color: clsColors.text }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: clsColors.dot, display: 'inline-block' }} />
+                  {profile.studentClassification}
+                </div>
+              )}
+              <div style={{ background: '#f4f7f5', padding: '3px 10px', borderRadius: 40, fontSize: 10, fontWeight: 600, color: '#6b8577', textTransform: 'capitalize' }}>
+                {profile.role || 'student'}
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
 
-      {/* ── Personal Information ── */}
-      <Card>
-        <SectionHeader label="Personal Information" onEdit={() => openEdit('personal')} hasEmpty={hasEmptyPersonal} />
-        <InfoRow label="Birthday"     value={profile.birthday}     empty={isFieldEmpty(profile.birthday)} />
-        <InfoRow label="Age"          value={profile.age}          empty={isFieldEmpty(profile.age)} />
-        <InfoRow label="Sex"          value={profile.sex}          empty={isFieldEmpty(profile.sex)} />
-        <InfoRow label="Blood Type"   value={profile.bloodType}   empty={isFieldEmpty(profile.bloodType)} />
-        <InfoRow label="Civil Status" value={profile.civilStatus} empty={isFieldEmpty(profile.civilStatus)} />
-        <InfoRow label="Religion"     value={profile.religion}     empty={isFieldEmpty(profile.religion)} />
-        <InfoRow label="Nationality"  value={profile.nationality}  empty={isFieldEmpty(profile.nationality)} />
-        <InfoRow label="Home Address" value={profile.homeAddress} empty={isFieldEmpty(profile.homeAddress)} last />
-      </Card>
+        {/* ── Personal Information ── */}
+        <Card>
+          <SectionHeader label="Personal Information" onEdit={() => openEdit('personal')} hasEmpty={hasEmptyPersonal} />
+          <InfoRow label="Birthday"     value={profile.birthday}     empty={isFieldEmpty(profile.birthday)} />
+          <InfoRow label="Age"          value={profile.age}          empty={isFieldEmpty(profile.age)} />
+          <InfoRow label="Sex"          value={profile.sex}          empty={isFieldEmpty(profile.sex)} />
+          <InfoRow label="Blood Type"   value={profile.bloodType}   empty={isFieldEmpty(profile.bloodType)} />
+          <InfoRow label="Civil Status" value={profile.civilStatus} empty={isFieldEmpty(profile.civilStatus)} />
+          <InfoRow label="Religion"     value={profile.religion}     empty={isFieldEmpty(profile.religion)} />
+          <InfoRow label="Nationality"  value={profile.nationality}  empty={isFieldEmpty(profile.nationality)} />
+          <InfoRow label="Home Address" value={profile.homeAddress} empty={isFieldEmpty(profile.homeAddress)} last />
+        </Card>
 
-      {/* ── Academic / Work Info ── */}
-      <Card id="academic-section">
-        <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} hasEmpty={hasEmptyAcademic} />
-        {isStudent ? (
-          <>
-            <InfoRow label="Student No."    value={profile.universityId || profile.studentId} empty={isFieldEmpty(profile.universityId || profile.studentId)} />
-            <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
-            <InfoRow label="Program"        value={profile.program} empty={isFieldEmpty(profile.program)} />
-            <InfoRow label="Year Level"     value={profile.yearLevel} empty={isFieldEmpty(profile.yearLevel)} />
-            <InfoRow label="Section"        value={profile.section} empty={isFieldEmpty(profile.section)} />
-            <InfoRow label="Classification" value={profile.studentClassification} empty={isFieldEmpty(profile.studentClassification)} last />
-          </>
-        ) : (
-          <>
-            <InfoRow label="Classification" value={profile.classification} empty={isFieldEmpty(profile.classification)} />
-            <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
-            <InfoRow label="Job Title"      value={profile.jobTitle} last />
-          </>
-        )}
-      </Card>
+        {/* ── Academic / Work Info ── */}
+        <Card id="academic-section">
+          <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} hasEmpty={hasEmptyAcademic} />
+          {isStudent ? (
+            <>
+              <InfoRow label="Student No."    value={profile.universityId || profile.studentId} empty={isFieldEmpty(profile.universityId || profile.studentId)} />
+              <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
+              <InfoRow label="Program"        value={profile.program} empty={isFieldEmpty(profile.program)} />
+              <InfoRow label="Year Level"     value={profile.yearLevel} empty={isFieldEmpty(profile.yearLevel)} />
+              <InfoRow label="Section"        value={profile.section} empty={isFieldEmpty(profile.section)} />
+              <InfoRow label="Classification" value={profile.studentClassification} empty={isFieldEmpty(profile.studentClassification)} last />
+            </>
+          ) : (
+            <>
+              <InfoRow label="Classification" value={profile.classification} empty={isFieldEmpty(profile.classification)} />
+              <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
+              <InfoRow label="Job Title"      value={profile.jobTitle} last />
+            </>
+          )}
+        </Card>
 
-      {/* ── Contact Details ── */}
-      <Card>
-        <SectionHeader label="Contact Details" onEdit={() => openEdit('contact')} hasEmpty={hasEmptyContact} />
-        <InfoRow label="Email Address" value={profile.email} empty={isFieldEmpty(profile.email)} />
-        <InfoRow label="Phone Number"  value={profile.phoneNumber} empty={isFieldEmpty(profile.phoneNumber)} last />
-      </Card>
+        {/* ── Contact Details ── */}
+        <Card>
+          <SectionHeader label="Contact Details" onEdit={() => openEdit('contact')} hasEmpty={hasEmptyContact} />
+          <InfoRow label="Email Address" value={profile.email} empty={isFieldEmpty(profile.email)} />
+          <InfoRow label="Phone Number"  value={profile.phoneNumber} empty={isFieldEmpty(profile.phoneNumber)} last />
+        </Card>
 
-      {/* ── Emergency Contact ── */}
-      <Card id="emergency-section">
-        <SectionHeader label="Emergency Contact" onEdit={() => openEdit('emergency')} hasEmpty={hasEmptyEmergency} />
-        <InfoRow label="Name"         value={profile.emergencyContact.name}         empty={isFieldEmpty(profile.emergencyContact?.name)} />
-        <InfoRow label="Relationship" value={profile.emergencyContact.relationship} empty={isFieldEmpty(profile.emergencyContact?.relationship)} />
-        <InfoRow label="Phone"        value={profile.emergencyContact.phone}        empty={isFieldEmpty(profile.emergencyContact?.phone)} />
-        <InfoRow label="Address"      value={profile.emergencyContact.address}      empty={isFieldEmpty(profile.emergencyContact?.address)} last />
-      </Card>
+        {/* ── Emergency Contact ── */}
+        <Card id="emergency-section">
+          <SectionHeader label="Emergency Contact" onEdit={() => openEdit('emergency')} hasEmpty={hasEmptyEmergency} />
+          <InfoRow label="Name"         value={profile.emergencyContact.name}         empty={isFieldEmpty(profile.emergencyContact?.name)} />
+          <InfoRow label="Relationship" value={profile.emergencyContact.relationship} empty={isFieldEmpty(profile.emergencyContact?.relationship)} />
+          <InfoRow label="Phone"        value={profile.emergencyContact.phone}        empty={isFieldEmpty(profile.emergencyContact?.phone)} />
+          <InfoRow label="Address"      value={profile.emergencyContact.address}      empty={isFieldEmpty(profile.emergencyContact?.address)} last />
+        </Card>
 
-      {/* ── COVID-19 Vaccination History ── */}
-      <Card id="vaccinations-section">
-        <SectionHeader label="COVID-19 Vaccination History" onEdit={() => openEdit('vaccinations')} hasEmpty={hasEmptyVaccinations} />
-        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #edf3f0' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Dose</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Vaccine Brand</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase', textAlign: 'right' }}>Date Given</span>
-        </div>
-        {DOSE_LABELS.map(({ key, label }, i) => {
-          const v = profile.vaccinations?.[key];
-          const isDeclined = profile.vaccinations?.declined?.[key];
-          const doseEmpty = !v?.vaccineName && !v?.date;
-          const showEmpty = !isDeclined && doseEmpty;
-          return (
-            <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #edf3f0' : 'none', alignItems: 'center', backgroundColor: isDeclined ? '#e0eceb' : (showEmpty ? '#fffbeb' : 'transparent'), marginLeft: isDeclined || showEmpty ? -16 : 0, marginRight: isDeclined || showEmpty ? -16 : 0, paddingLeft: isDeclined || showEmpty ? 16 : 0, paddingRight: isDeclined || showEmpty ? 16 : 0, borderRadius: (isDeclined || showEmpty) ? '8px' : 0 }}>
-              <span style={{ background: '#e0eceb', color: '#466460', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, textAlign: 'center', width: 'fit-content' }}>
-                {label}
-              </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: isDeclined ? '#466460' : (showEmpty ? '#92400e' : '#1a2e22') }}>
-                {isDeclined ? 'N/A' : (doseEmpty ? 'Not recorded' : fmt(v?.vaccineName))}
-              </span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isDeclined ? '#466460' : (showEmpty ? '#92400e' : '#6b8577'), textAlign: 'right' }}>
-                {isDeclined ? '' : (doseEmpty ? '—' : fmt(v?.date))}
-              </span>
+        {/* ── COVID-19 Vaccination History ── */}
+        <Card id="vaccinations-section">
+          <SectionHeader label="COVID-19 Vaccination History" onEdit={() => openEdit('vaccinations')} hasEmpty={hasEmptyVaccinations} />
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #edf3f0' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Dose</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Vaccine Brand</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase', textAlign: 'right' }}>Date Given</span>
+          </div>
+          {DOSE_LABELS.map(({ key, label }, i) => {
+            const v = profile.vaccinations?.[key];
+            const isDeclined = profile.vaccinations?.declined?.[key];
+            const doseEmpty = !v?.vaccineName && !v?.date;
+            const showEmpty = !isDeclined && doseEmpty;
+            return (
+              <div key={key} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px', gap: 8, padding: '9px 0', borderBottom: i < DOSE_LABELS.length - 1 ? '1px solid #edf3f0' : 'none', alignItems: 'center', backgroundColor: isDeclined ? '#e0eceb' : (showEmpty ? '#fffbeb' : 'transparent'), marginLeft: isDeclined || showEmpty ? -16 : 0, marginRight: isDeclined || showEmpty ? -16 : 0, paddingLeft: isDeclined || showEmpty ? 16 : 0, paddingRight: isDeclined || showEmpty ? 16 : 0, borderRadius: (isDeclined || showEmpty) ? '8px' : 0 }}>
+                <span style={{ background: '#e0eceb', color: '#466460', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, textAlign: 'center', width: 'fit-content' }}>
+                  {label}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: isDeclined ? '#466460' : (showEmpty ? '#92400e' : '#1a2e22') }}>
+                  {isDeclined ? 'N/A' : (doseEmpty ? 'Not recorded' : fmt(v?.vaccineName))}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: isDeclined ? '#466460' : (showEmpty ? '#92400e' : '#6b8577'), textAlign: 'right' }}>
+                  {isDeclined ? '' : (doseEmpty ? '—' : fmt(v?.date))}
+                </span>
+              </div>
+            );
+          })}
+        </Card>
+
+        {/* ── Dental History ── */}
+        <Card id="dental-section">
+          <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} hasEmpty={hasEmptyDental} />
+          {profile.dentalHistory?.declined ? (
+            <div style={{ padding: '12px 16px', background: '#e0eceb', borderRadius: 10, marginTop: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#466460' }}>No dental history / Not applicable</span>
             </div>
-          );
-        })}
-      </Card>
+          ) : (
+          <>
+          <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} empty={isFieldEmpty(profile.dentalHistory?.lastVisit)} />
+          <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} empty={isFieldEmpty(profile.dentalHistory?.prevDentist)} />
+          <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} empty={isFieldEmpty(profile.dentalHistory?.physician)} last />
+          </>
+          )}
+        </Card>
 
-      {/* ── Dental History ── */}
-      <Card id="dental-section">
-        <SectionHeader label="Dental History" onEdit={() => openEdit('dental')} hasEmpty={hasEmptyDental} />
-        {profile.dentalHistory?.declined ? (
-          <div style={{ padding: '12px 16px', background: '#e0eceb', borderRadius: 10, marginTop: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#466460' }}>No dental history / Not applicable</span>
+        {/* ── Health Documents ── */}
+        {!isStudent && <Card>
+          <SectionHeader label="Health Documents" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #edf3f0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{xrayDate}</span>
+              <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{xrayFile}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>X-RAY</span>
+              <button onClick={() => xrayInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
+              <input ref={xrayInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'xray')} />
+            </div>
           </div>
-        ) : (
-        <>
-        <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} empty={isFieldEmpty(profile.dentalHistory?.lastVisit)} />
-        <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} empty={isFieldEmpty(profile.dentalHistory?.prevDentist)} />
-        <InfoRow label="Physician"         value={profile.dentalHistory.physician   ? `Dr. ${profile.dentalHistory.physician}`   : ''} empty={isFieldEmpty(profile.dentalHistory?.physician)} last />
-        </>
-        )}
-      </Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{drugtestDate}</span>
+              <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{drugtestFile}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>Drug Test</span>
+              <button onClick={() => drugtestInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
+              <input ref={drugtestInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'drugtest')} />
+            </div>
+          </div>
+          <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #c4dbd8' }} />
+          <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
+        </Card>}
+      </div>
 
-      {/* ── Health Documents ── */}
-      {!isStudent && <Card>
-        <SectionHeader label="Health Documents" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #edf3f0' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{xrayDate}</span>
-            <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{xrayFile}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>X-RAY</span>
-            <button onClick={() => xrayInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
-            <input ref={xrayInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'xray')} />
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{drugtestDate}</span>
-            <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{drugtestFile}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>Drug Test</span>
-            <button onClick={() => drugtestInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
-            <input ref={drugtestInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'drugtest')} />
-          </div>
-        </div>
-        <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #c4dbd8' }} />
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
-      </Card>}
-
-      {/* ── Edit Profile Modal ── */}
+      {/* ── Edit Profile Modal (sibling of scrollElRef — not a descendant) ── */}
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
@@ -1167,7 +1169,7 @@ export default function ProfileUsers({ onLogout }) {
       )}
 
 
-      {/* ── File Preview Modal ── */}
+      {/* ── File Preview Modal (sibling of scrollElRef) ── */}
       {previewModal && (
         <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.8)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 340, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.15)' }}>
@@ -1184,12 +1186,12 @@ export default function ProfileUsers({ onLogout }) {
         </div>
       )}
 
-      {/* ── Toast ── */}
+      {/* ── Toast (sibling of scrollElRef) ── */}
       {toast && (
         <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#466460', color: '#fff', padding: '12px 24px', borderRadius: 40, fontSize: 13, fontWeight: 600, zIndex: 5000, whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
           {toast}
         </div>
       )}
-    </div>
+    </>
   );
 }

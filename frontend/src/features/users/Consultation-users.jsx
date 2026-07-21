@@ -1477,7 +1477,7 @@ export default function ConsultationUsers() {
           overflowY:    'auto',
           minHeight:    0,
           position:     'relative',
-          touchAction:  !isEnded ? 'pan-x' : 'auto',
+          touchAction:  'manipulation',
         }}
         className="px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5]"
       >

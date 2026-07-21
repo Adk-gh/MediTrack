@@ -5,6 +5,16 @@ import { supabase } from '../../supabase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
 import { DentalExaminationReport } from '../../components/DentalExaminationReport';
 
+// Maps questionnaire keys (q1, q2...) to the actual question text from the exam form
+const HEALTH_HISTORY_QUESTIONS = [
+  { q: 'Are you in good health?', name: 'q1', detail: null },
+  { q: 'Are you under medical treatment now?', name: 'q2', detail: 'q2Details' },
+  { q: 'Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?', name: 'q3', detail: 'q3Details' },
+  { q: 'Are you taking any medication?', name: 'q4', detail: 'q4Details' },
+  { q: 'For women only: Are you pregnant?', name: 'q5', detail: null },
+  { q: 'Are you nursing?', name: 'q5b', detail: null },
+];
+
 // ============================================================
 // SNACKBAR COMPONENT
 // ============================================================
@@ -136,80 +146,136 @@ export const Approvals = () => {
 
         if (error) throw error;
 
-        const fetchedExams = (data || []).map(record => {
-          let userData = record.users || {};
-          if (Array.isArray(userData)) userData = userData[0] || {};
+ const fetchedExams = (data || []).map(record => {
+  let userData = record.users || {};
+  if (Array.isArray(userData)) userData = userData[0] || {};
 
-          // Get first, middle, last name
-          const fName = record.first_name || userData.first_name || '';
-          const mName = record.middle_name || userData.middle_name || '';
-          const lName = record.last_name || userData.last_name || '';
-          // Format as "FirstName MiddleName LastName"
-          const patientName = [fName, mName, lName].filter(Boolean).join(' ') || 'Unknown Patient';
+  // Safely parse a JSONB field whether Supabase returns it as an object or a string
+  const parseJsonField = (field, fallback = {}) => {
+    if (!field) return fallback;
+    if (typeof field === 'string') {
+      try { return JSON.parse(field); } catch { return fallback; }
+    }
+    return field;
+  };
 
-          const patientId = record.student_id || record.university_id || userData.university_id || 'N/A';
+  const patientInfo   = parseJsonField(record.patient_info, {});
+  const covidHistory  = parseJsonField(record.covid_history, {});
+  const labResultsRaw = parseJsonField(record.laboratory_results, {});
+  const questionnaire = parseJsonField(record.questionnaire, {});
 
-          // Aggressively extract demographic data
-          const department = userData.department || record.department || 'N/A';
-          const program = userData.program || record.program || userData.course || record.course || 'N/A';
-          const yLevel = userData.year_level || record.year_level || '';
-          const sec = userData.section || record.section || '';
-          const yearSection = [yLevel, sec].filter(Boolean).join(' - ') || '';
+  // vital_records is now a flat object (not an array like before)
+  const vitalRec = (() => {
+    const v = record.vital_records;
+    if (!v) return {};
+    if (Array.isArray(v)) return v[0] || {};              // old-schema safety net
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }
+    return v;
+  })();
 
-          // A cert is only forwarded if the doctor actually typed text into findings or remarks
-          const certificateIssued = !!(record.finding1?.trim() || record.remarks?.trim());
+  const fName = record.first_name || userData.first_name || '';
+  const mName = record.middle_name || userData.middle_name || '';
+  const lName = record.last_name || userData.last_name || '';
+  const patientName = [fName, mName, lName].filter(Boolean).join(' ') || 'Unknown Patient';
 
-          return {
-            id: record.id,
-            recordId: record.id,
-            userId: record.user_id,
-            patientName,
-            patientId,
-            firstName: fName,
-            middleName: mName,
-            lastName: lName,
-            type: record.role || userData.role || 'student',
+  const patientId = record.university_id || record.student_id || userData.university_id || 'N/A';
 
-            course:      program,
-            yearSection,
-            address:     record.address || record.home_address || userData.home_address || '',
-            age:         record.age || userData.age || '',
-            sex:         record.sex || record.gender || userData.sex || '',
-            examDate:    record.exam_date || (record.created_at ? new Date(record.created_at).toISOString().split('T')[0] : ''),
+  const department = userData.department || record.department || 'N/A';
+  const program = userData.program || record.program || userData.course || record.course || 'N/A';
+  const yLevel = userData.year_level || record.year_level || '';
+  const sec = userData.section || record.section || '';
+  const yearSection = [yLevel, sec].filter(Boolean).join(' - ') || '';
 
-            program:     program,
-            year:        yearSection,
-            department:  department,
-            nurseName:   record.nurse_on_duty || 'Unknown',
-            status:      record.status || 'pending',
-            reason:      record.reason || 'Medical Examination',
+  const certificateIssued = !!(record.finding1?.trim() || record.remarks?.trim());
 
-            // Certificate Details
-            finding1:          record.finding1,
-            remarks:           record.remarks,
-            isFit:             record.is_fit,
-            isNormalFindings:  record.is_normal_findings,
-            certificateIssued: certificateIssued,
+  return {
+    id: record.id,
+    recordId: record.id,
+    userId: record.user_id,
+    patientName,
+    patientId,
+    firstName: fName,
+    middleName: mName,
+    lastName: lName,
+    type: record.role || userData.role || 'student',
 
-            vitals:          record.vital_records?.[0] || {},
-            anthropometrics: { height: record.height, weight: record.weight, bmi: record.bmi, waist: record.waist },
-            medicalHistory:  record.checked_medical || [],
-            surgicalHistory: record.surgical_history?.map(s => `${s.operation} (${s.date})`) || [],
-            familyHistory:   record.checked_family  || [],
-            vaccine: {
-              dose1:       record.vax1,       dose1Date:    record.vax1_date,
-              dose2:       record.vax2,       dose2Date:    record.vax2_date,
-              booster:     record.booster1,   boosterDate:  record.booster1_date,
-            },
-            labResults: {
-              cbc:         record.lab_cbc,     cbcFacility:  record.lab_cbc_facility,
-              ua:          record.lab_ua,      uaFacility:   record.lab_ua_facility,
-              xray:        record.lab_xray,    xrayFacility: record.lab_xray_facility,
-            },
-            social: { smoking: record.smoking, alcohol: record.alcohol, drugs: record.drugs },
-          };
-        });
+    course: program,
+    yearSection,
+    address: patientInfo.address || record.address || record.home_address || userData.home_address || '',
+    age: patientInfo.age || record.age || userData.age || '',
+    sex: patientInfo.sex || record.sex || record.gender || userData.sex || '',
+    examDate: record.exam_date || (record.created_at ? new Date(record.created_at).toISOString().split('T')[0] : ''),
 
+    program,
+    year: yearSection,
+    department,
+    nurseName: record.nurse_on_duty || 'Unknown',
+    physician: record.physician || '',
+    schoolYear: record.school_year || '',
+    status: record.status || 'pending',
+    reason: record.reason || 'Medical Examination',
+
+    // Certificate Details
+    finding1: record.finding1,
+    remarks: record.remarks,
+    isFit: record.is_fit,
+    isNormalFindings: record.is_normal_findings,
+    certificateIssued,
+
+    // Patient profile info (now nested under patient_info)
+    contactNo: patientInfo.contact_no || '',
+    religion: patientInfo.religion || '',
+    nationality: patientInfo.nationality || '',
+    civilStatus: patientInfo.civil_status || '',
+    emergency: {
+      name: patientInfo.emergency_name || '',
+      relation: patientInfo.emergency_relation || '',
+      address: patientInfo.emergency_address || '',
+      contact: patientInfo.emergency_contact || '',
+    },
+
+    vitals: vitalRec,
+    anthropometrics: {
+      height: vitalRec.height ?? record.height,
+      weight: vitalRec.weight ?? record.weight,
+      bmi: vitalRec.bmi ?? record.bmi,
+      waist: vitalRec.waist ?? record.waist,
+      lmp: vitalRec.lmp || '',
+    },
+    medicalHistory: record.checked_medical || [],
+    surgicalHistory: record.surgical_history?.map(s => `${s.operation} (${s.date})`) || [],
+    familyHistory: record.checked_family || [],
+    healthConditions: record.checked_health || [],
+    questionnaire,
+
+    vaccine: {
+      dose1:        covidHistory.dose1?.vaccineName   || record.vax1        || '',
+      dose1Date:    covidHistory.dose1?.date          || record.vax1_date   || '',
+      dose2:        covidHistory.dose2?.vaccineName   || record.vax2        || '',
+      dose2Date:    covidHistory.dose2?.date          || record.vax2_date   || '',
+      booster:      covidHistory.booster1?.vaccineName|| record.booster1     || '',
+      boosterDate:  covidHistory.booster1?.date       || record.booster1_date || '',
+      booster2:     covidHistory.booster2?.vaccineName || '',
+      booster2Date: covidHistory.booster2?.date        || '',
+      history:      covidHistory.history || '',
+    },
+    labResults: {
+      cbc:         labResultsRaw.cbc?.result   || record.lab_cbc          || '',
+      cbcFacility: labResultsRaw.cbc?.facility || record.lab_cbc_facility || '',
+      ua:          labResultsRaw.ua?.result    || record.lab_ua           || '',
+      uaFacility:  labResultsRaw.ua?.facility  || record.lab_ua_facility  || '',
+      xray:        labResultsRaw.xray?.result  || record.lab_xray         || '',
+      xrayFacility:labResultsRaw.xray?.facility|| record.lab_xray_facility|| '',
+    },
+    social: {
+      smoking: record.smoking, smokingDetails: record.smoking_details,
+      alcohol: record.alcohol, alcoholDetails: record.alcohol_details,
+      drugs: record.drugs, drugsDetails: record.drugs_details,
+    },
+    otherMedicalHistory: record.other_medical_history || '',
+    otherFamilyHistory: record.other_family_history || '',
+  };
+});
         setExaminations(fetchedExams);
       } catch (error) {
         console.error("Error fetching approvals:", error);
@@ -952,7 +1018,7 @@ export const Approvals = () => {
           </div>
         )}
 
-      
+
 
         {/* --- Past Records History Section --- */}
         <div className="bg-[#466460]/10 rounded-xl p-5 mb-4 border-2 border-[#466460]/30 shadow-sm">
@@ -1113,7 +1179,8 @@ export const Approvals = () => {
     return (
       <div className="animate-in fade-in duration-300">
         {/* Patient Header */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-[#466460]"></div>
           <div className="flex justify-between items-start mb-5">
             <div>
               <h3 className="text-lg font-bold text-[#466460] uppercase tracking-wide">
@@ -1125,7 +1192,7 @@ export const Approvals = () => {
             </div>
             <StatusBadge status={exam.status} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6">
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Program/Department</p>
               {exam.program !== 'N/A' ? (
@@ -1143,12 +1210,20 @@ export const Approvals = () => {
               <p className="text-[13px] font-semibold text-slate-800">{exam.examDate}</p>
             </div>
             <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">School Year</p>
+              <p className="text-[13px] font-semibold text-slate-800">{exam.schoolYear || '—'}</p>
+            </div>
+            <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reason</p>
               <p className="text-[13px] font-semibold text-slate-800">{exam.reason}</p>
             </div>
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nurse on Duty</p>
               <p className="text-[13px] font-semibold text-slate-800">{exam.nurseName}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Examining Physician</p>
+              <p className="text-[13px] font-semibold text-slate-800">{exam.physician || '—'}</p>
             </div>
           </div>
         </div>
@@ -1197,132 +1272,256 @@ export const Approvals = () => {
           </div>
         )}
 
-        {/* Medical Examination Summary */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
-          <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-slate-200 pb-2">
-            <i className="fa-solid fa-clipboard-list mr-2"></i>Medical Examination Summary
-          </h4>
+        {/* Dashboard Grid for Medical Summary */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
 
-          {/* Vital Signs */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vital Signs</p>
-            <div className="grid grid-cols-5 gap-2">
-              {[
-                { label: 'BP',     value: exam.vitals?.bp              || '—', unit: 'mmHg' },
-                { label: 'PR',     value: exam.vitals?.pr              || '—', unit: 'bpm'  },
-                { label: 'RR',     value: exam.vitals?.rr              || '—', unit: 'cpm'  },
-                { label: 'Temp',   value: exam.vitals?.temp            || '—', unit: '°C'   },
-                { label: 'Weight', value: exam.anthropometrics?.weight || '—', unit: 'kg'   },
-              ].map((item, idx) => (
-                <div key={idx} className="bg-slate-50 rounded-lg p-2 text-center border border-slate-100">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
-                  <p className="text-sm font-black text-slate-800">{item.value}</p>
-                  <p className="text-[8px] text-slate-400 mt-0.5">{item.unit}</p>
+          {/* LEFT COLUMN: Physical Exam & Social */}
+          <div className="space-y-4">
+
+            {/* Vital Signs Card */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 w-1 h-full bg-rose-400"></div>
+              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-heart-pulse text-rose-500"></i> Vital Signs
+              </h5>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Blood Pressure', value: exam.vitals?.bp || '—', unit: 'mmHg', icon: 'fa-droplet', color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-100' },
+                  { label: 'Heart Rate', value: exam.vitals?.pr || '—', unit: 'bpm', icon: 'fa-wave-square', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' },
+                  { label: 'Respiratory Rate', value: exam.vitals?.rr || '—', unit: 'cpm', icon: 'fa-lungs', color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-100' },
+                  { label: 'Temperature', value: exam.vitals?.temp || '—', unit: '°C', icon: 'fa-temperature-half', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
+                ].map((item, idx) => (
+                  <div key={idx} className={`${item.bg} ${item.border} border rounded-lg p-3 flex flex-col`}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <i className={`fa-solid ${item.icon} ${item.color} text-[10px]`}></i>
+                      <p className={`text-[9px] font-bold uppercase tracking-wider ${item.color}`}>{item.label}</p>
+                    </div>
+                    <div className="flex items-baseline gap-1 mt-auto">
+                      <p className="text-lg font-black text-slate-800 leading-none">{item.value}</p>
+                      <p className="text-[9px] font-medium text-slate-500">{item.unit}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {exam.vitals?.remarks && (
+                <p className="text-[10px] text-slate-500 mt-3 italic bg-slate-50 rounded-lg p-2 border border-slate-100">
+                  <span className="font-bold not-italic text-slate-600">Remarks: </span>{exam.vitals.remarks}
+                </p>
+              )}
+            </div>
+
+            {/* Anthropometrics Card */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 w-1 h-full bg-blue-400"></div>
+              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-weight-scale text-blue-500"></i> Anthropometrics
+              </h5>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Height', value: exam.anthropometrics?.height || '—', unit: 'cm' },
+                  { label: 'Weight', value: exam.anthropometrics?.weight || '—', unit: 'kg' },
+                  { label: 'BMI', value: exam.anthropometrics?.bmi || '—', unit: '' },
+                  { label: 'Waist', value: exam.anthropometrics?.waist || '—', unit: 'cm' },
+                ].map((item, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
+                    <p className="text-[13px] font-black text-slate-700">
+                      {item.value} {item.unit && <span className="text-[9px] font-medium text-slate-500">{item.unit}</span>}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Lifestyle & Social History Card */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 w-1 h-full bg-emerald-400"></div>
+              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-martini-glass text-emerald-500"></i> Lifestyle & Social History
+              </h5>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Smoking', value: exam.social?.smoking || 'No', details: exam.social?.smokingDetails, icon: 'fa-smoking' },
+                  { label: 'Alcohol', value: exam.social?.alcohol || 'No', details: exam.social?.alcoholDetails, icon: 'fa-wine-bottle' },
+                  { label: 'Illicit Drugs', value: exam.social?.drugs || 'No', details: exam.social?.drugsDetails, icon: 'fa-capsules' },
+                ].map((item, idx) => {
+                  const isPositive = item.value.toLowerCase().includes('yes');
+                  return (
+                    <div key={idx} className={`p-2.5 rounded-lg border flex flex-col items-center justify-center text-center ${isPositive ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                      <i className={`fa-solid ${item.icon} mb-1.5 ${isPositive ? 'text-red-500' : 'text-emerald-500'}`}></i>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{item.label}</p>
+                      <p className={`text-[11px] font-black ${isPositive ? 'text-red-700' : 'text-emerald-700'}`}>{item.value}</p>
+                      {item.details && (
+                        <p className="text-[9px] text-slate-500 mt-1 leading-snug">{item.details}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
+          {/* RIGHT COLUMN: Clinical History & Labs */}
+          <div className="space-y-4">
+
+            {/* Clinical History Card */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 w-1 h-full bg-purple-400"></div>
+              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <i className="fa-solid fa-notes-medical text-purple-500"></i> Clinical History
+              </h5>
+
+              <div className="space-y-4">
+                {/* 1. Past Medical History */}
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <i className="fa-solid fa-file-waveform"></i> Past Medical History
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(exam.medicalHistory.length > 0 ? exam.medicalHistory : ['None recorded']).map((h, idx) => (
+                      <span key={idx} className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-purple-100">{h}</span>
+                    ))}
+                  </div>
+                  {exam.otherMedicalHistory && (
+                    <p className="text-[10px] text-slate-600 mt-2 italic">Other: {exam.otherMedicalHistory}</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Anthropometrics */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Anthropometrics</p>
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { label: 'Height', value: exam.anthropometrics?.height || '—', unit: 'cm' },
-                { label: 'Weight', value: exam.anthropometrics?.weight || '—', unit: 'kg' },
-                { label: 'BMI',    value: exam.anthropometrics?.bmi    || '—', unit: ''   },
-                { label: 'Waist',  value: exam.anthropometrics?.waist  || '—', unit: 'cm' },
-              ].map((item, idx) => (
-                <div key={idx} className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
-                  <p className="text-[13px] font-semibold text-slate-800">{item.value} {item.unit}</p>
+                {/* 2. Family History */}
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <i className="fa-solid fa-people-roof"></i> Family History
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(exam.familyHistory.length > 0 ? exam.familyHistory : ['None recorded']).map((h, idx) => (
+                      <span key={idx} className="bg-fuchsia-50 text-fuchsia-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-fuchsia-100">{h}</span>
+                    ))}
+                  </div>
+                  {exam.otherFamilyHistory && (
+                    <p className="text-[10px] text-slate-600 mt-2 italic">Other: {exam.otherFamilyHistory}</p>
+                  )}
                 </div>
-              ))}
+
+                {/* 3. Surgical History */}
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <i className="fa-solid fa-scalpel"></i> Surgical History
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(exam.surgicalHistory.length > 0 ? exam.surgicalHistory : ['None recorded']).map((h, idx) => (
+                      <span key={idx} className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-indigo-100">{h}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Laboratory Results Card */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 w-1 h-full bg-teal-400"></div>
+              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-microscope text-teal-500"></i> Laboratory Results
+              </h5>
+
+              <div className="space-y-2">
+                {[
+                  { label: 'Complete Blood Count', short: 'CBC', result: exam.labResults?.cbc, facility: exam.labResults?.cbcFacility },
+                  { label: 'Urinalysis', short: 'UA', result: exam.labResults?.ua, facility: exam.labResults?.uaFacility },
+                  { label: 'Chest X-Ray', short: 'CXR', result: exam.labResults?.xray, facility: exam.labResults?.xrayFacility },
+                ].map((test, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600 font-bold text-[10px]">
+                        {test.short}
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-700">{test.label}</p>
+                        <p className="text-[9px] text-slate-500 flex items-center gap-1">
+                          <i className="fa-solid fa-hospital text-slate-400"></i> {test.facility || 'No facility recorded'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${test.result && test.result.toLowerCase() !== 'pending' && test.result !== '—' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'}`}>
+                        {test.result || 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Health History Questionnaire */}
+        {exam.questionnaire && Object.keys(exam.questionnaire).length > 0 && (
+          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden mb-4">
+            <div className="absolute left-0 top-0 w-1 h-full bg-cyan-400"></div>
+            <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i className="fa-solid fa-circle-question text-cyan-500"></i> Health History Questionnaire
+            </h5>
+            <div className="space-y-2">
+              {HEALTH_HISTORY_QUESTIONS.map(({ q, name, detail }) => {
+                const answer = exam.questionnaire?.[name];
+                if (answer === undefined) return null;
+                const isYes = answer?.toLowerCase() === 'yes';
+                return (
+                  <div key={name} className="flex items-start justify-between gap-3 p-2.5 bg-slate-50 border border-slate-100 rounded-lg">
+                    <p className="text-xs text-slate-700 flex-1">{q}</p>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {answer || '—'}
+                      </span>
+                      {detail && exam.questionnaire?.[detail] && (
+                        <span className="text-[10px] text-slate-500 italic max-w-[220px] text-right">{exam.questionnaire[detail]}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
+        )}
 
-          {/* Medical History */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Past Medical History</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(exam.medicalHistory.length > 0 ? exam.medicalHistory : ['None recorded']).map((h, idx) => (
-                <span key={idx} className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-amber-100">{h}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* Surgical History */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Surgical History</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(exam.surgicalHistory.length > 0 ? exam.surgicalHistory : ['None recorded']).map((h, idx) => (
-                <span key={idx} className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-blue-100">{h}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* Family History */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Family History</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(exam.familyHistory.length > 0 ? exam.familyHistory : ['None recorded']).map((h, idx) => (
-                <span key={idx} className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-purple-100">{h}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* Laboratory Results */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Laboratory Results</p>
+        {/* COVID-19 Vaccination History */}
+        {exam.vaccine && (exam.vaccine.dose1 || exam.vaccine.dose2 || exam.vaccine.booster || exam.vaccine.booster2 || exam.vaccine.history) && (
+          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden mb-4">
+            <div className="absolute left-0 top-0 w-1 h-full bg-lime-400"></div>
+            <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i className="fa-solid fa-syringe text-lime-500"></i> COVID-19 Vaccination History
+            </h5>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs border border-slate-200 rounded-lg">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">Test</th>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">Results</th>
-                    <th className="text-left p-2.5 border-b font-bold text-slate-500 uppercase tracking-wider text-[10px]">Facility</th>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {['Dose', 'Vaccine', 'Date'].map(h => (
+                      <th key={h} className="border border-slate-100 p-2 text-left font-bold text-slate-400 uppercase tracking-wider text-[9px]">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="p-2.5 border-b text-slate-600 font-medium">CBC</td>
-                    <td className="p-2.5 border-b font-semibold text-slate-800">{exam.labResults?.cbc  || '—'}</td>
-                    <td className="p-2.5 border-b text-slate-500">{exam.labResults?.cbcFacility  || '—'}</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 border-b text-slate-600 font-medium">Urinalysis</td>
-                    <td className="p-2.5 border-b font-semibold text-slate-800">{exam.labResults?.ua   || '—'}</td>
-                    <td className="p-2.5 border-b text-slate-500">{exam.labResults?.uaFacility   || '—'}</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 text-slate-600 font-medium">Chest X-Ray</td>
-                    <td className="p-2.5 font-semibold text-slate-800">{exam.labResults?.xray || '—'}</td>
-                    <td className="p-2.5 text-slate-500">{exam.labResults?.xrayFacility || '—'}</td>
-                  </tr>
+                  {[
+                    { label: '1st Dose', name: exam.vaccine.dose1, date: exam.vaccine.dose1Date },
+                    { label: '2nd Dose', name: exam.vaccine.dose2, date: exam.vaccine.dose2Date },
+                    { label: 'Booster (1)', name: exam.vaccine.booster, date: exam.vaccine.boosterDate },
+                    { label: 'Booster (2)', name: exam.vaccine.booster2, date: exam.vaccine.booster2Date },
+                  ].map(row => (
+                    <tr key={row.label}>
+                      <td className="border border-slate-100 p-2 font-semibold text-slate-700">{row.label}</td>
+                      <td className="border border-slate-100 p-2 text-slate-600">{row.name || '—'}</td>
+                      <td className="border border-slate-100 p-2 text-slate-600">{row.date || '—'}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+            {exam.vaccine.history && (
+              <p className="text-[10px] text-slate-500 mt-2 italic">COVID-19 History: {exam.vaccine.history}</p>
+            )}
           </div>
-
-          {/* Personal/Social History */}
-          <div className="mb-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Personal/Social History</p>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'Smoking',       value: exam.social?.smoking || 'No' },
-                { label: 'Alcohol',       value: exam.social?.alcohol || 'No' },
-                { label: 'Illicit Drugs', value: exam.social?.drugs   || 'No' },
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-500 font-medium">{item.label}:</span>
-                  <span className={`text-[11px] font-bold ${item.value.toLowerCase().includes('yes') ? 'text-red-600' : 'text-green-600'}`}>
-                    {item.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* --- Past Records History Section --- */}
         <div className="bg-[#466460]/10 rounded-xl p-5 mb-4 border-2 border-[#466460]/30 shadow-sm">
@@ -1375,11 +1574,37 @@ export const Approvals = () => {
                 const toothData = isDentalRecord ? parseJson(consult.tooth_data, {}) : {};
                 const dentalHistory = isDentalRecord ? parseJson(consult.dental_history, {}) : {};
 
-                // For medical records, parse other fields
-                const labResults = !isDentalRecord ? parseJson(consult.lab_results, {}) : {};
+                // For medical records, parse vitals and lab results, and pull clinical history fields
+                const vitalRec = !isDentalRecord ? (() => {
+                  const v = consult.vital_records;
+                  if (!v) return {};
+                  if (Array.isArray(v)) return v[0] || {};
+                  if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }
+                  return v;
+                })() : {};
+
+                const labResultsRaw = !isDentalRecord ? parseJson(consult.laboratory_results, {}) : {};
+                const labResults = !isDentalRecord ? {
+                  cbc:         labResultsRaw.cbc?.result   || consult.lab_cbc          || '',
+                  cbcFacility: labResultsRaw.cbc?.facility || consult.lab_cbc_facility || '',
+                  ua:          labResultsRaw.ua?.result    || consult.lab_ua           || '',
+                  uaFacility:  labResultsRaw.ua?.facility  || consult.lab_ua_facility  || '',
+                  xray:        labResultsRaw.xray?.result  || consult.lab_xray         || '',
+                  xrayFacility:labResultsRaw.xray?.facility|| consult.lab_xray_facility|| '',
+                } : {};
+
+                const pastMedicalHistory = !isDentalRecord ? (consult.checked_medical || []) : [];
+                const pastFamilyHistory = !isDentalRecord ? (consult.checked_family || []) : [];
+                const pastSurgicalHistory = !isDentalRecord ? (consult.surgical_history?.map(s => `${s.operation} (${s.date})`) || []) : [];
+                const pastOtherMedicalHistory = consult.other_medical_history || '';
+                const pastOtherFamilyHistory = consult.other_family_history || '';
 
                 // Use detected type from selected exam for rendering
                 const renderExamType = (selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'dental' : examType;
+
+                // Parse questionnaire and covid history for medical past records
+                const pastQuestionnaire = !isDentalRecord ? parseJson(consult.questionnaire, {}) : {};
+                const pastCovidHistory = !isDentalRecord ? parseJson(consult.covid_history, {}) : {};
 
                 return (
                   <div key={consult.id || idx} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -1508,20 +1733,150 @@ export const Approvals = () => {
                         </div>
                       )}
 
-                      {/* MEDICAL: Lab Results */}
-                      {renderExamType === 'medical' && labResults && Object.keys(labResults).some(k => labResults[k]) && (
+                      {/* MEDICAL: Vital Signs */}
+                      {renderExamType === 'medical' && vitalRec && (vitalRec.bp || vitalRec.pr || vitalRec.rr || vitalRec.temp) && (
                         <div className="border-t border-slate-100 pt-3">
                           <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-flask mr-1"></i>Lab Results
+                            <i className="fa-solid fa-heart-pulse mr-1"></i>Vital Signs
                           </h5>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                            {Object.entries(labResults).filter(([k, v]) => v).map(([key, val]) => (
-                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400 capitalize">{key}: </span>
-                                <span className="font-medium text-slate-700">{String(val)}</span>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {[
+                              { label: 'Blood Pressure', value: vitalRec.bp, unit: 'mmHg' },
+                              { label: 'Heart Rate', value: vitalRec.pr, unit: 'bpm' },
+                              { label: 'Respiratory Rate', value: vitalRec.rr, unit: 'cpm' },
+                              { label: 'Temperature', value: vitalRec.temp, unit: '°C' },
+                            ].filter(v => v.value).map((v, i) => (
+                              <div key={i} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400">{v.label}: </span>
+                                <span className="font-medium text-slate-700">{v.value} {v.unit}</span>
                               </div>
                             ))}
                           </div>
+                          {vitalRec.remarks && (
+                            <p className="text-[10px] text-slate-500 mt-2 italic">Remarks: {vitalRec.remarks}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* MEDICAL: Clinical History */}
+                      {renderExamType === 'medical' && (pastMedicalHistory.length > 0 || pastFamilyHistory.length > 0 || pastSurgicalHistory.length > 0 || pastOtherMedicalHistory || pastOtherFamilyHistory) && (
+                        <div className="border-t border-slate-100 pt-3 space-y-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-1">
+                            <i className="fa-solid fa-notes-medical mr-1"></i>Clinical History
+                          </h5>
+
+                          {/* 1. Past Medical History */}
+                          <div>
+                            <p className="text-[9px] text-slate-400 uppercase mb-1">Past Medical History</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(pastMedicalHistory.length > 0 ? pastMedicalHistory : ['None recorded']).map((h, i) => (
+                                <span key={i} className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-[9px] font-bold border border-purple-100">{h}</span>
+                              ))}
+                            </div>
+                            {pastOtherMedicalHistory && (
+                              <p className="text-[10px] text-slate-600 mt-1.5 italic">Other: {pastOtherMedicalHistory}</p>
+                            )}
+                          </div>
+
+                          {/* 2. Family History */}
+                          <div>
+                            <p className="text-[9px] text-slate-400 uppercase mb-1">Family History</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(pastFamilyHistory.length > 0 ? pastFamilyHistory : ['None recorded']).map((h, i) => (
+                                <span key={i} className="bg-fuchsia-50 text-fuchsia-700 px-2 py-0.5 rounded text-[9px] font-bold border border-fuchsia-100">{h}</span>
+                              ))}
+                            </div>
+                            {pastOtherFamilyHistory && (
+                              <p className="text-[10px] text-slate-600 mt-1.5 italic">Other: {pastOtherFamilyHistory}</p>
+                            )}
+                          </div>
+
+                          {/* 3. Surgical History */}
+                          <div>
+                            <p className="text-[9px] text-slate-400 uppercase mb-1">Surgical History</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(pastSurgicalHistory.length > 0 ? pastSurgicalHistory : ['None recorded']).map((h, i) => (
+                                <span key={i} className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[9px] font-bold border border-indigo-100">{h}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MEDICAL: Lab Results */}
+                      {renderExamType === 'medical' && (labResults.cbc || labResults.ua || labResults.xray) && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-flask mr-1"></i>Laboratory Results
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {[
+                              { label: 'CBC', result: labResults.cbc, facility: labResults.cbcFacility },
+                              { label: 'UA', result: labResults.ua, facility: labResults.uaFacility },
+                              { label: 'CXR', result: labResults.xray, facility: labResults.xrayFacility },
+                            ].filter(t => t.result).map((t, i) => (
+                              <div key={i} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400">{t.label}: </span>
+                                <span className="font-medium text-slate-700">{t.result}</span>
+                                {t.facility && <span className="block text-[8px] text-slate-400">{t.facility}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MEDICAL: Health History Questionnaire */}
+                      {renderExamType === 'medical' && pastQuestionnaire && Object.keys(pastQuestionnaire).length > 0 && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-circle-question mr-1"></i>Health History Questionnaire
+                          </h5>
+                          <div className="space-y-1.5">
+                            {HEALTH_HISTORY_QUESTIONS.map(({ q, name, detail }) => {
+                              const answer = pastQuestionnaire?.[name];
+                              if (answer === undefined) return null;
+                              const isYes = answer?.toLowerCase() === 'yes';
+                              return (
+                                <div key={name} className="flex items-start justify-between gap-2 bg-slate-50 rounded px-2 py-1">
+                                  <span className="text-[9px] text-slate-600 flex-1">{q}</span>
+                                  <div className="flex flex-col items-end gap-0.5 shrink-0">
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                      {answer || '—'}
+                                    </span>
+                                    {detail && pastQuestionnaire?.[detail] && (
+                                      <span className="text-[9px] text-slate-500 italic">{pastQuestionnaire[detail]}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MEDICAL: COVID-19 Vaccination History */}
+                      {renderExamType === 'medical' && pastCovidHistory && (pastCovidHistory.dose1?.vaccineName || pastCovidHistory.dose2?.vaccineName || pastCovidHistory.booster1?.vaccineName || pastCovidHistory.booster2?.vaccineName || pastCovidHistory.history) && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-syringe mr-1"></i>COVID-19 Vaccination History
+                          </h5>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {[
+                              { label: '1st Dose', name: pastCovidHistory.dose1?.vaccineName, date: pastCovidHistory.dose1?.date },
+                              { label: '2nd Dose', name: pastCovidHistory.dose2?.vaccineName, date: pastCovidHistory.dose2?.date },
+                              { label: 'Booster 1', name: pastCovidHistory.booster1?.vaccineName, date: pastCovidHistory.booster1?.date },
+                              { label: 'Booster 2', name: pastCovidHistory.booster2?.vaccineName, date: pastCovidHistory.booster2?.date },
+                            ].filter(v => v.name).map((v, i) => (
+                              <div key={i} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400">{v.label}: </span>
+                                <span className="font-medium text-slate-700">{v.name}</span>
+                                {v.date && <span className="block text-[8px] text-slate-400">{v.date}</span>}
+                              </div>
+                            ))}
+                          </div>
+                          {pastCovidHistory.history && (
+                            <p className="text-[9px] text-slate-500 mt-2 italic">History: {pastCovidHistory.history}</p>
+                          )}
                         </div>
                       )}
                     </div>

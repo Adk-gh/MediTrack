@@ -669,19 +669,39 @@ exports.adminUpdateUser = async (targetUid, updates) => {
   console.log('[adminUpdateUser] targetUid:', targetUid);
   console.log('[adminUpdateUser] dbUpdates:', dbUpdates);
 
-  const { data, error } = await supabase
+  // First try to find user by uid
+  let { data, error } = await supabase
     .from('users')
     .update(dbUpdates)
     .eq('uid', targetUid)
     .select()
     .single();
 
-  console.log('[adminUpdateUser] Result - data:', data, 'error:', error);
+  // If no results with uid, try by id
+  if (!data && error && error.code === 'PGRST116') {
+    console.log('[adminUpdateUser] No user found by uid, trying id');
+    const { data: dataById, error: errorById } = await supabase
+      .from('users')
+      .update(dbUpdates)
+      .eq('id', targetUid)
+      .select()
+      .single();
+
+    if (errorById) {
+      console.error('[adminUpdateUser] Update by id also failed:', errorById);
+      throw new Error(errorById.message || 'User not found');
+    }
+
+    data = dataById;
+    error = errorById;
+  }
 
   if (error) {
     console.error('Admin update error:', error);
     throw new Error(error.message);
   }
+
+  console.log('[adminUpdateUser] Updated successfully - data:', data);
 
   return {
     uid:                  data.uid,

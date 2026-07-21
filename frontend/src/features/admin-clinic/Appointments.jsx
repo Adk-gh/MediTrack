@@ -238,12 +238,22 @@ const IconUserClock = ({ size = 16, ...props }) => (
   </svg>
 );
 
-// ── NEW: Missed icon ──────────────────────────────────────────────────────────
+// ── Missed icon ────────────────────────────────────────────────────────────
 const IconBanCircle = ({ size = 14, color = "currentColor", ...props }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
     strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <circle cx="8" cy="8" r="7"/>
     <line x1="3.5" y1="3.5" x2="12.5" y2="12.5"/>
+  </svg>
+);
+
+// ── NEW: Rejected icon ────────────────────────────────────────────────────
+const IconCircleXmark = ({ size = 14, color = "currentColor", ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
+    strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="8" cy="8" r="7"/>
+    <line x1="5.5" y1="5.5" x2="10.5" y2="10.5"/>
+    <line x1="10.5" y1="5.5" x2="5.5" y2="10.5"/>
   </svg>
 );
 
@@ -500,8 +510,8 @@ export const Appointments = () => {
   // ── Mobile view state ──
   const [mobileView, setMobileView] = useState('pending');
 
-  // ── Tab state (pending vs approved) ──
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
+  // ── Tab state (pending vs approved vs rejected) ──
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'approved' | 'rejected'
 
   // ── Multi-select pending ──
   const [selectedIds,   setSelectedIds]   = useState(new Set());
@@ -639,6 +649,25 @@ export const Appointments = () => {
   const allApprovedAppts = appointments.filter(
     a => a.status === 'approved' || a.status === 'done' || a.status === 'missed'
   );
+
+  // ── Rejected Appointments ──
+  // NOTE: assumes declineAppointment sets status to 'declined'. If your
+  // AppointmentContext uses a different string (e.g. 'rejected'), update
+  // the filter below to match.
+  const rejectedAppts = appointments
+    .filter(a => a.status === 'declined')
+    .sort((a, b) => new Date(b.bookedAt || b.created_at) - new Date(a.bookedAt || a.created_at));
+
+  const filteredRejected = rejectedAppts.filter(r => {
+    const userData = getUserData(r);
+    return !searchTerm ||
+      r.name.toLowerCase().includes(searchTerm)         ||
+      (r.idno || '').toLowerCase().includes(searchTerm) ||
+      (userData.university_id || '').toLowerCase().includes(searchTerm) ||
+      (userData.department || '').toLowerCase().includes(searchTerm)   ||
+      (userData.program || '').toLowerCase().includes(searchTerm)      ||
+      (r.reason || '').toLowerCase().includes(searchTerm);
+  });
 
   // Apply date range filter
   const filteredByDate = allApprovedAppts.filter(a => {
@@ -779,6 +808,14 @@ export const Appointments = () => {
     : null;
 
   // ── Pending List ──────────────────────────────────────────────────────────
+  // NOTE: this is called directly as PendingList() below (not rendered as
+  // <PendingList />). Rendering it as a JSX component tag would make React
+  // treat it as a brand-new component type on every keystroke (since this
+  // function is redefined on every render of Appointments), which forces a
+  // full unmount/remount of this subtree — including the <input> — and wipes
+  // focus after every character typed. Calling it as a plain function inlines
+  // its returned elements into the existing tree instead, so React just
+  // updates them and the input keeps focus.
   const PendingList = () => (
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
@@ -929,6 +966,7 @@ export const Appointments = () => {
   );
 
   // ── Approved Appointments List ─────────────────────────────────────────────
+  // Same note as PendingList — call as ApprovedList(), don't render as <ApprovedList />.
   const ApprovedList = () => (
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
@@ -1075,61 +1113,131 @@ export const Appointments = () => {
     </div>
   );
 
-const handleExaminePatient = async (appt) => {
-  showSnackbar('Locating patient record...');
-  try {
-    let { data: users, error } = await supabase
-      .from('users')
-      .select('id')
-      .eq('universityId', appt.idno)
-      .limit(1);
+  // ── Rejected Appointments List ─────────────────────────────────────────────
+  // Same note as PendingList — call as RejectedList(), don't render as <RejectedList />.
+  const RejectedList = () => (
+    <div className="flex flex-col h-full overflow-hidden w-full">
+      <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
+        <div>
+          <div className="text-[13px] font-semibold text-[#1e293b]">Rejected Requests</div>
+          <div className="text-[10px] text-[#64748b] mt-[1px]">Requests that were declined</div>
+        </div>
+        <span className="text-[10px] font-semibold text-[#991b1b] bg-[#fef2f2] px-[9px] py-[2px] rounded-[20px]">
+          {rejectedAppts.length} rejected
+        </span>
+      </div>
 
-    if (error) throw error;
+      <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0 bg-white">
+        <input
+          type="text"
+          placeholder="Search name, ID, dept..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value.toLowerCase())}
+          className="w-full px-[11px] py-[6px] border border-[#e2e8f0] rounded-lg text-[12px] bg-[#f8fafc]
+            text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
+        />
+      </div>
 
-    if (!users || users.length === 0) {
-      ({ data: users, error } = await supabase
+      <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0 bg-white
+        [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+        {filteredRejected.length === 0 ? (
+          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[12px]">
+            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+              {rejectedAppts.length === 0
+                ? <IconInbox size={28} />
+                : <IconMagnifyingGlass size={28} />
+              }
+            </div>
+            {rejectedAppts.length === 0 ? 'No rejected requests' : 'No results found'}
+          </div>
+        ) : filteredRejected.map(r => {
+          const bTime = formatDateTime(r.bookedAt);
+          return (
+            <div
+              key={r.id}
+              onClick={() => setDetailModal(r)}
+              className="flex items-start gap-[9px] px-[11px] py-[10px] border border-[#eef2f6]
+                rounded-[10px] mb-[5px] cursor-pointer transition-all relative overflow-hidden
+                hover:border-[#fca5a5] hover:bg-[#fffafa]"
+            >
+              <div className="w-[17px] h-[17px] rounded-full bg-[#dc2626] flex items-center justify-center shrink-0 mt-[1px]">
+                <IconXmark size={9} color="white" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-[#1e293b] leading-[1.3]">{r.name}</div>
+                <div className="text-[10px] text-[#64748b] mt-[2px] leading-[1.5]">
+                  {getUserData(r).university_id} &middot; {getUserData(r).department}
+                </div>
+                <div className="text-[10px] text-[#64748b] leading-[1.5]">
+                  {getUserData(r).program} &middot; Sec {getUserData(r).section}
+                </div>
+                <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px]
+                  rounded-[20px] inline-block mt-[3px] font-medium">{r.reason}</span>
+                <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
+                  <IconClock size={10} />
+                  Requested {bTime}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const handleExaminePatient = async (appt) => {
+    showSnackbar('Locating patient record...');
+    try {
+      let { data: users, error } = await supabase
         .from('users')
         .select('id')
-        .eq('studentId', appt.idno)
-        .limit(1));
+        .eq('universityId', appt.idno)
+        .limit(1);
 
       if (error) throw error;
-    }
 
-    if (users && users.length > 0) {
-      const actualUid = users[0].id;
-      setDetailModal(null);
-      showSnackbar('Patient found! Redirecting...');
-      setTimeout(() => navigate(`/examinations?patientId=${actualUid}`), 1000);
-    } else {
-      const nameParts = (appt.name || '').trim().split(' ');
-      const patientProfile = {
-        uid: `temp-${Date.now()}`,
-        name: appt.name,
-        firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
-        lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
-        id: appt.idno,
-        universityId: appt.idno,
-        department: appt.dept,
-        prog: appt.prog,
-        section: appt.section,
-      };
-      localStorage.setItem('selectedPatient', JSON.stringify(patientProfile));
-      setDetailModal(null);
-      showSnackbar('Patient not in DB. Using appointment data...');
-      setTimeout(() => navigate(`/examinations?patientId=${patientProfile.uid}`), 1000);
+      if (!users || users.length === 0) {
+        ({ data: users, error } = await supabase
+          .from('users')
+          .select('id')
+          .eq('studentId', appt.idno)
+          .limit(1));
+
+        if (error) throw error;
+      }
+
+      if (users && users.length > 0) {
+        const actualUid = users[0].id;
+        setDetailModal(null);
+        showSnackbar('Patient found! Redirecting...');
+        setTimeout(() => navigate(`/examinations?patientId=${actualUid}`), 1000);
+      } else {
+        const nameParts = (appt.name || '').trim().split(' ');
+        const patientProfile = {
+          uid: `temp-${Date.now()}`,
+          name: appt.name,
+          firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
+          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
+          id: appt.idno,
+          universityId: appt.idno,
+          department: appt.dept,
+          prog: appt.prog,
+          section: appt.section,
+        };
+        localStorage.setItem('selectedPatient', JSON.stringify(patientProfile));
+        setDetailModal(null);
+        showSnackbar('Patient not in DB. Using appointment data...');
+        setTimeout(() => navigate(`/examinations?patientId=${patientProfile.uid}`), 1000);
+      }
+    } catch (error) {
+      console.error('Error looking up patient:', error);
+      showSnackbar('Database error occurred.', 'error');
     }
-  } catch (error) {
-    console.error('Error looking up patient:', error);
-    showSnackbar('Database error occurred.', 'error');
-  }
-};
-console.log('ALL APPTS:', appointments.map(a => ({
-  id: a.id, name: a.name, status: a.status,
-  year: a.year, month: a.month, day: a.day,
-  yearType: typeof a.year, monthType: typeof a.month
-})));
+  };
+
   // ── Calendar Panel ────────────────────────────────────────────────────────
+  // Same note as PendingList — call as CalendarPanel(), don't render as <CalendarPanel />.
   const CalendarPanel = () => (
 
     <div className="flex flex-col h-full bg-[#fafbfc] overflow-hidden w-full">
@@ -1371,11 +1479,11 @@ console.log('ALL APPTS:', appointments.map(a => ({
 
       {/* ── MOBILE ── */}
       <div className="flex flex-col md:hidden flex-1 min-h-0 w-full h-full">
-        <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
+        <div className="flex border-b border-[#eef2f6] bg-white shrink-0 overflow-x-auto">
           <button
             onClick={() => { setMobileView('pending'); setActiveTab('pending'); }}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors
-              ${mobileView === 'pending' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
+              ${mobileView === 'pending' && activeTab === 'pending' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <IconClock size={13} /> Pending
             {pendingRequests.length > 0 && (
@@ -1386,7 +1494,7 @@ console.log('ALL APPTS:', appointments.map(a => ({
           </button>
           <button
             onClick={() => { setMobileView('pending'); setActiveTab('approved'); }}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
               ${mobileView === 'pending' && activeTab === 'approved' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <IconCircleCheck size={13} /> Approved
@@ -1397,8 +1505,20 @@ console.log('ALL APPTS:', appointments.map(a => ({
             )}
           </button>
           <button
+            onClick={() => { setMobileView('pending'); setActiveTab('rejected'); }}
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
+              ${mobileView === 'pending' && activeTab === 'rejected' ? 'text-[#991b1b] border-b-2 border-[#991b1b]' : 'text-[#94a3b8]'}`}
+          >
+            <IconCircleXmark size={13} /> Rejected
+            {rejectedAppts.length > 0 && (
+              <span className="text-[9px] font-bold bg-[#fef2f2] text-[#991b1b] px-1.5 py-0.5 rounded-full">
+                {rejectedAppts.length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setMobileView('calendar')}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors
+            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
               ${mobileView === 'calendar' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
             <IconCalendar size={13} /> Calendar
@@ -1406,9 +1526,13 @@ console.log('ALL APPTS:', appointments.map(a => ({
         </div>
         <div className="flex-1 overflow-hidden h-full flex flex-col">
           {mobileView === 'pending' ? (
-            activeTab === 'pending' ? <PendingList /> : <ApprovedList />
+            activeTab === 'pending'
+              ? PendingList()
+              : activeTab === 'approved'
+                ? ApprovedList()
+                : RejectedList()
           ) : (
-            <CalendarPanel />
+            CalendarPanel()
           )}
         </div>
       </div>
@@ -1435,14 +1559,26 @@ console.log('ALL APPTS:', appointments.map(a => ({
               Approved
               {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
             </button>
+            <button
+              onClick={() => setActiveTab('rejected')}
+              className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'rejected' ? 'text-[#991b1b]' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Rejected
+              {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#991b1b] rounded-t-full"></div>}
+            </button>
           </div>
           <div className="flex-1 overflow-hidden min-h-0">
-            {activeTab === 'pending' ? <PendingList /> : <ApprovedList />}
+            {activeTab === 'pending'
+              ? PendingList()
+              : activeTab === 'approved'
+                ? ApprovedList()
+                : RejectedList()}
           </div>
         </div>
         {/* Right panel - Calendar - 2/3 width */}
         <div className="flex-1 overflow-hidden h-full flex flex-col">
-          <CalendarPanel />
+          {CalendarPanel()}
         </div>
       </div>
 
@@ -1472,15 +1608,29 @@ console.log('ALL APPTS:', appointments.map(a => ({
               </div>
               {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
             </button>
+            <button
+              onClick={() => setActiveTab('rejected')}
+              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+                ${activeTab === 'rejected' ? 'text-[#991b1b]' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <IconCircleXmark size={13} /> Rejected
+              </div>
+              {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#991b1b] rounded-t-full"></div>}
+            </button>
           </div>
           {/* List content */}
           <div className="flex-1 overflow-hidden">
-            {activeTab === 'pending' ? <PendingList /> : <ApprovedList />}
+            {activeTab === 'pending'
+              ? PendingList()
+              : activeTab === 'approved'
+                ? ApprovedList()
+                : RejectedList()}
           </div>
         </div>
         {/* Right panel - Calendar */}
         <div className="flex-1 overflow-hidden h-full flex flex-col">
-          <CalendarPanel />
+          {CalendarPanel()}
         </div>
       </div>
 
@@ -1648,7 +1798,7 @@ console.log('ALL APPTS:', appointments.map(a => ({
         </ModalOverlay>
       )}
 
-      {/* ── Detail modal ── */}
+{/* ── Detail modal ── */}
       {detailModal && (
         <ModalOverlay onClose={() => setDetailModal(null)}>
           <div className="bg-white w-full sm:max-w-[420px] sm:mx-4 sm:rounded-[14px] rounded-t-[20px]
@@ -1669,29 +1819,37 @@ console.log('ALL APPTS:', appointments.map(a => ({
                 { Icon: IconGraduationCap, label: 'Program',    value: getUserData(detailModal).program },
                 { Icon: IconUsers,         label: 'Section',    value: getUserData(detailModal).section },
                 { Icon: IconStethoscope,   label: 'Purpose',    value: detailModal.reason },
-                { Icon: IconCalendar,      label: 'Date',       value: formatDateTime(new Date(Number(detailModal.year), Number(detailModal.month) - 1, Number(detailModal.day))) },
-                { Icon: IconClock,         label: 'Time',       value: detailModal.time },
+                ...(detailModal.year && detailModal.month && detailModal.day
+                  ? [{ Icon: IconCalendar, label: 'Date', value: formatDateTime(new Date(Number(detailModal.year), Number(detailModal.month) - 1, Number(detailModal.day))) }]
+                  : []),
+                ...(detailModal.time ? [{ Icon: IconClock, label: 'Time', value: detailModal.time }] : []),
                 { Icon: IconCircleCheck,   label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
               ].map(({ Icon, label, value }) => (
                 <div key={label} className="flex items-center gap-[10px] py-[6px] text-[12px]">
                   <Icon size={14} style={{ color: '#0F6E56', flexShrink: 0 }} />
                   <span className="text-[#64748b] min-w-[100px]">{label}</span>
-                  <span className={`font-medium ${label === 'Status' && detailModal.status === 'missed' ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
+                  <span className={`font-medium ${label === 'Status' && (detailModal.status === 'missed' || detailModal.status === 'declined') ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
                     {value}
                   </span>
                 </div>
               ))}
             </div>
             <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => handleExaminePatient(detailModal)}
-                className="flex-1 p-[9px] border-none rounded-[8px] cursor-pointer font-semibold
-                  text-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
-                  flex items-center justify-center gap-2"
-              >
-                <IconStethoscope size={13} style={{ color: 'white' }} />
-                Examine Patient
-              </button>
+              {detailModal.status !== 'declined' && (
+                <button
+                  onClick={() => handleExaminePatient(detailModal)}
+                  disabled={detailModal.status === 'done' || detailModal.status === 'missed'}
+                  className={`flex-1 p-[9px] border-none rounded-[8px] font-semibold
+                    text-[12px] text-white flex items-center justify-center gap-2 transition-opacity
+                    ${(detailModal.status === 'done' || detailModal.status === 'missed')
+                      ? 'bg-gradient-to-br from-[#94a3b8] to-[#64748b] cursor-not-allowed opacity-60'
+                      : 'bg-gradient-to-br from-[#466460] to-[#5a7a76] cursor-pointer hover:opacity-90'
+                    }`}
+                >
+                  <IconStethoscope size={13} style={{ color: 'white' }} />
+                  Examine Patient
+                </button>
+              )}
               <button
                 onClick={() => setDetailModal(null)}
                 className="flex-1 p-[9px] border-none rounded-[8px] cursor-pointer font-semibold

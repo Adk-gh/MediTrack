@@ -130,7 +130,10 @@ const parseDateValue = (v) => {
 };
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function DatePicker({ value, onChange, error, placeholder = 'Select Date' }) {
+// `className` is optional. When omitted, the trigger button keeps its
+// original look (used everywhere else in the app). Pass a className to
+// make the trigger match a different surrounding design (e.g. a filter bar).
+export default function DatePicker({ value, onChange, error, placeholder = 'Select Date', className }) {
   const [open, setOpen] = useState(false);
 
   // Initialize state
@@ -175,7 +178,8 @@ export default function DatePicker({ value, onChange, error, placeholder = 'Sele
 
   const isValidDate = parsedValue !== null;
 
-  const inputCls = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
+  const defaultCls = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
+  const inputCls = className || defaultCls;
 
   return (
     <>

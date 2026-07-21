@@ -35,9 +35,8 @@ const generateSchoolYears = () => {
   const years = [];
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0 = January, 11 = December
+  const currentMonth = now.getMonth();
 
-  // Start from 2025-2026
   const startYear = 2025;
   const endLimitYear = 2058;
 
@@ -50,28 +49,18 @@ const generateSchoolYears = () => {
     let includeMidYear = false;
 
     if (i > currentYear) {
-      // Future school year - include all
       include1stSem = true;
       include2ndSem = true;
       includeMidYear = true;
     } else if (i === currentYear) {
-      // Current school year - include based on current month
-      // 1st Semester: August (7) - December (11)
-      // 2nd Semester: January (0) - May (4)
-      // Mid Year: June (5) - July (6)
-
-      if (currentMonth >= 7) include1stSem = true;   // Aug-Dec
-      if (currentMonth >= 0 && currentMonth <= 4) include2ndSem = true; // Jan-May
-      if (currentMonth >= 5 && currentMonth <= 6) includeMidYear = true; // Jun-Jul
+      if (currentMonth >= 7) include1stSem = true;
+      if (currentMonth >= 0 && currentMonth <= 4) include2ndSem = true;
+      if (currentMonth >= 5 && currentMonth <= 6) includeMidYear = true;
     } else if (i === currentYear - 1) {
-      // Previous school year - only include if we're currently in that school year
-      // e.g., if we're in Aug 2025, 2024-2025 2nd sem might still be active
-      if (currentMonth >= 0 && currentMonth <= 4) include2ndSem = true; // Jan-May
-      if (currentMonth >= 5 && currentMonth <= 6) includeMidYear = true; // Jun-Jul
+      if (currentMonth >= 0 && currentMonth <= 4) include2ndSem = true;
+      if (currentMonth >= 5 && currentMonth <= 6) includeMidYear = true;
     }
-    // Years before currentYear - 1 are not included (passed)
 
-    // For the 2025-2026 school year specifically (since we're in it), include all
     if (i === 2025) {
       include1stSem = true;
       include2ndSem = true;
@@ -113,17 +102,51 @@ const SumSection = ({ icon, title, children }) => (
   </div>
 );
 
-// ── Timezone Corrected Helpers ─────────────────────────────────────────────────
-const getLocalDate = () => {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().split('T');
+// ── Input Validation Helpers ─────────────────────────────────────────────────
+const filterNumbersOnly = (value) => value.replace(/[^0-9]/g, '');
+const filterNumbersAndDot = (value) => value.replace(/[^0-9.]/g, '');
+const filterNumbersAndSlash = (value) => value.replace(/[^0-9/]/g, '');
+
+// ── DB History Display Helper ───────────────────────────────────────────────
+const parseHistoryItemDisplay = (item) => {
+  if (typeof item === 'string') return item;
+  if (item && typeof item === 'object' && item.condition) {
+    const base = item.condition.replace(', specify', '').replace(' (If PTB, category)', '');
+    return item.specified ? `${base}: ${item.specified}` : base;
+  }
+  return String(item);
 };
 
-const getLocalTime = () => {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(11, 16);
+// ── UUID validation ───────────────────────────────────────────────────────────
+// Postgres `uid` / `user_id` columns are real uuid columns. Various parts of
+// the app pass around "id-shaped" values that are NOT uuids (e.g. university
+// student numbers like "23-10029"). Never trust an `.id` field as the DB
+// primary key unless it actually matches the uuid shape — otherwise a stray
+// student number ends up being inserted straight into a uuid column and
+// Postgres throws 22P02 ("invalid input syntax for type uuid").
+const isUUID = (v) =>
+  typeof v === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+// ── Helper: normalize selectedPatient into the flat "users" row shape ───────
+// selectedPatient can arrive either as the raw users row, or as a joined
+// record with the users row nested under `.users` (array or object).
+// This mirrors the same unwrapping logic used in buildInitialForm so that
+// every consumer of selectedPatient agrees on where uid/id actually live.
+const normalizePatient = (p) => {
+  let u = p || {};
+  if (p?.users) u = Array.isArray(p.users) ? (p.users[0] || {}) : p.users;
+
+  const rawId = u.id ?? p?.id ?? null;
+
+  return {
+    uid: u.uid || p?.uid || null,
+    // FIX: only accept `id` as the internal primary key if it's actually a
+    // uuid. Some patient objects surface a non-uuid value (e.g. the
+    // university_id / student number) under `.id`, which previously got
+    // used directly as user_id and blew up the insert with 22P02.
+    id: isUUID(rawId) ? rawId : null,
+  };
 };
 
 // ── Medical Visit History Component ─────────────────────────────────────────
@@ -132,25 +155,19 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!selectedPatient?.uid) return;
+    const { uid } = normalizePatient(selectedPatient);
+    if (!uid) return;
 
     const fetchRecords = async () => {
       try {
+        // Fetch ONLY medical records
         const { data: medData, error: medError } = await supabase
           .from('medical_records')
           .select('*')
-          .eq('user_id', selectedPatient.uid)
+          .eq('user_id', uid)
           .order('created_at', { ascending: false });
 
         if (medError) console.error('Error fetching medical records:', medError);
-
-        const { data: denData, error: denError } = await supabase
-          .from('dental_records')
-          .select('*')
-          .eq('user_id', selectedPatient.uid)
-          .order('created_at', { ascending: false });
-
-        if (denError) console.error('Error fetching dental records:', denError);
 
         const medRecords = (medData || []).map(r => ({
           ...r,
@@ -162,20 +179,7 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
           }) : (r.exam_date || ''),
         }));
 
-        const denRecords = (denData || []).map(r => ({
-          ...r,
-          kind: 'dental',
-          _date: r.exam_date || r.last_visit || r.created_at?.split('T')[0] || '',
-          _datetime: r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit', hour12: true
-          }) : (r.exam_date || ''),
-        }));
-
-        const all = [...medRecords, ...denRecords].sort((a, b) =>
-          (b._date || '').localeCompare(a._date || '')
-        );
-        setRecords(all);
+        setRecords(medRecords);
       } catch (err) {
         console.error('Error fetching records:', err);
       } finally {
@@ -184,10 +188,7 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
     };
 
     fetchRecords();
-  }, [selectedPatient?.uid]);
-
-  const medicalRecords = records.filter(r => r.kind === 'medical');
-  const dentalRecords = records.filter(r => r.kind === 'dental');
+  }, [selectedPatient?.uid, selectedPatient?.id, selectedPatient?.users]);
 
   const StatusBadge = ({ status }) => {
     const map = {
@@ -203,7 +204,8 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
   };
 
   const getVitalSigns = (record) => {
-    const vitals = record.vital_records?.[0] || {};
+    const v = record.vital_records;
+    const vitals = Array.isArray(v) ? (v[0] || {}) : (v || {});
     return {
       bp: vitals.bp || '-',
       pr: vitals.pr || '-',
@@ -214,9 +216,9 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
   };
 
   const getHistory = (r) => ({
-    medical: Array.isArray(r.checked_medical) ? r.checked_medical : [],
-    family: Array.isArray(r.checked_family) ? r.checked_family : [],
-    health: Array.isArray(r.checked_health) ? r.checked_health : [],
+    medical: (Array.isArray(r.checked_medical) ? r.checked_medical : []).map(parseHistoryItemDisplay),
+    family: (Array.isArray(r.checked_family) ? r.checked_family : []).map(parseHistoryItemDisplay),
+    health: (Array.isArray(r.checked_health) ? r.checked_health : []).map(parseHistoryItemDisplay),
     surgical: r.other_medical_history || '',
   });
 
@@ -233,239 +235,238 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
     return (
       <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
         <i className="fa-solid fa-file-medical text-4xl mb-3 block opacity-30"></i>
-        <p>No visit history found</p>
+        <p>No medical visit history found</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Medical Records */}
-      {medicalRecords.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i>
-            <h4 className="text-sm font-bold text-[#466460] uppercase">Medical Records</h4>
-            <span className="text-[9px] bg-[#e07a5f]/20 text-[#e07a5f] px-2 py-0.5 rounded-full font-semibold">
-              {medicalRecords.length}
-            </span>
-          </div>
-          <div className="space-y-4">
-            {medicalRecords.map((r, idx) => {
-              const vitals = getVitalSigns(r);
-              const history = getHistory(r);
-              return (
-                <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#e07a5f]/10 to-[#c96a4f]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
-                    <StatusBadge status={r.status} />
-                  </div>
-                  <div className="p-3 space-y-3">
-                    <div className="grid grid-cols-4 gap-2 text-xs">
-                      <div><p className="text-[7px] text-slate-400 uppercase">Nurse</p><p className="font-medium">{r.nurse_on_duty || '-'}</p></div>
-                      <div><p className="text-[7px] text-slate-400 uppercase">BP</p><p className="font-medium">{vitals.bp}</p></div>
-                      <div><p className="text-[7px] text-slate-400 uppercase">PR</p><p className="font-medium">{vitals.pr} bpm</p></div>
-                      <div><p className="text-[7px] text-slate-400 uppercase">Temp</p><p className="font-medium">{vitals.temp}°C</p></div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {history.medical.map((item, i) => (
-                        <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">{item}</span>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {history.family.map((item, i) => (
-                        <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">{item}</span>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {history.health.map((item, i) => (
-                        <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">{item}</span>
-                      ))}
-                    </div>
-                    {(r.finding1 || r.remarks) && (
-                      <div className="bg-slate-50 rounded-lg p-2 text-xs">
-                        <p className="text-[7px] text-slate-400 uppercase mb-1">Doctor's Remarks</p>
-                        <p className="text-slate-700">{r.finding1 || ''}{r.remarks ? ` - ${r.remarks}` : ''}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i>
+          <h4 className="text-sm font-bold text-[#466460] uppercase">Medical Records</h4>
+          <span className="text-[9px] bg-[#e07a5f]/20 text-[#e07a5f] px-2 py-0.5 rounded-full font-semibold">
+            {records.length}
+          </span>
         </div>
-      )}
-
-      {/* Dental Records */}
-      {dentalRecords.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <i className="fa-solid fa-tooth text-[#3b82f6]"></i>
-            <h4 className="text-sm font-bold text-[#466460] uppercase">Dental Records</h4>
-            <span className="text-[9px] bg-[#3b82f6]/20 text-[#3b82f6] px-2 py-0.5 rounded-full font-semibold">
-              {dentalRecords.length}
-            </span>
-          </div>
-          <div className="space-y-4">
-            {dentalRecords.map((r, idx) => (
+        <div className="space-y-4">
+          {records.map((r) => {
+            const vitals = getVitalSigns(r);
+            const history = getHistory(r);
+            return (
               <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                <div className="bg-gradient-to-r from-[#e07a5f]/10 to-[#c96a4f]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
                   <StatusBadge status={r.status} />
                 </div>
-                <div className="p-3 text-xs">
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{r.examined_by || '-'}</p></div>
-                    <div><p className="text-[7px] text-slate-400 uppercase">Last Visit</p><p className="font-medium">{r.last_visit || '-'}</p></div>
+                <div className="p-3 space-y-3">
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div><p className="text-[7px] text-slate-400 uppercase">Nurse</p><p className="font-medium">{r.nurse_on_duty || '-'}</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">BP</p><p className="font-medium">{vitals.bp}</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">PR</p><p className="font-medium">{vitals.pr} bpm</p></div>
+                    <div><p className="text-[7px] text-slate-400 uppercase">Temp</p><p className="font-medium">{vitals.temp}°C</p></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><p className="text-[7px] text-slate-400 uppercase">Upper</p><p className="font-mono">{r.teeth_upper || '-'}</p></div>
-                    <div><p className="text-[7px] text-slate-400 uppercase">Lower</p><p className="font-mono">{r.teeth_lower || '-'}</p></div>
+                  <div className="flex flex-wrap gap-1">
+                    {history.medical.map((item, i) => (
+                      <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">{item}</span>
+                    ))}
                   </div>
+                  <div className="flex flex-wrap gap-1">
+                    {history.family.map((item, i) => (
+                      <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">{item}</span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {history.health.map((item, i) => (
+                      <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">{item}</span>
+                    ))}
+                  </div>
+                  {(r.finding1 || r.remarks) && (
+                    <div className="bg-slate-50 rounded-lg p-2 text-xs">
+                      <p className="text-[7px] text-slate-400 uppercase mb-1">Doctor's Remarks</p>
+                      <p className="text-slate-700">{r.finding1 || ''}{r.remarks ? ` - ${r.remarks}` : ''}</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
 // ── Helper: build initial formData from selectedPatient ───────────────────────
-const buildInitialForm = (p) => {
-  // Handle nested object or array safely
+const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defaultSemester = '') => {
   let u = p || {};
-  if (p?.users) {
-    u = Array.isArray(p.users) ? (p.users || {}) : p.users;
-  }
+  if (p?.users) u = Array.isArray(p.users) ? (p.users || {}) : p.users;
 
-  const vax = p?.vaccinations || {};
-  const dose = (key) => vax[key] || {};
+  const patientInfo = existingRecord?.patient_info || {};
+  const labResults = existingRecord?.laboratory_results || {};
 
-  // Safely parse emergency_contact (checks both snake_case and camelCase)
+  // Safely grab existing vitals whether saved as array or object previously
+  const rawVitals = existingRecord?.vital_records;
+  const vitalRec = Array.isArray(rawVitals) ? (rawVitals[0] || {}) : (rawVitals || {});
+
   const rawEmergency = u.emergency_contact || u.emergencyContact;
   let emergency = {};
-
   if (rawEmergency) {
     if (typeof rawEmergency === 'string') {
-      try {
-        emergency = JSON.parse(rawEmergency);
-      } catch (e) {
-        console.error("Could not parse emergency_contact JSON:", e);
-      }
+      try { emergency = JSON.parse(rawEmergency); } catch (e) {}
     } else if (typeof rawEmergency === 'object') {
       emergency = rawEmergency;
     }
   }
 
+  const rawVax = u.vaccinations;
+  let userVax = {};
+  if (rawVax) {
+    if (typeof rawVax === 'string') {
+      try { userVax = JSON.parse(rawVax); } catch (e) {}
+    } else if (typeof rawVax === 'object') {
+      userVax = rawVax;
+    }
+  }
+
+  const covidSource = (existingRecord && existingRecord.covid_history && Object.keys(existingRecord.covid_history).length > 0)
+    ? existingRecord.covid_history
+    : userVax;
+
   return {
     lastName:      u.last_name || u.lastName || '',
     firstName:     u.first_name || u.firstName || '',
     middleName:    u.middle_name || u.middleName || '',
-    schoolYear:    '',
+    schoolYear:    existingRecord?.school_year || defaultSchoolYear,
+    semester:      existingRecord?.semester || defaultSemester || '1st Semester',
     studentId:     u.university_id || u.universityId || u.student_id || '',
-
     course:        u.program || u.course || '',
     department:    u.department || '',
     yearSection:   [u.year_level || u.yearLevel || '', u.section || ''].filter(Boolean).join(' - ') || '',
 
-    sex:           u.sex || u.gender || 'Male',
-    birthday:      u.birthday || u.birthdate || '',
-    age:           u.age ? String(u.age) : '',
-    address:       u.home_address || u.homeAddress || u.address || '',
-    contactNo:     u.phone_number || u.phoneNumber || u.contact_no || u.contactNo || '',
+    sex:           patientInfo?.sex || u.sex || u.gender || 'Male',
+    birthday:      patientInfo?.birthday || u.birthday || u.birthdate || '',
+    age:           patientInfo?.age || u.age ? String(patientInfo?.age || u.age) : '',
+    address:       patientInfo?.address || u.home_address || u.homeAddress || u.address || '',
+    contactNo:     patientInfo?.contact_no || u.phone_number || u.phoneNumber || u.contact_no || u.contactNo || '',
     landlineNo:    '',
-    religion:      u.religion || '',
-    nationality:   u.nationality || '',
-    civilStatus:   u.civil_status || 'Single',
+    religion:      patientInfo?.religion || u.religion || '',
+    nationality:   patientInfo?.nationality || u.nationality || '',
+    civilStatus:   patientInfo?.civil_status || u.civil_status || 'Single',
 
-    // Fallbacks check the JSON first, then direct camelCase properties
-    emergencyName:      emergency?.name || u.emergencyName || '',
-    emergencyRelation:  emergency?.relationship || u.emergencyRelation || '',
-    emergencyAddress:   emergency?.address || u.emergencyAddress || '',
-    emergencyContact:   emergency?.phone || u.emergencyPhone || '',
+    emergencyName:      patientInfo?.emergency_name || emergency?.name || u.emergencyName || '',
+    emergencyRelation:  patientInfo?.emergency_relation || emergency?.relationship || u.emergencyRelation || '',
+    emergencyAddress:   patientInfo?.emergency_address || emergency?.address || u.emergencyAddress || '',
+    emergencyContact:   patientInfo?.emergency_contact || emergency?.phone || u.emergencyPhone || '',
 
-    vax1:          dose('dose1').vaccineName || '',
-    vax1Date:      dose('dose1').date || '',
-    vax1Remarks:   '',
-    vax2:          dose('dose2').vaccineName || '',
-    vax2Date:      dose('dose2').date || '',
-    vax2Remarks:   '',
-    booster1:      dose('booster1').vaccineName || '',
-    booster1Date:  dose('booster1').date || '',
-    booster1Remarks: '',
-    booster2:      dose('booster2').vaccineName || '',
-    booster2Date:  dose('booster2').date || '',
-    booster2Remarks: '',
+    covidHistory: covidSource?.history || '',
+    vax1:         covidSource?.dose1?.vaccineName || '',
+    vax1Date:     covidSource?.dose1?.date || '',
+    vax1Remarks:  covidSource?.dose1?.remarks || '',
+    vax2:         covidSource?.dose2?.vaccineName || '',
+    vax2Date:     covidSource?.dose2?.date || '',
+    vax2Remarks:  covidSource?.dose2?.remarks || '',
+    booster1:     covidSource?.booster1?.vaccineName || '',
+    booster1Date: covidSource?.booster1?.date || '',
+    booster1Remarks: covidSource?.booster1?.remarks || '',
+    booster2:     covidSource?.booster2?.vaccineName || '',
+    booster2Date: covidSource?.booster2?.date || '',
+    booster2Remarks: covidSource?.booster2?.remarks || '',
 
-    covidHistory: '',
-    otherMedicalHistory: '',
-    otherFamilyHistory:  '',
-    smoking: 'No', smokingDetails: '',
-    alcohol: 'No', alcoholDetails: '',
-    drugs:   'No', drugsDetails:   '',
-    studentSignature: '',
-    dateSigned: '',
+    otherMedicalHistory: existingRecord?.other_medical_history || '',
+    otherFamilyHistory:  existingRecord?.other_family_history || '',
+    smoking: existingRecord?.smoking || 'No',
+    smokingDetails: existingRecord?.smoking_details || '',
+    alcohol: existingRecord?.alcohol || 'No',
+    alcoholDetails: existingRecord?.alcohol_details || '',
+    drugs:   existingRecord?.drugs || 'No',
+    drugsDetails:   existingRecord?.drugs_details || '',
+    studentSignature: existingRecord?.student_signature || '',
+    dateSigned: existingRecord?.date_signed || '',
     q1: 'Yes', q2: 'No', q2Details: '',
     q3: 'No',  q3Details: '',
     q4: 'No',  q4Details: '',
     q5: 'No',  q5b: 'No',
-    height: '', weight: '', bmi: '', waist: '', lmp: '',
-    labCbc: '', labCbcFacility: '', labCbcDate: '',
-    labUa:  '', labUaFacility:  '', labUaDate:  '',
-    labXray:'', labXrayFacility:'', labXrayDate:'',
-    physician: '', examDate: '', examTime: '', nurseOnDuty: '',
+
+    height: vitalRec?.height || '',
+    weight: vitalRec?.weight || '',
+    bmi:    vitalRec?.bmi || '',
+    waist:  vitalRec?.waist || '',
+    lmp:    vitalRec?.lmp || '',
+
+    labCbc:        labResults?.cbc?.result || '',
+    labCbcFacility: labResults?.cbc?.facility || '',
+    labCbcDate:    labResults?.cbc?.date || '',
+    labUa:         labResults?.ua?.result || '',
+    labUaFacility: labResults?.ua?.facility || '',
+    labUaDate:     labResults?.ua?.date || '',
+    labXray:       labResults?.xray?.result || '',
+    labXrayFacility: labResults?.xray?.facility || '',
+    labXrayDate:   labResults?.xray?.date || '',
+
+    physician: existingRecord?.physician || '',
+    examDate: existingRecord?.exam_date ? existingRecord.exam_date.split('T')[0] : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    examTime: existingRecord?.exam_date ? existingRecord.exam_date.slice(11, 16) : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(11, 16),
+    nurseOnDuty: existingRecord?.nurse_on_duty || '',
   };
 };
 
-const createDefaultVital = () => ({ date: '', bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
+// Initialized as a flat object, not an array
+const createDefaultVital = () => ({ bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Medical = ({ selectedPatient, showMessage }) => {
-  const [phase, setPhase]               = useState(1);
+export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester }) => {
   const [showSummary, setShowSummary]   = useState(false);
-  const [showHistory, setShowHistory]   = useState(false);
+  const [activeTab, setActiveTab]       = useState('patientProfile');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [surgicalHistory, setSurgicalHistory] = useState([]);
-  const [vitalRecords, setVitalRecords] = useState([createDefaultVital()]);
+
+  // FIX: vitalRecords is now a flat object, binding perfectly to the inputs and DB
+  const [vitalRecords, setVitalRecords] = useState(createDefaultVital());
 
   const [checkedMedical, setCheckedMedical] = useState([]);
+  const [medicalSpecs, setMedicalSpecs]     = useState({});
+
   const [checkedFamily,  setCheckedFamily]  = useState([]);
+  const [familySpecs, setFamilySpecs]       = useState({});
+
   const [checkedHealth,  setCheckedHealth]  = useState([]);
+  const [healthSpecs, setHealthSpecs]       = useState({});
 
-  const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient));
+  const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
 
-  // ── Unified Database/Prop Sync Effect ──────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
-    const userId = selectedPatient?.uid || selectedPatient?.id;
+    const { uid, id } = normalizePatient(selectedPatient);
+    const userId = uid || id;
 
     const fetchFullProfile = async () => {
-      // 1. Reset component state first
-      setPhase(1);
+      setActiveTab('patientProfile');
       setCheckedMedical([]);
+      setMedicalSpecs({});
       setCheckedFamily([]);
+      setFamilySpecs({});
       setCheckedHealth([]);
+      setHealthSpecs({});
       setSurgicalHistory([]);
-      setVitalRecords([createDefaultVital()]);
 
-      // 2. Optimistically load data from the prop to prevent empty form flashes
-      setFormData(buildInitialForm(selectedPatient));
+      // Reset to a clean object
+      setVitalRecords(createDefaultVital());
 
-      // 3. Fetch full profile from Supabase to guarantee fresh data
+      setFormData(buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
+
       if (userId) {
-        const matchCol = selectedPatient?.uid ? 'uid' : 'id';
+        const matchCol = uid ? 'uid' : 'id';
         const { data, error } = await supabase
           .from('users')
           .select('*')
           .eq(matchCol, userId)
           .maybeSingle();
 
-        // 4. Overwrite with complete DB data if the fetch was successful
         if (isMounted && data && !error) {
-          setFormData(buildInitialForm(data));
+          setFormData(buildInitialForm(data, null, defaultSchoolYear, defaultSemester));
         }
       }
     };
@@ -473,9 +474,8 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     fetchFullProfile();
 
     return () => { isMounted = false; };
-  }, [selectedPatient?.uid, selectedPatient?.id]);
+  }, [selectedPatient?.uid, selectedPatient?.id, selectedPatient?.users]);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleChange = (e) => {
     const { id, value, name } = e.target;
     setFormData(prev => ({ ...prev, [id || name]: value }));
@@ -508,33 +508,32 @@ export const Medical = ({ selectedPatient, showMessage }) => {
   const removeSurgical = (id) => setSurgicalHistory(p => p.filter(i => i.id !== id));
   const updateSurgical = (id, field, value) => setSurgicalHistory(p => p.map(i => i.id === id ? { ...i, [field]: value } : i));
 
+  // FIX: Updates a flat object instead of an array
   const updateVital = (field, value) => {
-    setVitalRecords(prev => [{ ...prev, [field]: value }]);
-  };
-
-  const handlePhase1Next = () => {
-    if (!formData.lastName) { alert("Please fill in patient's last name."); return; }
-    setPhase(2);
-    // Force scroll to top using multiple methods
-    setTimeout(() => {
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-      window.scrollTo(0, 0);
-      const phase2Element = document.getElementById('phase2-container');
-      if (phase2Element) {
-        phase2Element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 150);
+    setVitalRecords(prev => ({ ...prev, [field]: value }));
   };
 
   const handleOpenSummary = () => {
-    if (!formData.lastName) { alert("Please fill in patient's last name."); setPhase(1); return; }
+    if (!formData.lastName) { alert("Please fill in patient's last name."); return; }
     setShowSummary(true);
   };
 
-  // ── Database Submit Handler ──────────────────────────────────────────────────
+  // ── DB Submission Helper: Format checks as clean strings ─────────────────────
+  const formatCheckedForDb = (checks, specsMap) => {
+    return checks.map(item => {
+      const cleanName = item.replace(', specify', '').replace(' (If PTB, category)', '');
+      const detail = specsMap[item]?.trim();
+      return detail ? `${cleanName}: ${detail}` : cleanName;
+    });
+  };
+
+// ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
-    if (!selectedPatient?.uid) {
+    // normalizePatient now guarantees `id` is either null or a real uuid,
+    // so patientInternalId can never be a stray university/student number.
+    const { uid: patientUid, id: patientInternalId } = normalizePatient(selectedPatient);
+
+    if (!patientUid && !patientInternalId) {
       alert("Error: No patient selected. Cannot save record.");
       return;
     }
@@ -542,85 +541,120 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     setIsSubmitting(true);
 
     try {
-      const payload = {
-        ...formData,
-        checkedMedical,
-        checkedFamily,
-        checkedHealth,
-        surgicalHistory,
-        vitalRecords,
-        createdAt: new Date().toISOString(),
-        status: "pending",
-        isApproved: false,
-      };
+      // If we already have the internal users.id (e.g. selectedPatient came
+      // from a query against `users` directly), skip the extra round trip.
+      let userId = patientInternalId || null;
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('id')
-        .eq('uid', selectedPatient.uid)
-        .maybeSingle();
+      // patientUid from normalizePatient is actually the internal uuid (doc.id)
+      // because normalizeUser in Records.jsx sets uid: doc.id. Since patientUid
+      // is already the internal uuid (users.id), we can use it directly.
+      if (!userId && patientUid && isUUID(patientUid)) {
+        userId = patientUid;
+      }
 
-      const userId = userData?.id || null;
+      // Belt-and-braces: never let a non-uuid value reach the uuid column,
+      // regardless of where it came from.
+      if (userId && !isUUID(userId)) {
+        console.warn('Resolved userId is not a valid uuid, discarding it:', userId);
+        userId = null;
+      }
 
-      const combinedExamDate = (payload.examDate && payload.examTime)
-        ? `${payload.examDate}T${payload.examTime}:00`
-        : null;
+      if (!userId) {
+        console.warn('Could not resolve internal user id for this patient — user_id will be saved as null.', {
+          patientUid,
+          patientInternalId,
+          selectedPatient,
+        });
+      }
+
+      const examDateValue = formData.examDate || new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const examTimeValue = formData.examTime || new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(11, 16);
+      const combinedExamDate = `${examDateValue}T${examTimeValue}:00`;
 
       const supabasePayload = {
         user_id: userId,
-        university_id: payload.studentId,
-        last_name: payload.lastName,
-        first_name: payload.firstName,
-        middle_name: payload.middleName,
-        sex: payload.sex,
-        birthday: payload.birthday,
-        age: parseInt(payload.age) || null,
-        address: payload.address,
-        contact_no: payload.contactNo,
-        religion: payload.religion,
-        nationality: payload.nationality,
-        civil_status: payload.civilStatus,
-        emergency_name: payload.emergencyName,
-        emergency_relation: payload.emergencyRelation,
-        emergency_address: payload.emergencyAddress,
-        emergency_contact: payload.emergencyContact, // Stores Phone Number
-        vax1: payload.vax1?.vaccineName,
-        vax1_date: payload.vax1?.date,
-        vax1_remarks: payload.vax1?.remarks,
-        vax2: payload.vax2?.vaccineName,
-        vax2_date: payload.vax2?.date,
-        vax2_remarks: payload.vax2?.remarks,
-        booster1: payload.booster1?.vaccineName,
-        booster1_date: payload.booster1?.date,
-        booster1_remarks: payload.booster1?.remarks,
-        booster2: payload.booster2?.vaccineName,
-        booster2_date: payload.booster2?.date,
-        booster2_remarks: payload.booster2?.remarks,
-        covid_history: payload.covidHistory,
-        other_medical_history: payload.otherMedicalHistory,
-        other_family_history: payload.otherFamilyHistory,
-        smoking: payload.smoking,
-        smoking_details: payload.smokingDetails,
-        alcohol: payload.alcohol,
-        alcohol_details: payload.alcoholDetails,
-        drugs: payload.drugs,
-        drugs_details: payload.drugsDetails,
-        questionnaire: payload.questionnaire,
-        height: payload.height,
-        weight: payload.weight,
-        bmi: payload.bmi,
-        waist: payload.waist,
-        lmp: payload.lmp,
-        checked_medical: payload.checkedMedical,
-        checked_family: payload.checkedFamily,
-        checked_health: payload.checkedHealth,
-        vital_records: payload.vitalRecords,
-        physician: payload.physician,
+        university_id: formData.studentId,
+        school_year: formData.schoolYear,
+        semester: formData.semester,
+        last_name: formData.lastName,
+        first_name: formData.firstName,
+        middle_name: formData.middleName,
+
+        patient_info: {
+          sex: formData.sex,
+          birthday: formData.birthday,
+          age: parseInt(formData.age) || null,
+          address: formData.address,
+          contact_no: formData.contactNo,
+          religion: formData.religion,
+          nationality: formData.nationality,
+          civil_status: formData.civilStatus,
+          emergency_name: formData.emergencyName,
+          emergency_relation: formData.emergencyRelation,
+          emergency_address: formData.emergencyAddress,
+          emergency_contact: formData.emergencyContact,
+        },
+
+        covid_history: {
+          dose1: { vaccineName: formData.vax1, date: formData.vax1Date, remarks: formData.vax1Remarks },
+          dose2: { vaccineName: formData.vax2, date: formData.vax2Date, remarks: formData.vax2Remarks },
+          booster1: { vaccineName: formData.booster1, date: formData.booster1Date, remarks: formData.booster1Remarks },
+          booster2: { vaccineName: formData.booster2, date: formData.booster2Date, remarks: formData.booster2Remarks },
+          history: formData.covidHistory,
+        },
+
+        laboratory_results: {
+          cbc: { result: formData.labCbc, facility: formData.labCbcFacility, date: formData.labCbcDate },
+          ua: { result: formData.labUa, facility: formData.labUaFacility, date: formData.labUaDate },
+          xray: { result: formData.labXray, facility: formData.labXrayFacility, date: formData.labXrayDate },
+        },
+
+        other_medical_history: formData.otherMedicalHistory,
+        other_family_history: formData.otherFamilyHistory,
+        smoking: formData.smoking,
+        smoking_details: formData.smokingDetails,
+        alcohol: formData.alcohol,
+        alcohol_details: formData.alcoholDetails,
+        drugs: formData.drugs,
+        drugs_details: formData.drugsDetails,
+
+        questionnaire: {
+          q1: formData.q1,
+          q2: formData.q2,
+          q2Details: formData.q2Details,
+          q3: formData.q3,
+          q3Details: formData.q3Details,
+          q4: formData.q4,
+          q4Details: formData.q4Details,
+          q5: formData.q5,
+          q5b: formData.q5b
+        },
+
+        vital_records: {
+          ...vitalRecords,
+          height: formData.height,
+          weight: formData.weight,
+          bmi: formData.bmi,
+          waist: formData.waist,
+          lmp: formData.lmp,
+        },
+
+        checked_medical: formatCheckedForDb(checkedMedical, medicalSpecs),
+        checked_family: formatCheckedForDb(checkedFamily, familySpecs),
+        checked_health: formatCheckedForDb(checkedHealth, healthSpecs),
+
+        surgical_history: surgicalHistory.map(s => ({
+          operation: s.operation,
+          date: s.date,
+          notes: s.notes,
+        })),
+
+        physician: formData.physician,
         exam_date: combinedExamDate,
-        nurse_on_duty: payload.nurseOnDuty,
+        nurse_on_duty: formData.nurseOnDuty,
         status: "pending",
         is_approved: false,
-        created_at: payload.createdAt,
+        created_at: new Date().toISOString(),
       };
 
       const { error } = await supabase.from('medical_records').insert(supabasePayload);
@@ -637,7 +671,6 @@ export const Medical = ({ selectedPatient, showMessage }) => {
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <form
@@ -654,63 +687,37 @@ export const Medical = ({ selectedPatient, showMessage }) => {
         <div className="flex gap-2 mb-4">
           <button
             type="button"
-            onClick={() => setShowHistory(false)}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${!showHistory ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            onClick={() => setActiveTab('patientProfile')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
-            <i className="fa-solid fa-clipboard-list mr-1"></i>
-            Examination
+            <i className="fa-solid fa-user mr-1"></i> Patient Profile
           </button>
           <button
             type="button"
-            onClick={() => setShowHistory(true)}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${showHistory ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            onClick={() => setActiveTab('examination')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
-            <i className="fa-solid fa-clock-rotate-left mr-1"></i>
-            Visit History
+            <i className="fa-solid fa-clipboard-list mr-1"></i> Examination
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('visitHistory')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            <i className="fa-solid fa-clock-rotate-left mr-1"></i> Visit History
           </button>
         </div>
 
-        {/* Visit History View */}
-        {showHistory ? (
+        {activeTab === 'visitHistory' ? (
           <MedicalVisitHistory selectedPatient={selectedPatient} />
-        ) : (
+        ) : activeTab === 'patientProfile' ? (
         <>
-        {/* Progress Bar */}
-        <div className="mb-6">
-          <div className="flex justify-between text-xs font-bold text-[#466460] mb-2">
-            <span>Phase {phase} of 2</span>
-            <span>{phase === 1 ? 'Patient History' : 'Clinical Findings & Labs'}</span>
-          </div>
-          <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
-            <div className="bg-[#466460] h-2.5 rounded-full transition-all duration-500" style={{ width: phase === 1 ? '50%' : '100%' }} />
-          </div>
-        </div>
-
-        {/* ════ PHASE 1 ════ */}
-        <div className={phase === 1 ? 'block' : 'hidden'}>
-
+          {/* ════ PATIENT PROFILE TAB ════ */}
           <div className={sectionClass}>Patient Demographics</div>
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-3"><label className={labelClass}>Last Name / Family Name</label><input type="text" id="lastName" className={inputClass} value={formData.lastName} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>First Name</label><input type="text" id="firstName" className={inputClass} value={formData.firstName} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Middle Name</label><input type="text" id="middleName" className={inputClass} value={formData.middleName} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>School Year</label>
-              <select
-                id="schoolYear"
-                className={inputClass}
-                value={formData.schoolYear}
-                onChange={handleChange}
-                style={{
-                  maxHeight: '300px',
-                  overflowY: 'auto'
-                }}
-              >
-                <option value="">Select School Year</option>
-                {schoolYearOptions.map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
             <div className="col-span-3"><label className={labelClass}>Student No.</label><input type="text" id="studentId" className={inputClass} value={formData.studentId} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Course</label><input type="text" id="course" className={inputClass} value={formData.course} onChange={handleChange} /></div>
             <div className="col-span-3"><label className={labelClass}>Year / Section</label><input type="text" id="yearSection" className={inputClass} value={formData.yearSection} onChange={handleChange} /></div>
@@ -779,22 +786,6 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             </table>
           </div>
 
-          <div className={sectionClass}>Past Medical History</div>
-          <p className="text-xs text-slate-500 mb-3">Check all that apply:</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4">
-            {medicalConditions.map(c => (
-              <label key={c} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 accent-[#466460]"
-                  checked={checkedMedical.includes(c)}
-                  onChange={() => toggleCheck(checkedMedical, setCheckedMedical, c)} />
-                {c}
-              </label>
-            ))}
-          </div>
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12"><label className={labelClass}>Specify details for checked conditions above</label><input type="text" id="otherMedicalHistory" className={inputClass} placeholder="Additional details, severity, medications taken" value={formData.otherMedicalHistory} onChange={handleChange} /></div>
-          </div>
-
           <div className={sectionClass}>
             <span>Past Surgical History</span>
             <button type="button" onClick={addSurgical} className="bg-[#81b29a] text-white px-3 py-1 rounded text-xs hover:opacity-90">+ Add Operation</button>
@@ -813,20 +804,79 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             </div>
           ))}
 
-          <div className={sectionClass}>Family History</div>
-          <p className="text-xs text-slate-500 mb-3">Check all that apply in your family:</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4">
-            {familyConditions.map(c => (
-              <label key={c} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 accent-[#466460]"
-                  checked={checkedFamily.includes(c)}
-                  onChange={() => toggleCheck(checkedFamily, setCheckedFamily, c)} />
-                {c}
-              </label>
-            ))}
+          <div className="mt-8 flex justify-end">
+            <button type="button" onClick={() => setActiveTab('examination')} className="bg-[#466460] text-white px-8 py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all">
+              Next: Examination →
+            </button>
+          </div>
+        </>
+        ) : (
+        <>
+        {/* ════ EXAMINATION TAB ════ */}
+
+          <div className={sectionClass}>Past Medical History</div>
+          <p className="text-xs text-slate-500 mb-3">Check all that apply:</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4 items-start">
+            {medicalConditions.map(c => {
+              const needsSpecify = c.includes('specify') || c === 'Others';
+              const isChecked = checkedMedical.includes(c);
+
+              return (
+                <div key={c} className="flex flex-col gap-1.5 w-full">
+                  <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 accent-[#466460] mt-0.5 shrink-0"
+                      checked={isChecked}
+                      onChange={() => toggleCheck(checkedMedical, setCheckedMedical, c)} />
+                    <span className="leading-tight pt-0.5">{c}</span>
+                  </label>
+                  {isChecked && needsSpecify && (
+                    <input
+                      type="text"
+                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white"
+                      placeholder="Please specify..."
+                      value={medicalSpecs[c] || ''}
+                      onChange={(e) => setMedicalSpecs(prev => ({ ...prev, [c]: e.target.value }))}
+                      autoFocus
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12"><label className={labelClass}>Specify details for family history</label><input type="text" id="otherFamilyHistory" className={inputClass} placeholder="Specify members affected and other details" value={formData.otherFamilyHistory} onChange={handleChange} /></div>
+            <div className="col-span-12"><label className={labelClass}>Additional details for checked conditions (Optional)</label><input type="text" id="otherMedicalHistory" className={inputClass} placeholder="Severity, medications taken, etc." value={formData.otherMedicalHistory} onChange={handleChange} /></div>
+          </div>
+
+          <div className={sectionClass}>Family History</div>
+          <p className="text-xs text-slate-500 mb-3">Check all that apply in your family:</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4 items-start">
+            {familyConditions.map(c => {
+              const needsSpecify = c.includes('specify') || c === 'Others';
+              const isChecked = checkedFamily.includes(c);
+
+              return (
+                <div key={c} className="flex flex-col gap-1.5 w-full">
+                  <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 accent-[#466460] mt-0.5 shrink-0"
+                      checked={isChecked}
+                      onChange={() => toggleCheck(checkedFamily, setCheckedFamily, c)} />
+                    <span className="leading-tight pt-0.5">{c}</span>
+                  </label>
+                  {isChecked && needsSpecify && (
+                    <input
+                      type="text"
+                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white"
+                      placeholder="Specify relation / details..."
+                      value={familySpecs[c] || ''}
+                      onChange={(e) => setFamilySpecs(prev => ({ ...prev, [c]: e.target.value }))}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12"><label className={labelClass}>Additional details for family history (Optional)</label><input type="text" id="otherFamilyHistory" className={inputClass} placeholder="Specify members affected and other details" value={formData.otherFamilyHistory} onChange={handleChange} /></div>
           </div>
 
           <div className={sectionClass}>Personal / Social History</div>
@@ -847,34 +897,6 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             ))}
           </div>
 
-          <div className={sectionClass}>Patient Photo</div>
-          <div className="flex items-start gap-4 mb-4">
-            <div className="w-24 h-28 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-[#466460] hover:text-[#466460] text-slate-400 text-xs transition-colors">
-              <i className="fa-solid fa-camera text-xl mb-1"></i>
-              <span>1x1 Photo</span>
-              <span>Click to upload</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">Upload a 1x1 ID photo of the student.</p>
-          </div>
-
-          <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-6"><label className={labelClass}>Signature of Student</label><input type="text" id="studentSignature" className={inputClass} placeholder="Type full name as signature" value={formData.studentSignature} onChange={handleChange} /></div>
-            <div className="col-span-6">
-              <label className={labelClass}>Date Signed</label>
-              <DatePicker value={formData.dateSigned} onChange={(val) => handleDateChange('dateSigned', val)} />
-            </div>
-          </div>
-
-          <div className="mt-8 flex justify-end">
-            <button type="button" onClick={handlePhase1Next} className="bg-[#466460] text-white px-8 py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all">
-              Next: Clinical Findings →
-            </button>
-          </div>
-        </div>
-
-        {/* ════ PHASE 2 ════ */}
-        <div id="phase2-container" className={phase === 2 ? 'block' : 'hidden'}>
-
           <div className={sectionClass}>Health History Questions</div>
           <div className="overflow-x-auto mb-4">
             <table className="w-full border-collapse text-xs">
@@ -888,12 +910,12 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               </thead>
               <tbody>
                 {[
-                  { q: '1. Are you in good health?',                                                                   name: 'q1',  detail: null        },
-                  { q: '2. Are you under medical treatment now?',                                                      name: 'q2',  detail: 'q2Details' },
+                  { q: '1. Are you in good health?',                                                               name: 'q1',  detail: null        },
+                  { q: '2. Are you under medical treatment now?',                                                  name: 'q2',  detail: 'q2Details' },
                   { q: '3. Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?',  name: 'q3',  detail: 'q3Details' },
-                  { q: '4. Are you taking any medication?',                                                            name: 'q4',  detail: 'q4Details' },
-                  { q: '5. For women only: Are you pregnant?',                                                         name: 'q5',  detail: null        },
-                  { q: 'Are you nursing?',                                                                             name: 'q5b', detail: null        },
+                  { q: '4. Are you taking any medication?',                                                        name: 'q4',  detail: 'q4Details' },
+                  { q: '5. For women only: Are you pregnant?',                                                     name: 'q5',  detail: null        },
+                  { q: 'Are you nursing?',                                                                         name: 'q5b', detail: null        },
                 ].map(({ q, name, detail }) => (
                   <tr key={name}>
                     <td className="border border-slate-300 p-2">{q}</td>
@@ -908,16 +930,32 @@ export const Medical = ({ selectedPatient, showMessage }) => {
             </table>
           </div>
 
-          <div className={sectionClass}>6. Do you have or have you had any of the following?</div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4">
-            {healthConditions.map(c => (
-              <label key={c} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 accent-[#466460]"
-                  checked={checkedHealth.includes(c)}
-                  onChange={() => toggleCheck(checkedHealth, setCheckedHealth, c)} />
-                {c}
-              </label>
-            ))}
+          <div className={sectionClass}>Do you have or have you had any of the following?</div>
+          <p className="text-xs text-slate-500 mb-3">Check all that apply, and optionally provide details:</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4 items-start">
+            {healthConditions.map(c => {
+              const isChecked = checkedHealth.includes(c);
+
+              return (
+                <div key={c} className="flex flex-col gap-1.5 w-full">
+                  <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 accent-[#466460] mt-0.5 shrink-0"
+                      checked={isChecked}
+                      onChange={() => toggleCheck(checkedHealth, setCheckedHealth, c)} />
+                    <span className="leading-tight pt-0.5">{c}</span>
+                  </label>
+                  {isChecked && (
+                    <input
+                      type="text"
+                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white"
+                      placeholder="Optional details (type, year, etc)..."
+                      value={healthSpecs[c] || ''}
+                      onChange={(e) => setHealthSpecs(prev => ({ ...prev, [c]: e.target.value }))}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className={sectionClass}>Laboratory Results</div>
@@ -951,24 +989,20 @@ export const Medical = ({ selectedPatient, showMessage }) => {
           </div>
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
             <div className="grid grid-cols-12 gap-3 items-end">
-              <div className="col-span-2">
-                <label className={labelClass}>Date</label>
-                <DatePicker value={vitalRecords.date} onChange={(val) => updateVital('date', val)} />
-              </div>
-              <div className="col-span-2"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={vitalRecords.bp} onChange={e => updateVital('bp', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={vitalRecords.pr} onChange={e => updateVital('pr', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={vitalRecords.rr} onChange={e => updateVital('rr', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={vitalRecords.temp} onChange={e => updateVital('temp', e.target.value)} /></div>
-              <div className="col-span-2"><label className={labelClass}>Nurse / Staff</label><input type="text" className={inputClass} placeholder="Nurse name" value={vitalRecords.nurse} onChange={e => updateVital('nurse', e.target.value)} /></div>
-              <div className="col-span-12"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords.remarks} onChange={e => updateVital('remarks', e.target.value)} /></div>
+              {/* FIX: Bind values to the new flat object */}
+              <div className="col-span-2 col-start-1"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={vitalRecords.bp} onChange={e => updateVital('bp', filterNumbersAndSlash(e.target.value))} /></div>
+              <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={vitalRecords.pr} onChange={e => updateVital('pr', filterNumbersOnly(e.target.value))} /></div>
+              <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={vitalRecords.rr} onChange={e => updateVital('rr', filterNumbersOnly(e.target.value))} /></div>
+              <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={vitalRecords.temp} onChange={e => updateVital('temp', filterNumbersAndDot(e.target.value))} /></div>
+              <div className="col-span-4"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords.remarks} onChange={e => updateVital('remarks', e.target.value)} /></div>
             </div>
           </div>
 
           <div className="grid grid-cols-12 gap-4 mt-4">
-            <div className="col-span-3"><label className={labelClass}>Height (cm)</label><input type="text" id="height" className={inputClass} placeholder="cm" value={formData.height} onChange={handleChange} onBlur={calculateBMI} /></div>
-            <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} onChange={handleChange} onBlur={calculateBMI} /></div>
+            <div className="col-span-3"><label className={labelClass}>Height (cm)</label><input type="text" id="height" className={inputClass} placeholder="cm" value={formData.height} onChange={e => handleChange({ target: { id: 'height', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
+            <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} onChange={e => handleChange({ target: { id: 'weight', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
             <div className="col-span-3"><label className={labelClass}>BMI (auto-calc)</label><input type="text" id="bmi" className={`${inputClass} bg-slate-50`} placeholder="kg/m²" value={formData.bmi} readOnly /></div>
-            <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} onChange={handleChange} /></div>
+            <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} onChange={e => handleChange({ target: { id: 'waist', value: filterNumbersOnly(e.target.value) } })} /></div>
             <div className="col-span-6">
               <label className={labelClass}>Last Menstrual Period (LMP) — Females only</label>
               <DatePicker value={formData.lmp} onChange={(val) => handleDateChange('lmp', val)} />
@@ -994,18 +1028,12 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               <p className="text-[11px] text-slate-500 mt-1">Review all entries carefully before submitting.</p>
             </div>
             <div className="flex gap-3">
-              <button type="button" onClick={() => setPhase(1)} disabled={isSubmitting}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-600 font-bold text-sm hover:bg-slate-100 transition disabled:opacity-70">
-                ← Previous
-              </button>
-
               <button type="submit" disabled={isSubmitting}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
                 <i className="fa-solid fa-paper-plane"></i> Review & Submit
               </button>
             </div>
           </div>
-        </div>
         </>
         )}
       </form>
@@ -1030,6 +1058,7 @@ export const Medical = ({ selectedPatient, showMessage }) => {
                   <SumItem label="Course"         value={formData.course} />
                   <SumItem label="Year / Section" value={formData.yearSection} />
                   <SumItem label="School Year"    value={formData.schoolYear} />
+                  <SumItem label="Semester"      value={formData.semester} />
                   <SumItem label="Sex"            value={formData.sex} />
                   <SumItem label="Age"            value={String(formData.age)} />
                   <SumItem label="Birthday"       value={formData.birthday} />
@@ -1082,7 +1111,11 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               <SumSection icon="fa-notes-medical" title="Past Medical History">
                 {checkedMedical.length === 0
                   ? <p className="text-[12px] text-slate-400 italic">None checked.</p>
-                  : <div className="flex flex-wrap gap-1.5">{checkedMedical.map(c => <span key={c} className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">{c}</span>)}</div>}
+                  : <div className="flex flex-wrap gap-1.5">
+                      {formatCheckedForDb(checkedMedical, medicalSpecs).map(c => (
+                        <span key={c} className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">{c}</span>
+                      ))}
+                    </div>}
               </SumSection>
 
               <SumSection icon="fa-scalpel" title={`Past Surgical History — ${surgicalHistory.length} procedure(s)`}>
@@ -1100,7 +1133,11 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               <SumSection icon="fa-people-roof" title="Family History">
                 {checkedFamily.length === 0
                   ? <p className="text-[12px] text-slate-400 italic">None checked.</p>
-                  : <div className="flex flex-wrap gap-1.5">{checkedFamily.map(c => <span key={c} className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">{c}</span>)}</div>}
+                  : <div className="flex flex-wrap gap-1.5">
+                      {formatCheckedForDb(checkedFamily, familySpecs).map(c => (
+                        <span key={c} className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">{c}</span>
+                      ))}
+                    </div>}
               </SumSection>
 
               <SumSection icon="fa-person" title="Personal / Social History">
@@ -1114,7 +1151,11 @@ export const Medical = ({ selectedPatient, showMessage }) => {
               <SumSection icon="fa-heart-pulse" title="Health Conditions Checked">
                 {checkedHealth.length === 0
                   ? <p className="text-[12px] text-slate-400 italic">None checked.</p>
-                  : <div className="flex flex-wrap gap-1.5">{checkedHealth.map(c => <span key={c} className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-orange-50 text-orange-700 border border-orange-200">{c}</span>)}</div>}
+                  : <div className="flex flex-wrap gap-1.5">
+                      {formatCheckedForDb(checkedHealth, healthSpecs).map(c => (
+                        <span key={c} className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-orange-50 text-orange-700 border border-orange-200">{c}</span>
+                      ))}
+                    </div>}
               </SumSection>
 
               <SumSection icon="fa-flask" title="Laboratory Results">
@@ -1127,12 +1168,11 @@ export const Medical = ({ selectedPatient, showMessage }) => {
 
               <SumSection icon="fa-heart" title="Vital Signs">
                 <div className="grid grid-cols-3 gap-2">
-                  <SumItem label="Date"  value={vitalRecords.date}  />
                   <SumItem label="BP"    value={vitalRecords.bp}    />
                   <SumItem label="PR"    value={vitalRecords.pr}    />
                   <SumItem label="RR"    value={vitalRecords.rr}    />
                   <SumItem label="Temp"  value={vitalRecords.temp}  />
-                  <SumItem label="Nurse" value={vitalRecords.nurse} />
+                  <SumItem label="Remarks" value={vitalRecords.remarks} />
                 </div>
               </SumSection>
 

@@ -102,8 +102,8 @@ appointments:
 * [x] add a search bar for the approved appointments.
 
 \==========
-PENDING ITEMS 📋===============
-===============================
+PENDING ITEMS 📋=============as of 07/17/26
+===========================================
 
 General:
 
@@ -182,6 +182,46 @@ general:
 * [ ] add reject for the appointments
 * [ ]  And just like the Profile-users.jsx the incomplete items in the profile drawer should be marked. and there should be an option 'N/A" for the Vacinnation and dental history if that item isnt
   applicable to them.
+* [ ] add an indicator for the incomplete record in profildrawer
+
+# ===============testing(07/18)===============
+
+* [x] consultation management, appointment mangement, approvals search bar needs to go back to default state
+* [x] appointment mangement filter needs fixing
+* [x] user management edit dont save into the database
+* [x] usermanagement date picker
+* [ ] user management add user isnt working
+* [ ] do better for the excel export
+* [ ] in reports when the user is archive it should not be part of the reports same with the medical exams and dentals
+* [ ] for the ocr if the id file is too large show a message to tell the user to screenshot the id or something
+* [ ] for the user management add button to add confirmation email to send email to vefiy the login
+* [x] profile-user is scrolling sometimes i need to swipe in specific space
+* [x] appointment- once the appointment is marked as done and missed it shouldn't be able to interact or examine
+* [ ] refresh the consultation seamlessly, and seen indicator for the&#x20;
+* [x] school year for the examination
+* [ ] medical exam phase 2 questionaire it shouldn't have answer by default
+* [ ] make sure to have required indicator for the examination form
+* [x] the remarks is not showing up in summary of exam
+* [x] approval of examination records is not saving the user\_id.&#x20;
+* [ ] hide dental history if user has selected the n/a in their profile-user or when the dental\_history has the data "declined": true,
+
+  &#x20;if its "declined": false then the dental history should reflect on the dental examination&#x20;
+* [ ] priority to fix the examination for both medical and dental. simplify and clean the forms.
+* [x]  examination should be one phase only which includes. Past Medical History,Family History, Personal / Social History,Health History Questions, Do you have or have you had any of the following?,
+  Laboratory Results, Anthropometric Measurements & Vital Signs, Last Menstrual Period (LMP) — Females only, basically all of the phase 2 plus Past Medical History,Family History, Personal / Social
+  History.
+* [ ] past surgical history should be added in the users table. and be added on the profile-users,jsx under the dental history,
+* [x] remove the school year in medical.jsx
+* [ ] i need to make sure that the ocr settings saves into the database.
+* [ ] if the nurse is the one conductiong the examination, the nurse on duty should be his/her name, if doctor is the one conducting the examination then the physician name and license number should be in the form and the nurse on duty should be a dropdown of all the roles = nurse in the system.
+* [ ] in the approvals, instead of edit button it should be view to view full examination details and the same medical modal should open up with the details already present in the medical\_records table. so that if the doctor wants to edit the form he/she can.
+* [ ] in medical.jsx the patients demographics, Person to Contact in Case of Emergency , COVID-19 Vaccine History and past surgical history shouldn't be editable.
+* [ ] add COVID-19 History where user can type the time they get infected, treatment, and other details in the Profile-users.jsx in vacinnations column in users table
+* [ ] Last Menstrual Period (LMP) should only show up if the sex of the patient is Female else hide it.&#x20;
+* [x] the exam date and exam time should automatically shown and be the date and time that the examination is happening so that doctors dont have to click it it just shows but they can still access it the same. (meaning even if theres already date and time on it. when they click it the datepicker shuld still open if it needs to be change)
+* [ ] fix the visit history.
+* [x] in the Medical.jsx, the of exam\_date and exam\_time. currently theres no exam time in the database medical\_records column and examdate is based on created\_at. make sure that the exam date and exam time is being saved properly.
+* [ ] make sure to check if the edit function is working for the admin page
 
 # ===============ROLE MATRIX===============
 
@@ -233,30 +273,18 @@ Accounts:
 
 password -1234567890
 
+frontend\src\features\admin-clinic\Examination\Medical.jsx
 
+frontend\src\features\admin-clinic\Records.jsx
 
-\-- 2. Update policies to accept 'sysadmin' role
-\-- For medical\_records
-DROP POLICY IF EXISTS "Enable read access for admin" ON public.medical\_records;
-CREATE POLICY "Enable read access for sysadmin" ON public.medical\_records
-FOR SELECT USING (auth.jwt() ->> 'role' IN ('sysadmin', 'admin', 'service\_role'));
+frontend\src\features\admin-clinic\Approvals.jsx
 
-\-- For dental\_records
-DROP POLICY IF EXISTS "Enable read access for admin" ON public.dental\_records;
-CREATE POLICY "Enable read access for sysadmin" ON public.dental\_records
-FOR SELECT USING (auth.jwt() ->> 'role' IN ('sysadmin', 'admin', 'service\_role'));
+frontend\src\features\admin-clinic\ApprovalManagement.jsx
 
-\-- For consultations
-DROP POLICY IF EXISTS "Enable read access for admin" ON public.consultations;
-CREATE POLICY "Enable read access for sysadmin" ON public.consultations
-FOR SELECT USING (auth.jwt() ->> 'role' IN ('sysadmin', 'admin', 'service\_role'));
+frontend\src\features\users\Records-users.jsx
 
-\-- For appointments
-DROP POLICY IF EXISTS "Enable read access for admin" ON public.appointments;
-CREATE POLICY "Enable read access for sysadmin" ON public.appointments
-FOR SELECT USING (auth.jwt() ->> 'role' IN ('sysadmin', 'admin', 'service\_role'));
+frontend\src\features\admin-clinic\Archives.jsx
 
-\-- For approvals (if exists)
-DROP POLICY IF EXISTS "Enable read access for admin" ON public.approvals;
-CREATE POLICY "Enable read access for sysadmin" ON public.approvals
-FOR SELECT USING (auth.jwt() ->> 'role' IN ('sysadmin', 'admin', 'service\_role'));
+frontend\src\features\admin-clinic\Record-Management.jsx
+
+frontend\src\features\admin-clinic\Dashboard.jsx

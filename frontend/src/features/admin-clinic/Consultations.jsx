@@ -94,6 +94,7 @@ export const Consultations = () => {
   const msgChannelRef   = useRef(null);
   const convChannelRef  = useRef(null);
   const presenceChannelRef = useRef(null);
+  const globalMsgChannelRef = useRef(null); // 🟢 NEW: cross-conversation realtime channel
   const selectedConvIdRef = useRef(null);
   const isSendingRef    = useRef(false); // Track if sending to skip realtime dupes
 
@@ -274,6 +275,70 @@ export const Consultations = () => {
     };
   }, [sessionReady]);
 
+  // ── 4.5 Global real-time message listener (all conversations) ─────────
+  // Catches new/updated messages regardless of which conversation is
+  // currently open, so the sidebar and open thread update instantly
+  // without needing a manual reload or waiting for the 3s poll above.
+  useEffect(() => {
+    if (!sessionReady || !internalStaffId) return;
+
+    const isClinicSender = (role) =>
+      ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes((role || '').toLowerCase());
+
+    const channel = supabase
+      .channel('admin-consultations-global')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'consultation_messages' }, (payload) => {
+        const newMsg = payload.new;
+        const convId = newMsg.consultation_id;
+        const isFromPatient = !isClinicSender(newMsg.sender_role);
+
+        // Update sidebar: last message, timestamp, unread count, ordering
+        setConversations(prev => {
+          const idx = prev.findIndex(c => c.id === convId);
+          if (idx === -1) return prev; // brand-new conv row hasn't landed yet — the consultations channel/poll will add it
+          const updated = [...prev];
+          const conv = { ...updated[idx] };
+          conv.last_message = newMsg.message;
+          conv.last_timestamp = new Date(newMsg.created_at).getTime();
+          if (isFromPatient && convId !== selectedConvIdRef.current) {
+            conv.unread_count = (conv.unread_count || 0) + 1;
+          }
+          updated[idx] = conv;
+          updated.sort((a, b) => (b.last_timestamp || 0) - (a.last_timestamp || 0));
+          return updated;
+        });
+
+        if (isFromPatient && convId !== selectedConvIdRef.current) {
+          setUnreadCounts(prev => ({ ...prev, [convId]: (prev[convId] || 0) + 1 }));
+        }
+
+        // If it's for the currently open conversation, append instantly
+        if (convId === selectedConvIdRef.current && !isSendingRef.current) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, {
+              ...newMsg,
+              text: newMsg.message,
+              timestamp: new Date(newMsg.created_at).getTime(),
+              sender: isClinicSender(newMsg.sender_role) ? 'clinic' : 'patient',
+              read_at: newMsg.read_at,
+            }];
+          });
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' }, (payload) => {
+        // Keeps the ✓✓ seen indicator accurate even if the (removed)
+        // per-room channel hasn't resubscribed yet after switching threads.
+        if (!payload.new?.read_at) return;
+        if (payload.new.consultation_id !== selectedConvIdRef.current) return;
+        setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, read_at: payload.new.read_at } : m));
+      })
+      .subscribe();
+
+    globalMsgChannelRef.current = channel;
+    return () => supabase.removeChannel(channel);
+  }, [sessionReady, internalStaffId]);
+
   // ── 5. Subscribe to presence ──────────────────────────────────────────
   useEffect(() => {
     if (!sessionReady) return;
@@ -298,7 +363,7 @@ export const Consultations = () => {
     };
   }, [sessionReady]);
 
-  // ── 6. Load and subscribe to messages ─────────────────────────────────
+  // ── 6. Load messages (live updates now handled by the global channel above) ──
   useEffect(() => {
     if (!sessionReady) return;
     const loadMessages = async () => {
@@ -323,64 +388,9 @@ export const Consultations = () => {
       }
     };
     loadMessages();
-
-    if (selectedConvId) {
-      msgChannelRef.current = consultationsService.subscribeToMessages(selectedConvId, (newMessage) => {
-        // Skip realtime add if we're currently sending (we handle it via fetch)
-        if (isSendingRef.current) return;
-        // Check for duplicate before adding
-        const isFromPatient = !['doctor', 'nurse', 'dentist', 'sysadmin', 'system', null].includes(newMessage.sender_role?.toLowerCase()) && newMessage.sender_id !== internalStaffId;
-        setMessages(prev => {
-          if (prev.some(m => m.id === newMessage.id)) return prev;
-          const formatted = {
-            ...newMessage,
-            text: newMessage.message,
-            timestamp: new Date(newMessage.created_at).getTime(),
-            sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(newMessage.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
-            read_at: newMessage.read_at,
-          };
-          return [...prev, formatted];
-        });
-        // If new message is from patient (not staff), increment unread count
-        if (isFromPatient) {
-          setUnreadCounts(prev => ({
-            ...prev,
-            [selectedConvId]: (prev[selectedConvId] || 0) + 1,
-          }));
-          setConversations(prev => prev.map(c =>
-            c.id === selectedConvId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c
-          ));
-        }
-      });
-
-      // Subscribe to message read updates
-      const readChannel = supabase
-        .channel(`messages-read-${selectedConvId}`)
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'consultation_messages',
-          filter: `consultation_id=eq.${selectedConvId}`,
-        }, (payload) => {
-          console.log('[Clinic] Message read update received:', payload.new);
-          // Update the message in local state to show read status
-          if (payload.new?.read_at) {
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === payload.new.id
-                  ? { ...msg, read_at: payload.new.read_at }
-                  : msg
-              )
-            );
-          }
-        })
-        .subscribe();
-
-      return () => {
-        if (msgChannelRef.current) msgChannelRef.current();
-        supabase.removeChannel(readChannel);
-      };
-    }
+    // 🟢 NOTE: per-room msgChannelRef/readChannel subscriptions were removed here —
+    // the global channel (effect 4.5) now handles new-message and read-receipt
+    // updates for every conversation, including whichever one is open.
   }, [selectedConvId, sessionReady]);
 
   useEffect(() => { setShowPatientPanel(false); }, [selectedConvId]);

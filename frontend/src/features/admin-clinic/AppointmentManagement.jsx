@@ -2,23 +2,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabase';
 import * as appointmentsService from '../../services/appointments.service';
+import DatePicker from '../../components/Datepicker';
 
 const ITEMS_PER_PAGE = 20;
-
-const TYPE_OPTIONS = [
-  { value: 'all', label: 'All Types' },
-  { value: 'medical', label: 'Medical' },
-  { value: 'dental', label: 'Dental' },
-  { value: 'checkup', label: 'Checkup' },
-  { value: 'followup', label: 'Follow-up' },
-];
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Status' },
   { value: 'pending', label: 'Pending' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'done', label: 'Done' },
+  { value: 'missed', label: 'Missed' },
+  { value: 'declined', label: 'Rejected' },
 ];
 
 const SORT_OPTIONS = [
@@ -44,6 +38,20 @@ const formatTime = (time) => {
   return `${hr}:${String(m).padStart(2, '0')} ${period}`;
 };
 
+// Build a 'YYYY-MM-DD' string for the DatePicker from separate y/m/d fields.
+const toDateInputValue = (year, month, day) => {
+  if (!year || !month || !day) return '';
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+// Parse a 'YYYY-MM-DD' string (as returned by DatePicker's onChange) into
+// numeric y/m/d parts.
+const fromDateInputValue = (val) => {
+  if (!val) return { y: null, m: null, d: null };
+  const [y, m, d] = val.split('-').map(Number);
+  return { y, m, d };
+};
+
 export const AppointmentManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = (currentUser.role || '').toLowerCase();
@@ -52,23 +60,99 @@ export const AppointmentManagement = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchInput, setSearchInput] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [reasonFilter, setReasonFilter] = useState('all');
+  const [reasonOptions, setReasonOptions] = useState([{ value: 'all', label: 'All Reasons' }]);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState(''); // 'YYYY-MM-DD' or '' for all dates
   const [sortBy, setSortBy] = useState('newest');
   const [lastDoc, setLastDoc] = useState(null);
   const [hasMore, setHasMore] = useState(true);
-  const [stats, setStats] = useState({ total: 0, pending: 0, confirmed: 0, completed: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, done: 0, missed: 0, rejected: 0 });
   const [message, setMessage] = useState(null);
   const [patientProfiles, setPatientProfiles] = useState({});
 
   const snackbarTimer = useRef(null);
-  const searchTimeout = useRef(null);
 
   const showSnackbar = (msg, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
     setMessage({ text: msg, type });
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
+
+  // Shared filter/sort pipeline used by both the initial fetch and loadMore,
+  // so date filtering (and everything else) always stays in sync.
+  const applyFiltersAndSort = useCallback((rawData, profileMap) => {
+    let enriched = (rawData || []).map(apt => {
+      const profile = profileMap[apt.user_id] || {};
+      return {
+        ...apt,
+        patientName: profile.first_name
+          ? `${profile.last_name || ''}, ${profile.first_name}`.trim()
+          : apt.patient_name || apt.name || 'Unknown',
+        patientUniversityId: profile.university_id || profile.student_id || '—',
+        patientProgram: profile.program || profile.course || '—',
+        patientEmail: profile.email || '—',
+        patientPhone: profile.phone_number || '—',
+      };
+    });
+
+    // Apply reason filter
+    if (reasonFilter !== 'all') {
+      enriched = enriched.filter(a => (a.reason || '').trim().toLowerCase() === reasonFilter);
+    }
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      enriched = enriched.filter(a => a.status?.toLowerCase() === statusFilter);
+    }
+
+    // Apply date filter — exact match on a specific calendar date
+    if (dateFilter) {
+      const { y: fy, m: fm, d: fd } = fromDateInputValue(dateFilter);
+      enriched = enriched.filter(a => Number(a.year) === fy && Number(a.month) === fm && Number(a.day) === fd);
+    }
+
+    // Apply search filter — only when there is an actual search term.
+    // Also matches against the human-readable date (e.g. "Dec 25, 2026")
+    // so admins can search by date without needing the date picker.
+    const term = searchInput.trim().toLowerCase();
+    if (term) {
+      enriched = enriched.filter(a => {
+        const formattedDate = formatDate(a.year, a.month, a.day).toLowerCase();
+        return (
+          a.patientName?.toLowerCase().includes(term) ||
+          a.patientUniversityId?.toLowerCase().includes(term) ||
+          a.patientProgram?.toLowerCase().includes(term) ||
+          a.patientEmail?.toLowerCase().includes(term) ||
+          a.reason?.toLowerCase().includes(term) ||
+          formattedDate.includes(term)
+        );
+      });
+    }
+
+    // Sort results
+    enriched.sort((a, b) => {
+      switch (sortBy) {
+        case 'oldest':
+          return new Date(a.created_at) - new Date(b.created_at);
+        case 'date_asc':
+          return new Date(a.year, a.month - 1, a.day, a.time?.split(':')[0] || 0, a.time?.split(':')[1] || 0) -
+                 new Date(b.year, b.month - 1, b.day, b.time?.split(':')[0] || 0, b.time?.split(':')[1] || 0);
+        case 'date_desc':
+          return new Date(b.year, b.month - 1, b.day, b.time?.split(':')[0] || 0, b.time?.split(':')[1] || 0) -
+                 new Date(a.year, a.month - 1, a.day, a.time?.split(':')[0] || 0, a.time?.split(':')[1] || 0);
+        case 'name_asc':
+          return (a.patientName || '').localeCompare(b.patientName || '');
+        case 'name_desc':
+          return (b.patientName || '').localeCompare(a.patientName || '');
+        case 'newest':
+        default:
+          return new Date(b.created_at) - new Date(a.created_at);
+      }
+    });
+
+    return enriched;
+  }, [reasonFilter, statusFilter, dateFilter, searchInput, sortBy]);
 
   const fetchAppointments = useCallback(async (isRefresh = false) => {
     try {
@@ -85,9 +169,23 @@ export const AppointmentManagement = () => {
       if (!data || data.length === 0) {
         console.log('[AppointmentManagement] No appointments found');
         setAppointments([]);
+        setStats({ total: 0, pending: 0, approved: 0, done: 0, missed: 0, rejected: 0 });
+        setReasonOptions([{ value: 'all', label: 'All Reasons' }]);
+        setLastDoc(null);
+        setHasMore(false);
         setLoading(false);
         return;
       }
+
+      // Build the reason filter options from whatever reasons actually
+      // appear in the data, so the dropdown always matches real values.
+      const uniqueReasons = [...new Set(
+        data.map(a => (a.reason || '').trim()).filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b));
+      setReasonOptions([
+        { value: 'all', label: 'All Reasons' },
+        ...uniqueReasons.map(r => ({ value: r.toLowerCase(), label: r })),
+      ]);
 
       // Fetch patient profiles - use id as key since user_id is UUID
       const { data: profiles } = await supabase.from('users').select('*');
@@ -96,71 +194,17 @@ export const AppointmentManagement = () => {
       profiles?.forEach(p => { profileMap[p.id] = p; });
       setPatientProfiles(profileMap);
 
-      // Enrich appointments with patient info
-      let enriched = (data || []).map(apt => {
-        const profile = profileMap[apt.user_id] || {};
-        return {
-          ...apt,
-          patientName: profile.first_name
-            ? `${profile.last_name || ''}, ${profile.first_name}`.trim()
-            : apt.patient_name || apt.name || 'Unknown',
-          patientUniversityId: profile.university_id || profile.student_id || '—',
-          patientProgram: profile.program || profile.course || '—',
-          patientEmail: profile.email || '—',
-          patientPhone: profile.phone_number || '—',
-        };
-      });
+      const enriched = applyFiltersAndSort(data, profileMap);
 
-      // Apply type filter
-      if (typeFilter !== 'all') {
-        enriched = enriched.filter(a => a.type?.toLowerCase() === typeFilter);
-      }
-
-      // Apply status filter
-      if (statusFilter !== 'all') {
-        enriched = enriched.filter(a => a.status?.toLowerCase() === statusFilter);
-      }
-
-      // Apply search filter
-      if (searchInput.trim()) {
-        const term = searchInput.trim().toLowerCase();
-        enriched = enriched.filter(a =>
-          a.patientName?.toLowerCase().includes(term) ||
-          a.patientUniversityId?.toLowerCase().includes(term) ||
-          a.patientProgram?.toLowerCase().includes(term) ||
-          a.patientEmail?.toLowerCase().includes(term) ||
-          a.reason?.toLowerCase().includes(term)
-        );
-      }
-
-      // Sort results
-      enriched.sort((a, b) => {
-        switch (sortBy) {
-          case 'oldest':
-            return new Date(a.created_at) - new Date(b.created_at);
-          case 'date_asc':
-            return new Date(a.year, a.month - 1, a.day, a.time?.split(':')[0] || 0, a.time?.split(':')[1] || 0) -
-                   new Date(b.year, b.month - 1, b.day, b.time?.split(':')[0] || 0, b.time?.split(':')[1] || 0);
-          case 'date_desc':
-            return new Date(b.year, b.month - 1, b.day, b.time?.split(':')[0] || 0, b.time?.split(':')[1] || 0) -
-                   new Date(a.year, a.month - 1, a.day, a.time?.split(':')[0] || 0, a.time?.split(':')[1] || 0);
-          case 'name_asc':
-            return (a.patientName || '').localeCompare(b.patientName || '');
-          case 'name_desc':
-            return (b.patientName || '').localeCompare(a.patientName || '');
-          case 'newest':
-          default:
-            return new Date(b.created_at) - new Date(a.created_at);
-        }
-      });
-
-      // Calculate stats
+      // Calculate stats (based on unfiltered data, so cards always reflect totals)
       const total = data?.length || 0;
       const pending = data?.filter(a => a.status?.toLowerCase() === 'pending').length || 0;
-      const confirmed = data?.filter(a => a.status?.toLowerCase() === 'confirmed').length || 0;
-      const completed = data?.filter(a => a.status?.toLowerCase() === 'completed').length || 0;
+      const approved = data?.filter(a => a.status?.toLowerCase() === 'approved').length || 0;
+      const done = data?.filter(a => a.status?.toLowerCase() === 'done').length || 0;
+      const missed = data?.filter(a => a.status?.toLowerCase() === 'missed').length || 0;
+      const rejected = data?.filter(a => a.status?.toLowerCase() === 'declined').length || 0;
 
-      setStats({ total, pending, confirmed, completed });
+      setStats({ total, pending, approved, done, missed, rejected });
 
       // Paginate results
       const paginated = enriched.slice(0, ITEMS_PER_PAGE);
@@ -174,7 +218,7 @@ export const AppointmentManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, statusFilter, sortBy, searchInput]);
+  }, [applyFiltersAndSort]);
 
   const loadMore = async () => {
     if (!lastDoc || loadingMore || !hasMore) return;
@@ -190,54 +234,7 @@ export const AppointmentManagement = () => {
       const profileMap = {};
       profiles?.forEach(p => { profileMap[p.id] = p; });
 
-      // Enrich
-      let enriched = (data || []).map(apt => {
-        const profile = profileMap[apt.user_id] || {};
-        return {
-          ...apt,
-          patientName: profile.first_name
-            ? `${profile.last_name || ''}, ${profile.first_name}`.trim()
-            : apt.patient_name || apt.name || 'Unknown',
-          patientUniversityId: profile.university_id || profile.student_id || '—',
-          patientProgram: profile.program || profile.course || '—',
-          patientEmail: profile.email || '—',
-          patientPhone: profile.phone_number || '—',
-        };
-      });
-
-      // Apply filters
-      if (typeFilter !== 'all') {
-        enriched = enriched.filter(a => a.type?.toLowerCase() === typeFilter);
-      }
-      if (statusFilter !== 'all') {
-        enriched = enriched.filter(a => a.status?.toLowerCase() === statusFilter);
-      }
-      if (searchInput.trim()) {
-        const term = searchInput.trim().toLowerCase();
-        enriched = enriched.filter(a =>
-          a.patientName?.toLowerCase().includes(term) ||
-          a.patientUniversityId?.toLowerCase().includes(term) ||
-          a.patientProgram?.toLowerCase().includes(term)
-        );
-      }
-
-      // Sort
-      enriched.sort((a, b) => {
-        switch (sortBy) {
-          case 'oldest':
-            return new Date(a.created_at) - new Date(b.created_at);
-          case 'date_asc':
-            return new Date(a.year, a.month - 1, a.day) - new Date(b.year, b.month - 1, b.day);
-          case 'date_desc':
-            return new Date(b.year, b.month - 1, b.day) - new Date(a.year, a.month - 1, a.day);
-          case 'name_asc':
-            return (a.patientName || '').localeCompare(b.patientName || '');
-          case 'name_desc':
-            return (b.patientName || '').localeCompare(a.patientName || '');
-          default:
-            return new Date(b.created_at) - new Date(a.created_at);
-        }
-      });
+      const enriched = applyFiltersAndSort(data, profileMap);
 
       // Find starting index
       const startIdx = enriched.findIndex(a => a.id === lastDoc.id);
@@ -255,20 +252,30 @@ export const AppointmentManagement = () => {
     }
   };
 
-  // Debounced search
+  // Search input — just track the raw value here. The actual fetch is
+  // triggered by the debounced useEffect below, so it always reads the
+  // freshest searchInput (including when the field is cleared to "").
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchInput(value);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => {
-      fetchAppointments(true);
-    }, 400);
+    setSearchInput(e.target.value);
   };
 
-  // Refetch when filters change
+  // Refetch immediately when filters/sort change
   useEffect(() => {
     fetchAppointments(true);
-  }, [typeFilter, statusFilter, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reasonFilter, statusFilter, dateFilter, sortBy]);
+
+  // Debounce the search box specifically. Keying this effect directly off
+  // searchInput guarantees the closure sees the latest value (including
+  // empty string), instead of the stale value a manual setTimeout inside
+  // the onChange handler would have captured.
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      fetchAppointments(true);
+    }, 400);
+    return () => clearTimeout(handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [appointmentToDelete, setAppointmentToDelete] = useState(null);
@@ -297,33 +304,180 @@ export const AppointmentManagement = () => {
     }
   };
 
+  // ---- Edit single appointment (status / date / time) ----
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [appointmentToEdit, setAppointmentToEdit] = useState(null);
+  const [editForm, setEditForm] = useState({ status: 'pending', year: '', month: '', day: '', time: '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleEditClick = (apt) => {
+    setAppointmentToEdit(apt);
+    setEditForm({
+      status: (apt.status || 'pending').toLowerCase(),
+      year: apt.year || '',
+      month: apt.month || '',
+      day: apt.day || '',
+      time: apt.time || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditDateChange = (val) => {
+    const { y, m, d } = fromDateInputValue(val);
+    setEditForm(f => ({ ...f, year: y, month: m, day: d }));
+  };
+
+  const handleEditSave = async () => {
+    if (!appointmentToEdit) return;
+
+    if (!editForm.year || !editForm.month || !editForm.day) {
+      showSnackbar('Please select a valid date', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updates = {
+        status: editForm.status,
+        year: Number(editForm.year),
+        month: Number(editForm.month),
+        day: Number(editForm.day),
+        time: editForm.time || null,
+      };
+
+      if (typeof appointmentsService.updateAppointment === 'function') {
+        await appointmentsService.updateAppointment(appointmentToEdit.id, updates);
+      } else {
+        const { error } = await supabase
+          .from('appointments') // adjust table name if different in your schema
+          .update(updates)
+          .eq('id', appointmentToEdit.id);
+        if (error) throw error;
+      }
+
+      showSnackbar('Appointment updated successfully');
+      setShowEditModal(false);
+      setAppointmentToEdit(null);
+      fetchAppointments(true);
+    } catch (err) {
+      console.error('Failed to update appointment:', err);
+      showSnackbar('Failed to update appointment', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ---- Bulk reschedule (move every appointment on one date to another) ----
+  // Use case: sudden holiday / class suspension — shift a whole day's
+  // schedule to a new date in one action instead of editing each row.
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkFromDate, setBulkFromDate] = useState('');
+  const [bulkToDate, setBulkToDate] = useState('');
+  const [bulkMatches, setBulkMatches] = useState([]);
+  const [bulkChecking, setBulkChecking] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const handleBulkClick = () => {
+    setBulkFromDate(dateFilter || ''); // convenience: prefill from the active date filter, if any
+    setBulkToDate('');
+    setBulkMatches([]);
+    setShowBulkModal(true);
+  };
+
+  // Look up how many (and which) appointments fall on bulkFromDate whenever
+  // it changes, so the admin sees exactly what they're about to move.
+  useEffect(() => {
+    if (!showBulkModal || !bulkFromDate) {
+      setBulkMatches([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setBulkChecking(true);
+      try {
+        const { y: fy, m: fm, d: fd } = fromDateInputValue(bulkFromDate);
+        const data = await appointmentsService.getAllAppointments(true);
+        const matches = (data || []).filter(
+          a => Number(a.year) === fy && Number(a.month) === fm && Number(a.day) === fd
+        );
+        if (!cancelled) setBulkMatches(matches);
+      } catch (err) {
+        console.error('Failed to check bulk reschedule matches:', err);
+        if (!cancelled) setBulkMatches([]);
+      } finally {
+        if (!cancelled) setBulkChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bulkFromDate, showBulkModal]);
+
+  const handleBulkReschedule = async () => {
+    if (!bulkFromDate || !bulkToDate) {
+      showSnackbar('Please select both the original date and the new date', 'error');
+      return;
+    }
+    if (bulkFromDate === bulkToDate) {
+      showSnackbar('New date must be different from the original date', 'error');
+      return;
+    }
+    if (bulkMatches.length === 0) {
+      showSnackbar('No appointments found on that date', 'error');
+      return;
+    }
+
+    setBulkSaving(true);
+    try {
+      const { y: fy, m: fm, d: fd } = fromDateInputValue(bulkFromDate);
+      const { y: ty, m: tm, d: td } = fromDateInputValue(bulkToDate);
+
+      if (typeof appointmentsService.bulkRescheduleByDate === 'function') {
+        // Preferred: a dedicated service method (can also handle patient
+        // notifications server-side, similar to the bulk-scheduling flow).
+        await appointmentsService.bulkRescheduleByDate({
+          fromYear: fy, fromMonth: fm, fromDay: fd,
+          toYear: ty, toMonth: tm, toDay: td,
+        });
+      } else {
+        // Fallback: direct Supabase bulk update matching on the old date.
+        // Adjust the table/column names if your schema differs.
+        const { error } = await supabase
+          .from('appointments')
+          .update({ year: ty, month: tm, day: td })
+          .eq('year', fy)
+          .eq('month', fm)
+          .eq('day', fd);
+        if (error) throw error;
+      }
+
+      showSnackbar(
+        `Moved ${bulkMatches.length} appointment${bulkMatches.length !== 1 ? 's' : ''} from ${formatDate(fy, fm, fd)} to ${formatDate(ty, tm, td)}`
+      );
+      setShowBulkModal(false);
+      setBulkFromDate('');
+      setBulkToDate('');
+      setBulkMatches([]);
+      fetchAppointments(true);
+    } catch (err) {
+      console.error('Failed to bulk reschedule appointments:', err);
+      showSnackbar('Failed to reschedule appointments', 'error');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   const getStatusColor = (status) => {
     const s = status?.toLowerCase();
     switch (s) {
       case 'pending':
         return { bg: 'bg-amber-100', text: 'text-amber-700' };
-      case 'confirmed':
-        return { bg: 'bg-blue-100', text: 'text-blue-700' };
-      case 'completed':
+      case 'approved':
         return { bg: 'bg-emerald-100', text: 'text-emerald-700' };
-      case 'cancelled':
+      case 'done':
+        return { bg: 'bg-slate-200', text: 'text-slate-600' };
+      case 'missed':
+        return { bg: 'bg-orange-100', text: 'text-orange-700' };
+      case 'declined':
         return { bg: 'bg-red-100', text: 'text-red-700' };
-      default:
-        return { bg: 'bg-slate-100', text: 'text-slate-600' };
-    }
-  };
-
-  const getTypeColor = (type) => {
-    const t = type?.toLowerCase();
-    switch (t) {
-      case 'medical':
-        return { bg: 'bg-emerald-100', text: 'text-emerald-700' };
-      case 'dental':
-        return { bg: 'bg-purple-100', text: 'text-purple-700' };
-      case 'checkup':
-        return { bg: 'bg-blue-100', text: 'text-blue-700' };
-      case 'followup':
-        return { bg: 'bg-indigo-100', text: 'text-indigo-700' };
       default:
         return { bg: 'bg-slate-100', text: 'text-slate-600' };
     }
@@ -352,19 +506,29 @@ export const AppointmentManagement = () => {
             <i className="fa-solid fa-calendar-check"></i>
             Appointment Management
           </h2>
-          <button
-            onClick={() => fetchAppointments(true)}
-            className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm self-end sm:self-auto"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
+          <div className="flex gap-2 self-end sm:self-auto">
+            <button
+              onClick={handleBulkClick}
+              className="bg-white border border-[#466460] hover:bg-[#e0eceb] text-[#466460] px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+              title="Move all appointments from one date to another"
+            >
+              <i className="fa-solid fa-calendar-days"></i>
+              <span className="hidden sm:inline">Bulk Reschedule</span>
+            </button>
+            <button
+              onClick={() => fetchAppointments(true)}
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
           <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
             <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Total</div>
             <div className="text-xl md:text-2xl font-extrabold text-[#466460]">{stats.total}</div>
@@ -374,12 +538,20 @@ export const AppointmentManagement = () => {
             <div className="text-xl md:text-2xl font-extrabold text-amber-600">{stats.pending}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Confirmed</div>
-            <div className="text-xl md:text-2xl font-extrabold text-blue-600">{stats.confirmed}</div>
+            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Approved</div>
+            <div className="text-xl md:text-2xl font-extrabold text-emerald-600">{stats.approved}</div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Completed</div>
-            <div className="text-xl md:text-2xl font-extrabold text-emerald-600">{stats.completed}</div>
+            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Done</div>
+            <div className="text-xl md:text-2xl font-extrabold text-slate-500">{stats.done}</div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
+            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Missed</div>
+            <div className="text-xl md:text-2xl font-extrabold text-orange-600">{stats.missed}</div>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
+            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Rejected</div>
+            <div className="text-xl md:text-2xl font-extrabold text-red-600">{stats.rejected}</div>
           </div>
         </div>
       </div>
@@ -387,14 +559,14 @@ export const AppointmentManagement = () => {
       {/* Filters */}
       <div className="flex-shrink-0 bg-white rounded-xl border border-slate-200 p-3 mb-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
+          <div className="flex gap-2 w-full sm:w-auto flex-wrap items-start">
             <select
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-36`}
+              value={reasonFilter}
+              onChange={e => setReasonFilter(e.target.value)}
+              className={`${filterSelectCls} w-full sm:w-44`}
             >
-              {TYPE_OPTIONS.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+              {reasonOptions.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
             <select
@@ -406,6 +578,27 @@ export const AppointmentManagement = () => {
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
+
+            {/* Date filter — uses the shared DatePicker component, styled to
+                match the other filter dropdowns via the className override */}
+            <div className="relative w-full sm:w-40">
+              <DatePicker
+                value={dateFilter}
+                onChange={setDateFilter}
+                placeholder="All Dates"
+                className={`${filterSelectCls} w-full`}
+              />
+              {dateFilter && (
+                <button
+                  onClick={() => setDateFilter('')}
+                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white text-xs flex items-center justify-center shadow z-10"
+                  title="Clear date filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
@@ -423,7 +616,7 @@ export const AppointmentManagement = () => {
             </svg>
             <input
               type="text"
-              placeholder="Search patient, ID, reason..."
+              placeholder="Search patient, ID, reason, date..."
               value={searchInput}
               onChange={handleSearchChange}
               className="pl-9 pr-4 py-2 w-full border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
@@ -439,7 +632,6 @@ export const AppointmentManagement = () => {
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Date & Time</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Reason</th>
@@ -449,7 +641,7 @@ export const AppointmentManagement = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400">
+                  <td colSpan={5} className="text-center py-12 text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -461,7 +653,7 @@ export const AppointmentManagement = () => {
                 </tr>
               ) : appointments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400 text-sm">
+                  <td colSpan={5} className="text-center py-12 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <i className="fa-regular fa-calendar-check text-3xl text-slate-300"></i>
                       <p>No appointments found</p>
@@ -472,7 +664,6 @@ export const AppointmentManagement = () => {
               ) : (
                 appointments.map((apt, idx) => {
                   const statusStyle = getStatusColor(apt.status);
-                  const typeStyle = getTypeColor(apt.type);
                   return (
                     <tr key={apt.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                       {/* Patient */}
@@ -486,13 +677,6 @@ export const AppointmentManagement = () => {
                             <div className="text-xs text-slate-500">{apt.patientUniversityId} • {apt.patientProgram}</div>
                           </div>
                         </div>
-                      </td>
-
-                      {/* Type */}
-                      <td className="p-3 whitespace-nowrap">
-                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${typeStyle.bg} ${typeStyle.text}`}>
-                          {apt.type || 'General'}
-                        </span>
                       </td>
 
                       {/* Date & Time */}
@@ -515,14 +699,24 @@ export const AppointmentManagement = () => {
 
                       {/* Actions */}
                       <td className="p-3 text-right">
-                        <button
-                          onClick={() => handleDeleteClick(apt)}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all font-semibold"
-                          title="Delete Appointment"
-                        >
-                          <i className="fa-solid fa-trash-can mr-1"></i>
-                          Delete
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEditClick(apt)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white transition-all font-semibold"
+                            title="Edit Appointment"
+                          >
+                            <i className="fa-solid fa-pen mr-1"></i>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(apt)}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all font-semibold"
+                            title="Delete Appointment"
+                          >
+                            <i className="fa-solid fa-trash-can mr-1"></i>
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -552,6 +746,191 @@ export const AppointmentManagement = () => {
           )}
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
+                <i className="fa-solid fa-pen text-[#466460] text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Edit Appointment</h3>
+                <p className="text-sm text-slate-500">{appointmentToEdit?.patientName}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-5">
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Status
+                </label>
+                <select
+                  value={editForm.status}
+                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
+                >
+                  {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Date
+                </label>
+                <DatePicker
+                  value={toDateInputValue(editForm.year, editForm.month, editForm.day)}
+                  onChange={handleEditDateChange}
+                  placeholder="Select date"
+                />
+              </div>
+
+              {/* Time */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Time
+                </label>
+                <input
+                  type="time"
+                  value={editForm.time || ''}
+                  onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowEditModal(false); setAppointmentToEdit(null); }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-check"></i>
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Reschedule Modal */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
+                <i className="fa-solid fa-calendar-days text-[#466460] text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Bulk Reschedule</h3>
+                <p className="text-sm text-slate-500">Move a whole day's appointments to a new date</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-4">
+              {/* From date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Original Date
+                </label>
+                <DatePicker
+                  value={bulkFromDate}
+                  onChange={setBulkFromDate}
+                  placeholder="Select original date"
+                />
+              </div>
+
+              {/* To date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  New Date
+                </label>
+                <DatePicker
+                  value={bulkToDate}
+                  onChange={setBulkToDate}
+                  placeholder="Select new date"
+                />
+              </div>
+            </div>
+
+            {/* Preview / warning */}
+            <div className="bg-slate-50 rounded-lg p-4 mb-5">
+              {!bulkFromDate ? (
+                <p className="text-sm text-slate-500">Pick the original date to see how many appointments will be affected.</p>
+              ) : bulkChecking ? (
+                <p className="text-sm text-slate-500 flex items-center gap-2">
+                  <i className="fa-solid fa-spinner fa-spin"></i>
+                  Checking appointments on {formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}...
+                </p>
+              ) : bulkMatches.length === 0 ? (
+                <p className="text-sm text-amber-600">
+                  <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+                  No appointments found on this date.
+                </p>
+              ) : (
+                <p className="text-sm text-slate-700">
+                  <span className="font-semibold">{bulkMatches.length}</span> appointment{bulkMatches.length !== 1 ? 's' : ''} will move
+                  {bulkToDate ? (
+                    <> from <span className="font-semibold">{formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}</span> to{' '}
+                    <span className="font-semibold">{formatDate(...Object.values(fromDateInputValue(bulkToDate)))}</span>.</>
+                  ) : (
+                    <> off <span className="font-semibold">{formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}</span> once you pick a new date.</>
+                  )}
+                  {' '}Times stay the same. This can't be undone automatically.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowBulkModal(false); setBulkFromDate(''); setBulkToDate(''); setBulkMatches([]); }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                disabled={bulkSaving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkReschedule}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={bulkSaving || bulkChecking || bulkMatches.length === 0 || !bulkToDate}
+              >
+                {bulkSaving ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Moving...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-arrow-right-arrow-left"></i>
+                    Move {bulkMatches.length > 0 ? bulkMatches.length : ''} Appointment{bulkMatches.length !== 1 ? 's' : ''}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (

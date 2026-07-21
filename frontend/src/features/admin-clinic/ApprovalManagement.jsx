@@ -49,7 +49,6 @@ export const ApprovalManagement = () => {
   const [patientProfiles, setPatientProfiles] = useState({});
 
   const snackbarTimer = useRef(null);
-  const searchTimeout = useRef(null);
 
   const showSnackbar = (msg, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -112,9 +111,9 @@ export const ApprovalManagement = () => {
         filtered = filtered.filter(r => (r.status || 'pending').toLowerCase() === statusFilter);
       }
 
-      // Search filter
-      if (searchInput.trim()) {
-        const term = searchInput.trim().toLowerCase();
+      // Search filter — only when there is an actual search term
+      const term = searchInput.trim().toLowerCase();
+      if (term) {
         filtered = filtered.filter(r =>
           r.patientName?.toLowerCase().includes(term) ||
           r.patientUniversityId?.toLowerCase().includes(term) ||
@@ -205,11 +204,13 @@ export const ApprovalManagement = () => {
       if (statusFilter !== 'all') {
         combined = combined.filter(r => (r.status || 'pending').toLowerCase() === statusFilter);
       }
-      if (searchInput.trim()) {
-        const term = searchInput.trim().toLowerCase();
+      const term = searchInput.trim().toLowerCase();
+      if (term) {
         combined = combined.filter(r =>
           r.patientName?.toLowerCase().includes(term) ||
-          r.patientUniversityId?.toLowerCase().includes(term)
+          r.patientUniversityId?.toLowerCase().includes(term) ||
+          r.patientProgram?.toLowerCase().includes(term) ||
+          r.patientEmail?.toLowerCase().includes(term)
         );
       }
 
@@ -243,20 +244,30 @@ export const ApprovalManagement = () => {
     }
   };
 
-  // Debounced search
+  // Search input — just track the raw value here. The actual fetch is
+  // triggered by the debounced useEffect below, so it always reads the
+  // freshest searchInput (including when the field is cleared to "").
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchInput(value);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => {
-      fetchRecords(true);
-    }, 400);
+    setSearchInput(e.target.value);
   };
 
-  // Refetch when filters change
+  // Refetch immediately when filters/sort change
   useEffect(() => {
     fetchRecords(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeFilter, statusFilter, sortBy]);
+
+  // Debounce the search box specifically. Keying this effect directly off
+  // searchInput guarantees the closure sees the latest value (including
+  // empty string), instead of the stale value a manual setTimeout inside
+  // the onChange handler would have captured.
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      fetchRecords(true);
+    }, 400);
+    return () => clearTimeout(handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState(null);
