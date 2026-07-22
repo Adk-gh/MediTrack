@@ -823,6 +823,7 @@ const normalizePatientData = (uid, d) => {
       booster1: { vaccineName: '', date: '' },
       booster2: { vaccineName: '', date: '' },
     },
+    dentalHistory: d.dentalHistory || d.dental_history || {},
   };
 };
 

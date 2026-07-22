@@ -402,11 +402,14 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     'Security Services',
   ];
 
+  // Check if current user is sysadmin
+  const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(userRole);
+
   const CLASSIFICATIONS = [
     'Teaching Personnel',
     'Nurse Personnel',
     'Physician / Doctor',
-    'System Administrator',
+    ...(isCurrentUserSysAdmin ? ['System Administrator'] : []),
     'Non-Teaching Personnel',
     'Security Personnel',
   ];
@@ -491,7 +494,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       ],
       professional: isStudentUser
         ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification']
-        : ['classification', 'department', 'jobTitle', 'licenseNumber'],
+        : ['universityId', 'classification', 'department', 'jobTitle', 'licenseNumber'],
       contact: ['email', 'phoneNumber'],
       emergency: ['emergencyContact'],
       vaccinations: ['vaccinations'],
@@ -593,7 +596,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       }
 
       // If updating email, handle it separately
-      if (sectionData.email && sectionData.email !== userProfile.email) {
+      if (sectionData.email && sectionData.email !== formData.email) {
         try {
           const { error: emailErr } = await supabase.auth.updateUser({ email: sectionData.email });
           if (emailErr) {
@@ -1061,6 +1064,10 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
               {/* ── Professional Section (Staff) ── */}
               {editingSection === 'professional' && !isStudent && (
                 <>
+                  <div className="mb-4">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Employee ID</label>
+                    <input type="text" value={editData.universityId || ''} onChange={e => handleChange('universityId', e.target.value)} placeholder="e.g., 2021-00001" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Classification</label>
                     <select value={editData.classification || ''} onChange={e => handleChange('classification', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">

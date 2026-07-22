@@ -329,6 +329,57 @@ const ProfileSetup = ({ user, onComplete }) => {
   const rawRole  = user?.role || 'student';
   const userRole = rawRole.toLowerCase();
 
+  // Check if user is sysadmin - skip profile setup entirely for sysadmin
+  const isSysAdmin = userRole === 'sysadmin' || userRole === 'administrator' || userRole === 'admin';
+
+  // Auto-complete profile setup for sysadmin without showing the form
+  useEffect(() => {
+    if (isSysAdmin) {
+      const completeSysAdminProfile = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/login');
+          return;
+        }
+
+        try {
+          const payload = {
+            role: userRole,
+            isProfileSetup: true,
+            profileComplete: true,
+            classification: 'System Administrator',
+            jobTitle: 'System Administrator',
+          };
+
+          const response = await fetch(`${API_URL}/user/profile-setup`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (response.ok) {
+            const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+            localStorage.setItem('user', JSON.stringify({ ...storedUser, isProfileSetup: true, profileComplete: true }));
+            if (onComplete) {
+              onComplete();
+            } else {
+              navigate('/dashboard');
+            }
+          }
+        } catch (err) {
+          console.error('Error completing sysadmin profile:', err);
+        }
+      };
+
+      completeSysAdminProfile();
+    }
+  }, [isSysAdmin, navigate, onComplete, userRole]);
+
+  // If sysadmin, don't render the form
+  if (isSysAdmin) {
+    return null;
+  }
+
   const [formData, setFormData] = useState({
     // STEP 1 – Personal
     firstName:     user?.firstName     || '',
@@ -1013,7 +1064,7 @@ const ProfileSetup = ({ user, onComplete }) => {
                   <div>
                     <label className={labelCls}>Classification <span className="text-red-400">*</span></label>
                     <select id="classification" required className={selectCls} value={formData.classification} onChange={handleChange}>
-                      {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'System Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => (
+                      {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Non-Teaching Personnel', 'Security Personnel'].map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>

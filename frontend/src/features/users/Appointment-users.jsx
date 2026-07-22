@@ -18,10 +18,12 @@ const STATUS_STYLES = {
   Approved: { bg: 'bg-[#E1F5EE]', text: 'text-[#466460]', label: 'Approved' },
   Done:     { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', label: 'Done'     },
   Missed:   { bg: 'bg-[#fef3c7]', text: 'text-[#92400e]', label: 'Missed'   },
+  Declined: { bg: 'bg-[#fef2f2]', text: 'text-[#dc2626]', label: 'Declined' },
   pending:  { bg: 'bg-[#FAEEDA]', text: 'text-[#854F0B]', label: 'Pending'  },
   approved: { bg: 'bg-[#E1F5EE]', text: 'text-[#466460]', label: 'Approved' },
   done:     { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', label: 'Done'     },
   missed:   { bg: 'bg-[#fef3c7]', text: 'text-[#92400e]', label: 'Missed'   },
+  declined: { bg: 'bg-[#fef2f2]', text: 'text-[#dc2626]', label: 'Declined' },
 };
 
 const PURPOSES = [
@@ -430,22 +432,26 @@ export default function AppointmentUsers() {
                 const isApproved = statusStr === 'approved';
                 const isMissed   = statusStr === 'missed';
                 const isDone     = statusStr === 'done';
+                const isDeclined = statusStr === 'declined';
                 const stampDate  = appt.created_at || appt.bookedAt || new Date();
 
                 let cardClasses = 'bg-[#fffdf7] border-[#f0c070]';
                 if (isApproved) cardClasses = 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]';
                 if (isMissed)   cardClasses = 'bg-[#fffbeb] border-[#fde68a]';
                 if (isDone)     cardClasses = 'bg-[#f8fafc] border-[#e2e8f0]';
+                if (isDeclined) cardClasses = 'bg-[#fef2f2] border-[#fecaca] opacity-75';
 
                 let timeColor = 'text-[#b07020]';
                 if (isApproved) timeColor = 'text-[#3B6D11]';
                 if (isMissed)   timeColor = 'text-[#b45309]';
                 if (isDone)     timeColor = 'text-[#64748b]';
+                if (isDeclined) timeColor = 'text-[#dc2626]';
 
                 let timeIcon = 'fa-hourglass-half';
                 if (isApproved) timeIcon = 'fa-calendar-check';
                 if (isMissed)   timeIcon = 'fa-calendar-xmark';
                 if (isDone)     timeIcon = 'fa-check-double';
+                if (isDeclined) timeIcon = 'fa-xmark-circle';
 
                 return (
                   <div
@@ -649,27 +655,32 @@ export default function AppointmentUsers() {
                       ? 'bg-[#f1f5f9] border border-[#e2e8f0]'
                       : selectedAppt.status?.toLowerCase() === 'missed'
                         ? 'bg-[#fef3c7] border border-[#fde68a]'
-                        : 'bg-[#FAEEDA] border border-[#f0c070]'
+                        : selectedAppt.status?.toLowerCase() === 'declined'
+                          ? 'bg-[#fef2f2] border border-[#fecaca]'
+                          : 'bg-[#FAEEDA] border border-[#f0c070]'
                 }`}>
                   <div className="text-xs text-[#64748b] mb-1">
                     {selectedAppt.status?.toLowerCase() === 'pending' ? 'Requested Date' :
                      selectedAppt.status?.toLowerCase() === 'missed' ? 'Missed Date' :
-                     selectedAppt.status?.toLowerCase() === 'done' ? 'Completed Date' : 'Scheduled Date'}
+                     selectedAppt.status?.toLowerCase() === 'done' ? 'Completed Date' :
+                     selectedAppt.status?.toLowerCase() === 'declined' ? 'Declined Date' : 'Scheduled Date'}
                   </div>
                   <div className={`text-lg font-bold ${
                     selectedAppt.status?.toLowerCase() === 'approved' ? 'text-[#466460]' :
                     selectedAppt.status?.toLowerCase() === 'done' ? 'text-[#64748b]' :
-                    selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' : 'text-[#854F0B]'
+                    selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' :
+                    selectedAppt.status?.toLowerCase() === 'declined' ? 'text-[#dc2626]' : 'text-[#854F0B]'
                   }`}>
                     {selectedAppt.year && selectedAppt.month
                       ? `${MONTHS[selectedAppt.month - 1]} ${selectedAppt.day}, ${selectedAppt.year}`
-                      : 'Awaiting Schedule'}
+                      : 'No Date Set'}
                   </div>
                   {selectedAppt.time && (
                     <div className={`text-sm font-medium mt-1 ${
                       selectedAppt.status?.toLowerCase() === 'approved' ? 'text-[#466460]' :
                       selectedAppt.status?.toLowerCase() === 'done' ? 'text-[#64748b]' :
-                      selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' : 'text-[#854F0B]'
+                      selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' :
+                      selectedAppt.status?.toLowerCase() === 'declined' ? 'text-[#dc2626]' : 'text-[#854F0B]'
                     }`}>
                       {(() => {
                         const [h, m] = selectedAppt.time.split(':').map(Number);

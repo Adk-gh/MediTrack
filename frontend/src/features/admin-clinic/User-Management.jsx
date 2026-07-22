@@ -25,8 +25,8 @@ const PLSP_OFFICES_FOR_STAFF = [
   ...NON_ACADEMIC_OFFICES.map(o => ({ label: o, value: o })),
 ];
 
-const CLINIC_ROLES = new Set(['doctor','nurse','dentist','staff','employee','midwife','pharmacist','medical technologist','radiologist','physical therapist','clinic staff']);
-const FACULTY_ROLES = new Set(['instructor','lecturer','teacher','professor','dean','assistant professor','associate professor','department head','program chair','coordinator','faculty','clinical instructor','part-time instructor','part time instructor','visiting professor','adjunct professor','registrar','guidance counselor','counselor','librarian']);
+const CLINIC_ROLES = new Set(['doctor','nurse','dentist','staff','employee','clinic staff']);
+const FACULTY_ROLES = new Set(['instructor','lecturer','teacher','professor','dean','department head','program chair','coordinator','faculty','registrar','guidance counselor','counselor','librarian']);
 const isClinicStaff = r => CLINIC_ROLES.has(r?.toLowerCase());
 const isFaculty     = r => FACULTY_ROLES.has(r?.toLowerCase());
 const isStudent     = r => r?.toLowerCase() === 'student';
@@ -94,23 +94,32 @@ const EyeIcon = ({ open }) => open
   ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
   : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>;
 
+// Get current user from localStorage
+const getCurrentUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const currentUser = getCurrentUser();
+const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(currentUser?.role?.toLowerCase());
+
 // ─────────────────────────────────────────────────────────────────────────────
 // RoleOptions (shared between Create wizard and Edit modal)
+// Only sysadmin can see/select System Administrator role
 // ─────────────────────────────────────────────────────────────────────────────
 const RoleOptions = () => (
   <>
-    <optgroup label="System Administration">
-      <option value="sysadmin">System Administrator</option>
-    </optgroup>
+    {isCurrentUserSysAdmin && (
+      <optgroup label="System Administration"><option value="sysadmin">System Administrator</option></optgroup>
+    )}
     <optgroup label="Clinic Staff">
       <option value="doctor">Doctor</option>
       <option value="dentist">Dentist</option>
       <option value="nurse">Nurse</option>
-      <option value="midwife">Midwife</option>
-      <option value="pharmacist">Pharmacist</option>
-      <option value="medical_technologist">Medical Technologist</option>
-      <option value="radiologist">Radiologist</option>
-      <option value="physical_therapist">Physical Therapist</option>
+      <option value="clinic staff">Clinic Staff (General)</option>
     </optgroup>
     <optgroup label="Faculty">
       <option value="lecturer">Lecturer</option>
@@ -118,24 +127,17 @@ const RoleOptions = () => (
       <option value="teacher">Teacher</option>
       <option value="professor">Professor</option>
       <option value="faculty">Faculty</option>
-      <option value="assistant_professor">Assistant Professor</option>
-      <option value="associate_professor">Associate Professor</option>
+      <option value="assistant professor">Assistant Professor</option>
+      <option value="associate professor">Associate Professor</option>
       <option value="dean">Dean</option>
-      <option value="department_head">Department Head</option>
-      <option value="program_chair">Program Chair</option>
-      <option value="coordinator">Coordinator</option>
-      <option value="clinical_instructor">Clinical Instructor</option>
-      <option value="part_time_instructor">Part-time Instructor</option>
-      <option value="visiting_professor">Visiting Professor</option>
-      <option value="adjunct_professor">Adjunct Professor</option>
+      <option value="department head">Department Head</option>
+      <option value="program chair">Program Chair</option>
       <option value="registrar">Registrar</option>
-      <option value="guidance_counselor">Guidance Counselor</option>
+      <option value="guidance counselor">Guidance Counselor</option>
       <option value="counselor">Counselor</option>
       <option value="librarian">Librarian</option>
     </optgroup>
-    <optgroup label="Student">
-      <option value="student">Student</option>
-    </optgroup>
+    <optgroup label="Student"><option value="student">Student</option></optgroup>
   </>
 );
 
@@ -206,13 +208,13 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
       if (existing) { showSnackbar('This University ID is already registered', 'error'); setLoading(false); return; }
 
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-auth-user`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-auth-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ email: form.email, password: form.password, firstName: normalizeName(form.first_name), lastName: normalizeName(form.last_name) }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to create auth user');
+      if (!response.ok) throw new Error(result.error || 'Failed to update auth user');
 
       const newUser = {
         uid: result.uid,
@@ -445,7 +447,8 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
                     <div>
                       <label className={labelCls}>Classification</label>
                       <select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>
-                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Physician / Doctor','System Administrator'].map(c => <option key={c} value={c}>{c}</option>)}
+                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Physician / Doctor'].map(c => <option key={c} value={c}>{c}</option>)}
+                        {isCurrentUserSysAdmin && <option value="System Administrator">System Administrator</option>}
                       </select>
                     </div>
                   )}
@@ -554,15 +557,10 @@ export const UserManagement = () => {
     const map = {
       admin:'Admin', administrator:'Admin', doctor:'Doctor', nurse:'Nurse',
       staff:'Staff', employee:'Staff', dentist:'Dentist', midwife:'Midwife',
-      pharmacist:'Pharmacist', 'medical technologist':'Med. Technologist',
-      radiologist:'Radiologist', 'physical therapist':'Physical Therapist',
       'clinic staff':'Clinic Staff', student:'Student', instructor:'Instructor',
       lecturer:'Lecturer', teacher:'Teacher', professor:'Professor', dean:'Dean',
-      'assistant professor':'Asst. Professor', 'associate professor':'Assoc. Professor',
       'department head':'Dept. Head', 'program chair':'Program Chair',
-      coordinator:'Coordinator', faculty:'Faculty', 'clinical instructor':'Clinical Instructor',
-      'part-time instructor':'Part-time Instructor', 'visiting professor':'Visiting Professor',
-      'adjunct professor':'Adjunct Professor', registrar:'Registrar',
+      coordinator:'Coordinator', registrar:'Registrar',
       'guidance counselor':'Guidance Counselor', counselor:'Counselor', librarian:'Librarian',
     };
     return map[role?.toLowerCase()] || (role || '—');

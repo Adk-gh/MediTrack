@@ -133,9 +133,13 @@ const updateProfile = async (req, res, next) => {
     delete updates.role;
     delete updates.createdAt;
 
+    console.log('[updateProfile controller] uid:', uid);
+    console.log('[updateProfile controller] updates:', JSON.stringify(updates));
+
     const updated = await userService.updateProfile(uid, updates);
     res.status(200).json({ success: true, data: updated });
   } catch (error) {
+    console.error('[updateProfile controller] Error:', error);
     next(error);
   }
 };

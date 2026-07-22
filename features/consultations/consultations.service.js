@@ -47,10 +47,6 @@ exports.getConsultationsByPatient = async (patientId) => {
 exports.createConsultation = async (consultationData) => {
   const { patient_id, consultation_type } = consultationData;
 
-  console.log('[createConsultation] === START ===');
-  console.log('[createConsultation] Searching for:', { patient_id, consultation_type });
-  console.log('[createConsultation] Full input data:', JSON.stringify(consultationData));
-
   // ── STEP 1: Return existing active session immediately ────────────────
   const { data: activeRows, error: activeError } = await supabase
     .from('consultations')
@@ -64,81 +60,11 @@ exports.createConsultation = async (consultationData) => {
   if (activeError) throw new Error(activeError.message);
 
   if (activeRows?.[0]) {
-    console.log(`[createConsultation] STEP 1: Already active, returning: ${activeRows[0].id} status: ${activeRows[0].status}`);
     return activeRows[0];
   }
 
-  console.log('[createConsultation] STEP 1: No active consultation found');
-
-  // ── STEP 2: Reactivate the most recent ended session ──────────────────
-  const { data: endedRows, error: endedError } = await supabase
-    .from('consultations')
-    .select('*')
-    .eq('patient_id', patient_id)
-    .eq('consultation_type', consultation_type)
-    .eq('status', 'ended')
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (endedError) throw new Error(endedError.message);
-
-  const existingChat = endedRows?.[0] || null;
-
-  if (existingChat) {
-    console.log(`[createConsultation] STEP 2: Found ended session: ${existingChat.id} status: ${existingChat.status}`);
-
-    // First update - explicitly set status to 'active' and clear ended_at
-    console.log('[createConsultation] Attempting to update status to active...');
-    const { error: updateError } = await supabase
-      .from('consultations')
-      .update({
-        status:   'active',
-        ended_at: null,
-      })
-      .eq('id', existingChat.id);
-
-    console.log('[createConsultation] Update completed, error:', updateError);
-
-    // Log the current state after update
-    const { data: afterUpdate } = await supabase
-      .from('consultations')
-      .select('id, status, ended_at')
-      .eq('id', existingChat.id)
-      .single();
-    console.log('[createConsultation] State right after update:', afterUpdate);
-
-    if (updateError) {
-      console.error('[createConsultation] Update error:', updateError);
-      throw new Error(updateError.message);
-    }
-
-    // Fetch fresh data AFTER update to ensure we get the correct status
-    console.log('[createConsultation] Fetching reactivated consultation...');
-    const { data: reactivated, error: fetchError } = await supabase
-      .from('consultations')
-      .select('*')
-      .eq('id', existingChat.id)
-      .single();
-
-    console.log('[createConsultation] Reactivated data:', JSON.stringify(reactivated));
-    console.log('[createConsultation] Final status being returned:', reactivated?.status);
-
-    if (fetchError) {
-      console.error('[createConsultation] Fetch error:', fetchError);
-      throw new Error(fetchError.message);
-    }
-
-    return reactivated;
-  }
-
-  // ── STEP 3: No history — create a brand new session ───────────────────
-  console.log('[createConsultation] STEP 3: No existing session, creating new one');
-  // FIX: Only insert columns that exist in public.consultations:
-  //   id (auto), consultation_type, created_by, patient_id,
-  //   patient_name, status, created_at, ended_at
-  // The frontend also sends patient_role — that column does NOT exist
-  // in the table, so spreading consultationData caused the 500.
-  console.log(`[createConsultation] Creating new thread for patient: ${patient_id}`);
+  // ── STEP 2: Always create a new session (skip reactivation) ───────────
+  // Creating a new consultation ensures it's properly set to 'active' from the start
 
   const insertPayload = {
     patient_id: patient_id,
@@ -148,8 +74,6 @@ exports.createConsultation = async (consultationData) => {
     status: 'active',
     ended_at: null,
   };
-
-  console.log('[createConsultation] Insert payload:', JSON.stringify(insertPayload));
 
   const { data, error } = await supabase
     .from('consultations')
@@ -161,8 +85,6 @@ exports.createConsultation = async (consultationData) => {
     console.error('[createConsultation] Insert error:', error);
     throw new Error(error.message);
   }
-
-  console.log('[createConsultation] Insert result:', JSON.stringify(data));
 
   return data;
 };

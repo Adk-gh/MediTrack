@@ -580,6 +580,9 @@ export const Appointments = () => {
   const [batchSlot,       setBatchSlot]       = useState('08:00');
   const [showDatePicker,  setShowDatePicker]  = useState(false);
 
+  // ── Decline confirmation modal ──
+  const [declineModal, setDeclineModal] = useState({ open: false, ids: [] });
+
   // ── Detail / snackbar ──
   const [detailModal, setDetailModal] = useState(null);
   const [snackbar,    setSnackbar]    = useState({ visible: false, message: '', type: 'success' });
@@ -776,16 +779,24 @@ export const Appointments = () => {
   };
 
   // ── Decline selected ──
-  const handleDeclineSelected = async () => {
+  const handleDeclineClick = () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Decline ${selectedIds.size} selected request${selectedIds.size > 1 ? 's' : ''}?`)) return;
+    setDeclineModal({ open: true, ids: Array.from(selectedIds) });
+  };
+
+  const handleDeclineConfirm = async () => {
     try {
-      await Promise.all([...selectedIds].map(id => declineAppointment(id)));
-      showSnackbar(`${selectedIds.size} request${selectedIds.size > 1 ? 's' : ''} declined`, 'error');
+      await Promise.all(declineModal.ids.map(id => declineAppointment(id)));
+      showSnackbar(`${declineModal.ids.length} request${declineModal.ids.length > 1 ? 's' : ''} declined`, 'error');
       setSelectedIds(new Set());
     } catch {
       showSnackbar('Failed to decline some requests', 'error');
     }
+    setDeclineModal({ open: false, ids: [] });
+  };
+
+  const handleDeclineCancel = () => {
+    setDeclineModal({ open: false, ids: [] });
   };
 
   const handleMarkDone = (e, id) => {
@@ -951,7 +962,7 @@ export const Appointments = () => {
               Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
             </button>
             <button
-              onClick={handleDeclineSelected}
+              onClick={handleDeclineClick}
               title="Decline selected"
               className="px-[13px] py-[8px] bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]
                 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]
@@ -1119,7 +1130,7 @@ export const Appointments = () => {
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
-          <div className="text-[13px] font-semibold text-[#1e293b]">Rejected Requests</div>
+          <div className="text-[13px] font-semibold text-[#1e293b]">Declined Requests</div>
           <div className="text-[10px] text-[#64748b] mt-[1px]">Requests that were declined</div>
         </div>
         <span className="text-[10px] font-semibold text-[#991b1b] bg-[#fef2f2] px-[9px] py-[2px] rounded-[20px]">
@@ -1509,7 +1520,7 @@ export const Appointments = () => {
             className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
               ${mobileView === 'pending' && activeTab === 'rejected' ? 'text-[#991b1b] border-b-2 border-[#991b1b]' : 'text-[#94a3b8]'}`}
           >
-            <IconCircleXmark size={13} /> Rejected
+            <IconCircleXmark size={13} /> Declined
             {rejectedAppts.length > 0 && (
               <span className="text-[9px] font-bold bg-[#fef2f2] text-[#991b1b] px-1.5 py-0.5 rounded-full">
                 {rejectedAppts.length}
@@ -1564,7 +1575,7 @@ export const Appointments = () => {
               className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'rejected' ? 'text-[#991b1b]' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              Rejected
+              Declined
               {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#991b1b] rounded-t-full"></div>}
             </button>
           </div>
@@ -1798,7 +1809,57 @@ export const Appointments = () => {
         </ModalOverlay>
       )}
 
-{/* ── Detail modal ── */}
+      {/* ══════════════════════════════════════════════════════
+          DECLINE CONFIRMATION MODAL
+      ══════════════════════════════════════════════════════ */}
+      {declineModal.open && (
+        <ModalOverlay onClose={handleDeclineCancel}>
+          <div className="bg-white w-full sm:max-w-[400px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
+            p-6 animate-[fadeIn_0.25s_ease-out]">
+            <div className="flex justify-center -mt-1 mb-3 sm:hidden">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            {/* Icon */}
+            <div className="flex justify-center mb-4">
+              <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-center text-lg font-bold text-slate-800 mb-2">
+              Decline Request{declineModal.ids.length > 1 ? 's' : ''}?
+            </h3>
+
+            {/* Message */}
+            <p className="text-center text-sm text-slate-500 mb-6">
+              Are you sure you want to decline {declineModal.ids.length} appointment request{declineModal.ids.length > 1 ? 's' : ''}?
+              This action cannot be undone.
+            </p>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeclineCancel}
+                className="flex-1 px-5 py-2.5 bg-slate-100 text-slate-600 border-none rounded-xl text-sm font-semibold cursor-pointer hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeclineConfirm}
+                className="flex-1 px-5 py-2.5 bg-red-600 text-white border-none rounded-xl text-sm font-semibold cursor-pointer hover:bg-red-700 transition-colors"
+              >
+                Yes, Decline
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Detail modal ── */}
       {detailModal && (
         <ModalOverlay onClose={() => setDetailModal(null)}>
           <div className="bg-white w-full sm:max-w-[420px] sm:mx-4 sm:rounded-[14px] rounded-t-[20px]

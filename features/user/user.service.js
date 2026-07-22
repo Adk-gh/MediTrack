@@ -294,6 +294,8 @@ exports.setupProfile = async (userId, profileData) => {
       booster1: { vaccineName: '', date: '' },
       booster2: { vaccineName: '', date: '' },
     },
+    dental_history: profileData.dentalHistory ?? {},
+    surgical_history: profileData.surgicalHistory ?? { operations: [], declined: false },
     is_profile_setup: true,
     profile_complete: true,
     updated_at:       new Date().toISOString(),
@@ -428,6 +430,9 @@ exports.toggleProfileComplete = async (userId, profileComplete) => {
 exports.updateProfile = async (userId, updates) => {
   if (!userId) throw new Error('userId is required for updateProfile');
 
+  console.log('[updateProfile] userId:', userId);
+  console.log('[updateProfile] updates:', JSON.stringify(updates));
+
   // Map camelCase to snake_case for database - normalize names to Title Case
   const dbUpdates = {};
   if (updates.firstName !== undefined) dbUpdates.first_name = normalizeName(updates.firstName);
@@ -454,6 +459,7 @@ exports.updateProfile = async (userId, updates) => {
   if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
   if (updates.vaccinations !== undefined) dbUpdates.vaccinations = updates.vaccinations;
   if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
+  if (updates.surgicalHistory !== undefined) dbUpdates.surgical_history = updates.surgicalHistory;
   if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
 
   // If no updates, return current profile
@@ -496,10 +502,13 @@ exports.updateProfile = async (userId, updates) => {
       emergencyContact:     existing.emergency_contact || {},
       vaccinations:         existing.vaccinations || {},
       dentalHistory:        existing.dental_history || {},
+      surgicalHistory:      existing.surgical_history || { operations: [], declined: false },
     };
   }
 
   dbUpdates.updated_at = new Date().toISOString();
+
+  console.log('[updateProfile] dbUpdates:', JSON.stringify(dbUpdates));
 
   const { data, error } = await supabase
     .from('users')
@@ -509,7 +518,13 @@ exports.updateProfile = async (userId, updates) => {
     .single();
 
   if (error) {
+    console.error('[updateProfile] Supabase error:', JSON.stringify(error));
     throw new Error(error.message);
+  }
+
+  if (!data) {
+    console.error('[updateProfile] No data returned from Supabase');
+    throw new Error('No data returned from database');
   }
 
   return {
@@ -544,6 +559,7 @@ exports.updateProfile = async (userId, updates) => {
     emergencyContact:     data.emergency_contact || {},
     vaccinations:         data.vaccinations || {},
     dentalHistory:        data.dental_history || {},
+    surgicalHistory:      data.surgical_history || { operations: [], declined: false },
   };
 };
 
@@ -653,6 +669,9 @@ exports.adminUpdateUser = async (targetUid, updates) => {
 
   // Dental history
   if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
+
+  // Surgical history
+  if (updates.surgicalHistory !== undefined) dbUpdates.surgical_history = updates.surgicalHistory;
 
   // Handle password update
   if (updates.newPassword) {

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabase';
 import DatePicker from '../../../components/Datepicker';
-import TimePicker from '../../../components/TimePicker';
+import DateTimePicker from '../../../components/DateTimePicker';
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -128,6 +128,22 @@ const isUUID = (v) =>
   typeof v === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
+// ── Safe JSON field parser ───────────────────────────────────────────────────
+// Some jsonb columns (e.g. surgical_history, emergency_contact, vaccinations)
+// come back from Supabase as a raw JSON string rather than an already-parsed
+// object, depending on how the column/value was written. Reading `.operations`
+// straight off a string silently returns undefined, which is why surgical
+// history could be saved successfully but still show "No surgical history
+// recorded." here. Always run values through this before use.
+const parseJsonField = (value, fallback = {}) => {
+  if (!value) return fallback;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value) || fallback; } catch (e) { return fallback; }
+  }
+  if (typeof value === 'object') return value;
+  return fallback;
+};
+
 // ── Helper: normalize selectedPatient into the flat "users" row shape ───────
 // selectedPatient can arrive either as the raw users row, or as a joined
 // record with the users row nested under `.users` (array or object).
@@ -147,6 +163,154 @@ const normalizePatient = (p) => {
     // used directly as user_id and blew up the insert with 22P02.
     id: isUUID(rawId) ? rawId : null,
   };
+};
+
+// ── Shared timeline / accordion helpers (matches Approvals "Past Records" design) ──
+const HistoryStatusBadge = ({ status }) => {
+  const map = {
+    approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    rejected: 'bg-red-100 text-red-700 border-red-200',
+  };
+  return (
+    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+      {status || 'unknown'}
+    </span>
+  );
+};
+
+const HistorySectionLabel = ({ icon, color, children }) => (
+  <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+    <i className={`fa-solid ${icon} ${color}`}></i>{children}
+  </h5>
+);
+
+const HistoryTagGroup = ({ title, items, tint }) => {
+  const tints = {
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    purple: 'bg-purple-50 text-purple-700 border-purple-100',
+    cyan: 'bg-cyan-50 text-cyan-700 border-cyan-100',
+  };
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((h, i) => (
+          <span key={i} className={`px-2 py-1 rounded-md text-[11px] font-bold border ${tints[tint]}`}>{h}</span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const MedicalVisitCard = ({ record, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const getVitalSigns = () => {
+    const v = record.vital_records;
+    const vitals = Array.isArray(v) ? (v[0] || {}) : (v || {});
+    return {
+      bp: vitals.bp || '',
+      pr: vitals.pr || '',
+      rr: vitals.rr || '',
+      temp: vitals.temp || '',
+      remarks: vitals.remarks || '',
+    };
+  };
+
+  const history = {
+    medical: (Array.isArray(record.checked_medical) ? record.checked_medical : []).map(parseHistoryItemDisplay),
+    family: (Array.isArray(record.checked_family) ? record.checked_family : []).map(parseHistoryItemDisplay),
+    health: (Array.isArray(record.checked_health) ? record.checked_health : []).map(parseHistoryItemDisplay),
+  };
+
+  const vitals = getVitalSigns();
+  const hasVitals = vitals.bp || vitals.pr || vitals.rr || vitals.temp;
+  const hasHistory = history.medical.length > 0 || history.family.length > 0 || history.health.length > 0;
+  const hasRemarks = record.finding1 || record.remarks;
+  const hasOtherHistory = record.other_medical_history || record.other_family_history;
+
+  return (
+    <div className="relative">
+      <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#e07a5f] ring-4 ring-white"></div>
+
+      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+        >
+          <div className="flex items-center gap-3">
+            <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}></i>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{record._datetime}</p>
+              <p className="text-xs text-slate-500">
+                Nurse on duty: <span className="font-medium text-slate-600">{record.nurse_on_duty || 'Unknown'}</span>
+              </p>
+            </div>
+          </div>
+          <HistoryStatusBadge status={record.status} />
+        </button>
+
+        {open && (
+          <div className="p-4 space-y-4 border-t border-slate-100">
+            {hasVitals && (
+              <div>
+                <HistorySectionLabel icon="fa-heart-pulse" color="text-rose-500">Vital Signs</HistorySectionLabel>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  {[
+                    { label: 'Blood Pressure', value: vitals.bp, unit: 'mmHg' },
+                    { label: 'Heart Rate', value: vitals.pr, unit: 'bpm' },
+                    { label: 'Respiratory Rate', value: vitals.rr, unit: 'cpm' },
+                    { label: 'Temperature', value: vitals.temp, unit: '°C' },
+                  ].filter(v => v.value).map((v, i) => (
+                    <div key={i} className="bg-rose-50/60 border border-rose-100 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-rose-500 uppercase tracking-wide">{v.label}</p>
+                      <p className="text-sm font-bold text-slate-800">{v.value} <span className="text-xs font-medium text-slate-400">{v.unit}</span></p>
+                    </div>
+                  ))}
+                </div>
+                {vitals.remarks && <p className="text-xs text-slate-500 italic mt-2">Remarks: {vitals.remarks}</p>}
+              </div>
+            )}
+
+            {(hasHistory || hasOtherHistory) && (
+              <div>
+                <HistorySectionLabel icon="fa-notes-medical" color="text-purple-500">Clinical History</HistorySectionLabel>
+                <div className="grid md:grid-cols-3 gap-3 mt-2">
+                  <HistoryTagGroup title="Past Medical History" items={history.medical} tint="amber" />
+                  <HistoryTagGroup title="Family History" items={history.family} tint="purple" />
+                  <HistoryTagGroup title="Other Conditions" items={history.health} tint="cyan" />
+                </div>
+                {record.other_medical_history && (
+                  <p className="text-xs text-slate-500 italic mt-2">Medical history notes: {record.other_medical_history}</p>
+                )}
+                {record.other_family_history && (
+                  <p className="text-xs text-slate-500 italic mt-1">Family history notes: {record.other_family_history}</p>
+                )}
+              </div>
+            )}
+
+            {hasRemarks && (
+              <div>
+                <HistorySectionLabel icon="fa-file-medical" color="text-teal-500">Doctor's Remarks</HistorySectionLabel>
+                <div className="bg-teal-50/60 border border-teal-100 rounded-lg px-3 py-2.5 mt-2">
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    {record.finding1 || ''}{record.finding1 && record.remarks ? ' — ' : ''}{record.remarks || ''}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!hasVitals && !hasHistory && !hasOtherHistory && !hasRemarks && (
+              <p className="text-xs text-slate-400 italic">No additional details recorded for this visit.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 // ── Medical Visit History Component ─────────────────────────────────────────
@@ -174,8 +338,8 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
           kind: 'medical',
           _date: r.exam_date || r.created_at?.split('T')[0] || '',
           _datetime: r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit', hour12: true
+            year: 'numeric', month: 'long', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true
           }) : (r.exam_date || ''),
         }));
 
@@ -190,38 +354,6 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
     fetchRecords();
   }, [selectedPatient?.uid, selectedPatient?.id, selectedPatient?.users]);
 
-  const StatusBadge = ({ status }) => {
-    const map = {
-      approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-      pending: 'bg-amber-100 text-amber-700 border-amber-200',
-      rejected: 'bg-red-100 text-red-700 border-red-200',
-    };
-    return (
-      <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-        {status || 'unknown'}
-      </span>
-    );
-  };
-
-  const getVitalSigns = (record) => {
-    const v = record.vital_records;
-    const vitals = Array.isArray(v) ? (v[0] || {}) : (v || {});
-    return {
-      bp: vitals.bp || '-',
-      pr: vitals.pr || '-',
-      rr: vitals.rr || '-',
-      temp: vitals.temp || '-',
-      o2sat: vitals.o2sat || vitals.o2Sat || '-',
-    };
-  };
-
-  const getHistory = (r) => ({
-    medical: (Array.isArray(r.checked_medical) ? r.checked_medical : []).map(parseHistoryItemDisplay),
-    family: (Array.isArray(r.checked_family) ? r.checked_family : []).map(parseHistoryItemDisplay),
-    health: (Array.isArray(r.checked_health) ? r.checked_health : []).map(parseHistoryItemDisplay),
-    surgical: r.other_medical_history || '',
-  });
-
   if (loading) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -231,68 +363,35 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
     );
   }
 
-  if (records.length === 0) {
-    return (
-      <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
-        <i className="fa-solid fa-file-medical text-4xl mb-3 block opacity-30"></i>
-        <p>No medical visit history found</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i>
-          <h4 className="text-sm font-bold text-[#466460] uppercase">Medical Records</h4>
-          <span className="text-[9px] bg-[#e07a5f]/20 text-[#e07a5f] px-2 py-0.5 rounded-full font-semibold">
-            {records.length}
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#e07a5f]/10 to-transparent">
+        <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+          <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i> Medical Visit History
+        </h4>
+        {records.length > 0 && (
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+            {records.length} record{records.length !== 1 ? 's' : ''}
           </span>
-        </div>
-        <div className="space-y-4">
-          {records.map((r) => {
-            const vitals = getVitalSigns(r);
-            const history = getHistory(r);
-            return (
-              <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-gradient-to-r from-[#e07a5f]/10 to-[#c96a4f]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
-                  <StatusBadge status={r.status} />
-                </div>
-                <div className="p-3 space-y-3">
-                  <div className="grid grid-cols-4 gap-2 text-xs">
-                    <div><p className="text-[7px] text-slate-400 uppercase">Nurse</p><p className="font-medium">{r.nurse_on_duty || '-'}</p></div>
-                    <div><p className="text-[7px] text-slate-400 uppercase">BP</p><p className="font-medium">{vitals.bp}</p></div>
-                    <div><p className="text-[7px] text-slate-400 uppercase">PR</p><p className="font-medium">{vitals.pr} bpm</p></div>
-                    <div><p className="text-[7px] text-slate-400 uppercase">Temp</p><p className="font-medium">{vitals.temp}°C</p></div>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {history.medical.map((item, i) => (
-                      <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">{item}</span>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {history.family.map((item, i) => (
-                      <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">{item}</span>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {history.health.map((item, i) => (
-                      <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">{item}</span>
-                    ))}
-                  </div>
-                  {(r.finding1 || r.remarks) && (
-                    <div className="bg-slate-50 rounded-lg p-2 text-xs">
-                      <p className="text-[7px] text-slate-400 uppercase mb-1">Doctor's Remarks</p>
-                      <p className="text-slate-700">{r.finding1 || ''}{r.remarks ? ` - ${r.remarks}` : ''}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        )}
+      </div>
+
+      <div className="p-5">
+        {records.length === 0 ? (
+          <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+            <i className="fa-solid fa-file-medical text-2xl text-slate-300 mb-2 block"></i>
+            <p className="text-sm text-slate-400">No medical visit history found.</p>
+          </div>
+        ) : (
+          <div className="relative pl-6">
+            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+            <div className="space-y-4">
+              {records.map((r, idx) => (
+                <MedicalVisitCard key={r.id} record={r} defaultOpen={idx === 0} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -382,6 +481,10 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     alcoholDetails: existingRecord?.alcohol_details || '',
     drugs:   existingRecord?.drugs || 'No',
     drugsDetails:   existingRecord?.drugs_details || '',
+
+    // Load surgical history from user profile (not from existingRecord)
+    surgicalHistoryFromProfile: parseJsonField(u.surgical_history, { operations: [], declined: false }),
+
     studentSignature: existingRecord?.student_signature || '',
     dateSigned: existingRecord?.date_signed || '',
     q1: 'Yes', q2: 'No', q2Details: '',
@@ -406,8 +509,9 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     labXrayDate:   labResults?.xray?.date || '',
 
     physician: existingRecord?.physician || '',
-    examDate: existingRecord?.exam_date ? existingRecord.exam_date.split('T')[0] : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    examTime: existingRecord?.exam_date ? existingRecord.exam_date.slice(11, 16) : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(11, 16),
+    examDateTime: existingRecord?.exam_date
+      ? existingRecord.exam_date.slice(0, 16)
+      : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16),
     nurseOnDuty: existingRecord?.nurse_on_duty || '',
   };
 };
@@ -421,7 +525,15 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
   const [activeTab, setActiveTab]       = useState('patientProfile');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [surgicalHistory, setSurgicalHistory] = useState([]);
+  // Initialize surgical history from selectedPatient if available
+  const getInitialSurgicalHistory = () => {
+    const sh = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
+    if (sh && sh.operations && sh.operations.length > 0) {
+      return sh.operations;
+    }
+    return [];
+  };
+  const [surgicalHistory, setSurgicalHistory] = useState(getInitialSurgicalHistory);
 
   // FIX: vitalRecords is now a flat object, binding perfectly to the inputs and DB
   const [vitalRecords, setVitalRecords] = useState(createDefaultVital());
@@ -457,17 +569,37 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
       setFormData(buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
 
+      // Check if surgical history is passed directly in selectedPatient (from Approvals)
+      const passedSurgicalHistory = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
+      console.log('[Medical] selectedPatient surgicalHistory:', JSON.stringify(passedSurgicalHistory));
+      if (passedSurgicalHistory && passedSurgicalHistory.operations && passedSurgicalHistory.operations.length > 0) {
+        console.log('[Medical] Loading surgical history from passed data:', passedSurgicalHistory.operations);
+        setSurgicalHistory(passedSurgicalHistory.operations);
+      }
+
       if (userId) {
-        const matchCol = uid ? 'uid' : 'id';
+        console.log('[Medical] Fetching user profile with', { userId });
         const { data, error } = await supabase
           .from('users')
           .select('*')
-          .eq(matchCol, userId)
+          .or(`uid.eq.${userId},id.eq.${userId}`)
           .maybeSingle();
+
+        console.log('[Medical] users table fetch result:', { data, error });
 
         if (isMounted && data && !error) {
           setFormData(buildInitialForm(data, null, defaultSchoolYear, defaultSemester));
+
+          // Load surgical history from user's profile (if not already set from selectedPatient)
+          const userSurgicalHistory = parseJsonField(data.surgical_history, { operations: [], declined: false });
+          console.log('[Medical] parsed userSurgicalHistory from users table:', userSurgicalHistory);
+          if (userSurgicalHistory.operations && userSurgicalHistory.operations.length > 0 && (!passedSurgicalHistory || passedSurgicalHistory.operations.length === 0)) {
+            console.log('[Medical] Setting surgicalHistory from users table:', userSurgicalHistory.operations);
+            setSurgicalHistory(userSurgicalHistory.operations);
+          }
         }
+      } else {
+        console.log('[Medical] No userId resolved from selectedPatient — skipping users table fetch.', { selectedPatient });
       }
     };
 
@@ -503,10 +635,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
   const toggleCheck = (list, setList, value) => {
     setList(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
   };
-
-  const addSurgical    = () => setSurgicalHistory(p => [...p, { id: Date.now(), operation: '', date: '', notes: '' }]);
-  const removeSurgical = (id) => setSurgicalHistory(p => p.filter(i => i.id !== id));
-  const updateSurgical = (id, field, value) => setSurgicalHistory(p => p.map(i => i.id === id ? { ...i, [field]: value } : i));
 
   // FIX: Updates a flat object instead of an array
   const updateVital = (field, value) => {
@@ -567,9 +695,9 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
         });
       }
 
-      const examDateValue = formData.examDate || new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const examTimeValue = formData.examTime || new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(11, 16);
-      const combinedExamDate = `${examDateValue}T${examTimeValue}:00`;
+      const combinedExamDate = formData.examDateTime
+        ? `${formData.examDateTime}:00`
+        : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16) + ':00';
 
       const supabasePayload = {
         user_id: userId,
@@ -715,32 +843,32 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
           {/* ════ PATIENT PROFILE TAB ════ */}
           <div className={sectionClass}>Patient Demographics</div>
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-3"><label className={labelClass}>Last Name / Family Name</label><input type="text" id="lastName" className={inputClass} value={formData.lastName} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>First Name</label><input type="text" id="firstName" className={inputClass} value={formData.firstName} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Middle Name</label><input type="text" id="middleName" className={inputClass} value={formData.middleName} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Student No.</label><input type="text" id="studentId" className={inputClass} value={formData.studentId} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Course</label><input type="text" id="course" className={inputClass} value={formData.course} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Year / Section</label><input type="text" id="yearSection" className={inputClass} value={formData.yearSection} onChange={handleChange} /></div>
+            <div className="col-span-3"><label className={labelClass}>Last Name / Family Name</label><input type="text" id="lastName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.lastName} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>First Name</label><input type="text" id="firstName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.firstName} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Middle Name</label><input type="text" id="middleName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.middleName} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Student No.</label><input type="text" id="studentId" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.studentId} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Course</label><input type="text" id="course" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.course} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Year / Section</label><input type="text" id="yearSection" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.yearSection} readOnly /></div>
             <div className="col-span-3">
               <label className={labelClass}>Sex</label>
               <div className="flex gap-4 pt-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="sex" value="Male"   checked={formData.sex === 'Male'}   onChange={handleChange} /> Male</label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="sex" value="Female" checked={formData.sex === 'Female'} onChange={handleChange} /> Female</label>
+                <label className="flex items-center gap-2 text-sm cursor-not-allowed text-slate-500"><input type="radio" name="sex" value="Male"   checked={formData.sex === 'Male'}   disabled /> Male</label>
+                <label className="flex items-center gap-2 text-sm cursor-not-allowed text-slate-500"><input type="radio" name="sex" value="Female" checked={formData.sex === 'Female'} disabled /> Female</label>
               </div>
             </div>
             <div className="col-span-2">
               <label className={labelClass}>Birthday</label>
-              <DatePicker value={formData.birthday} onChange={calculateAge} />
+              <DatePicker value={formData.birthday} disabled={true} />
             </div>
-            <div className="col-span-2"><label className={labelClass}>Age</label><input type="number" id="age" className={`${inputClass} bg-slate-50`} value={formData.age} readOnly /></div>
-            <div className="col-span-4"><label className={labelClass}>Address</label><input type="text" id="address" className={inputClass} placeholder="Home Address" value={formData.address} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Contact No.</label><input type="text" id="contactNo" className={inputClass} value={formData.contactNo} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Landline No.</label><input type="text" id="landlineNo" className={inputClass} value={formData.landlineNo} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Religion</label><input type="text" id="religion" className={inputClass} value={formData.religion} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Nationality</label><input type="text" id="nationality" className={inputClass} placeholder="Filipino" value={formData.nationality} onChange={handleChange} /></div>
+            <div className="col-span-2"><label className={labelClass}>Age</label><input type="number" id="age" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.age} readOnly /></div>
+            <div className="col-span-4"><label className={labelClass}>Address</label><input type="text" id="address" className={`${inputClass} bg-slate-50 cursor-not-allowed`} placeholder="Home Address" value={formData.address} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Contact No.</label><input type="text" id="contactNo" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.contactNo} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Landline No.</label><input type="text" id="landlineNo" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.landlineNo} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Religion</label><input type="text" id="religion" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.religion} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Nationality</label><input type="text" id="nationality" className={`${inputClass} bg-slate-50 cursor-not-allowed`} placeholder="Filipino" value={formData.nationality} readOnly /></div>
             <div className="col-span-3">
               <label className={labelClass}>Civil Status</label>
-              <select id="civilStatus" className={inputClass} value={formData.civilStatus} onChange={handleChange}>
+              <select id="civilStatus" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.civilStatus} disabled>
                 {['Single','Married','Widowed','Separated'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
@@ -748,10 +876,10 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
           <div className={sectionClass}>Person to Contact in Case of Emergency</div>
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-5"><label className={labelClass}>Name</label><input type="text" id="emergencyName" className={inputClass} placeholder="Full name" value={formData.emergencyName} onChange={handleChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Relationship</label><input type="text" id="emergencyRelation" className={inputClass} placeholder="e.g. Parent, Spouse" value={formData.emergencyRelation} onChange={handleChange} /></div>
-            <div className="col-span-4"><label className={labelClass}>Address</label><input type="text" id="emergencyAddress" className={inputClass} value={formData.emergencyAddress} onChange={handleChange} /></div>
-            <div className="col-span-4"><label className={labelClass}>Contact No./s</label><input type="text" id="emergencyContact" className={inputClass} value={formData.emergencyContact} onChange={handleChange} /></div>
+            <div className="col-span-5"><label className={labelClass}>Name</label><input type="text" id="emergencyName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} placeholder="Full name" value={formData.emergencyName} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Relationship</label><input type="text" id="emergencyRelation" className={`${inputClass} bg-slate-50 cursor-not-allowed`} placeholder="e.g. Parent, Spouse" value={formData.emergencyRelation} readOnly /></div>
+            <div className="col-span-4"><label className={labelClass}>Address</label><input type="text" id="emergencyAddress" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.emergencyAddress} readOnly /></div>
+            <div className="col-span-4"><label className={labelClass}>Contact No./s</label><input type="text" id="emergencyContact" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData.emergencyContact} readOnly /></div>
           </div>
 
           <div className={sectionClass}>COVID-19 Vaccine History</div>
@@ -769,17 +897,17 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                 {[{label:'1st Dose',id:'vax1'},{label:'2nd Dose',id:'vax2'},{label:'Booster (1)',id:'booster1'},{label:'Booster (2)',id:'booster2'}].map(({ label, id }) => (
                   <tr key={id}>
                     <td className="border border-slate-300 p-2 font-semibold whitespace-nowrap">{label}</td>
-                    <td className="border border-slate-300 p-2"><input type="text" id={id} className={inputClass} value={formData[id]} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2"><input type="text" id={id} className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData[id]} readOnly /></td>
                     <td className="border border-slate-300 p-2">
-                      <DatePicker value={formData[`${id}Date`]} onChange={(val) => handleDateChange(`${id}Date`, val)} />
+                      <DatePicker value={formData[`${id}Date`]} disabled={true} />
                     </td>
-                    <td className="border border-slate-300 p-2"><input type="text" id={`${id}Remarks`} className={inputClass} value={formData[`${id}Remarks`]} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2"><input type="text" id={`${id}Remarks`} className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={formData[`${id}Remarks`]} readOnly /></td>
                   </tr>
                 ))}
                 <tr>
                   <td className="border border-slate-300 p-2 font-semibold whitespace-nowrap">COVID-19 History</td>
                   <td colSpan={3} className="border border-slate-300 p-2">
-                    <input type="text" id="covidHistory" className={inputClass} placeholder="Date of infection, severity, treatment, recovery details" value={formData.covidHistory} onChange={handleChange} />
+                    <input type="text" id="covidHistory" className={`${inputClass} bg-slate-50 cursor-not-allowed`} placeholder="Date of infection, severity, treatment, recovery details" value={formData.covidHistory} readOnly />
                   </td>
                 </tr>
               </tbody>
@@ -788,19 +916,17 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
           <div className={sectionClass}>
             <span>Past Surgical History</span>
-            <button type="button" onClick={addSurgical} className="bg-[#81b29a] text-white px-3 py-1 rounded text-xs hover:opacity-90">+ Add Operation</button>
           </div>
           {surgicalHistory.length === 0 ? (
-            <p className="text-xs text-slate-400 italic p-3 text-center">No surgical history recorded. Click "Add Operation" to add.</p>
+            <p className="text-xs text-slate-400 italic p-3 text-center">No surgical history recorded.</p>
           ) : surgicalHistory.map(s => (
             <div key={s.id} className="grid grid-cols-12 gap-4 mb-3 p-3 bg-slate-50 rounded-lg relative border border-slate-200 items-end">
-              <button type="button" onClick={() => removeSurgical(s.id)} className="absolute top-2 right-2 bg-[#e07a5f] text-white px-2 py-1 rounded text-xs">×</button>
-              <div className="col-span-6"><label className={labelClass}>Operation Name</label><input type="text" placeholder="Operation/Procedure Name" className={inputClass} value={s.operation} onChange={e => updateSurgical(s.id, 'operation', e.target.value)} /></div>
+              <div className="col-span-6"><label className={labelClass}>Operation Name</label><input type="text" placeholder="Operation/Procedure Name" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={s.operation} readOnly /></div>
               <div className="col-span-3">
                 <label className={labelClass}>Date</label>
-                <DatePicker value={s.date} onChange={(val) => updateSurgical(s.id, 'date', val)} />
+                <DatePicker value={s.date} disabled={true} />
               </div>
-              <div className="col-span-3"><label className={labelClass}>Notes</label><input type="text" placeholder="Hospital / complications" className={inputClass} value={s.notes} onChange={e => updateSurgical(s.id, 'notes', e.target.value)} /></div>
+              <div className="col-span-3"><label className={labelClass}>Notes</label><input type="text" placeholder="Hospital / complications" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={s.notes} readOnly /></div>
             </div>
           ))}
 
@@ -910,12 +1036,12 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
               </thead>
               <tbody>
                 {[
-                  { q: '1. Are you in good health?',                                                               name: 'q1',  detail: null        },
-                  { q: '2. Are you under medical treatment now?',                                                  name: 'q2',  detail: 'q2Details' },
+                  { q: '1. Are you in good health?',                                                                           name: 'q1',  detail: null       },
+                  { q: '2. Are you under medical treatment now?',                                                              name: 'q2',  detail: 'q2Details' },
                   { q: '3. Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?',  name: 'q3',  detail: 'q3Details' },
-                  { q: '4. Are you taking any medication?',                                                        name: 'q4',  detail: 'q4Details' },
-                  { q: '5. For women only: Are you pregnant?',                                                     name: 'q5',  detail: null        },
-                  { q: 'Are you nursing?',                                                                         name: 'q5b', detail: null        },
+                  { q: '4. Are you taking any medication?',                                                                    name: 'q4',  detail: 'q4Details' },
+                  { q: '5. For women only: Are you pregnant?',                                                                 name: 'q5',  detail: null       },
+                  { q: 'Are you nursing?',                                                                                     name: 'q5b', detail: null       },
                 ].map(({ q, name, detail }) => (
                   <tr key={name}>
                     <td className="border border-slate-300 p-2">{q}</td>
@@ -1003,21 +1129,23 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
             <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} onChange={e => handleChange({ target: { id: 'weight', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
             <div className="col-span-3"><label className={labelClass}>BMI (auto-calc)</label><input type="text" id="bmi" className={`${inputClass} bg-slate-50`} placeholder="kg/m²" value={formData.bmi} readOnly /></div>
             <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} onChange={e => handleChange({ target: { id: 'waist', value: filterNumbersOnly(e.target.value) } })} /></div>
+            {/* Add conditional check here */}
+          {formData.sex === 'Female' && (
             <div className="col-span-6">
               <label className={labelClass}>Last Menstrual Period (LMP) — Females only</label>
               <DatePicker value={formData.lmp} onChange={(val) => handleDateChange('lmp', val)} />
             </div>
+            )}
           </div>
 
           <div className="grid grid-cols-12 gap-4 mt-6">
             <div className="col-span-5"><label className={labelClass}>Examining Physician / LIC. No.</label><input type="text" id="physician" className={inputClass} placeholder="Full name and license number" value={formData.physician} onChange={handleChange} /></div>
-            <div className="col-span-2">
-              <label className={labelClass}>Exam Date</label>
-              <DatePicker value={formData.examDate} onChange={(val) => handleDateChange('examDate', val)} />
-            </div>
-            <div className="col-span-2">
-              <label className={labelClass}>Exam Time</label>
-              <TimePicker value={formData.examTime} onChange={(val) => handleDateChange('examTime', val)} />
+            <div className="col-span-4">
+              <label className={labelClass}>Exam Date & Time</label>
+              <DateTimePicker
+                value={formData.examDateTime}
+                onChange={(val) => handleDateChange('examDateTime', val)}
+              />
             </div>
             <div className="col-span-3"><label className={labelClass}>Nurse on Duty</label><input type="text" id="nurseOnDuty" className={inputClass} placeholder="Nurse name" value={formData.nurseOnDuty} onChange={handleChange} /></div>
           </div>
@@ -1182,15 +1310,17 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <SumItem label="Weight (kg)"   value={formData.weight} />
                   <SumItem label="BMI (kg/m²)"   value={formData.bmi}    />
                   <SumItem label="Waist (cm)"    value={formData.waist}  />
-                  <SumItem label="LMP (Females)" value={formData.lmp}    />
+                 {/* Add conditional check here */}
+                  {formData.sex === 'Female' && (
+                    <SumItem label="LMP (Females)" value={formData.lmp}    />
+                  )}
                 </div>
               </SumSection>
 
               <SumSection icon="fa-user-doctor" title="Examining Physician & Staff">
                 <div className="grid grid-cols-3 gap-2">
                   <SumItem label="Physician"        value={formData.physician}    />
-                  <SumItem label="Examination Date" value={formData.examDate}     />
-                  <SumItem label="Examination Time" value={formData.examTime}     />
+                  <SumItem label="Examination Date & Time" value={formData.examDateTime ? formData.examDateTime.replace('T', ' ') : ''} />
                   <SumItem label="Nurse on Duty"    value={formData.nurseOnDuty} />
                 </div>
               </SumSection>

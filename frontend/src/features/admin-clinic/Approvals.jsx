@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
 import { DentalExaminationReport } from '../../components/DentalExaminationReport';
+import { Medical } from './Examination/Medical';
+import { Dental } from './Examination/Dental';
 
 // Maps questionnaire keys (q1, q2...) to the actual question text from the exam form
 const HEALTH_HISTORY_QUESTIONS = [
@@ -44,6 +46,202 @@ const StatusBadge = ({ status }) => {
     <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${statusClass}`}>
       {status || 'pending'}
     </span>
+  );
+};
+
+// ============================================================
+// PAST MEDICAL RECORD HISTORY HELPERS (redesigned)
+// ============================================================
+const SectionLabel = ({ icon, color, children }) => (
+  <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+    <i className={`fa-solid ${icon} ${color}`}></i>{children}
+  </h5>
+);
+
+const HistoryGroup = ({ title, items, other, tint }) => {
+  const tints = {
+    purple: 'bg-purple-50 text-purple-700 border-purple-100',
+    fuchsia: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
+    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+  };
+  return (
+    <div>
+      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {(items.length > 0 ? items : ['None recorded']).map((h, i) => (
+          <span key={i} className={`px-2 py-1 rounded-md text-[10px] font-bold border ${tints[tint]}`}>{h}</span>
+        ))}
+      </div>
+      {other && <p className="text-[11px] text-slate-500 italic mt-1.5">Other: {other}</p>}
+    </div>
+  );
+};
+
+const PastMedicalRecord = ({ consult, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const parseJson = (str, fallback = {}) => {
+    if (!str) return fallback;
+    if (typeof str === 'object') return str;
+    try { return JSON.parse(str); } catch { return fallback; }
+  };
+
+  const formatFullDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) +
+      ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  const vitalRec = (() => {
+    const v = consult.vital_records;
+    if (!v) return {};
+    if (Array.isArray(v)) return v[0] || {};
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }
+    return v;
+  })();
+
+  const labResultsRaw = parseJson(consult.laboratory_results, {});
+  const labResults = {
+    cbc: labResultsRaw.cbc?.result || consult.lab_cbc || '',
+    cbcFacility: labResultsRaw.cbc?.facility || consult.lab_cbc_facility || '',
+    ua: labResultsRaw.ua?.result || consult.lab_ua || '',
+    uaFacility: labResultsRaw.ua?.facility || consult.lab_ua_facility || '',
+    xray: labResultsRaw.xray?.result || consult.lab_xray || '',
+    xrayFacility: labResultsRaw.xray?.facility || consult.lab_xray_facility || '',
+  };
+
+  const pastMedicalHistory = consult.checked_medical || [];
+  const pastFamilyHistory = consult.checked_family || [];
+  const pastSurgicalHistory = consult.surgical_history?.map(s => `${s.operation} (${s.date})`) || [];
+  const pastQuestionnaire = parseJson(consult.questionnaire, {});
+  const pastCovidHistory = parseJson(consult.covid_history, {});
+  const dateTime = formatFullDate(consult.exam_date || consult.created_at);
+
+  return (
+    <div className="relative">
+      <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#466460] ring-4 ring-white"></div>
+
+      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+        >
+          <div className="flex items-center gap-3">
+            <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}></i>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{dateTime}</p>
+              <p className="text-xs text-slate-500">
+                Physician: <span className="font-medium text-slate-600">{consult.physician || consult.nurse_on_duty || 'Unknown'}</span>
+              </p>
+            </div>
+          </div>
+          <StatusBadge status={consult.status} />
+        </button>
+
+        {open && (
+          <div className="p-4 space-y-4 border-t border-slate-100">
+            {(vitalRec.bp || vitalRec.pr || vitalRec.rr || vitalRec.temp) && (
+              <div>
+                <SectionLabel icon="fa-heart-pulse" color="text-rose-500">Vital Signs</SectionLabel>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  {[
+                    { label: 'Blood Pressure', value: vitalRec.bp, unit: 'mmHg' },
+                    { label: 'Heart Rate', value: vitalRec.pr, unit: 'bpm' },
+                    { label: 'Respiratory Rate', value: vitalRec.rr, unit: 'cpm' },
+                    { label: 'Temperature', value: vitalRec.temp, unit: '°C' },
+                  ].filter(v => v.value).map((v, i) => (
+                    <div key={i} className="bg-rose-50/60 border border-rose-100 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-rose-500 uppercase tracking-wide">{v.label}</p>
+                      <p className="text-sm font-bold text-slate-800">{v.value} <span className="text-[11px] font-medium text-slate-400">{v.unit}</span></p>
+                    </div>
+                  ))}
+                </div>
+                {vitalRec.remarks && <p className="text-xs text-slate-500 italic mt-2">Remarks: {vitalRec.remarks}</p>}
+              </div>
+            )}
+
+            {(pastMedicalHistory.length > 0 || pastFamilyHistory.length > 0 || pastSurgicalHistory.length > 0 || consult.other_medical_history || consult.other_family_history) && (
+              <div>
+                <SectionLabel icon="fa-notes-medical" color="text-purple-500">Clinical History</SectionLabel>
+                <div className="grid md:grid-cols-3 gap-3 mt-2">
+                  <HistoryGroup title="Medical History" items={pastMedicalHistory} other={consult.other_medical_history} tint="purple" />
+                  <HistoryGroup title="Family History" items={pastFamilyHistory} other={consult.other_family_history} tint="fuchsia" />
+                  <HistoryGroup title="Surgical History" items={pastSurgicalHistory} tint="indigo" />
+                </div>
+              </div>
+            )}
+
+            {(labResults.cbc || labResults.ua || labResults.xray) && (
+              <div>
+                <SectionLabel icon="fa-flask" color="text-teal-500">Laboratory Results</SectionLabel>
+                <div className="grid md:grid-cols-3 gap-2 mt-2">
+                  {[
+                    { label: 'CBC', result: labResults.cbc, facility: labResults.cbcFacility },
+                    { label: 'UA', result: labResults.ua, facility: labResults.uaFacility },
+                    { label: 'CXR', result: labResults.xray, facility: labResults.xrayFacility },
+                  ].filter(t => t.result).map((t, i) => (
+                    <div key={i} className="bg-teal-50/60 border border-teal-100 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide">{t.label}</p>
+                      <p className="text-sm font-semibold text-slate-800">{t.result}</p>
+                      {t.facility && <p className="text-[11px] text-slate-400">{t.facility}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {pastQuestionnaire && Object.keys(pastQuestionnaire).length > 0 && (
+              <div>
+                <SectionLabel icon="fa-circle-question" color="text-cyan-500">Health History Questionnaire</SectionLabel>
+                <div className="space-y-1.5 mt-2">
+                  {HEALTH_HISTORY_QUESTIONS.map(({ q, name, detail }) => {
+                    const answer = pastQuestionnaire?.[name];
+                    if (answer === undefined) return null;
+                    const isYes = answer?.toLowerCase() === 'yes';
+                    return (
+                      <div key={name} className="flex items-center justify-between gap-3 bg-slate-50 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-600 flex-1">{q}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {detail && pastQuestionnaire?.[detail] && (
+                            <span className="text-[11px] text-slate-400 italic max-w-[180px] truncate">{pastQuestionnaire[detail]}</span>
+                          )}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                            {answer}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {pastCovidHistory && (pastCovidHistory.dose1?.vaccineName || pastCovidHistory.dose2?.vaccineName || pastCovidHistory.booster1?.vaccineName || pastCovidHistory.booster2?.vaccineName || pastCovidHistory.history) && (
+              <div>
+                <SectionLabel icon="fa-syringe" color="text-lime-500">COVID-19 Vaccination</SectionLabel>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  {[
+                    { label: '1st Dose', name: pastCovidHistory.dose1?.vaccineName, date: pastCovidHistory.dose1?.date },
+                    { label: '2nd Dose', name: pastCovidHistory.dose2?.vaccineName, date: pastCovidHistory.dose2?.date },
+                    { label: 'Booster 1', name: pastCovidHistory.booster1?.vaccineName, date: pastCovidHistory.booster1?.date },
+                    { label: 'Booster 2', name: pastCovidHistory.booster2?.vaccineName, date: pastCovidHistory.booster2?.date },
+                  ].filter(v => v.name).map((v, i) => (
+                    <div key={i} className="bg-lime-50/60 border border-lime-100 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-lime-600 uppercase">{v.label}</p>
+                      <p className="text-xs font-semibold text-slate-800">{v.name}</p>
+                      {v.date && <p className="text-[11px] text-slate-400">{v.date}</p>}
+                    </div>
+                  ))}
+                </div>
+                {pastCovidHistory.history && <p className="text-xs text-slate-500 italic mt-2">History: {pastCovidHistory.history}</p>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -95,6 +293,10 @@ export const Approvals = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editData, setEditData] = useState({ status: 'pending', issue_cert: false });
   const [showReportForm, setShowReportForm] = useState(false);
+
+  // Full exam edit modal - shows the actual Medical/Dental form
+  const [showFullExamModal, setShowFullExamModal] = useState(false);
+  const [examRecordData, setExamRecordData] = useState(null);
 
   // Fetch current user info and set default exam type
   useEffect(() => {
@@ -553,6 +755,13 @@ export const Approvals = () => {
     const hasDentalData = exam.dentalHistory || exam.toothData || exam.intraoral || exam.dental_history || exam.tooth_data || exam.intraoral;
     const detectedExamType = hasDentalData ? 'dental' : examType;
 
+    // Update examType state when selecting a dental record
+    if (hasDentalData && examType !== 'dental') {
+      setExamType('dental');
+    } else if (!hasDentalData && examType !== 'medical') {
+      setExamType('medical');
+    }
+
     // Map dental exam data for DentalExaminationReport
     if (detectedExamType === 'dental') {
       const mappedExam = {
@@ -780,7 +989,216 @@ export const Approvals = () => {
     }
   };
 
-  const handleEdit = () => showSnackbar('Editing examination details...', 'success');
+  const handleEdit = async () => {
+    if (!selectedExam) return;
+
+    try {
+      const table = examType === 'dental' ? 'dental_records' : 'medical_records';
+      const recordId = selectedExam.recordId || selectedExam.id;
+
+      // Also fetch the user data for additional info
+      const { data: record, error } = await supabase
+        .from(table)
+        .select('*, users(*)')
+        .eq('id', recordId)
+        .single();
+
+      if (error) throw error;
+
+      // Format the data for Medical/Dental components
+      if (examType === 'dental') {
+        // Parse JSONB fields for dental
+        const parseJson = (str, fallback = {}) => {
+          if (!str) return fallback;
+          if (typeof str === 'object') return str;
+          try { return JSON.parse(str); } catch { return fallback; }
+        };
+
+        const userData = Array.isArray(record.users) ? record.users[0] || {} : record.users || {};
+
+        // Build dental form data that matches what Dental.jsx expects
+        // Pass record data in a way that works with buildDentalForm
+        const dentalData = {
+          // User info - these match what Dental.jsx expects
+          uid: record.user_id,
+          id: record.university_id || record.student_id || userData.university_id,
+          name: `${record.first_name || ''} ${record.middle_name || ''} ${record.last_name || ''}`.trim(),
+          firstName: record.first_name || userData.first_name,
+          middleName: record.middle_name || userData.middle_name,
+          lastName: record.last_name || userData.last_name,
+          gender: record.sex || userData.sex,
+          sex: record.sex || userData.sex,
+          age: record.age || userData.age,
+          birthday: record.birthday || userData.birthday,
+          homeAddress: record.address || userData.home_address || userData.address,
+          phoneNumber: record.cellphone || userData.phone_number || userData.contact_no,
+          program: record.course_year || userData.program,
+          yearLevel: record.year_level || userData.year_level,
+          section: record.section || userData.section,
+          role: record.role || userData.role,
+          department: userData.department,
+          nationality: record.nationality || userData.nationality,
+
+          // Dental-specific fields from record - as existingRecord
+          existingRecord: {
+            // Patient info
+            patient_info: parseJson(record.patient_info, {}),
+
+            // Dental-specific
+            dental_history: parseJson(record.dental_history, {}),
+            tooth_data: parseJson(record.tooth_data, {}),
+            intraoral: parseJson(record.intraoral, {}),
+            treatment_remarks: parseJson(record.treatment_remarks, {}),
+            treatments: parseJson(record.treatments, {}),
+
+            // Exam details
+            last_visit: record.last_visit,
+            prev_dentist: record.prev_dentist,
+            teeth_upper: record.teeth_upper,
+            teeth_lower: record.teeth_lower,
+            examined_by: record.examined_by,
+            exam_date: record.exam_date,
+            patient_signature: record.patient_signature,
+            sig_date: record.sig_date,
+            school_year: record.school_year,
+            semester: record.semester,
+            status: record.status,
+            first_name: record.first_name,
+            middle_name: record.middle_name,
+            last_name: record.last_name,
+            sex: record.sex,
+            age: record.age,
+            birthday: record.birthday,
+            address: record.address,
+            university_id: record.university_id,
+            student_id: record.student_id,
+          },
+
+          // Also keep direct access for dentalHistory/toothData
+          dentalHistory: parseJson(record.dental_history, {}),
+          toothData: parseJson(record.tooth_data, {}),
+          intraoral: parseJson(record.intraoral, {}),
+          treatmentRemarks: parseJson(record.treatment_remarks, {}),
+          treatments: parseJson(record.treatments, {}),
+          lastVisit: record.last_visit,
+          prevDentist: record.prev_dentist,
+          teethUpper: record.teeth_upper,
+          teethLower: record.teeth_lower,
+          examinedBy: record.examined_by,
+          examDate: record.exam_date,
+          patientSignature: record.patient_signature,
+          sigDate: record.sig_date,
+          schoolYear: record.school_year,
+          semester: record.semester,
+          status: record.status,
+        };
+
+        setExamRecordData(dentalData);
+      } else {
+        // Parse JSONB fields for medical
+        const parseJson = (str, fallback = {}) => {
+          if (!str) return fallback;
+          if (typeof str === 'object') return str;
+          try { return JSON.parse(str); } catch { return fallback; }
+        };
+
+        const userData = Array.isArray(record.users) ? record.users[0] || {} : record.users || {};
+
+        // Build medical form data that matches what Medical.jsx expects
+        const medicalData = {
+          // User info - these match what Medical.jsx expects
+          uid: record.user_id,
+          id: record.university_id || record.student_id || userData.university_id,
+          name: `${record.first_name || ''} ${record.middle_name || ''} ${record.last_name || ''}`.trim(),
+          firstName: record.first_name || userData.first_name,
+          middleName: record.middle_name || userData.middle_name,
+          lastName: record.last_name || userData.last_name,
+          gender: record.sex || userData.sex,
+          sex: record.sex || userData.sex,
+          age: record.age || userData.age,
+          birthday: record.birthday || userData.birthday,
+          homeAddress: record.address || record.home_address || userData.home_address || userData.address,
+          phoneNumber: record.contact_no || userData.phone_number || userData.contact_no,
+          program: record.program || userData.program,
+          yearLevel: record.year_level || userData.year_level,
+          section: record.section || userData.section,
+          role: record.role || userData.role,
+          department: record.department || userData.department,
+          nationality: record.nationality || userData.nationality,
+          civilStatus: record.civil_status || userData.civil_status,
+
+          // Store the existing record for buildInitialForm to use
+          existingRecord: record,
+
+          // Medical-specific fields from record (direct access)
+          patientInfo: parseJson(record.patient_info, {}),
+          covidHistory: parseJson(record.covid_history, {}),
+          vitalRecords: parseJson(record.vital_records, {}),
+          questionnaire: parseJson(record.questionnaire, {}),
+          labResults: parseJson(record.laboratory_results, {}),
+
+          // Exam details
+          reason: record.reason,
+          nurseOnDuty: record.nurse_on_duty,
+          nurse_on_duty: record.nurse_on_duty,
+          physician: record.physician,
+          examDate: record.exam_date,
+          exam_date: record.exam_date,
+          schoolYear: record.school_year,
+          school_year: record.school_year,
+          status: record.status,
+
+          // Medical history
+          medicalHistory: record.checked_medical || [],
+          familyHistory: record.checked_family || [],
+          healthConditions: record.checked_health || [],
+          surgicalHistory: record.surgical_history || { operations: [], declined: false },
+          checked_medical: record.checked_medical || [],
+          checked_family: record.checked_family || [],
+          checked_health: record.checked_health || [],
+          surgical_history: record.surgical_history || { operations: [], declined: false },
+          other_medical_history: record.other_medical_history || '',
+          other_family_history: record.other_family_history || '',
+
+          // Social history
+          smoking: record.smoking,
+          smokingDetails: record.smoking_details,
+          alcohol: record.alcohol,
+          alcoholDetails: record.alcohol_details,
+          drugs: record.drugs,
+          drugsDetails: record.drugs_details,
+
+          // Anthropometrics
+          height: record.height,
+          weight: record.weight,
+          bmi: record.bmi,
+          waist: record.waist,
+          lmp: record.lmp,
+
+          // Certificate
+          finding1: record.finding1,
+          remarks: record.remarks,
+          isFit: record.is_fit,
+          isNormalFindings: record.is_normal_findings,
+
+          // Vaccination
+          vax1: record.vax1,
+          vax1Date: record.vax1_date,
+          vax2: record.vax2,
+          vax2Date: record.vax2_date,
+          booster1: record.booster1,
+          booster1Date: record.booster1_date,
+        };
+
+        setExamRecordData(medicalData);
+      }
+
+      setShowFullExamModal(true);
+    } catch (err) {
+      console.error('Error fetching record for view:', err);
+      showSnackbar('Failed to load examination record', 'error');
+    }
+  };
 
   const renderExamItem = (exam) => (
     <div
@@ -1018,149 +1436,150 @@ export const Approvals = () => {
           </div>
         )}
 
+        {/* --- Past Records History Section (Dental) --- */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#466460]/5 to-transparent">
+            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+              <i className="fa-solid fa-clock-rotate-left"></i>Past Dental Records
+            </h4>
+            {!loadingHistory && consultationHistory.length > 0 && (
+              <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                {consultationHistory.length} record{consultationHistory.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
 
+          <div className="p-5">
+            {loadingHistory ? (
+              <div className="text-center py-10 text-slate-400 text-sm">
+                <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
+              </div>
+            ) : consultationHistory.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                <i className="fa-regular fa-folder-open text-2xl text-slate-300 mb-2 block"></i>
+                <p className="text-sm text-slate-400">No previous dental records found for this patient.</p>
+              </div>
+            ) : (
+              <div className="relative pl-6">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+                <div className="space-y-4">
+                  {consultationHistory.map((consult, idx) => {
+                    const parseJson = (str, fallback = {}) => {
+                      if (!str) return fallback;
+                      if (typeof str === 'object') return str;
+                      try { return JSON.parse(str); } catch { return fallback; }
+                    };
+                    const formatFullDate = (dateStr) => {
+                      if (!dateStr) return '—';
+                      const d = new Date(dateStr);
+                      if (isNaN(d.getTime())) return dateStr;
+                      return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) +
+                        ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                    };
+                    const dateTime = formatFullDate(consult.exam_date || consult.created_at);
+                    const cIntraoral = parseJson(consult.intraoral, {});
+                    const cToothData = parseJson(consult.tooth_data, {});
+                    const cDentalHistory = parseJson(consult.dental_history, {});
 
-        {/* --- Past Records History Section --- */}
-        <div className="bg-[#466460]/10 rounded-xl p-5 mb-4 border-2 border-[#466460]/30 shadow-sm">
-          <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-[#466460]/30 pb-2">
-            <i className="fa-solid fa-clock-rotate-left mr-2"></i>Past Dental Records (History)
-          </h4>
-
-          {loadingHistory ? (
-            <div className="text-center py-6 text-slate-400 text-xs">
-              <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
-            </div>
-          ) : consultationHistory.length === 0 ? (
-            <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50">
-              <p className="text-xs text-slate-400">No previous dental records found for this patient.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {consultationHistory.map((consult, idx) => {
-                const isDentalRecord = consult.dental_history || consult.tooth_data || consult.intraoral;
-                const parseJson = (str, fallback = {}) => {
-                  if (!str) return fallback;
-                  if (typeof str === 'object') return str;
-                  try { return JSON.parse(str); } catch { return fallback; }
-                };
-                const formatFullDate = (dateStr) => {
-                  if (!dateStr) return '-';
-                  const d = new Date(dateStr);
-                  if (isNaN(d.getTime())) return dateStr;
-                  const month = d.toLocaleDateString('en-US', { month: 'long' });
-                  const day = String(d.getDate()).padStart(2, '0');
-                  const year = d.getFullYear();
-                  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                  return `${month} ${day}, ${year} ${time}`;
-                };
-                const rawDate = consult.exam_date || consult.created_at;
-                const dateTime = formatFullDate(rawDate);
-                const intraoral = isDentalRecord ? parseJson(consult.intraoral, {}) : {};
-                const toothData = isDentalRecord ? parseJson(consult.tooth_data, {}) : {};
-                const dentalHistory = isDentalRecord ? parseJson(consult.dental_history, {}) : {};
-
-                return (
-                  <div key={consult.id || idx} className="bg-[#466460]/10 rounded-xl border-2 border-dashed border-[#466460]/40 overflow-hidden">
-                    <div className="bg-gradient-to-r from-[#466460]/20 to-[#466460]/5 px-4 py-2 border-b border-[#466460]/30 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-[#466460]">{dateTime}</span>
-                        <span className="text-[9px] px-1.5 py-0.5 bg-[#466460]/20 text-[#466460] rounded-full font-medium">PAST RECORD</span>
-                      </div>
-                      <StatusBadge status={consult.status} />
-                    </div>
-                    <div className="p-4 text-xs space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div>
-                          <p className="text-[7px] text-slate-400 uppercase">Examined By</p>
-                          <p className="font-medium">{consult.examined_by || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[7px] text-slate-400 uppercase">Exam Date</p>
-                          <p className="font-medium">{dateTime}</p>
-                        </div>
-                        <div>
-                          <p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p>
-                          <p className="font-mono">{consult.teeth_upper || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p>
-                          <p className="font-mono">{consult.teeth_lower || '-'}</p>
-                        </div>
-                      </div>
-                      {intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
-                          </h5>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
-                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
-                                <span className="font-medium text-slate-700">{String(val)}</span>
+                    return (
+                      <div key={consult.id || idx} className="relative">
+                        <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#466460] ring-4 ring-white"></div>
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                          <div className="px-4 py-3 bg-slate-50 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">{dateTime}</p>
+                                <p className="text-xs text-slate-500">
+                                  Examined by: <span className="font-medium text-slate-600">{consult.examined_by || '—'}</span>
+                                </p>
                               </div>
-                            ))}
+                            </div>
+                            <StatusBadge status={consult.status} />
                           </div>
-                        </div>
-                      )}
-                      {toothData && Object.keys(toothData).length > 0 && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
-                          </h5>
-                          <div className="flex gap-2 mb-3 text-xs">
-                            {(() => {
-                              const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
-                              Object.values(toothData).forEach(d => {
-                                if (d.condition && conditions.hasOwnProperty(d.condition)) {
-                                  conditions[d.condition]++;
-                                }
-                              });
-                              return (
-                                <>
-                                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                                  <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                                  <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                                </>
-                              );
-                            })()}
-                          </div>
-                          <div className="grid grid-cols-4 gap-2">
-                            {Object.entries(toothData).map(([tooth, data]) => {
-                              const conditionColors = {
-                                'caries': 'bg-red-100 text-red-700 border-red-300',
-                                'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                                'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                                'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                                'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                              };
-                              return (
-                                <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-                                  <span className="block font-bold text-xs">#{tooth}</span>
-                                  <span className="block text-[9px] capitalize">{data.condition || '-'}</span>
+
+                          <div className="p-4 space-y-4">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="bg-slate-50 rounded-lg px-3 py-2">
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Upper Teeth</p>
+                                <p className="text-sm font-mono text-slate-700">{consult.teeth_upper || '—'}</p>
+                              </div>
+                              <div className="bg-slate-50 rounded-lg px-3 py-2">
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Lower Teeth</p>
+                                <p className="text-sm font-mono text-slate-700">{consult.teeth_lower || '—'}</p>
+                              </div>
+                            </div>
+
+                            {cIntraoral && Object.keys(cIntraoral).some(k => cIntraoral[k]) && (
+                              <div>
+                                <SectionLabel icon="fa-teeth" color="text-[#466460]">Intraoral Examination</SectionLabel>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                                  {Object.entries(cIntraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
+                                    <div key={key} className="bg-slate-50 rounded-lg px-3 py-2">
+                                      <p className="text-[10px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                                      <p className="text-xs font-semibold text-slate-700">{String(val)}</p>
+                                    </div>
+                                  ))}
                                 </div>
-                              );
-                            })}
+                              </div>
+                            )}
+
+                            {cToothData && Object.keys(cToothData).length > 0 && (
+                              <div>
+                                <SectionLabel icon="fa-teeth-open" color="text-[#466460]">Tooth Conditions Chart</SectionLabel>
+                                <div className="flex gap-2 my-2 text-xs">
+                                  {(() => {
+                                    const conditions = { caries: 0, filled: 0, extracted: 0 };
+                                    Object.values(cToothData).forEach(d => {
+                                      if (d.condition && conditions.hasOwnProperty(d.condition)) conditions[d.condition]++;
+                                    });
+                                    return (
+                                      <>
+                                        <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
+                                        <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
+                                        <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                                <div className="grid grid-cols-4 gap-2">
+                                  {Object.entries(cToothData).map(([tooth, data]) => {
+                                    const conditionColors = {
+                                      'caries': 'bg-red-100 text-red-700 border-red-300',
+                                      'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+                                      'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
+                                      'missing': 'bg-slate-100 text-slate-600 border-slate-300',
+                                      'improved': 'bg-blue-100 text-blue-700 border-blue-300',
+                                    };
+                                    return (
+                                      <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                                        <span className="block font-bold text-xs">#{tooth}</span>
+                                        <span className="block text-[10px] capitalize">{data.condition || '—'}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {cDentalHistory && Object.keys(cDentalHistory).some(k => cDentalHistory[k] === 'Yes') && (
+                              <div>
+                                <SectionLabel icon="fa-clipboard-list" color="text-[#466460]">Procedures Done</SectionLabel>
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {Object.entries(cDentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
+                                    <span key={key} className="text-[10px] px-2 py-1 bg-emerald-100 text-[#466460] rounded-full font-semibold">{key}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
-                      {dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
-                          </h5>
-                          <div className="flex flex-wrap gap-1.5">
-                            {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
-                              <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-[#466460] rounded-full">{key}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1194,36 +1613,36 @@ export const Approvals = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Program/Department</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Program/Department</p>
               {exam.program !== 'N/A' ? (
                 <>
-                  <p className="text-[13px] font-semibold text-slate-800 leading-tight">{exam.program}</p>
-                  {exam.year && <p className="text-[13px] font-semibold text-slate-800 leading-tight">({exam.year})</p>}
+                  <p className="text-base font-semibold text-slate-800 leading-tight">{exam.program}</p>
+                  {exam.year && <p className="text-base font-semibold text-slate-800 leading-tight">({exam.year})</p>}
                   <p className="text-xs text-slate-500 mt-1">{exam.department}</p>
                 </>
               ) : (
-                <p className="text-[13px] font-semibold text-slate-800 leading-tight">N/A<br/><span className="text-xs text-slate-500 font-normal">N/A</span></p>
+                <p className="text-base font-semibold text-slate-800 leading-tight">N/A<br/><span className="text-xs text-slate-500 font-normal">N/A</span></p>
               )}
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Examination Date</p>
-              <p className="text-[13px] font-semibold text-slate-800">{exam.examDate}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Examination Date</p>
+              <p className="text-base font-semibold text-slate-800">{exam.examDate}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">School Year</p>
-              <p className="text-[13px] font-semibold text-slate-800">{exam.schoolYear || '—'}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">School Year</p>
+              <p className="text-base font-semibold text-slate-800">{exam.schoolYear || '—'}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reason</p>
-              <p className="text-[13px] font-semibold text-slate-800">{exam.reason}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Reason</p>
+              <p className="text-base font-semibold text-slate-800">{exam.reason}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nurse on Duty</p>
-              <p className="text-[13px] font-semibold text-slate-800">{exam.nurseName}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Nurse on Duty</p>
+              <p className="text-base font-semibold text-slate-800">{exam.nurseName}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Examining Physician</p>
-              <p className="text-[13px] font-semibold text-slate-800">{exam.physician || '—'}</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Examining Physician</p>
+              <p className="text-base font-semibold text-slate-800">{exam.physician || '—'}</p>
             </div>
           </div>
         </div>
@@ -1238,13 +1657,13 @@ export const Approvals = () => {
 
             <div className="flex flex-wrap gap-2 mb-4">
               {exam.isNormalFindings !== undefined && exam.isNormalFindings !== null && (
-                <span className={`text-[11px] px-3 py-1.5 rounded-md font-bold flex items-center gap-1.5 ${exam.isNormalFindings ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                <span className={`text-sm px-3 py-1.5 rounded-md font-bold flex items-center gap-1.5 ${exam.isNormalFindings ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
                   <i className={`fa-solid ${exam.isNormalFindings ? 'fa-circle-check' : 'fa-circle-xmark'}`}></i>
                   {exam.isNormalFindings ? 'Normal Findings' : 'Abnormal Findings'}
                 </span>
               )}
               {exam.isFit !== undefined && exam.isFit !== null && (
-                <span className={`text-[11px] px-3 py-1.5 rounded-md font-bold flex items-center gap-1.5 ${exam.isFit ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-orange-100 text-orange-700 border border-orange-200'}`}>
+                <span className={`text-sm px-3 py-1.5 rounded-md font-bold flex items-center gap-1.5 ${exam.isFit ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-orange-100 text-orange-700 border border-orange-200'}`}>
                   <i className={`fa-solid ${exam.isFit ? 'fa-person-walking' : 'fa-bed'}`}></i>
                   {exam.isFit ? 'Physically Fit' : 'Not Fit'}
                 </span>
@@ -1254,16 +1673,16 @@ export const Approvals = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {exam.finding1 && (
                 <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Diagnosis / Findings</p>
-                  <div className="text-xs text-slate-700 bg-white rounded-lg p-3 leading-relaxed border border-slate-200 shadow-sm min-h-[60px]">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Diagnosis / Findings</p>
+                  <div className="text-sm text-slate-700 bg-white rounded-lg p-3 leading-relaxed border border-slate-200 shadow-sm min-h-[60px]">
                     {exam.finding1}
                   </div>
                 </div>
               )}
               {exam.remarks && (
                 <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Remarks / Recommendation</p>
-                  <div className="text-xs text-slate-700 bg-white rounded-lg p-3 leading-relaxed border border-slate-200 shadow-sm min-h-[60px]">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Remarks / Recommendation</p>
+                  <div className="text-sm text-slate-700 bg-white rounded-lg p-3 leading-relaxed border border-slate-200 shadow-sm min-h-[60px]">
                     {exam.remarks}
                   </div>
                 </div>
@@ -1281,7 +1700,7 @@ export const Approvals = () => {
             {/* Vital Signs Card */}
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute left-0 top-0 w-1 h-full bg-rose-400"></div>
-              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <i className="fa-solid fa-heart-pulse text-rose-500"></i> Vital Signs
               </h5>
               <div className="grid grid-cols-2 gap-3">
@@ -1294,17 +1713,17 @@ export const Approvals = () => {
                   <div key={idx} className={`${item.bg} ${item.border} border rounded-lg p-3 flex flex-col`}>
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <i className={`fa-solid ${item.icon} ${item.color} text-[10px]`}></i>
-                      <p className={`text-[9px] font-bold uppercase tracking-wider ${item.color}`}>{item.label}</p>
+                      <p className={`text-[11px] font-bold uppercase tracking-wider ${item.color}`}>{item.label}</p>
                     </div>
                     <div className="flex items-baseline gap-1 mt-auto">
-                      <p className="text-lg font-black text-slate-800 leading-none">{item.value}</p>
-                      <p className="text-[9px] font-medium text-slate-500">{item.unit}</p>
+                      <p className="text-2xl font-black text-slate-800 leading-none">{item.value}</p>
+                      <p className="text-xs font-medium text-slate-500">{item.unit}</p>
                     </div>
                   </div>
                 ))}
               </div>
               {exam.vitals?.remarks && (
-                <p className="text-[10px] text-slate-500 mt-3 italic bg-slate-50 rounded-lg p-2 border border-slate-100">
+                <p className="text-xs text-slate-500 mt-3 italic bg-slate-50 rounded-lg p-2 border border-slate-100">
                   <span className="font-bold not-italic text-slate-600">Remarks: </span>{exam.vitals.remarks}
                 </p>
               )}
@@ -1313,7 +1732,7 @@ export const Approvals = () => {
             {/* Anthropometrics Card */}
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute left-0 top-0 w-1 h-full bg-blue-400"></div>
-              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <i className="fa-solid fa-weight-scale text-blue-500"></i> Anthropometrics
               </h5>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1324,9 +1743,9 @@ export const Approvals = () => {
                   { label: 'Waist', value: exam.anthropometrics?.waist || '—', unit: 'cm' },
                 ].map((item, idx) => (
                   <div key={idx} className="bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
-                    <p className="text-[13px] font-black text-slate-700">
-                      {item.value} {item.unit && <span className="text-[9px] font-medium text-slate-500">{item.unit}</span>}
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
+                    <p className="text-xl font-black text-slate-700">
+                      {item.value} {item.unit && <span className="text-xs font-medium text-slate-500">{item.unit}</span>}
                     </p>
                   </div>
                 ))}
@@ -1336,7 +1755,7 @@ export const Approvals = () => {
             {/* Lifestyle & Social History Card */}
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute left-0 top-0 w-1 h-full bg-emerald-400"></div>
-              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <i className="fa-solid fa-martini-glass text-emerald-500"></i> Lifestyle & Social History
               </h5>
               <div className="grid grid-cols-3 gap-2">
@@ -1349,10 +1768,10 @@ export const Approvals = () => {
                   return (
                     <div key={idx} className={`p-2.5 rounded-lg border flex flex-col items-center justify-center text-center ${isPositive ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
                       <i className={`fa-solid ${item.icon} mb-1.5 ${isPositive ? 'text-red-500' : 'text-emerald-500'}`}></i>
-                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{item.label}</p>
-                      <p className={`text-[11px] font-black ${isPositive ? 'text-red-700' : 'text-emerald-700'}`}>{item.value}</p>
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{item.label}</p>
+                      <p className={`text-sm font-black ${isPositive ? 'text-red-700' : 'text-emerald-700'}`}>{item.value}</p>
                       {item.details && (
-                        <p className="text-[9px] text-slate-500 mt-1 leading-snug">{item.details}</p>
+                        <p className="text-[11px] text-slate-500 mt-1 leading-snug">{item.details}</p>
                       )}
                     </div>
                   );
@@ -1368,49 +1787,49 @@ export const Approvals = () => {
             {/* Clinical History Card */}
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute left-0 top-0 w-1 h-full bg-purple-400"></div>
-              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <i className="fa-solid fa-notes-medical text-purple-500"></i> Clinical History
               </h5>
 
               <div className="space-y-4">
                 {/* 1. Past Medical History */}
                 <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                     <i className="fa-solid fa-file-waveform"></i> Past Medical History
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {(exam.medicalHistory.length > 0 ? exam.medicalHistory : ['None recorded']).map((h, idx) => (
-                      <span key={idx} className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-purple-100">{h}</span>
+                      <span key={idx} className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-xs font-bold border border-purple-100">{h}</span>
                     ))}
                   </div>
                   {exam.otherMedicalHistory && (
-                    <p className="text-[10px] text-slate-600 mt-2 italic">Other: {exam.otherMedicalHistory}</p>
+                    <p className="text-xs text-slate-600 mt-2 italic">Other: {exam.otherMedicalHistory}</p>
                   )}
                 </div>
 
                 {/* 2. Family History */}
                 <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                     <i className="fa-solid fa-people-roof"></i> Family History
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {(exam.familyHistory.length > 0 ? exam.familyHistory : ['None recorded']).map((h, idx) => (
-                      <span key={idx} className="bg-fuchsia-50 text-fuchsia-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-fuchsia-100">{h}</span>
+                      <span key={idx} className="bg-fuchsia-50 text-fuchsia-700 px-2.5 py-1 rounded-md text-xs font-bold border border-fuchsia-100">{h}</span>
                     ))}
                   </div>
                   {exam.otherFamilyHistory && (
-                    <p className="text-[10px] text-slate-600 mt-2 italic">Other: {exam.otherFamilyHistory}</p>
+                    <p className="text-xs text-slate-600 mt-2 italic">Other: {exam.otherFamilyHistory}</p>
                   )}
                 </div>
 
                 {/* 3. Surgical History */}
                 <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                     <i className="fa-solid fa-scalpel"></i> Surgical History
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {(exam.surgicalHistory.length > 0 ? exam.surgicalHistory : ['None recorded']).map((h, idx) => (
-                      <span key={idx} className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-[10px] font-bold border border-indigo-100">{h}</span>
+                      <span key={idx} className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-xs font-bold border border-indigo-100">{h}</span>
                     ))}
                   </div>
                 </div>
@@ -1420,7 +1839,7 @@ export const Approvals = () => {
             {/* Laboratory Results Card */}
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute left-0 top-0 w-1 h-full bg-teal-400"></div>
-              <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <i className="fa-solid fa-microscope text-teal-500"></i> Laboratory Results
               </h5>
 
@@ -1432,18 +1851,18 @@ export const Approvals = () => {
                 ].map((test, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600 font-bold text-[10px]">
+                      <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600 font-bold text-xs">
                         {test.short}
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold text-slate-700">{test.label}</p>
-                        <p className="text-[9px] text-slate-500 flex items-center gap-1">
+                        <p className="text-sm font-bold text-slate-700">{test.label}</p>
+                        <p className="text-xs text-slate-500 flex items-center gap-1">
                           <i className="fa-solid fa-hospital text-slate-400"></i> {test.facility || 'No facility recorded'}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${test.result && test.result.toLowerCase() !== 'pending' && test.result !== '—' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'}`}>
+                      <span className={`text-sm font-bold px-2.5 py-1 rounded-md ${test.result && test.result.toLowerCase() !== 'pending' && test.result !== '—' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'}`}>
                         {test.result || 'Pending'}
                       </span>
                     </div>
@@ -1459,7 +1878,7 @@ export const Approvals = () => {
         {exam.questionnaire && Object.keys(exam.questionnaire).length > 0 && (
           <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden mb-4">
             <div className="absolute left-0 top-0 w-1 h-full bg-cyan-400"></div>
-            <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
               <i className="fa-solid fa-circle-question text-cyan-500"></i> Health History Questionnaire
             </h5>
             <div className="space-y-2">
@@ -1469,13 +1888,13 @@ export const Approvals = () => {
                 const isYes = answer?.toLowerCase() === 'yes';
                 return (
                   <div key={name} className="flex items-start justify-between gap-3 p-2.5 bg-slate-50 border border-slate-100 rounded-lg">
-                    <p className="text-xs text-slate-700 flex-1">{q}</p>
+                    <p className="text-sm text-slate-700 flex-1">{q}</p>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                         {answer || '—'}
                       </span>
                       {detail && exam.questionnaire?.[detail] && (
-                        <span className="text-[10px] text-slate-500 italic max-w-[220px] text-right">{exam.questionnaire[detail]}</span>
+                        <span className="text-xs text-slate-500 italic max-w-[220px] text-right">{exam.questionnaire[detail]}</span>
                       )}
                     </div>
                   </div>
@@ -1489,15 +1908,15 @@ export const Approvals = () => {
         {exam.vaccine && (exam.vaccine.dose1 || exam.vaccine.dose2 || exam.vaccine.booster || exam.vaccine.booster2 || exam.vaccine.history) && (
           <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden mb-4">
             <div className="absolute left-0 top-0 w-1 h-full bg-lime-400"></div>
-            <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
               <i className="fa-solid fa-syringe text-lime-500"></i> COVID-19 Vaccination History
             </h5>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
+              <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50">
                     {['Dose', 'Vaccine', 'Date'].map(h => (
-                      <th key={h} className="border border-slate-100 p-2 text-left font-bold text-slate-400 uppercase tracking-wider text-[9px]">{h}</th>
+                      <th key={h} className="border border-slate-100 p-2 text-left font-bold text-slate-400 uppercase tracking-wider text-xs">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1518,373 +1937,50 @@ export const Approvals = () => {
               </table>
             </div>
             {exam.vaccine.history && (
-              <p className="text-[10px] text-slate-500 mt-2 italic">COVID-19 History: {exam.vaccine.history}</p>
+              <p className="text-xs text-slate-500 mt-2 italic">COVID-19 History: {exam.vaccine.history}</p>
             )}
           </div>
         )}
 
-        {/* --- Past Records History Section --- */}
-        <div className="bg-[#466460]/10 rounded-xl p-5 mb-4 border-2 border-[#466460]/30 shadow-sm">
-          <h4 className="text-sm font-bold text-[#466460] mb-4 uppercase tracking-wide border-b border-[#466460]/30 pb-2">
-            <i className="fa-solid fa-clock-rotate-left mr-2"></i>
-            {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'Past Dental Records (History)' : (examType === 'dental' ? 'Past Dental Records (History)' : 'Past Medical Records (History)')}
-          </h4>
+        {/* --- Past Records History Section (Medical - redesigned timeline) --- */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#466460]/5 to-transparent">
+            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+              <i className="fa-solid fa-clock-rotate-left"></i>
+              {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'Past Dental Records' : 'Past Medical Records'}
+            </h4>
+            {!loadingHistory && consultationHistory.length > 0 && (
+              <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                {consultationHistory.length} record{consultationHistory.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
 
-          {loadingHistory ? (
-            <div className="text-center py-6 text-slate-400 text-xs">
-              <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
-            </div>
-          ) : consultationHistory.length === 0 ? (
-            <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg bg-slate-50">
-              <p className="text-xs text-slate-400">
-                {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data)
-                  ? 'No previous dental records found for this patient.'
-                  : 'No previous medical records found for this patient.'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {consultationHistory.map((consult, idx) => {
-                // Detect if this is a dental record based on fields present
-                const isDentalRecord = consult.dental_history || consult.tooth_data || consult.intraoral;
-
-                // Helper to parse JSON fields safely
-                const parseJson = (str, fallback = {}) => {
-                  if (!str) return fallback;
-                  if (typeof str === 'object') return str;
-                  try { return JSON.parse(str); } catch { return fallback; }
-                };
-
-                const formatFullDate = (dateStr) => {
-                  if (!dateStr) return '-';
-                  const d = new Date(dateStr);
-                  if (isNaN(d.getTime())) return dateStr;
-                  const month = d.toLocaleDateString('en-US', { month: 'long' });
-                  const day = String(d.getDate()).padStart(2, '0');
-                  const year = d.getFullYear();
-                  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                  return `${month} ${day}, ${year} ${time}`;
-                };
-
-                const rawDate = consult.exam_date || consult.created_at;
-                const dateTime = formatFullDate(rawDate);
-
-                // For dental records, parse JSON fields
-                const intraoral = isDentalRecord ? parseJson(consult.intraoral, {}) : {};
-                const toothData = isDentalRecord ? parseJson(consult.tooth_data, {}) : {};
-                const dentalHistory = isDentalRecord ? parseJson(consult.dental_history, {}) : {};
-
-                // For medical records, parse vitals and lab results, and pull clinical history fields
-                const vitalRec = !isDentalRecord ? (() => {
-                  const v = consult.vital_records;
-                  if (!v) return {};
-                  if (Array.isArray(v)) return v[0] || {};
-                  if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }
-                  return v;
-                })() : {};
-
-                const labResultsRaw = !isDentalRecord ? parseJson(consult.laboratory_results, {}) : {};
-                const labResults = !isDentalRecord ? {
-                  cbc:         labResultsRaw.cbc?.result   || consult.lab_cbc          || '',
-                  cbcFacility: labResultsRaw.cbc?.facility || consult.lab_cbc_facility || '',
-                  ua:          labResultsRaw.ua?.result    || consult.lab_ua           || '',
-                  uaFacility:  labResultsRaw.ua?.facility  || consult.lab_ua_facility  || '',
-                  xray:        labResultsRaw.xray?.result  || consult.lab_xray         || '',
-                  xrayFacility:labResultsRaw.xray?.facility|| consult.lab_xray_facility|| '',
-                } : {};
-
-                const pastMedicalHistory = !isDentalRecord ? (consult.checked_medical || []) : [];
-                const pastFamilyHistory = !isDentalRecord ? (consult.checked_family || []) : [];
-                const pastSurgicalHistory = !isDentalRecord ? (consult.surgical_history?.map(s => `${s.operation} (${s.date})`) || []) : [];
-                const pastOtherMedicalHistory = consult.other_medical_history || '';
-                const pastOtherFamilyHistory = consult.other_family_history || '';
-
-                // Use detected type from selected exam for rendering
-                const renderExamType = (selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'dental' : examType;
-
-                // Parse questionnaire and covid history for medical past records
-                const pastQuestionnaire = !isDentalRecord ? parseJson(consult.questionnaire, {}) : {};
-                const pastCovidHistory = !isDentalRecord ? parseJson(consult.covid_history, {}) : {};
-
-                return (
-                  <div key={consult.id || idx} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    {/* Header with date and status */}
-                    <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-700">{dateTime}</span>
-                      <StatusBadge status={consult.status} />
-                    </div>
-
-                    <div className="p-4 text-xs space-y-4">
-                      {/* Basic Info - same as in Approvals.jsx but reformatted */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div>
-                          <p className="text-[7px] text-slate-400 uppercase">
-                            {renderExamType === 'dental' ? 'Examined By' : 'Physician'}
-                          </p>
-                          <p className="font-medium">
-                            {renderExamType === 'dental'
-                              ? (consult.examined_by || '-')
-                              : (consult.physician || consult.nurse_on_duty || '-')}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[7px] text-slate-400 uppercase">Exam Date</p>
-                          <p className="font-medium">{dateTime}</p>
-                        </div>
-                        {renderExamType === 'dental' && (
-                          <>
-                            <div>
-                              <p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p>
-                              <p className="font-mono">{consult.teeth_upper || '-'}</p>
-                            </div>
-                            <div>
-                              <p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p>
-                              <p className="font-mono">{consult.teeth_lower || '-'}</p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      {/* DENTAL: Intraoral Examination */}
-                      {renderExamType === 'dental' && intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
-                          </h5>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
-                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
-                                <span className="font-medium text-slate-700">{String(val)}</span>
-                              </div>
-                            ))}
-                            {intraoral.tmjExam && (
-                              <div className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400">TMJ: </span>
-                                <span className="font-medium text-slate-700">Examined</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* DENTAL: Tooth Conditions Chart */}
-                      {renderExamType === 'dental' && toothData && Object.keys(toothData).length > 0 && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
-                          </h5>
-
-                          {/* Summary counts */}
-                          <div className="flex gap-2 mb-3 text-xs">
-                            {(() => {
-                              const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
-                              Object.values(toothData).forEach(d => {
-                                if (d.condition && conditions.hasOwnProperty(d.condition)) {
-                                  conditions[d.condition]++;
-                                }
-                              });
-                              return (
-                                <>
-                                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                                  <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                                  <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                                </>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Individual teeth */}
-                          <div className="grid grid-cols-4 gap-2">
-                            {Object.entries(toothData).map(([tooth, data]) => {
-                              const conditionColors = {
-                                'caries': 'bg-red-100 text-red-700 border-red-300',
-                                'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                                'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                                'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                                'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                              };
-
-                              return (
-                                <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-                                  <span className="block font-bold text-xs">#{tooth}</span>
-                                  <span className="block text-[9px] capitalize">{data.condition || '-'}</span>
-                                  {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* DENTAL: Procedures Done */}
-                      {renderExamType === 'dental' && dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
-                          </h5>
-                          <div className="flex flex-wrap gap-1.5">
-                            {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
-                              <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-[#466460] rounded-full">
-                                {key}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* MEDICAL: Vital Signs */}
-                      {renderExamType === 'medical' && vitalRec && (vitalRec.bp || vitalRec.pr || vitalRec.rr || vitalRec.temp) && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-heart-pulse mr-1"></i>Vital Signs
-                          </h5>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {[
-                              { label: 'Blood Pressure', value: vitalRec.bp, unit: 'mmHg' },
-                              { label: 'Heart Rate', value: vitalRec.pr, unit: 'bpm' },
-                              { label: 'Respiratory Rate', value: vitalRec.rr, unit: 'cpm' },
-                              { label: 'Temperature', value: vitalRec.temp, unit: '°C' },
-                            ].filter(v => v.value).map((v, i) => (
-                              <div key={i} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400">{v.label}: </span>
-                                <span className="font-medium text-slate-700">{v.value} {v.unit}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {vitalRec.remarks && (
-                            <p className="text-[10px] text-slate-500 mt-2 italic">Remarks: {vitalRec.remarks}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* MEDICAL: Clinical History */}
-                      {renderExamType === 'medical' && (pastMedicalHistory.length > 0 || pastFamilyHistory.length > 0 || pastSurgicalHistory.length > 0 || pastOtherMedicalHistory || pastOtherFamilyHistory) && (
-                        <div className="border-t border-slate-100 pt-3 space-y-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-1">
-                            <i className="fa-solid fa-notes-medical mr-1"></i>Clinical History
-                          </h5>
-
-                          {/* 1. Past Medical History */}
-                          <div>
-                            <p className="text-[9px] text-slate-400 uppercase mb-1">Past Medical History</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(pastMedicalHistory.length > 0 ? pastMedicalHistory : ['None recorded']).map((h, i) => (
-                                <span key={i} className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-[9px] font-bold border border-purple-100">{h}</span>
-                              ))}
-                            </div>
-                            {pastOtherMedicalHistory && (
-                              <p className="text-[10px] text-slate-600 mt-1.5 italic">Other: {pastOtherMedicalHistory}</p>
-                            )}
-                          </div>
-
-                          {/* 2. Family History */}
-                          <div>
-                            <p className="text-[9px] text-slate-400 uppercase mb-1">Family History</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(pastFamilyHistory.length > 0 ? pastFamilyHistory : ['None recorded']).map((h, i) => (
-                                <span key={i} className="bg-fuchsia-50 text-fuchsia-700 px-2 py-0.5 rounded text-[9px] font-bold border border-fuchsia-100">{h}</span>
-                              ))}
-                            </div>
-                            {pastOtherFamilyHistory && (
-                              <p className="text-[10px] text-slate-600 mt-1.5 italic">Other: {pastOtherFamilyHistory}</p>
-                            )}
-                          </div>
-
-                          {/* 3. Surgical History */}
-                          <div>
-                            <p className="text-[9px] text-slate-400 uppercase mb-1">Surgical History</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(pastSurgicalHistory.length > 0 ? pastSurgicalHistory : ['None recorded']).map((h, i) => (
-                                <span key={i} className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[9px] font-bold border border-indigo-100">{h}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* MEDICAL: Lab Results */}
-                      {renderExamType === 'medical' && (labResults.cbc || labResults.ua || labResults.xray) && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-flask mr-1"></i>Laboratory Results
-                          </h5>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                            {[
-                              { label: 'CBC', result: labResults.cbc, facility: labResults.cbcFacility },
-                              { label: 'UA', result: labResults.ua, facility: labResults.uaFacility },
-                              { label: 'CXR', result: labResults.xray, facility: labResults.xrayFacility },
-                            ].filter(t => t.result).map((t, i) => (
-                              <div key={i} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400">{t.label}: </span>
-                                <span className="font-medium text-slate-700">{t.result}</span>
-                                {t.facility && <span className="block text-[8px] text-slate-400">{t.facility}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* MEDICAL: Health History Questionnaire */}
-                      {renderExamType === 'medical' && pastQuestionnaire && Object.keys(pastQuestionnaire).length > 0 && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-circle-question mr-1"></i>Health History Questionnaire
-                          </h5>
-                          <div className="space-y-1.5">
-                            {HEALTH_HISTORY_QUESTIONS.map(({ q, name, detail }) => {
-                              const answer = pastQuestionnaire?.[name];
-                              if (answer === undefined) return null;
-                              const isYes = answer?.toLowerCase() === 'yes';
-                              return (
-                                <div key={name} className="flex items-start justify-between gap-2 bg-slate-50 rounded px-2 py-1">
-                                  <span className="text-[9px] text-slate-600 flex-1">{q}</span>
-                                  <div className="flex flex-col items-end gap-0.5 shrink-0">
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                      {answer || '—'}
-                                    </span>
-                                    {detail && pastQuestionnaire?.[detail] && (
-                                      <span className="text-[9px] text-slate-500 italic">{pastQuestionnaire[detail]}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* MEDICAL: COVID-19 Vaccination History */}
-                      {renderExamType === 'medical' && pastCovidHistory && (pastCovidHistory.dose1?.vaccineName || pastCovidHistory.dose2?.vaccineName || pastCovidHistory.booster1?.vaccineName || pastCovidHistory.booster2?.vaccineName || pastCovidHistory.history) && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-syringe mr-1"></i>COVID-19 Vaccination History
-                          </h5>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {[
-                              { label: '1st Dose', name: pastCovidHistory.dose1?.vaccineName, date: pastCovidHistory.dose1?.date },
-                              { label: '2nd Dose', name: pastCovidHistory.dose2?.vaccineName, date: pastCovidHistory.dose2?.date },
-                              { label: 'Booster 1', name: pastCovidHistory.booster1?.vaccineName, date: pastCovidHistory.booster1?.date },
-                              { label: 'Booster 2', name: pastCovidHistory.booster2?.vaccineName, date: pastCovidHistory.booster2?.date },
-                            ].filter(v => v.name).map((v, i) => (
-                              <div key={i} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400">{v.label}: </span>
-                                <span className="font-medium text-slate-700">{v.name}</span>
-                                {v.date && <span className="block text-[8px] text-slate-400">{v.date}</span>}
-                              </div>
-                            ))}
-                          </div>
-                          {pastCovidHistory.history && (
-                            <p className="text-[9px] text-slate-500 mt-2 italic">History: {pastCovidHistory.history}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="p-5">
+            {loadingHistory ? (
+              <div className="text-center py-10 text-slate-400 text-sm">
+                <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
+              </div>
+            ) : consultationHistory.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                <i className="fa-regular fa-folder-open text-2xl text-slate-300 mb-2 block"></i>
+                <p className="text-sm text-slate-400">
+                  {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data)
+                    ? 'No previous dental records found for this patient.'
+                    : 'No previous medical records found for this patient.'}
+                </p>
+              </div>
+            ) : (
+              <div className="relative pl-6">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+                <div className="space-y-4">
+                  {consultationHistory.map((consult, idx) => (
+                    <PastMedicalRecord key={consult.id || idx} consult={consult} defaultOpen={idx === 0} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -2048,23 +2144,18 @@ export const Approvals = () => {
             </h3>
             {selectedExam && (
               <div className="flex gap-2">
-                {/* Edit Button - for both dental and medical */}
-                <button
-                  onClick={() => {
-                    setEditData({
-                      status: selectedExam.status || 'pending',
-                      issue_cert: selectedExam.issue_cert || selectedExam.certificateIssued || selectedExam.reportForwarded || false
-                    });
-                    setShowEditModal(true);
-                  }}
-                  className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1.5"
-                >
-                  <i className="fa-solid fa-pen-to-square"></i> Edit
-                </button>
+
 
                 {/* Dental Actions */}
                 {examType === 'dental' ? (
                   <>
+                    {/* Always show View button for dental */}
+                    <button
+                      onClick={handleEdit}
+                      className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1.5"
+                    >
+                      <i className="fa-solid fa-eye"></i> View
+                    </button>
                     {activeTab === 'pending' && (
                       <>
                         <button
@@ -2112,7 +2203,7 @@ export const Approvals = () => {
                     onClick={handleEdit}
                     className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1.5"
                   >
-                    <i className="fa-solid fa-pen-to-square"></i> Edit
+                    <i className="fa-solid fa-eye"></i> View
                   </button>
 
                   {/* Pending Tab: Approve Record */}
@@ -2419,6 +2510,92 @@ export const Approvals = () => {
                 examination={selectedExam}
                 onSubmit={handleSubmitCertificate}
                 onEdit={handleEdit}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* --- FULL EXAMINATION MODAL - MEDICAL --- */}
+      {showFullExamModal && examRecordData && examType === 'medical' && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}></div>
+
+          {/* Modal Content */}
+          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
+                  <i className="fa-solid fa-file-medical text-white text-lg"></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800">
+                    {examRecordData.firstName || examRecordData.lastName ? `${examRecordData.firstName || ''} ${examRecordData.middleName || ''} ${examRecordData.lastName || ''}`.trim() : examRecordData.name || 'Medical Examination'}
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    {examRecordData.id || examRecordData.university_id || examRecordData.student_id || ''} • {examRecordData.department || examRecordData.program || ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}
+                className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+              >
+                <i className="fa-solid fa-xmark text-xl"></i>
+              </button>
+            </div>
+            <div className="overflow-y-auto custom-scrollbar flex-1 bg-[#f8fafc]">
+              <Medical
+                selectedPatient={examRecordData}
+                showMessage={(msg) => showSnackbar(msg, 'success')}
+                defaultSchoolYear={examRecordData.schoolYear || ''}
+                defaultSemester=""
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* --- FULL EXAMINATION MODAL - DENTAL --- */}
+      {showFullExamModal && examRecordData && examType === 'dental' && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}></div>
+
+          {/* Modal Content */}
+          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
+                  <i className="fa-solid fa-tooth text-white text-lg"></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800">
+                    {examRecordData.firstName || examRecordData.lastName ? `${examRecordData.firstName || ''} ${examRecordData.middleName || ''} ${examRecordData.lastName || ''}`.trim() : examRecordData.name || 'Dental Examination'}
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    {examRecordData.id || examRecordData.university_id || examRecordData.student_id || ''} • {examRecordData.program || examRecordData.course || ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}
+                className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+              >
+                <i className="fa-solid fa-xmark text-xl"></i>
+              </button>
+            </div>
+            <div className="overflow-y-auto custom-scrollbar flex-1 bg-[#f8fafc]">
+              <Dental
+                selectedPatient={examRecordData}
+                showMessage={(msg) => showSnackbar(msg, 'success')}
+                defaultSchoolYear={examRecordData.schoolYear || ''}
+                defaultSemester={examRecordData.semester || '1st Semester'}
               />
             </div>
           </div>

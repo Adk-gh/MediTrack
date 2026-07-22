@@ -178,16 +178,22 @@ export function AppointmentProvider({ children }) {
 
   const declineAppointment = useCallback(async (id) => {
     try {
-      // Optimistic remove from state + cache
+      // Optimistic update - set status to 'declined' instead of deleting
       setAppointments((prev) => {
-        const next = prev.filter((a) => a.id !== id);
+        const next = prev.map(a =>
+          a.id === id ? { ...a, status: 'declined' } : a
+        );
         writeCache(next);
         return next;
       });
 
-      const { error } = await supabase.from(COL).delete().eq('id', id);
+      // Update status to 'declined' instead of deleting
+      const { error } = await supabase
+        .from(COL)
+        .update({ status: 'declined', updated_at: new Date().toISOString() })
+        .eq('id', id);
+
       if (error) throw error;
-      // Realtime DELETE event will confirm the removal
     } catch (err) {
       console.error('declineAppointment failed:', err);
       throw err;
