@@ -78,8 +78,64 @@ const generateSchoolYears = () => {
 const schoolYearOptions = generateSchoolYears();
 
 // ── Shared style tokens ────────────────────────────────────────────────────────
-const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
+// ── Helper: Fetch physicians for dropdown ───────────────────────────────────────
+const fetchPhysicians = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, license_number, role')
+      .eq('role', 'doctor')
+      .order('last_name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching physicians:', error);
+      return [];
+    }
+
+    // Format: "LastName, FirstName M.D / License no. XXXXXX"
+    return (data || []).map(doc => ({
+      id: doc.id,
+      display: `${doc.last_name || ''}, ${doc.first_name || ''} M.D / License no. ${doc.license_number || ''}`.trim(),
+      licenseNumber: doc.license_number || '',
+      firstName: doc.first_name || '',
+      lastName: doc.last_name || '',
+    }));
+  } catch (err) {
+    console.error('Error fetching physicians:', err);
+    return [];
+  }
+};
+
+// ── Helper: Fetch nurses for dropdown ───────────────────────────────────────
+const fetchNurses = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, role')
+      .eq('role', 'nurse')
+      .order('last_name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching nurses:', error);
+      return [];
+    }
+
+    // Format: "LastName, FirstName"
+    return (data || []).map(doc => ({
+      id: doc.id,
+      display: `${doc.last_name || ''}, ${doc.first_name || ''}`.trim(),
+      firstName: doc.first_name || '',
+      lastName: doc.last_name || '',
+    }));
+  } catch (err) {
+    console.error('Error fetching nurses:', err);
+    return [];
+  }
+};
+
+const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed";
 const labelClass   = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1";
+const requiredLabelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1";
 const sectionClass = "bg-slate-50 border-l-4 border-[#466460] px-4 py-2 text-xs font-bold uppercase my-4 flex justify-between items-center text-slate-700";
 
 // ── Summary sub-components ─────────────────────────────────────────────────────
@@ -402,11 +458,14 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
   let u = p || {};
   if (p?.users) u = Array.isArray(p.users) ? (p.users || {}) : p.users;
 
-  const patientInfo = existingRecord?.patient_info || {};
-  const labResults = existingRecord?.laboratory_results || {};
+  // Support passing existingRecord in the patient object (for editing from Approvals)
+  const record = p?.existingRecord || existingRecord || null;
+
+  const patientInfo = record?.patient_info || {};
+  const labResults = record?.laboratory_results || {};
 
   // Safely grab existing vitals whether saved as array or object previously
-  const rawVitals = existingRecord?.vital_records;
+  const rawVitals = record?.vital_records;
   const vitalRec = Array.isArray(rawVitals) ? (rawVitals[0] || {}) : (rawVitals || {});
 
   const rawEmergency = u.emergency_contact || u.emergencyContact;
@@ -429,16 +488,16 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     }
   }
 
-  const covidSource = (existingRecord && existingRecord.covid_history && Object.keys(existingRecord.covid_history).length > 0)
-    ? existingRecord.covid_history
+  const covidSource = (record && record.covid_history && Object.keys(record.covid_history).length > 0)
+    ? record.covid_history
     : userVax;
 
   return {
     lastName:      u.last_name || u.lastName || '',
     firstName:     u.first_name || u.firstName || '',
     middleName:    u.middle_name || u.middleName || '',
-    schoolYear:    existingRecord?.school_year || defaultSchoolYear,
-    semester:      existingRecord?.semester || defaultSemester || '1st Semester',
+    schoolYear:    record?.school_year || defaultSchoolYear,
+    semester:      record?.semester || defaultSemester || '1st Semester',
     studentId:     u.university_id || u.universityId || u.student_id || '',
     course:        u.program || u.course || '',
     department:    u.department || '',
@@ -473,24 +532,28 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     booster2Date: covidSource?.booster2?.date || '',
     booster2Remarks: covidSource?.booster2?.remarks || '',
 
-    otherMedicalHistory: existingRecord?.other_medical_history || '',
-    otherFamilyHistory:  existingRecord?.other_family_history || '',
-    smoking: existingRecord?.smoking || 'No',
-    smokingDetails: existingRecord?.smoking_details || '',
-    alcohol: existingRecord?.alcohol || 'No',
-    alcoholDetails: existingRecord?.alcohol_details || '',
-    drugs:   existingRecord?.drugs || 'No',
-    drugsDetails:   existingRecord?.drugs_details || '',
+    otherMedicalHistory: record?.other_medical_history || '',
+    otherFamilyHistory:  record?.other_family_history || '',
+    smoking: record?.smoking || 'No',
+    smokingDetails: record?.smoking_details || '',
+    alcohol: record?.alcohol || 'No',
+    alcoholDetails: record?.alcohol_details || '',
+    drugs:   record?.drugs || 'No',
+    drugsDetails:   record?.drugs_details || '',
 
-    // Load surgical history from user profile (not from existingRecord)
-    surgicalHistoryFromProfile: parseJsonField(u.surgical_history, { operations: [], declined: false }),
+    // Load surgical history from user profile or from existing record
+    surgicalHistoryFromProfile: record?.surgical_history || parseJsonField(u.surgical_history, { operations: [], declined: false }),
 
-    studentSignature: existingRecord?.student_signature || '',
-    dateSigned: existingRecord?.date_signed || '',
-    q1: 'Yes', q2: 'No', q2Details: '',
-    q3: 'No',  q3Details: '',
-    q4: 'No',  q4Details: '',
-    q5: 'No',  q5b: 'No',
+    // Read questionnaire from patient object (from Approvals) or existingRecord
+    q1: p?.questionnaire?.q1 || record?.questionnaire?.q1 || 'Yes',
+    q2: p?.questionnaire?.q2 || record?.questionnaire?.q2 || 'No',
+    q2Details: p?.questionnaire?.q2Details || record?.questionnaire?.q2Details || '',
+    q3: p?.questionnaire?.q3 || record?.questionnaire?.q3 || 'No',
+    q3Details: p?.questionnaire?.q3Details || record?.questionnaire?.q3Details || '',
+    q4: p?.questionnaire?.q4 || record?.questionnaire?.q4 || 'No',
+    q4Details: p?.questionnaire?.q4Details || record?.questionnaire?.q4Details || '',
+    q5: p?.questionnaire?.q5 || record?.questionnaire?.q5 || 'No',
+    q5b: p?.questionnaire?.q5b || record?.questionnaire?.q5b || 'No',
 
     height: vitalRec?.height || '',
     weight: vitalRec?.weight || '',
@@ -508,11 +571,11 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     labXrayFacility: labResults?.xray?.facility || '',
     labXrayDate:   labResults?.xray?.date || '',
 
-    physician: existingRecord?.physician || '',
-    examDateTime: existingRecord?.exam_date
-      ? existingRecord.exam_date.slice(0, 16)
+    physician: record?.physician || '',
+    examDateTime: record?.exam_date
+      ? record.exam_date.slice(0, 16)
       : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16),
-    nurseOnDuty: existingRecord?.nurse_on_duty || '',
+    nurseOnDuty: record?.nurse_on_duty || '',
   };
 };
 
@@ -520,10 +583,23 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
 const createDefaultVital = () => ({ bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester }) => {
+export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false }) => {
   const [showSummary, setShowSummary]   = useState(false);
   const [activeTab, setActiveTab]       = useState('patientProfile');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [physicians, setPhysicians]     = useState([]);
+  const [nurses, setNurses]             = useState([]);
+
+  // Fetch physicians and nurses on mount
+  useEffect(() => {
+    const loadData = async () => {
+      const [docs, nursesData] = await Promise.all([fetchPhysicians(), fetchNurses()]);
+      setPhysicians(docs);
+      setNurses(nursesData);
+    };
+    loadData();
+  }, []);
 
   // Initialize surgical history from selectedPatient if available
   const getInitialSurgicalHistory = () => {
@@ -554,28 +630,88 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     const { uid, id } = normalizePatient(selectedPatient);
     const userId = uid || id;
 
+    // Helper to normalize stored values for matching with condition arrays
+    const normalizeCondition = (value) => {
+      // Remove any details after colon (e.g., "Allergy: dust" -> "Allergy")
+      const baseName = value.split(':')[0].trim();
+      // Remove ", specify" suffix for matching
+      return baseName.replace(', specify', '').replace(' (If PTB, category)', '').toLowerCase();
+    };
+
+    // Helper to extract details from stored value (e.g., "Allergy: dust" -> "dust")
+    const extractDetails = (value) => {
+      const parts = value.split(':');
+      return parts.length > 1 ? parts.slice(1).join(':').trim() : '';
+    };
+
+    // Helper to match stored values with condition arrays
+    const matchConditions = (storedValues, conditionArray) => {
+      const matched = [];
+      const specs = {};
+
+      storedValues.forEach(val => {
+        const normalized = normalizeCondition(val);
+        const details = extractDetails(val);
+
+        // Find matching condition in the array
+        const found = conditionArray.find(c => normalizeCondition(c) === normalized);
+        if (found) {
+          matched.push(found);
+          if (details) {
+            specs[found] = details;
+          }
+        }
+      });
+
+      return { matched, specs };
+    };
+
     const fetchFullProfile = async () => {
       setActiveTab('patientProfile');
-      setCheckedMedical([]);
-      setMedicalSpecs({});
-      setCheckedFamily([]);
-      setFamilySpecs({});
-      setCheckedHealth([]);
-      setHealthSpecs({});
-      setSurgicalHistory([]);
 
-      // Reset to a clean object
-      setVitalRecords(createDefaultVital());
+      // Load medical history from selectedPatient (from Approvals) or default to empty
+      const passedMedicalHistory = selectedPatient?.medicalHistory || selectedPatient?.checked_medical || [];
+      const passedFamilyHistory = selectedPatient?.familyHistory || selectedPatient?.checked_family || [];
+      const passedHealthConditions = selectedPatient?.healthConditions || selectedPatient?.checked_health || [];
+      const passedSurgicalHistory = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
+
+      console.log('[Medical] Loading from selectedPatient:', {
+        medicalHistory: passedMedicalHistory,
+        familyHistory: passedFamilyHistory,
+        healthConditions: passedHealthConditions,
+        surgicalHistory: passedSurgicalHistory
+      });
+
+      // Match stored values with condition arrays and extract specs
+      const { matched: matchedMedical, specs: medicalSpecsData } = matchConditions(passedMedicalHistory, medicalConditions);
+      const { matched: matchedFamily, specs: familySpecsData } = matchConditions(passedFamilyHistory, familyConditions);
+      const { matched: matchedHealth, specs: healthSpecsData } = matchConditions(passedHealthConditions, healthConditions);
+
+      // Set checked values from passed data (from Approvals)
+      setCheckedMedical(matchedMedical);
+      setMedicalSpecs(medicalSpecsData);
+      setCheckedFamily(matchedFamily);
+      setFamilySpecs(familySpecsData);
+      setCheckedHealth(matchedHealth);
+      setHealthSpecs(healthSpecsData);
+      setSurgicalHistory(passedSurgicalHistory?.operations || []);
+
+      // Load vital records from selectedPatient (from Approvals)
+      const passedVitalRecords = selectedPatient?.vitalRecords || selectedPatient?.vital_records || null;
+      if (passedVitalRecords && typeof passedVitalRecords === 'object') {
+        setVitalRecords({
+          bp: passedVitalRecords.bp || '',
+          pr: passedVitalRecords.pr || '',
+          rr: passedVitalRecords.rr || '',
+          temp: passedVitalRecords.temp || '',
+          nurse: passedVitalRecords.nurse || '',
+          remarks: passedVitalRecords.remarks || '',
+        });
+      } else {
+        setVitalRecords(createDefaultVital());
+      }
 
       setFormData(buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
-
-      // Check if surgical history is passed directly in selectedPatient (from Approvals)
-      const passedSurgicalHistory = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
-      console.log('[Medical] selectedPatient surgicalHistory:', JSON.stringify(passedSurgicalHistory));
-      if (passedSurgicalHistory && passedSurgicalHistory.operations && passedSurgicalHistory.operations.length > 0) {
-        console.log('[Medical] Loading surgical history from passed data:', passedSurgicalHistory.operations);
-        setSurgicalHistory(passedSurgicalHistory.operations);
-      }
 
       if (userId) {
         console.log('[Medical] Fetching user profile with', { userId });
@@ -588,14 +724,20 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
         console.log('[Medical] users table fetch result:', { data, error });
 
         if (isMounted && data && !error) {
-          setFormData(buildInitialForm(data, null, defaultSchoolYear, defaultSemester));
+          // Only update form with user profile data if not already set from selectedPatient
+          // (for Records.jsx flow where we fetch fresh data)
+          if (!selectedPatient?.existingRecord) {
+            setFormData(buildInitialForm(data, null, defaultSchoolYear, defaultSemester));
+          }
 
-          // Load surgical history from user's profile (if not already set from selectedPatient)
-          const userSurgicalHistory = parseJsonField(data.surgical_history, { operations: [], declined: false });
-          console.log('[Medical] parsed userSurgicalHistory from users table:', userSurgicalHistory);
-          if (userSurgicalHistory.operations && userSurgicalHistory.operations.length > 0 && (!passedSurgicalHistory || passedSurgicalHistory.operations.length === 0)) {
-            console.log('[Medical] Setting surgicalHistory from users table:', userSurgicalHistory.operations);
-            setSurgicalHistory(userSurgicalHistory.operations);
+          // Load surgical history from user's profile if not already set from selectedPatient
+          if (!passedSurgicalHistory || !passedSurgicalHistory.operations || passedSurgicalHistory.operations.length === 0) {
+            const userSurgicalHistory = parseJsonField(data.surgical_history, { operations: [], declined: false });
+            console.log('[Medical] parsed userSurgicalHistory from users table:', userSurgicalHistory);
+            if (userSurgicalHistory.operations && userSurgicalHistory.operations.length > 0) {
+              console.log('[Medical] Setting surgicalHistory from users table:', userSurgicalHistory.operations);
+              setSurgicalHistory(userSurgicalHistory.operations);
+            }
           }
         }
       } else {
@@ -609,15 +751,18 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
   }, [selectedPatient?.uid, selectedPatient?.id, selectedPatient?.users]);
 
   const handleChange = (e) => {
+    if (readOnly) return;
     const { id, value, name } = e.target;
     setFormData(prev => ({ ...prev, [id || name]: value }));
   };
 
   const handleDateChange = (field, val) => {
+    if (readOnly) return;
     setFormData(prev => ({ ...prev, [field]: val }));
   };
 
   const calculateAge = (val) => {
+    if (readOnly) return;
     if (!val) {
       setFormData(prev => ({ ...prev, birthday: '', age: '' }));
       return;
@@ -633,15 +778,38 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
   };
 
   const toggleCheck = (list, setList, value) => {
+    if (readOnly) return;
     setList(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
   };
 
   // FIX: Updates a flat object instead of an array
   const updateVital = (field, value) => {
+    if (readOnly) return;
     setVitalRecords(prev => ({ ...prev, [field]: value }));
   };
 
   const handleOpenSummary = () => {
+    // Validate required fields
+    const errors = {};
+
+    // Validate vital signs (at least one should be filled)
+    if (!vitalRecords.bp?.trim()) errors.bp = 'Blood Pressure is required';
+    if (!vitalRecords.pr?.trim()) errors.pr = 'Pulse Rate is required';
+    if (!vitalRecords.temp?.trim()) errors.temp = 'Temperature is required';
+
+    // Validate exam date
+    if (!formData.examDateTime?.trim()) errors.examDateTime = 'Examination Date is required';
+
+    // Validate physician
+    if (!formData.physician?.trim()) errors.physician = 'Examining Physician is required';
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      alert('Please fill in all required fields:\n\n• Blood Pressure (BP)\n• Pulse Rate (PR)\n• Temperature\n• Examining Physician\n• Examination Date');
+      return;
+    }
+
+    setValidationErrors({});
     if (!formData.lastName) { alert("Please fill in patient's last name."); return; }
     setShowSummary(true);
   };
@@ -657,6 +825,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
 // ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
+    if (readOnly) return;
     // normalizePatient now guarantees `id` is either null or a real uuid,
     // so patientInternalId can never be a stray university/student number.
     const { uid: patientUid, id: patientInternalId } = normalizePatient(selectedPatient);
@@ -801,40 +970,47 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
   return (
     <>
+      {/* Tabs - Outside the form so they remain clickable in read-only mode */}
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab('patientProfile')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <i className="fa-solid fa-user mr-1"></i> Patient Profile
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('examination')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <i className="fa-solid fa-clipboard-list mr-1"></i> Examination
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('visitHistory')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <i className="fa-solid fa-clock-rotate-left mr-1"></i> Visit History
+        </button>
+      </div>
+
+      {readOnly && (
+        <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          <i className="fa-solid fa-lock mr-1"></i> Read-only mode - You can view all information but cannot make changes
+        </div>
+      )}
+
       <form
-        onSubmit={e => { e.preventDefault(); handleOpenSummary(); }}
-        className="overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
+        onSubmit={e => { e.preventDefault(); if (!readOnly) handleOpenSummary(); }}
+        className={`overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
           [&::-webkit-scrollbar]:w-[5px]
           [&::-webkit-scrollbar-thumb]:bg-gradient-to-b
           [&::-webkit-scrollbar-thumb]:from-[#466460]
           [&::-webkit-scrollbar-thumb]:to-[#8aacaa]
-          [&::-webkit-scrollbar-thumb]:rounded-full"
+          [&::-webkit-scrollbar-thumb]:rounded-full`}
       >
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setActiveTab('patientProfile')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <i className="fa-solid fa-user mr-1"></i> Patient Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('examination')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <i className="fa-solid fa-clipboard-list mr-1"></i> Examination
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('visitHistory')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <i className="fa-solid fa-clock-rotate-left mr-1"></i> Visit History
-          </button>
-        </div>
+        <div>
 
         {activeTab === 'visitHistory' ? (
           <MedicalVisitHistory selectedPatient={selectedPatient} />
@@ -952,17 +1128,19 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
                     <input type="checkbox" className="w-4 h-4 accent-[#466460] mt-0.5 shrink-0"
                       checked={isChecked}
+                      disabled={readOnly}
                       onChange={() => toggleCheck(checkedMedical, setCheckedMedical, c)} />
                     <span className="leading-tight pt-0.5">{c}</span>
                   </label>
                   {isChecked && needsSpecify && (
                     <input
                       type="text"
-                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white"
+                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white disabled:bg-slate-50 disabled:cursor-not-allowed"
                       placeholder="Please specify..."
                       value={medicalSpecs[c] || ''}
+                      disabled={readOnly}
                       onChange={(e) => setMedicalSpecs(prev => ({ ...prev, [c]: e.target.value }))}
-                      autoFocus
+                      autoFocus={!readOnly}
                     />
                   )}
                 </div>
@@ -970,7 +1148,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
             })}
           </div>
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12"><label className={labelClass}>Additional details for checked conditions (Optional)</label><input type="text" id="otherMedicalHistory" className={inputClass} placeholder="Severity, medications taken, etc." value={formData.otherMedicalHistory} onChange={handleChange} /></div>
+            <div className="col-span-12"><label className={labelClass}>Additional details for checked conditions (Optional)</label><input type="text" id="otherMedicalHistory" className={inputClass} placeholder="Severity, medications taken, etc." value={formData.otherMedicalHistory} disabled={readOnly} onChange={handleChange} /></div>
           </div>
 
           <div className={sectionClass}>Family History</div>
@@ -985,15 +1163,17 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
                     <input type="checkbox" className="w-4 h-4 accent-[#466460] mt-0.5 shrink-0"
                       checked={isChecked}
+                      disabled={readOnly}
                       onChange={() => toggleCheck(checkedFamily, setCheckedFamily, c)} />
                     <span className="leading-tight pt-0.5">{c}</span>
                   </label>
                   {isChecked && needsSpecify && (
                     <input
                       type="text"
-                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white"
+                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white disabled:bg-slate-50 disabled:cursor-not-allowed"
                       placeholder="Specify relation / details..."
                       value={familySpecs[c] || ''}
+                      disabled={readOnly}
                       onChange={(e) => setFamilySpecs(prev => ({ ...prev, [c]: e.target.value }))}
                     />
                   )}
@@ -1002,7 +1182,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
             })}
           </div>
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-12"><label className={labelClass}>Additional details for family history (Optional)</label><input type="text" id="otherFamilyHistory" className={inputClass} placeholder="Specify members affected and other details" value={formData.otherFamilyHistory} onChange={handleChange} /></div>
+            <div className="col-span-12"><label className={labelClass}>Additional details for family history (Optional)</label><input type="text" id="otherFamilyHistory" className={inputClass} placeholder="Specify members affected and other details" value={formData.otherFamilyHistory} disabled={readOnly} onChange={handleChange} /></div>
           </div>
 
           <div className={sectionClass}>Personal / Social History</div>
@@ -1015,10 +1195,10 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
               <div key={name} className="col-span-4">
                 <label className={labelClass}>{label}</label>
                 <div className="flex gap-4 py-2">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name={name} value="Yes" checked={formData[name] === 'Yes'} onChange={handleChange} /> Yes</label>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name={name} value="No"  checked={formData[name] === 'No'}  onChange={handleChange} /> No</label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name={name} value="Yes" checked={formData[name] === 'Yes'} disabled={readOnly} onChange={handleChange} /> Yes</label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name={name} value="No"  checked={formData[name] === 'No'}  disabled={readOnly} onChange={handleChange} /> No</label>
                 </div>
-                <input type="text" id={detailId} className={inputClass} placeholder={placeholder} value={formData[detailId]} onChange={handleChange} />
+                <input type="text" id={detailId} className={inputClass} placeholder={placeholder} value={formData[detailId]} disabled={readOnly} onChange={handleChange} />
               </div>
             ))}
           </div>
@@ -1045,10 +1225,10 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                 ].map(({ q, name, detail }) => (
                   <tr key={name}>
                     <td className="border border-slate-300 p-2">{q}</td>
-                    <td className="border border-slate-300 p-2 text-center"><input type="radio" name={name} value="Yes" checked={formData[name] === 'Yes'} onChange={handleChange} /></td>
-                    <td className="border border-slate-300 p-2 text-center"><input type="radio" name={name} value="No"  checked={formData[name] === 'No'}  onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2 text-center"><input type="radio" name={name} value="Yes" checked={formData[name] === 'Yes'} disabled={readOnly} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2 text-center"><input type="radio" name={name} value="No"  checked={formData[name] === 'No'}  disabled={readOnly} onChange={handleChange} /></td>
                     <td className="border border-slate-300 p-2">
-                      {detail && <input type="text" id={detail} className={inputClass} placeholder="If yes, specify" value={formData[detail]} onChange={handleChange} />}
+                      {detail && <input type="text" id={detail} className={inputClass} placeholder="If yes, specify" value={formData[detail]} disabled={readOnly} onChange={handleChange} />}
                     </td>
                   </tr>
                 ))}
@@ -1067,15 +1247,17 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
                     <input type="checkbox" className="w-4 h-4 accent-[#466460] mt-0.5 shrink-0"
                       checked={isChecked}
+                      disabled={readOnly}
                       onChange={() => toggleCheck(checkedHealth, setCheckedHealth, c)} />
                     <span className="leading-tight pt-0.5">{c}</span>
                   </label>
                   {isChecked && (
                     <input
                       type="text"
-                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white"
+                      className="ml-6 p-1.5 border border-slate-300 rounded text-[11px] outline-none focus:border-[#466460] bg-white disabled:bg-slate-50 disabled:cursor-not-allowed"
                       placeholder="Optional details (type, year, etc)..."
                       value={healthSpecs[c] || ''}
+                      disabled={readOnly}
                       onChange={(e) => setHealthSpecs(prev => ({ ...prev, [c]: e.target.value }))}
                     />
                   )}
@@ -1099,10 +1281,10 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                 {[{label:'Complete Blood Count (CBC)',id:'labCbc'},{label:'Urinalysis',id:'labUa'},{label:'Chest X-Ray',id:'labXray'}].map(({ label, id }) => (
                   <tr key={id}>
                     <td className="border border-slate-300 p-2 font-semibold">{label}</td>
-                    <td className="border border-slate-300 p-2"><input type="text" id={id} className={inputClass} value={formData[id]} onChange={handleChange} /></td>
-                    <td className="border border-slate-300 p-2"><input type="text" id={`${id}Facility`} className={inputClass} value={formData[`${id}Facility`]} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2"><input type="text" id={id} className={inputClass} value={formData[id]} disabled={readOnly} onChange={handleChange} /></td>
+                    <td className="border border-slate-300 p-2"><input type="text" id={`${id}Facility`} className={inputClass} value={formData[`${id}Facility`]} disabled={readOnly} onChange={handleChange} /></td>
                     <td className="border border-slate-300 p-2">
-                      <DatePicker value={formData[`${id}Date`]} onChange={(val) => handleDateChange(`${id}Date`, val)} />
+                      <DatePicker value={formData[`${id}Date`]} disabled={readOnly} onChange={(val) => handleDateChange(`${id}Date`, val)} />
                     </td>
                   </tr>
                 ))}
@@ -1111,59 +1293,111 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
           </div>
 
           <div className={sectionClass}>
-            <span>Anthropometric Measurements & Vital Signs</span>
+            <span>Anthropometric Measurements & Vital Signs</span> <span className="text-[10px] font-normal text-red-500">* Required</span>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
             <div className="grid grid-cols-12 gap-3 items-end">
               {/* FIX: Bind values to the new flat object */}
-              <div className="col-span-2 col-start-1"><label className={labelClass}>BP (mmHg)</label><input type="text" className={inputClass} placeholder="120/80" value={vitalRecords.bp} onChange={e => updateVital('bp', filterNumbersAndSlash(e.target.value))} /></div>
-              <div className="col-span-2"><label className={labelClass}>PR (bpm)</label><input type="text" className={inputClass} placeholder="72" value={vitalRecords.pr} onChange={e => updateVital('pr', filterNumbersOnly(e.target.value))} /></div>
-              <div className="col-span-2"><label className={labelClass}>RR (cpm)</label><input type="text" className={inputClass} placeholder="18" value={vitalRecords.rr} onChange={e => updateVital('rr', filterNumbersOnly(e.target.value))} /></div>
-              <div className="col-span-2"><label className={labelClass}>Temp (°C)</label><input type="text" className={inputClass} placeholder="36.5" value={vitalRecords.temp} onChange={e => updateVital('temp', filterNumbersAndDot(e.target.value))} /></div>
-              <div className="col-span-4"><label className={labelClass}>Remarks</label><input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords.remarks} onChange={e => updateVital('remarks', e.target.value)} /></div>
+              <div className="col-span-2 col-start-1">
+                <label className={requiredLabelClass}>BP (mmHg) <span className="text-red-500">*</span></label>
+                <input type="text" className={`${inputClass} ${validationErrors.bp ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`} placeholder="120/80" value={vitalRecords.bp} disabled={readOnly} onChange={e => { updateVital('bp', filterNumbersAndSlash(e.target.value)); setValidationErrors(prev => ({ ...prev, bp: '' })); }} />
+              </div>
+              <div className="col-span-2">
+                <label className={requiredLabelClass}>PR (bpm) <span className="text-red-500">*</span></label>
+                <input type="text" className={`${inputClass} ${validationErrors.pr ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`} placeholder="72" value={vitalRecords.pr} disabled={readOnly} onChange={e => { updateVital('pr', filterNumbersOnly(e.target.value)); setValidationErrors(prev => ({ ...prev, pr: '' })); }} />
+              </div>
+              <div className="col-span-2">
+                <label className={labelClass}>RR (cpm)</label>
+                <input type="text" className={inputClass} placeholder="18" value={vitalRecords.rr} disabled={readOnly} onChange={e => updateVital('rr', filterNumbersOnly(e.target.value))} />
+              </div>
+              <div className="col-span-2">
+                <label className={requiredLabelClass}>Temp (°C) <span className="text-red-500">*</span></label>
+                <input type="text" className={`${inputClass} ${validationErrors.temp ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`} placeholder="36.5" value={vitalRecords.temp} disabled={readOnly} onChange={e => { updateVital('temp', filterNumbersAndDot(e.target.value)); setValidationErrors(prev => ({ ...prev, temp: '' })); }} />
+              </div>
+              <div className="col-span-4">
+                <label className={labelClass}>Remarks</label>
+                <input type="text" className={inputClass} placeholder="Additional notes" value={vitalRecords.remarks} disabled={readOnly} onChange={e => updateVital('remarks', e.target.value)} />
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-12 gap-4 mt-4">
-            <div className="col-span-3"><label className={labelClass}>Height (cm)</label><input type="text" id="height" className={inputClass} placeholder="cm" value={formData.height} onChange={e => handleChange({ target: { id: 'height', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
-            <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} onChange={e => handleChange({ target: { id: 'weight', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
+            <div className="col-span-3"><label className={labelClass}>Height (cm)</label><input type="text" id="height" className={inputClass} placeholder="cm" value={formData.height} disabled={readOnly} onChange={e => handleChange({ target: { id: 'height', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
+            <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} disabled={readOnly} onChange={e => handleChange({ target: { id: 'weight', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
             <div className="col-span-3"><label className={labelClass}>BMI (auto-calc)</label><input type="text" id="bmi" className={`${inputClass} bg-slate-50`} placeholder="kg/m²" value={formData.bmi} readOnly /></div>
-            <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} onChange={e => handleChange({ target: { id: 'waist', value: filterNumbersOnly(e.target.value) } })} /></div>
+            <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} disabled={readOnly} onChange={e => handleChange({ target: { id: 'waist', value: filterNumbersOnly(e.target.value) } })} /></div>
             {/* Add conditional check here */}
           {formData.sex === 'Female' && (
             <div className="col-span-6">
               <label className={labelClass}>Last Menstrual Period (LMP) — Females only</label>
-              <DatePicker value={formData.lmp} onChange={(val) => handleDateChange('lmp', val)} />
+              <DatePicker value={formData.lmp} disabled={readOnly} onChange={(val) => handleDateChange('lmp', val)} />
             </div>
             )}
           </div>
 
           <div className="grid grid-cols-12 gap-4 mt-6">
-            <div className="col-span-5"><label className={labelClass}>Examining Physician / LIC. No.</label><input type="text" id="physician" className={inputClass} placeholder="Full name and license number" value={formData.physician} onChange={handleChange} /></div>
+            <div className="col-span-5">
+              <label className={requiredLabelClass}>Examining Physician / LIC. No. <span className="text-red-500">*</span></label>
+              <select
+                id="physician"
+                className={`${inputClass} ${validationErrors.physician ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+                value={formData.physician}
+                disabled={readOnly}
+                onChange={handleChange}
+              >
+                <option value="">Select Physician</option>
+                {physicians.map(doc => (
+                  <option key={doc.id} value={doc.display}>{doc.display}</option>
+                ))}
+              </select>
+            </div>
             <div className="col-span-4">
-              <label className={labelClass}>Exam Date & Time</label>
+              <label className={requiredLabelClass}>Exam Date & Time <span className="text-red-500">*</span></label>
               <DateTimePicker
                 value={formData.examDateTime}
+                disabled={readOnly}
                 onChange={(val) => handleDateChange('examDateTime', val)}
               />
             </div>
-            <div className="col-span-3"><label className={labelClass}>Nurse on Duty</label><input type="text" id="nurseOnDuty" className={inputClass} placeholder="Nurse name" value={formData.nurseOnDuty} onChange={handleChange} /></div>
+            <div className="col-span-3">
+              <label className={labelClass}>Nurse on Duty</label>
+              <select
+                id="nurseOnDuty"
+                className={inputClass}
+                value={formData.nurseOnDuty}
+                disabled={readOnly}
+                onChange={handleChange}
+              >
+                <option value="">Select Nurse</option>
+                {nurses.map(nurse => (
+                  <option key={nurse.id} value={nurse.display}>{nurse.display}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="mt-9 px-6 py-5 bg-gradient-to-r from-[#f0f7f6] to-[#e8f2f1] rounded-2xl border border-[#d1e7e5] flex justify-between items-center flex-wrap gap-4">
-            <div>
-              <p className="text-sm font-bold text-[#466460] m-0">Ready to submit this medical record?</p>
-              <p className="text-[11px] text-slate-500 mt-1">Review all entries carefully before submitting.</p>
+          {!readOnly && (
+            <div className="mt-9 px-6 py-5 bg-gradient-to-r from-[#f0f7f6] to-[#e8f2f1] rounded-2xl border border-[#d1e7e5] flex justify-between items-center flex-wrap gap-4">
+              <div>
+                <p className="text-sm font-bold text-[#466460] m-0">Ready to submit this medical record?</p>
+                <p className="text-[11px] text-slate-500 mt-1">Review all entries carefully before submitting.</p>
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" disabled={isSubmitting}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
+                  <i className="fa-solid fa-paper-plane"></i> Review & Submit
+                </button>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <button type="submit" disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
-                <i className="fa-solid fa-paper-plane"></i> Review & Submit
-              </button>
+          )}
+          {readOnly && (
+            <div className="mt-9 px-6 py-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-700 text-center">
+              <i className="fa-solid fa-lock mr-2"></i>This record has already been approved and is shown for reference only.
             </div>
-          </div>
+          )}
         </>
         )}
+      </div>
       </form>
 
       {/* ═══ SUMMARY MODAL ══════════════════════════════════════════════════ */}
@@ -1326,22 +1560,31 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
               </SumSection>
             </div>
             <div className="px-7 py-4 border-t border-slate-200 bg-slate-50 flex items-center gap-3 shrink-0">
-              <button onClick={() => setShowSummary(false)} disabled={isSubmitting} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition disabled:opacity-70">
-                <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
-              </button>
-              <div className="flex-1" />
-              <button
-                onClick={handleFinalSubmit}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <i className="fa-solid fa-spinner fa-spin"></i>
-                ) : (
-                  <i className="fa-solid fa-circle-check"></i>
-                )}
-                {isSubmitting ? 'Saving...' : 'Submit Medical Record'}
-              </button>
+              {!readOnly && (
+                <>
+                  <button onClick={() => setShowSummary(false)} disabled={isSubmitting} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition disabled:opacity-70">
+                    <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    onClick={handleFinalSubmit}
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? (
+                      <i className="fa-solid fa-spinner fa-spin"></i>
+                    ) : (
+                      <i className="fa-solid fa-circle-check"></i>
+                    )}
+                    {isSubmitting ? 'Saving...' : 'Submit Medical Record'}
+                  </button>
+                </>
+              )}
+              {readOnly && (
+                <div className="flex-1 text-center text-sm text-slate-500 font-medium">
+                  <i className="fa-solid fa-lock mr-2"></i>View Only - This record has already been submitted
+                </div>
+              )}
             </div>
           </div>
         </div>

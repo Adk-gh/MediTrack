@@ -112,6 +112,30 @@ const endConsultation = async (req, res, next) => {
   }
 };
 
+const reactivateConsultation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const data = await consultationsService.reactivateConsultation(id);
+
+    const targetUserId = data?.patient_id || data?.user_id;
+
+    if (targetUserId) {
+      await sendNotification({
+        userId:        targetUserId,
+        type:          'consultation',
+        title:         'Consultation Reactivated',
+        message:       'Your consultation session has been reactivated.',
+        referenceId:   id,
+        referenceType: 'consultation',
+      });
+    }
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const deleteConsultation = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -256,6 +280,7 @@ module.exports = {
   createConsultation,
   updateConsultation,
   endConsultation,
+  reactivateConsultation,
   deleteConsultation,
   getMessages,
   sendMessage,

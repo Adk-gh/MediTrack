@@ -255,6 +255,11 @@ export const Announcements = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [currentEditId, setCurrentEditId]     = useState(null);
 
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [viewData, setViewData] = useState(null);
   const [formSaving, setFormSaving] = useState(false);
@@ -496,12 +501,16 @@ export const Announcements = () => {
     }
   };
 
-  // ── Handle Delete via Supabase ──
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to archive this announcement? It can be restored later from the Archives page.')) {
-      setActiveMenuId(null);
-      return;
-    }
+  // ── Delete Modal Handlers ──
+  const openDeleteModal = (item) => {
+    setAnnouncementToDelete(item);
+    setShowDeleteModal(true);
+    setActiveMenuId(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!announcementToDelete) return;
+    setDeleting(true);
 
     try {
       // Get current user info for deleted_by
@@ -516,17 +525,19 @@ export const Announcements = () => {
           deleted_by: name || user.email || 'Admin',
           updated_at: new Date().toISOString()
         })
-        .eq('id', id);
+        .eq('id', announcementToDelete.id);
 
       if (error) throw error;
 
-      setAnnouncements(prev => prev.filter(a => a.id !== id));
+      setAnnouncements(prev => prev.filter(a => a.id !== announcementToDelete.id));
       showSnackbar('Announcement archived successfully. You can restore it from the Archives page.');
     } catch (err) {
       console.error("Failed to archive announcement:", err);
       showSnackbar('Failed to archive announcement', 'error');
     } finally {
-      setActiveMenuId(null);
+      setShowDeleteModal(false);
+      setAnnouncementToDelete(null);
+      setDeleting(false);
     }
   };
 
@@ -671,7 +682,7 @@ export const Announcements = () => {
                             <i className="fa-solid fa-pen-to-square text-[10px]"></i> Edit
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => openDeleteModal(item)}
                             className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600 flex items-center gap-2"
                           >
                             <i className="fa-solid fa-trash-can text-[10px]"></i> Delete
@@ -681,27 +692,27 @@ export const Announcements = () => {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-1.5 mb-2 pr-8">
+                  <div className="flex flex-wrap items-center gap-2 mb-2 pr-8">
                     {item.priority !== 'normal' && (
-                      <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full text-white ${pri.color} flex items-center gap-1`}>
-                        <i className={`fa-solid ${item.priority === 'urgent' ? 'fa-circle-exclamation' : 'fa-circle-dot'} text-[7px]`}></i> {pri.label}
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full text-white ${pri.color} flex items-center gap-1`}>
+                        <i className={`fa-solid ${item.priority === 'urgent' ? 'fa-circle-exclamation' : 'fa-circle-dot'} text-[9px]`}></i> {pri.label}
                       </span>
                     )}
-                    <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catCls}`}>{item.category || 'General'}</span>
+                    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${catCls}`}>{item.category || 'General'}</span>
                     {formatDeptDisplay(item.dept).map((d, i) => (
-                      <span key={i} className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
+                      <span key={i} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
                     ))}
                   </div>
 
-                  <h3 className="text-[#466460] font-bold text-[13px] sm:text-[14px] mb-1 pr-8 leading-snug truncate sm:whitespace-normal sm:line-clamp-2">{item.title}</h3>
+                  <h3 className="text-[#466460] font-bold text-[15px] sm:text-base mb-1.5 pr-8 leading-snug truncate sm:whitespace-normal sm:line-clamp-2">{item.title}</h3>
 
-                  <div className="flex flex-wrap text-[10px] text-slate-400 mb-2 items-center gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap text-xs text-slate-500 mb-2 items-center gap-x-3 gap-y-1">
                     <span><i className="fa-regular fa-calendar mr-1"></i>{formatDate(item.created_at)}</span>
                     {item.location && <span className="truncate"><i className="fa-solid fa-location-dot mr-1"></i>{item.location}</span>}
                     {item.contact_person && <span className="truncate"><i className="fa-solid fa-user mr-1"></i>{item.contact_person}</span>}
                   </div>
 
-                  <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{item.content}</p>
+                  <p className="text-sm text-slate-600 leading-relaxed line-clamp-2">{item.content}</p>
                 </div>
               </div>
             );
@@ -878,8 +889,8 @@ export const Announcements = () => {
       )}
 
       {/* ── VIEW MODAL ── */}
-      {isViewModalOpen && viewData && (
-        <div className="fixed inset-0 z-[9999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsViewModalOpen(false)}>
+      {isViewModalOpen && viewData && createPortal(
+        <div className="fixed inset-0 z-[99999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsViewModalOpen(false)}>
 
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
@@ -908,9 +919,11 @@ export const Announcements = () => {
                 </div>
                 <img src={viewData.image_url} alt={viewData.title} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
-                <button onClick={() => setIsViewModalOpen(false)} className="hidden sm:flex absolute top-4 right-4 w-8 h-8 rounded-full items-center justify-center bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-md z-20">
-                  <i className="fa-solid fa-xmark text-sm"></i>
-                </button>
+                <button onClick={() => setIsViewModalOpen(false)} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+  </svg>
+</button>
               </div>
             )}
 
@@ -939,21 +952,21 @@ export const Announcements = () => {
             )}
 
             <div className="px-5 sm:px-6 py-5 overflow-y-auto grow scrollbar-none bg-white relative z-10">
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {viewData.priority && viewData.priority !== 'normal' && <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_CONFIG[viewData.priority]?.color}`}><i className="fa-solid fa-circle-exclamation mr-0.5"></i>{PRIORITY_CONFIG[viewData.priority]?.label}</span>}
-                <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[viewData.category] || CATEGORY_COLORS.General}`}>{viewData.category || 'General'}</span>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {viewData.priority && viewData.priority !== 'normal' && <span className={`text-xs font-bold px-3 py-1 rounded-full text-white ${PRIORITY_CONFIG[viewData.priority]?.color}`}><i className="fa-solid fa-circle-exclamation mr-1"></i>{PRIORITY_CONFIG[viewData.priority]?.label}</span>}
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${CATEGORY_COLORS[viewData.category] || CATEGORY_COLORS.General}`}>{viewData.category || 'General'}</span>
                 {formatDeptDisplay(viewData.dept).map((d, i) => (
-                  <span key={i} className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
+                  <span key={i} className="text-xs font-semibold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
                 ))}
               </div>
-              <h3 className="text-base sm:text-lg font-bold text-[#466460] mb-1 leading-snug">{viewData.title}</h3>
-              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-y-1.5 sm:gap-y-1 gap-x-4 text-[11px] sm:text-[10px] text-slate-400 mb-4">
+              <h3 className="text-xl sm:text-2xl font-bold text-[#466460] mb-2 leading-snug">{viewData.title}</h3>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-y-2 sm:gap-y-1.5 gap-x-4 text-[13px] sm:text-sm text-slate-500 mb-4">
                 <span><i className="fa-regular fa-calendar mr-1 w-3 text-center"></i>{formatDate(viewData.created_at)}</span>
                 {viewData.location && <span><i className="fa-solid fa-location-dot mr-1 w-3 text-center text-[#e07a5f]"></i>{viewData.location}</span>}
                 {viewData.contact_person && <span><i className="fa-solid fa-user mr-1 w-3 text-center text-[#466460]"></i>{viewData.contact_person}</span>}
                 {viewData.contact_email && <span><i className="fa-solid fa-envelope mr-1 w-3 text-center text-[#466460]"></i>{viewData.contact_email}</span>}
               </div>
-              <div className="border-t border-slate-100 pt-4"><p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
+             <div className="border-t border-slate-100 pt-4"><p className="text-[15px] sm:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
             </div>
 
             <div className="px-6 sm:px-8 py-5 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-3 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
@@ -964,9 +977,65 @@ export const Announcements = () => {
                   onClick={() => { setIsViewModalOpen(false); handleOpenForm(viewData.id); }}
                   className="w-full sm:w-auto sm:flex-1 bg-[#e0eceb] text-[#466460] py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
                 >
-                  <i className="fa-solid fa-pen-to-square text-[11px]"></i> Edit
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+                  </svg>
+                  Edit
                 </button>
               )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Archive Announcement</h3>
+                <p className="text-sm text-slate-500">You can restore it later from Archives</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg p-4 mb-4">
+              <p className="text-sm text-slate-600">
+                Are you sure you want to archive <span className="font-semibold">"{announcementToDelete?.title}"</span>?
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setAnnouncementToDelete(null); }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Archiving...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
+                    </svg>
+                    Archive
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

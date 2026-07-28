@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\services\consultations.service.js
 import { supabase } from '../supabase';
+import { getValidToken } from './token.service.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -26,8 +27,9 @@ export const clearMessagesCache = (consultationId = null) => {
 
 // ── API CALL HELPER ───────────────────────────────────────────────────
 // Centralizes the fetch logic so we don't have to repeat headers every time
+// Uses centralized token service to ensure valid tokens
 const fetchApi = async (endpoint, options = {}) => {
-  const token = localStorage.getItem('token');
+  const token = await getValidToken();
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {

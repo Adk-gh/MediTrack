@@ -46,7 +46,8 @@ exports.getArchiveById = async (req, res, next) => {
 exports.restoreFromArchives = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const result = await archivesService.restoreFromArchives(id);
+    const { table } = req.query;
+    const result = await archivesService.restoreFromArchives(id, table);
     res.json({ success: true, message: 'Item restored successfully', data: result });
   } catch (error) {
     next(error);
@@ -57,7 +58,8 @@ exports.restoreFromArchives = async (req, res, next) => {
 exports.permanentDelete = async (req, res, next) => {
   try {
     const { id } = req.params;
-    await archivesService.permanentDelete(id);
+    const { table } = req.query;
+    await archivesService.permanentDelete(id, table);
     res.json({ success: true, message: 'Item permanently deleted' });
   } catch (error) {
     next(error);

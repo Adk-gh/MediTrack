@@ -408,6 +408,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const CLASSIFICATIONS = [
     'Teaching Personnel',
     'Nurse Personnel',
+    'Dentist',
     'Physician / Doctor',
     ...(isCurrentUserSysAdmin ? ['System Administrator'] : []),
     'Non-Teaching Personnel',
@@ -417,6 +418,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const JOB_TITLES = [
     'Nurse',
     'Physician',
+    'Dentist',
     'Administrator',
     'Lecturer',
     'Professor',
@@ -1473,6 +1475,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
 
   const handleConfirmLogout = () => {
     showLoading('Signing out', 'light');
+    // Note: stopTokenRefresh is now handled internally by authService.logout
     authService.logout();
     hideLoading();
     navigate('/login');

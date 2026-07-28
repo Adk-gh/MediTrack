@@ -4,21 +4,30 @@ import { supabase } from '../../supabase';
 const ACTIVITY_TYPES = [
   { value: 'all', label: 'All Activities' },
   { value: 'auth', label: 'Authentication' },
-  { value: 'record', label: 'Records' },
   { value: 'user', label: 'User Management' },
+  { value: 'consultation', label: 'Consultations' },
   { value: 'appointment', label: 'Appointments' },
+  { value: 'announcement', label: 'Announcements' },
   { value: 'examination', label: 'Examinations' },
-  { value: 'ocr', label: 'OCR Processing' },
+  { value: 'archive', label: 'Archives' },
   { value: 'system', label: 'System' },
 ];
+
+const RETENTION_DAYS = 14; // keep in sync with archive_old_audit_logs() default in SQL
+const PERMANENT_RETENTION_DAYS = 90; // keep in sync with archive_old_audit_logs() default in SQL
 
 const ACTION_COLORS = {
   create:       { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'fa-plus' },
   read:         { bg: 'bg-blue-100',   text: 'text-blue-700',   icon: 'fa-eye' },
   update:       { bg: 'bg-amber-100',  text: 'text-amber-700',  icon: 'fa-pen' },
   delete:       { bg: 'bg-red-100',    text: 'text-red-700',    icon: 'fa-trash' },
+  archive:      { bg: 'bg-amber-100',  text: 'text-amber-700',  icon: 'fa-box-archive' },
+  end:          { bg: 'bg-rose-100',    text: 'text-rose-700',    icon: 'fa-stop' },
+  restore:      { bg: 'bg-teal-100',    text: 'text-teal-700',    icon: 'fa-arrow-rotate-left' },
+  cleanup:      { bg: 'bg-orange-100',  text: 'text-orange-700',  icon: 'fa-broom' },
   login:        { bg: 'bg-purple-100', text: 'text-purple-700', icon: 'fa-right-to-bracket' },
   logout:       { bg: 'bg-slate-100',  text: 'text-slate-600',  icon: 'fa-right-from-bracket' },
+  register:     { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: 'fa-user-plus' },
   approve:      { bg: 'bg-teal-100',   text: 'text-teal-700',   icon: 'fa-check' },
   reject:       { bg: 'bg-orange-100', text: 'text-orange-700', icon: 'fa-xmark' },
   ocr_start:    { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: 'fa-gear fa-spin' },
@@ -66,6 +75,8 @@ export const AuditLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [viewMode, setViewMode] = useState('live'); // 'live' | 'archived'
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
   const [lastDoc, setLastDoc] = useState(null);
@@ -75,6 +86,19 @@ export const AuditLogs = () => {
 
   const snackbarTimer = useRef(null);
   const searchTimeout = useRef(null);
+
+  const isArchived = viewMode === 'archived';
+
+  // Archived rows come back from public.archives as
+  // { id, type, original_id, data, archived_at, ... } — flatten `data`
+  // (the original audit_logs row) back into a log-shaped object so the
+  // rest of the component can render it the same way as a live row.
+  const normalizeArchiveRow = (row) => ({
+    ...row.data,
+    id: row.original_id,
+    archived_at: row.archived_at,
+    permanent_delete_at: row.permanent_delete_at,
+  });
 
   const showSnackbar = (msg, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -95,34 +119,45 @@ export const AuditLogs = () => {
     });
   }, []);
 
-  // Build query constraints dynamically for server-side processing
+  // Build query constraints dynamically for server-side processing.
+  // Archived rows live inside a jsonb `data` column, so filters there
+  // need to reach into the JSON path instead of a plain column.
   const buildQuery = useCallback((baseQuery) => {
     let q = baseQuery;
     if (typeFilter !== 'all') {
-      q = q.eq('type', typeFilter);
+      q = isArchived ? q.eq('data->>type', typeFilter) : q.eq('type', typeFilter);
     }
     if (searchInput.trim()) {
       const term = `%${searchInput.trim()}%`;
-      q = q.or(`userName.ilike.${term},userEmail.ilike.${term},description.ilike.${term},action.ilike.${term}`);
+      q = isArchived
+        ? q.or(`data->>userName.ilike.${term},data->>userEmail.ilike.${term},data->>description.ilike.${term},data->>action.ilike.${term}`)
+        : q.or(`userName.ilike.${term},userEmail.ilike.${term},description.ilike.${term},action.ilike.${term}`);
     }
     return q;
-  }, [typeFilter, searchInput]);
+  }, [typeFilter, searchInput, isArchived]);
 
-  const fetchLogs = useCallback(async (isRefresh = false) => {
+  // Archived rows sort/paginate on archived_at (top-level column);
+  // live rows sort/paginate on created_at, same as before.
+  const cursorField = isArchived ? 'archived_at' : 'created_at';
+
+  const fetchLogs = useCallback(async () => {
     try {
       setLoading(true);
-      let query = supabase.from('audit_logs').select('*');
+      let query = isArchived
+        ? supabase.from('archives').select('*').eq('type', 'audit_log')
+        : supabase.from('audit_logs').select('*');
 
       query = buildQuery(query);
-      query = query.order('created_at', { ascending: false }).limit(50);
+      query = query.order(cursorField, { ascending: false }).limit(50);
 
       const { data, error } = await query;
       if (error) throw error;
 
-      const fetchedLogs = data || [];
+      const rawRows = data || [];
+      const fetchedLogs = isArchived ? rawRows.map(normalizeArchiveRow) : rawRows;
       setLogs(fetchedLogs);
-      setLastDoc(fetchedLogs[fetchedLogs.length - 1] || null);
-      setHasMore(fetchedLogs.length === 50);
+      setLastDoc(rawRows[rawRows.length - 1] || null);
+      setHasMore(rawRows.length === 50);
       calculateStats(fetchedLogs);
     } catch (err) {
       console.error('Error fetching audit logs:', err);
@@ -130,32 +165,35 @@ export const AuditLogs = () => {
     } finally {
       setLoading(false);
     }
-  }, [buildQuery, calculateStats]);
+  }, [buildQuery, calculateStats, isArchived, cursorField]);
 
   const loadMore = async () => {
     if (!lastDoc || loadingMore || !hasMore) return;
 
     try {
       setLoadingMore(true);
-      let query = supabase.from('audit_logs').select('*');
+      let query = isArchived
+        ? supabase.from('archives').select('*').eq('type', 'audit_log')
+        : supabase.from('audit_logs').select('*');
 
       query = buildQuery(query);
       query = query
-        .lt('created_at', lastDoc.created_at)
-        .order('created_at', { ascending: false })
+        .lt(cursorField, lastDoc[cursorField])
+        .order(cursorField, { ascending: false })
         .limit(50);
 
       const { data, error } = await query;
       if (error) throw error;
 
-      const fetchedLogs = data || [];
+      const rawRows = data || [];
+      const newLogs = isArchived ? rawRows.map(normalizeArchiveRow) : rawRows;
       setLogs(prev => {
-        const combined = [...prev, ...fetchedLogs];
+        const combined = [...prev, ...newLogs];
         calculateStats(combined);
         return combined;
       });
-      setLastDoc(fetchedLogs[fetchedLogs.length - 1] || null);
-      setHasMore(fetchedLogs.length === 50);
+      setLastDoc(rawRows[rawRows.length - 1] || null);
+      setHasMore(rawRows.length === 50);
     } catch (err) {
       console.error('Error loading more logs:', err);
       showSnackbar('Failed to load more logs', 'error');
@@ -170,14 +208,34 @@ export const AuditLogs = () => {
     setSearchInput(value);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => {
-      fetchLogs(true);
+      fetchLogs();
     }, 400);
   };
 
-  // Trigger query refetch whenever filter adjustments occur
+  // Trigger query refetch whenever filter/view adjustments occur
   useEffect(() => {
-    fetchLogs(true);
-  }, [typeFilter]);
+    fetchLogs();
+  }, [typeFilter, viewMode]);
+
+  // Manually invoke the retention sweep (mirrors the daily pg_cron job).
+  // Useful for testing, or as a fallback if pg_cron isn't enabled on your project.
+  const runArchiveNow = async () => {
+    try {
+      setArchiving(true);
+      const { data, error } = await supabase.rpc('archive_old_audit_logs', {
+        retention_days: RETENTION_DAYS,
+        permanent_retention_days: PERMANENT_RETENTION_DAYS,
+      });
+      if (error) throw error;
+      showSnackbar(`Archived ${data ?? 0} log${data === 1 ? '' : 's'} older than ${RETENTION_DAYS} days`);
+      if (viewMode === 'live') fetchLogs();
+    } catch (err) {
+      console.error('Error archiving logs:', err);
+      showSnackbar('Failed to archive logs', 'error');
+    } finally {
+      setArchiving(false);
+    }
+  };
 
   // Clean layout array mapped directly to CSV strings for compliance reports
   const exportComplianceReport = () => {
@@ -205,7 +263,7 @@ export const AuditLogs = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `compliance_report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `compliance_report_${viewMode}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -219,9 +277,18 @@ export const AuditLogs = () => {
 
       {/* Header */}
       <div className="flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-1">
           <h2 className="text-xl md:text-2xl font-bold text-[#466460]">Audit Logs</h2>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap justify-end">
+            <button
+              onClick={runArchiveNow}
+              disabled={archiving || viewMode === 'archived'}
+              className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              title={`Move logs older than ${RETENTION_DAYS} days to the archive now`}
+            >
+              <i className={`fa-solid ${archiving ? 'fa-spinner fa-spin' : 'fa-box-archive'} text-slate-500`}></i>
+              <span>{archiving ? 'Archiving…' : 'Archive Now'}</span>
+            </button>
             <button
               onClick={exportComplianceReport}
               className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
@@ -231,7 +298,7 @@ export const AuditLogs = () => {
               <span>Export Report</span>
             </button>
             <button
-              onClick={() => fetchLogs(true)}
+              onClick={() => fetchLogs()}
               className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -240,6 +307,30 @@ export const AuditLogs = () => {
               <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
+        </div>
+
+        <p className="text-[11px] text-slate-400 mb-4">
+          Logs are kept for {RETENTION_DAYS} days, then archived automatically.
+        </p>
+
+        {/* View mode toggle */}
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 mb-4 shadow-sm">
+          <button
+            onClick={() => setViewMode('live')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+              viewMode === 'live' ? 'bg-[#466460] text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Live
+          </button>
+          <button
+            onClick={() => setViewMode('archived')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+              viewMode === 'archived' ? 'bg-[#466460] text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Archived
+          </button>
         </div>
 
         {/* Stats */}
@@ -325,7 +416,7 @@ export const AuditLogs = () => {
                   <td colSpan={6} className="text-center py-12 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <i className="fa-solid fa-clipboard-list text-3xl text-slate-300"></i>
-                      <p>No audit logs found</p>
+                      <p>No {viewMode === 'archived' ? 'archived' : ''} audit logs found</p>
                       <p className="text-xs text-slate-400">Activities matching filters will appear here once recorded</p>
                     </div>
                   </td>

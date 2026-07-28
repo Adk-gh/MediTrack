@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
-import { supabase } from '../supabase';
+
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const ResetPassword = () => {
   const [password, setPassword] = useState('');
@@ -18,49 +19,16 @@ const ResetPassword = () => {
   useEffect(() => {
     setIsLoaded(true);
 
-    // First, check for error in URL hash (Supabase redirects with error info)
-    const hashString = window.location.hash.substring(1);
-    const hashParams = new URLSearchParams(hashString);
-    const urlError = hashParams.get('error');
-    const errorDescription = hashParams.get('error_description');
+    // Get token from URL query params
+    const token = searchParams.get('token');
+    const email = searchParams.get('email');
 
-    if (urlError) {
-      // Parse the error description (URL encoded)
-      const decodedError = errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, ' ')) : 'Invalid or expired reset link';
-      setError(decodedError);
-      return;
-    }
-
-    // Get all possible tokens from URL
-    const accessToken = hashParams.get('access_token');
-    const refreshToken = hashParams.get('refresh_token');
-    const queryToken = searchParams.get('token');
-    const queryRefreshToken = searchParams.get('refresh_token');
-    const code = searchParams.get('code'); // Some Supabase setups use 'code'
-
-    const finalToken = accessToken || queryToken || code;
-    const finalRefreshToken = refreshToken || queryRefreshToken;
-
-    if (!finalToken) {
+    if (!token || !email) {
       setError('Invalid reset link. Please request a new password reset.');
       return;
     }
 
-    // Try to set the session with the token
-    supabase.auth.setSession({
-      access_token: finalToken,
-      refresh_token: finalRefreshToken || ''
-    }).then(({ error }) => {
-      if (error) {
-        console.error('Set session error:', error);
-        setError('Invalid or expired reset link: ' + error.message);
-      } else {
-        setIsReady(true);
-      }
-    }).catch(err => {
-      console.error('Catch error:', err);
-      setError('Failed to validate reset link');
-    });
+    setIsReady(true);
   }, [searchParams]);
 
   const handleSubmit = async (e) => {
@@ -81,10 +49,19 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
+      const token = searchParams.get('token');
+      const email = searchParams.get('email');
 
-      if (updateError) {
-        setError(updateError.message);
+      const response = await fetch(`${API_URL}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || 'Failed to reset password');
       } else {
         setMessage('Password updated successfully! Redirecting to login...');
         setTimeout(() => navigate('/login'), 2000);

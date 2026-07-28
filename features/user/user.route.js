@@ -32,7 +32,32 @@ router.post(
 router.post(
   "/login",
   /*validateData(loginSchema),*/
-  auditLog('login', 'auth', (req) => `User logged in: ${req.body.email || 'Unknown'}`),
+  async (req, res, next) => {
+    // Get user details for audit log
+    let userDetails = '';
+    try {
+      // First, find the user by email to get their internal ID
+      const { data: existingUser, error: userError } = await supabase
+        .from('users')
+        .select('first_name, middle_name, last_name, university_id')
+        .eq('email', req.body.email)
+        .single();
+
+      if (existingUser && !userError) {
+        userDetails = `${existingUser.first_name || ''} ${existingUser.middle_name || ''} ${existingUser.last_name || ''}`.trim().replace(/\s+/g, ' ');
+        if (existingUser.university_id) {
+          userDetails += ` (${existingUser.university_id})`;
+        }
+      }
+    } catch (e) {}
+
+    req.loginUserDetails = userDetails || req.body.email;
+    next();
+  },
+  auditLog('login', 'auth', (req) => {
+    const details = req.loginUserDetails ? ` - ${req.loginUserDetails}` : '';
+    return `User logged in: ${req.body.email || 'Unknown'}${details}`;
+  }),
   userController.login
 );
 
@@ -83,9 +108,29 @@ const getAllUsers = async (req, res) => {
 router.get("/users", authorized, getAllUsers);
 
 // DELETE user - move to archives
-router.delete("/users/:userId", authorized, userController.deleteUser);
+router.delete("/users/:userId", authorized, async (req, res, next) => {
+  // Get user details for audit log before archiving
+  let userDetails = '';
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('first_name, middle_name, last_name, university_id')
+      .eq('uid', req.params.userId)
+      .single();
+    if (user) {
+      userDetails = `${user.first_name || ''} ${user.middle_name || ''} ${user.last_name || ''}`.trim().replace(/\s+/g, ' ') + (user.university_id ? ` (${user.university_id})` : '');
+    }
+  } catch (e) {}
+
+  // Continue to next middleware which has the auditLog
+  req.userDetails = userDetails;
+  next();
+}, auditLog('archive', 'user', (req) => {
+  const details = req.userDetails ? ` - ${req.userDetails}` : '';
+  return `Archived user ID: ${req.params.userId}${details}`;
+}), userController.deleteUser);
 
 // PUT: Admin update any user (bypasses RLS)
-router.put("/admin-update", authorized, userController.adminUpdateUser);
+router.put("/admin-update", authorized, auditLog('update', 'user', (req) => `Admin updated user: ${req.body.email || req.params.userId}`), userController.adminUpdateUser);
 
 module.exports = router;

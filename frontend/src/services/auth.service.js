@@ -111,14 +111,35 @@ const getCurrentUser = () => {
 };
 
 const logout = async () => {
-  // Clear the custom user data from UI state
+  // 1. Clear all user-related localStorage items FIRST
   localStorage.removeItem("user");
+  localStorage.removeItem("token");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("role");
+  localStorage.removeItem("uid");
+  localStorage.removeItem("name");
+  localStorage.removeItem("_internalUserId");
+  localStorage.removeItem("_internalStaffId");
 
-  // Have Supabase securely destroy the session tokens locally and on the server
+  // 2. Stop token refresh FIRST to prevent any background refresh attempts
+  // This is imported dynamically to avoid circular dependencies
+  try {
+    const { stopTokenRefresh } = await import('./token.service.js');
+    stopTokenRefresh();
+  } catch (e) {
+    // Token service might not be loaded yet, ignore
+  }
+
+  // 3. Have Supabase securely destroy the session tokens locally and on the server
+  // This invalidates the refresh token server-side, making it unusable
   const { error } = await supabase.auth.signOut();
   if (error) {
     console.error("Error signing out of Supabase:", error.message);
   }
+
+  // 4. Force clear any remaining session data
+  // This ensures complete logout even if Supabase signOut fails
+  await supabase.auth.clearSession();
 };
 
 const checkIdExists = async (universityId) => {

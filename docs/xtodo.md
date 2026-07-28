@@ -4,8 +4,6 @@
 COMPLETED ITEMS ✅============
 =============================
 
-General:
-
 * [x] add a notification for the whole system in the header.put it next to the profil
 * [x] fix the profile setup to upload all the content into the database some contents are not uploading properly
 * [x] fix the dashboard.jsx to fill the whole screen.
@@ -136,60 +134,60 @@ General:
 * [x] in the Medical.jsx, the of exam\_date and exam\_time. currently theres no exam time in the database medical\_records column and examdate is based on created\_at. make sure that the exam date and exam time is being saved properly.
 * [x] can you remove the Add operation button and just display the past surgical history as is. i still can see
   the past surgical history that i've added in the profile-user and yes it did saved into the database
+*
 
+&#x20;  \* \[x] update the certificate for both medical and dental make sure its displaying in the system as if its on pdf already especailly the approved certificate on the user side\\
 
+* [x] make sure that the user side Records-users.jsx only displays certificate if the database issue\_cert is set to true but the record still show just without the certificate or report.
+* [x] also make the process of approving dental to have an option just like the medical to either only approve and not issue certificate or both.
+* [x] make sure to redirect link that are sent in the threads like a google meet link. (just like messenger by meta)
+* [x] improve the records drawer inside the thread conversation as well as adding visit history on it.
+* [x] make sure to use school year for the dashboard,(with everything)
+* [x] for the approvals the report still sending, meaning the database issue\_cert is not being udpated whenever the approval goes through the isapproved is the only thing being updated not the issue\_\_cert
+* [x] refresh the consultation seamlessly, and seen indicator for the
+* [x] make sure to have required indicator for the examination form
+* [x] if role == sysadmin dont display it in the Records.jsx
+* [x] for the approvals instead of opening the Dental.jsx and Medical.jsx directly open the Examinations.jsx which then open either the dental or medical .jsx
+* [x] Classification for professional information should have dentist option.
+* [x] make sure to keep the auth working, keeps on refreshing the token and seamlesslly use it so that theres no down time so that it doesnt logs out qhwn the token expires
+* [x] and for the visit history and the approvals emxaination details of the dental to display the procedures of the tooth data.
+* [x] btw not just the Consultaitons.jsx i meant for the whole system so that users dont get randomly logout when
+  their token expires for the whole backend
+* [x] token refresh every 10 minutes and gets terminted when logout to prevent breach\\
+* [x] Needs Restoration (Filling) and For Extraction should be based on the tooth\_data from the
+  dental\_records.its stored as jsonb so filter it to display the tooth that is marked as this is the sample
+  data
+* [x] when admin sets up their profile there should be specific input fields only in the profile-setup, no departments, no university-id etc etc. or is it better to just skip the profile setup if account role == sysadmin
+* [x] do better for the excel export
+* [x] in reports when the user is archive it should not be part of the reports same with the medical exams and dentals
+* [x] make the consultation and appointment be only accessible if theres already a medical or dental record for that account. display a text to the Appointment-users.jsx that says something like plss proceed to clinic to have a f2f consultation first before digital appointment is accessible.) same goes to the consultation-users.jsx. if the user dont have either medical\_records, or dental then those text should be the only visible to the Consultation-users.jsx and Appointment-users.jsx
+* [x] when admin edits the info it should show as well who updates the informations in the logs
+* [x] archive : add functionality for all the tables to saved the name of the deleted\_by just like the medical and dental
+* [x] normalize the text for the name so it can't be capitalized or all lowercase.
+* [x] forgot password function
+* [x] Appointment management bulk reschedule can only reschedule approved appointments, done, missed, rejected pending cannot be bulk reschedule. the date for the done,missed, rejected cannot be changed also.
+* [x] consultation-users should display the role of the one their talking with, and if role is doctor the name should be displayed with 'Dr." and theres should be a badge indicating their role, nurse dentist, doctor)
+* [x] for the ocr if the id file is too large show a message to tell the user to screenshot the id or something
+* [x] for the audit logs i want to have atleast 1 week retention for the logs before it get sent to the archive and then after another 1 week it gets permanently deleted.
+* [x] validation for the name in which number shouldn't be able to be typed in to, the ID shouldn't have character aside from "-" and numbers. and for the Suffix in SignupForm.jsx it should be a dropdown
 
 \==========
-PENDING ITEMS 📋=============as of 07/17/26
-===========================================
+PENDING ITEMS 📋=============as of (07/28/26)
+=============================================
 
-General:
-
-* [ ] push notification
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
-* [ ] validation for the name in which number shouldn't be able to be typed in to, the ID shouldn't have character aside from "-" and numbers.
-* [ ] normalize the text for the name so it can't be capitalized or all lowercase.
-* [ ] make the settings functional
-* [ ] forgot password function (needs implementation verification)
-* [ ] update the certificate for both medical and dental make sure its displaying in the system as if its on pdf already especailly the approved certificate on the user side
-* [ ] also make the process of approving dental to have an option just like the medical to either only approve and not issue certificate or both.
-* [ ] add a notification for new messages arriving(use notifier.js)
-* [ ] make sure to redirect link that are sent in the threads like a google meet link. (just like messenger by meta)
-* [ ] improve the records drawer inside the thread conversation as well as adding visit history on it.
-* [ ] the uploading of health documents is not working
-* [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employee
-* [ ] make the consultation and appointment be only accessible if theres already a medical or dental record for that account.
-* [ ] user notifications
-* [ ] when admin edits the info it should show as well who updates the informations.
-* [ ] add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.
-* [ ] archive : add functionality for all the tables to saved the name of the deleted\_by just like the medical and dental
-* [ ] for the audit logs i want to have atleast 1 week retention for the logs before it get sent to the archive and then after another 1 week it gets permanently deleted.
-* [ ] make sure to use school year for the dashboard,(with everything)
-* [ ] the name for the medical and dental certificate should be set in the admin side.
-* [ ] for the approvals the report still sending, meaning the database issue\_cert is not being udpated whenever the approval goes through the isapproved is the only thing being updated not the issue\_\_cert
-* [ ] do better for the excel export
-* [ ] in reports when the user is archive it should not be part of the reports same with the medical exams and dentals
-* [ ] for the ocr if the id file is too large show a message to tell the user to screenshot the id or something
-* [ ] for the user management add button to add confirmation email to send email to vefiy the login
-* [ ] refresh the consultation seamlessly, and seen indicator for the&#x20;
-* [ ] medical exam phase 2 questionaire it shouldn't have answer by default
-* [ ] make sure to have required indicator for the examination form
-* [ ] i need to make sure that the ocr settings saves into the database.
-* [ ] if the nurse is the one conductiong the examination, the nurse on duty should be his/her name, if doctor is the one conducting the examination then the physician name and license number should be in the form and the nurse on duty should be a dropdown of all the roles = nurse in the system.
 * [ ] make sure to check if the edit function is working for the admin page
-* [ ] when admin sets up their profile there should be specific input fields only in the profile-setup, not departments, no university-id etc etc.&#x20;
-* [ ] if role == sysadmin dont display it in the Records.jsx
-* [ ] for the approvals instead of opening the Dental.jsx and Medical.jsx directly open the Examinations.jsx which then open either the dental or medical .jsx
-* [ ] Classification for professional information should have dentist option.
-* [ ] for appointments.jsx instead of rejected tab just make it a filter for in the Approved appointments tab.&#x20;
-* [ ] dont count if role is sysadmin. for the users count, etc etc
-* [ ] make sure to keep the auth working, keeps on refreshing the token and seamlesslly use it so that theres  no down time
-
-
-
-
-
-
+* [ ] dont count if role is sysadmin. for the users count, etc etc in dashboard.jsx user management, and reports,jsx
+* [ ] i need to make sure that the ocr settings saves into the database.
+* [ ] for the user management add button to add confirmation email to send email to vefiy the login
+* [ ] the name of the doctor and dentist to be added in certificate for the medical and dental certificate should be set in the admin side.
+* [ ] the uploading of health documents is not working
+* [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employee)
+* [ ] add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
+* [ ] add a notification for new messages arriving(use notifier.js)
+* [ ] user notifications
+* [ ] make the settings functional
+* [ ] make sure to trigger the auditlogs in the admin pages as well.
 
 # ===============testing(07/18)==============================ROLE MATRIX===============
 

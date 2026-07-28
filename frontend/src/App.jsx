@@ -3,6 +3,7 @@ import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Loading from './components/loading.jsx';
 import authService from './services/auth.service.js';
+import { startTokenRefresh } from './services/token.service.js';
 import './index.css';
 
 
@@ -264,6 +265,16 @@ function GlobalLoading() {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
+  // 🟢 NEW: Start token refresh if user is already logged in (page refresh)
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    if (token && user) {
+      console.log('[App] User already logged in, starting token refresh...');
+      startTokenRefresh();
+    }
+  }, []);
+
   return (
     <LoadingProvider>
       <AppointmentProvider>

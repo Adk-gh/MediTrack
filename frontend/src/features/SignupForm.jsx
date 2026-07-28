@@ -19,6 +19,9 @@ const IdCardIcon = () => (
   </svg>
 );
 
+// Set max file size to 5MB (5 * 1024 * 1024 bytes)
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
 const SignupForm = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
@@ -38,8 +41,20 @@ const SignupForm = () => {
   const [touched, setTouched] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const handleChange = (e) =>
-    setFormData({ ...formData, [e.target.id]: e.target.value });
+  const handleChange = (e) => {
+    const { id, value } = e.target;
+    let formattedValue = value;
+
+    if (['firstName', 'middleName', 'lastName'].includes(id)) {
+      // Remove any digits (0-9) from name fields
+      formattedValue = value.replace(/[0-9]/g, '');
+    } else if (id === 'universityId') {
+      // Keep only digits and hyphens for the University ID
+      formattedValue = value.replace(/[^0-9-]/g, '');
+    }
+
+    setFormData({ ...formData, [id]: formattedValue });
+  };
 
   useEffect(() => {
     if (Object.keys(touched).length > 0) {
@@ -51,13 +66,34 @@ const SignupForm = () => {
   const handleBlur = (field) => setTouched(prev => ({ ...prev, [field]: true }));
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+
+  // New helper function to validate file size
+  const validateAndSetFile = (file) => {
+    if (file.size > MAX_FILE_SIZE) {
+      setError('File is too large (max 5MB). Please take a screenshot of your ID or crop the photo to reduce the file size.');
+      setSelectedFile(null);
+      // Reset the input value so the same file can trigger the onChange again if they try
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } else {
+      setError('');
+      setSelectedFile(file);
+    }
+  };
+
   const handleDrop = (e) => {
-    e.preventDefault(); setIsDragging(false);
-    if (e.dataTransfer.files?.[0]) setSelectedFile(e.dataTransfer.files[0]);
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.[0]) {
+      validateAndSetFile(e.dataTransfer.files[0]);
+    }
   };
+
   const handleFileChange = (e) => {
-    if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
+    if (e.target.files?.[0]) {
+      validateAndSetFile(e.target.files[0]);
+    }
   };
+
   const triggerFileInput = () => fileInputRef.current.click();
 
   const handleSubmit = async (e) => {
@@ -80,13 +116,20 @@ const SignupForm = () => {
       if (isIdUsed) { setLoading(false); return setError('This University ID is already registered.'); }
       setIsScanning(true);
       const data = new FormData();
-      data.append('firstName', formData.firstName);
-      data.append('lastName', formData.lastName);
+      // Normalize names: first letter capitalized, rest lowercase
+      const normalizeName = (name) => {
+        if (!name) return '';
+        let trimmed = name.trim();
+        return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+      };
+
+      data.append('firstName', normalizeName(formData.firstName));
+      data.append('lastName', normalizeName(formData.lastName));
       data.append('email', formData.email);
       data.append('password', formData.password);
       data.append('universityId', formData.universityId);
       data.append('image', selectedFile);
-      if (formData.middleName) data.append('middleName', formData.middleName);
+      if (formData.middleName) data.append('middleName', normalizeName(formData.middleName));
       if (formData.suffix) data.append('suffix', formData.suffix);
       await authService.register(data);
       await new Promise(r => setTimeout(r, 1500));
@@ -403,9 +446,18 @@ const SignupForm = () => {
                   Suffix{' '}
                   <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>(opt.)</span>
                 </label>
-                <input id="suffix" type="text" disabled={loading}
-                  className="lf-desktop-input" placeholder="Jr., Sr., III…"
-                  value={formData.suffix} onChange={handleChange} />
+                <select id="suffix" disabled={loading}
+                  className="lf-desktop-input"
+                  value={formData.suffix} onChange={handleChange}
+                  style={{ appearance: 'auto', cursor: 'pointer' }}
+                >
+                  <option value="">None</option>
+                  <option value="Jr.">Jr.</option>
+                  <option value="Sr.">Sr.</option>
+                  <option value="II">II</option>
+                  <option value="III">III</option>
+                  <option value="IV">IV</option>
+                </select>
               </div>
               <div className="lf-field" style={{ flex: 5 }}>
                 <label htmlFor="universityId" className="lf-desktop-label">University ID</label>
@@ -556,8 +608,17 @@ const SignupForm = () => {
                   <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>(opt.)</span>
                 </label>
                 <div className="m-input-pill">
-                  <input id="suffix" type="text" className="m-pill-input" placeholder="Jr."
-                    value={formData.suffix} onChange={handleChange} />
+                  <select id="suffix" className="m-pill-input"
+                    value={formData.suffix} onChange={handleChange}
+                    style={{ paddingRight: '25px', backgroundColor: 'transparent' }}
+                  >
+                    <option value="">None</option>
+                    <option value="Jr.">Jr.</option>
+                    <option value="Sr.">Sr.</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                    <option value="IV">IV</option>
+                  </select>
                 </div>
               </div>
               <div className="m-field" style={{ flex: 2 }}>

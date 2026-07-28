@@ -207,6 +207,7 @@ export default function MediTrack() {
   const handleLogout = () => {
     showLoading("Signing out", "light");
     try { localStorage.removeItem("meditrack_activeTab"); } catch (_) { /* ignore */ }
+    // Note: stopTokenRefresh and token invalidation is now handled internally by authService.logout
     authService.logout();
     hideLoading();
     navigate("/login");

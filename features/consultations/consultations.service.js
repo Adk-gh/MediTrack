@@ -5,18 +5,25 @@ const archiveHelper = require('../archives/archiveHelper');
 const ARCHIVE_TYPE = 'consultation';
 
 exports.getAllConsultations = async (consultationType = null, role = null) => {
+  console.log('[getAllConsultations] consultationType:', consultationType, 'role:', role);
+
   let query = supabase
     .from('consultations')
     .select('*')
-    .eq('is_archived', false)
+    .or('is_archived.is.null,is_archived.eq.false')
     .order('created_at', { ascending: false });
 
   if (consultationType) {
     query = query.eq('consultation_type', consultationType);
   }
 
+  console.log('[getAllConsultations] Query built, fetching...');
   const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[getAllConsultations] Error:', error);
+    throw new Error(error.message);
+  }
+  console.log('[getAllConsultations] Results:', data?.length, data?.map(c => ({ id: c.id, type: c.consultation_type, status: c.status, is_archived: c.is_archived })));
   return data;
 };
 
@@ -25,7 +32,7 @@ exports.getConsultationById = async (id) => {
     .from('consultations')
     .select('*')
     .eq('id', id)
-    .eq('is_archived', false)
+    .or('is_archived.is.null,is_archived.eq.false')
     .single();
 
   if (error) throw new Error(error.message);
@@ -37,7 +44,7 @@ exports.getConsultationsByPatient = async (patientId) => {
     .from('consultations')
     .select('*')
     .eq('patient_id', patientId)
-    .eq('is_archived', false)
+    .or('is_archived.is.null,is_archived.eq.false')
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -108,6 +115,13 @@ exports.endConsultation = async (id) => {
   return exports.updateConsultation(id, {
     status:   'ended',
     ended_at: new Date().toISOString(),
+  });
+};
+
+exports.reactivateConsultation = async (id) => {
+  return exports.updateConsultation(id, {
+    status:   'active',
+    ended_at: null,
   });
 };
 

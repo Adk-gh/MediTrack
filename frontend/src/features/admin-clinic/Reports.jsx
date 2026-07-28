@@ -10,6 +10,8 @@ import {
 import { Bar, Doughnut, Line, PolarArea } from 'react-chartjs-2';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import authService from '../../services/auth.service.js';
 
 ChartJS.register(
@@ -24,6 +26,14 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Brand palette used across charts + the Excel export
+const BRAND = '466460';
+const BRAND_DARK = '3A524F';
+const ACCENT = 'E07A5F';
+const LIGHT_BG = 'F4F7F6';
+const HEADER_TEXT = 'FFFFFF';
+const BORDER_COLOR = 'D9E2E1';
 
 // Medical conditions for tracking based on schema fields
 const MEDICAL_CONDITIONS = [
@@ -250,6 +260,80 @@ const ChartSkeleton = ({ h = '220px' }) => (
   </div>
 );
 
+// ─── Excel export style helpers ─────────────────────────────────────────────
+const thinBorder = {
+  top: { style: 'thin', color: { argb: BORDER_COLOR } },
+  left: { style: 'thin', color: { argb: BORDER_COLOR } },
+  bottom: { style: 'thin', color: { argb: BORDER_COLOR } },
+  right: { style: 'thin', color: { argb: BORDER_COLOR } },
+};
+
+function addTitleBanner(ws, title, subtitleLines, colSpan = 4) {
+  ws.mergeCells(1, 1, 1, colSpan);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = title;
+  titleCell.font = { bold: true, size: 16, color: { argb: HEADER_TEXT } };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } };
+  ws.getRow(1).height = 30;
+
+  subtitleLines.forEach((line, i) => {
+    ws.mergeCells(2 + i, 1, 2 + i, colSpan);
+    const c = ws.getCell(2 + i, 1);
+    c.value = line;
+    c.font = { size: 10, color: { argb: '5B6B69' }, italic: true };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
+  });
+
+  return 2 + subtitleLines.length + 1; // next free row (with a blank spacer row)
+}
+
+function addSectionHeader(ws, row, text, colSpan) {
+  ws.mergeCells(row, 1, row, colSpan);
+  const c = ws.getCell(row, 1);
+  c.value = text;
+  c.font = { bold: true, size: 12, color: { argb: HEADER_TEXT } };
+  c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_DARK } };
+  c.alignment = { vertical: 'middle', indent: 1 };
+  ws.getRow(row).height = 22;
+  return row + 1;
+}
+
+function addTableHeader(ws, row, headers) {
+  headers.forEach((h, i) => {
+    const c = ws.getCell(row, i + 1);
+    c.value = h;
+    c.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } };
+    c.border = thinBorder;
+    c.alignment = { vertical: 'middle', horizontal: i === 0 ? 'left' : 'center' };
+  });
+  ws.getRow(row).height = 18;
+  return row + 1;
+}
+
+function addDataRow(ws, row, values, { zebra = false, boldFirst = false } = {}) {
+  values.forEach((v, i) => {
+    const c = ws.getCell(row, i + 1);
+    c.value = v;
+    c.border = thinBorder;
+    c.font = { size: 10, bold: boldFirst && i === 0 };
+    c.alignment = { horizontal: i === 0 ? 'left' : 'center', vertical: 'middle' };
+    if (zebra) {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFA' } };
+    }
+  });
+  return row + 1;
+}
+
+function pctOf(part, total) {
+  return total > 0 ? part / total : 0;
+}
+
+function applyPercentFormat(ws, row, col) {
+  ws.getCell(row, col).numFmt = '0%';
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export const Reports = () => {
   const [loading, setLoading] = useState(true);
@@ -270,12 +354,27 @@ export const Reports = () => {
 
       const headers = await authService.getAuthHeaders();
 
+      // Helper function to safely filter out archived items (Bulletproof version)
+      const filterArchived = (data) => {
+        if (!Array.isArray(data)) return [];
+        return data.filter(item => {
+          const archived = item.is_archived;
+          // Check against boolean true, numeric 1, and string versions
+          return (
+            archived !== true &&
+            archived !== 1 &&
+            String(archived).toLowerCase().trim() !== 'true' &&
+            String(archived).trim() !== '1'
+          );
+        });
+      };
+
       // Fetch users
       const usersRes = await fetch(`${API_URL}/records`, { headers }).catch(() => null);
       let usersData = [];
       if (usersRes && usersRes.ok) {
         const json = await usersRes.json();
-        usersData = json.data || json || [];
+        usersData = filterArchived(json.data || json || []);
       }
       setUsers(usersData);
 
@@ -284,25 +383,25 @@ export const Reports = () => {
       let apptData = [];
       if (apptRes && apptRes.ok) {
         const json = await apptRes.json();
-        apptData = json.data || json || [];
+        apptData = filterArchived(json.data || json || []);
       }
       setAppointments(apptData);
 
-      // ✅ FIX: Fetch medical records through backend (bypasses Supabase RLS)
+      // Fetch medical records through backend (bypasses Supabase RLS)
       const medRes = await fetch(`${API_URL}/examinations/medical`, { headers }).catch(() => null);
       let medData = [];
       if (medRes && medRes.ok) {
         const json = await medRes.json();
-        medData = json.data || json || [];
+        medData = filterArchived(json.data || json || []);
       }
       setMedicalRecords(medData);
 
-      // ✅ FIX: Fetch dental records through backend (bypasses Supabase RLS)
+      // Fetch dental records through backend (bypasses Supabase RLS)
       const denRes = await fetch(`${API_URL}/examinations/dental`, { headers }).catch(() => null);
       let denData = [];
       if (denRes && denRes.ok) {
         const json = await denRes.json();
-        denData = json.data || json || [];
+        denData = filterArchived(json.data || json || []);
       }
       setDentalRecords(denData);
 
@@ -550,7 +649,7 @@ export const Reports = () => {
     };
   }, [appointments, medicalRecords, dentalRecords, users, dateRange]);
 
-  // ── Chart Data: Appointment Trends (Line Chart) ────────────────────────────
+  // ── Chart Data: Appointment Trends (Line Chart) ────────────────────────
   const appointmentTrendsData = useMemo(() => {
     return {
       labels: MONTHS,
@@ -720,214 +819,212 @@ export const Reports = () => {
     }
   };
 
-  // ── Export to Excel (CSV) - PRETTIER FORMAT ────────────────────────────────
-  const exportToCSV = () => {
-    // Create a formatted Excel file with proper structure
-    const escapeCSV = (val) => {
-      if (val === null || val === undefined) return '';
-      const str = String(val);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
+  // ── Export to Excel (.xlsx) - PROFESSIONAL, STYLED, MULTI-SHEET ───────────
+  const exportToCSV = async () => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'MediTrack';
+      workbook.created = new Date();
+
+      const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const rangeLabel = dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year';
+      const subtitle = [`Generated: ${todayLabel}`, `Date Range: ${rangeLabel}`];
+
+      const totalAppts = processedData.totalAppts || 1;
+      const totalMed = processedData.totalMed || 1;
+      const totalDen = processedData.totalDen || 1;
+      const totalUsers = processedData.totalUsers || 1;
+
+      // Helper function to grab chart diagrams as images for the Excel file
+      const getChartBase64 = (id) => {
+        const canvas = document.getElementById(id);
+        if (canvas) {
+          // ExcelJS expects base64 without the mime type prefix
+          return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+        }
+        return null;
+      };
+
+      // ── Sheet 1: Overview ──────────────────────────────────────────────
+      {
+        const ws = workbook.addWorksheet('Overview');
+        ws.columns = [{ width: 28 }, { width: 24 }, { width: 14 }, { width: 14 }];
+        let r = addTitleBanner(ws, 'MediTrack Health Report', subtitle, 4);
+        r = addSectionHeader(ws, r, 'Overview Statistics', 4);
+        r = addTableHeader(ws, r, ['Category', 'Metric', 'Count', '']);
+        const overviewRows = [
+          ['Overview', 'Total Medical Exams', processedData.totalMed],
+          ['Overview', 'Total Dental Exams', processedData.totalDen],
+          ['Overview', 'Total Appointments', processedData.totalAppts],
+          ['Overview', 'Total Users', processedData.totalUsers],
+        ];
+        overviewRows.forEach((row, i) => { r = addDataRow(ws, r, [...row, ''], { zebra: i % 2 === 1 }); });
+
+        // Add a note so users don't miss the other tabs
+        r += 2;
+        ws.mergeCells(r, 1, r, 4);
+        const noteCell = ws.getCell(r, 1);
+        noteCell.value = "👉 TIP: Check the other sheet tabs below for Appointments, Medical, Dental, and Findings data!";
+        noteCell.font = { bold: true, color: { argb: 'E07A5F' } };
+
+        // Embed Overview Diagrams
+        const chart1 = getChartBase64('medical-dental');
+        const chart2 = getChartBase64('monthly-comparison');
+
+        if (chart1) {
+          const imgId = workbook.addImage({ base64: chart1, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 1 }, ext: { width: 350, height: 220 } });
+        }
+        if (chart2) {
+          const imgId = workbook.addImage({ base64: chart2, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 13 }, ext: { width: 450, height: 250 } });
+        }
       }
-      return str;
-    };
 
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      // ── Sheet 2: Appointments ────────────────────────────────────────────
+      {
+        const ws = workbook.addWorksheet('Appointments');
+        ws.columns = [{ width: 20 }, { width: 14 }, { width: 14 }, { width: 10 }];
+        let r = addTitleBanner(ws, 'Appointments Analysis', subtitle, 4);
+        r = addSectionHeader(ws, r, 'Status Breakdown', 4);
+        r = addTableHeader(ws, r, ['Status', 'Count', 'Percentage', '']);
+        const statusRows = [
+          ['Completed', processedData.completedAppts],
+          ['Pending', processedData.pendingAppts],
+          ['Approved', processedData.approvedAppts],
+          ['Missed', processedData.missedAppts],
+        ];
+        statusRows.forEach((row, i) => {
+          r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], totalAppts), ''], { zebra: i % 2 === 1 });
+          applyPercentFormat(ws, r - 1, 3);
+        });
 
-    // Build rows with better organization
-    const rows = [];
+        r += 1;
+        r = addSectionHeader(ws, r, 'Monthly Appointments', 4);
+        r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
+        MONTHS.forEach((m, idx) => {
+          r = addDataRow(ws, r, [m, processedData.monthlyAppts[idx], '', ''], { zebra: idx % 2 === 1 });
+        });
 
-    // Header
-    rows.push(['MEDITRACK HEALTH REPORTS']);
-    rows.push(['Generated:', today]);
-    rows.push(['Date Range:', dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year']);
-    rows.push([]); // Empty row
+        // Embed Appointment Diagrams
+        const statusChart = getChartBase64('appointment-status');
+        const trendChart = getChartBase64('appointment-trends');
 
-    // === SECTION 1: OVERVIEW STATS ===
-    rows.push(['OVERVIEW STATISTICS']);
-    rows.push(['Category', 'Metric', 'Count', 'Percentage']);
-    const totalExams = processedData.totalMed + processedData.totalDen;
-    rows.push(['Overview', 'Total Medical Exams', processedData.totalMed, '']);
-    rows.push(['Overview', 'Total Dental Exams', processedData.totalDen, '']);
-    rows.push(['Overview', 'Total Appointments', processedData.totalAppts, '']);
-    rows.push(['Overview', 'Total Users', processedData.totalUsers, '']);
-    rows.push([]);
-
-    // === SECTION 2: APPOINTMENTS ===
-    rows.push(['APPOINTMENTS ANALYSIS']);
-    rows.push(['Status', 'Count', 'Percentage']);
-    const totalAppts = processedData.totalAppts || 1;
-    rows.push(['Completed', processedData.completedAppts, Math.round((processedData.completedAppts / totalAppts) * 100) + '%']);
-    rows.push(['Pending', processedData.pendingAppts, Math.round((processedData.pendingAppts / totalAppts) * 100) + '%']);
-    rows.push(['Approved', processedData.approvedAppts, Math.round((processedData.approvedAppts / totalAppts) * 100) + '%']);
-    rows.push(['Missed', processedData.missedAppts, Math.round((processedData.missedAppts / totalAppts) * 100) + '%']);
-    rows.push([]);
-
-    // Monthly Appointments
-    rows.push(['Monthly Appointments']);
-    rows.push(['Month', 'Count']);
-    MONTHS.forEach((month, idx) => {
-      rows.push([month, processedData.monthlyAppts[idx]]);
-    });
-    rows.push([]);
-
-    // === SECTION 3: MEDICAL EXAMINATIONS ===
-    rows.push(['MEDICAL EXAMINATIONS']);
-    rows.push(['Metric', 'Count', 'Percentage']);
-    const totalMed = processedData.totalMed || 1;
-    rows.push(['Total Medical Exams', processedData.totalMed, '']);
-    rows.push(['Fit', processedData.fitCount, Math.round((processedData.fitCount / totalMed) * 100) + '%']);
-    rows.push(['Not Fit', processedData.notFitCount, Math.round((processedData.notFitCount / totalMed) * 100) + '%']);
-    rows.push(['Normal Findings', processedData.normalFindingsCount, Math.round((processedData.normalFindingsCount / totalMed) * 100) + '%']);
-    rows.push(['Abnormal Findings', processedData.abnormalFindingsCount, Math.round((processedData.abnormalFindingsCount / totalMed) * 100) + '%']);
-    rows.push(['Approved', processedData.medApprovedCount, Math.round((processedData.medApprovedCount / totalMed) * 100) + '%']);
-    rows.push(['Pending', processedData.medPendingCount, Math.round((processedData.medPendingCount / totalMed) * 100) + '%']);
-    rows.push([]);
-
-    // === SECTION 4: HEALTH CONDITIONS ===
-    rows.push(['HEALTH CONDITIONS BREAKDOWN']);
-    rows.push(['Condition', 'Category', 'Count', 'Percentage']);
-    MEDICAL_CONDITIONS.forEach(condition => {
-      const count = processedData.conditionCounts[condition.id];
-      const pct = totalMed > 0 ? Math.round((count / totalMed) * 100) + '%' : '0%';
-      rows.push([condition.name, condition.category, count, pct]);
-    });
-    rows.push([]);
-
-    // === SECTION 5: DENTAL EXAMINATIONS ===
-    rows.push(['DENTAL EXAMINATIONS']);
-    rows.push(['Metric', 'Count', 'Percentage']);
-    const totalDen = processedData.totalDen || 1;
-    rows.push(['Total Dental Exams', processedData.totalDen, '']);
-    rows.push(['Approved', processedData.dentalFindingsList.filter(d => d.status === 'approved').length, '']);
-    rows.push(['Pending', processedData.dentalFindingsList.filter(d => d.status === 'pending').length, '']);
-    rows.push([]);
-
-    rows.push(['Dental Conditions']);
-    rows.push(['Condition', 'Category', 'Count']);
-    DENTAL_CONDITIONS.forEach(condition => {
-      const count = processedData.dentalConditionCounts[condition.id];
-      rows.push([condition.name, condition.category, count]);
-    });
-    rows.push([]);
-
-    // === SECTION 6: PATIENT DEMOGRAPHICS ===
-    rows.push(['PATIENT DEMOGRAPHICS']);
-    rows.push(['Type', 'Count', 'Percentage']);
-    const totalUsers = processedData.totalUsers || 1;
-    const typeCounts = { student: 0, faculty: 0, staff: 0 };
-    processedData.users.forEach(u => {
-      const role = (u.role || '').toLowerCase();
-      if (role.includes('student')) typeCounts.student++;
-      else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-      else typeCounts.staff++;
-    });
-    rows.push(['Students', typeCounts.student, Math.round((typeCounts.student / totalUsers) * 100) + '%']);
-    rows.push(['Faculty', typeCounts.faculty, Math.round((typeCounts.faculty / totalUsers) * 100) + '%']);
-    rows.push(['Staff', typeCounts.staff, Math.round((typeCounts.staff / totalUsers) * 100) + '%']);
-
-    // Generate CSV content
-    const csvContent = rows.map(row => row.map(escapeCSV).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `MediTrack_Reports_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
-  // ── Export Individual Category to Excel ───────────────────────────────────
-  const exportCategoryToCSV = (category) => {
-    const escapeCSV = (val) => {
-      if (val === null || val === undefined) return '';
-      const str = String(val);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
+        if (statusChart) {
+          const imgId = workbook.addImage({ base64: statusChart, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 1 }, ext: { width: 400, height: 220 } });
+        }
+        if (trendChart) {
+          const imgId = workbook.addImage({ base64: trendChart, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 13 }, ext: { width: 500, height: 250 } });
+        }
       }
-      return str;
-    };
 
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const rows = [];
-
-    rows.push(['MEDITRACK - ' + category.toUpperCase() + ' REPORT']);
-    rows.push(['Generated:', today]);
-    rows.push(['Date Range:', dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year']);
-    rows.push([]);
-
-    switch (category) {
-      case 'appointments':
-        rows.push(['APPOINTMENTS ANALYSIS']);
-        rows.push(['Status', 'Count', 'Percentage']);
-        const totalAppts = processedData.totalAppts || 1;
-        rows.push(['Total', processedData.totalAppts, '']);
-        rows.push(['Completed', processedData.completedAppts, Math.round((processedData.completedAppts / totalAppts) * 100) + '%']);
-        rows.push(['Pending', processedData.pendingAppts, Math.round((processedData.pendingAppts / totalAppts) * 100) + '%']);
-        rows.push(['Approved', processedData.approvedAppts, Math.round((processedData.approvedAppts / totalAppts) * 100) + '%']);
-        rows.push(['Missed', processedData.missedAppts, Math.round((processedData.missedAppts / totalAppts) * 100) + '%']);
-        rows.push([]);
-        rows.push(['Monthly Appointments']);
-        rows.push(['Month', 'Count']);
-        MONTHS.forEach((month, idx) => {
-          rows.push([month, processedData.monthlyAppts[idx]]);
+      // ── Sheet 3: Medical Exams ───────────────────────────────────────────
+      {
+        const ws = workbook.addWorksheet('Medical Exams');
+        ws.columns = [{ width: 22 }, { width: 12 }, { width: 14 }, { width: 10 }];
+        let r = addTitleBanner(ws, 'Medical Examinations', subtitle, 4);
+        r = addSectionHeader(ws, r, 'Summary', 4);
+        r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
+        const medRows = [
+          ['Total Medical Exams', processedData.totalMed, null],
+          ['Fit', processedData.fitCount, pctOf(processedData.fitCount, totalMed)],
+          ['Not Fit', processedData.notFitCount, pctOf(processedData.notFitCount, totalMed)],
+          ['Normal Findings', processedData.normalFindingsCount, pctOf(processedData.normalFindingsCount, totalMed)],
+          ['Abnormal Findings', processedData.abnormalFindingsCount, pctOf(processedData.abnormalFindingsCount, totalMed)],
+          ['Approved', processedData.medApprovedCount, pctOf(processedData.medApprovedCount, totalMed)],
+          ['Pending', processedData.medPendingCount, pctOf(processedData.medPendingCount, totalMed)],
+        ];
+        medRows.forEach((row, i) => {
+          r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 });
+          if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
         });
-        break;
 
-      case 'medical':
-        rows.push(['MEDICAL EXAMINATIONS']);
-        rows.push(['Metric', 'Count', 'Percentage']);
-        const totalMed = processedData.totalMed || 1;
-        rows.push(['Total Medical Exams', processedData.totalMed, '']);
-        rows.push(['Fit', processedData.fitCount, Math.round((processedData.fitCount / totalMed) * 100) + '%']);
-        rows.push(['Not Fit', processedData.notFitCount, Math.round((processedData.notFitCount / totalMed) * 100) + '%']);
-        rows.push(['Normal Findings', processedData.normalFindingsCount, Math.round((processedData.normalFindingsCount / totalMed) * 100) + '%']);
-        rows.push(['Abnormal Findings', processedData.abnormalFindingsCount, Math.round((processedData.abnormalFindingsCount / totalMed) * 100) + '%']);
-        rows.push(['Approved', processedData.medApprovedCount, Math.round((processedData.medApprovedCount / totalMed) * 100) + '%']);
-        rows.push(['Pending', processedData.medPendingCount, Math.round((processedData.medPendingCount / totalMed) * 100) + '%']);
-        rows.push([]);
-        rows.push(['Monthly Medical Exams']);
-        rows.push(['Month', 'Count']);
-        MONTHS.forEach((month, idx) => {
-          rows.push([month, processedData.monthlyMed[idx]]);
+        r += 1;
+        r = addSectionHeader(ws, r, 'Monthly Medical Exams', 4);
+        r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
+        MONTHS.forEach((m, idx) => {
+          r = addDataRow(ws, r, [m, processedData.monthlyMed[idx], '', ''], { zebra: idx % 2 === 1 });
         });
-        break;
 
-      case 'dental':
-        rows.push(['DENTAL EXAMINATIONS']);
-        rows.push(['Metric', 'Count', 'Percentage']);
-        const totalDen = processedData.totalDen || 1;
-        rows.push(['Total Dental Exams', processedData.totalDen, '']);
-        rows.push(['Approved', processedData.dentalFindingsList.filter(d => d.status === 'approved').length, '']);
-        rows.push(['Pending', processedData.dentalFindingsList.filter(d => d.status === 'pending').length, '']);
-        rows.push([]);
-        rows.push(['Dental Conditions']);
-        rows.push(['Condition', 'Category', 'Count']);
-        DENTAL_CONDITIONS.forEach(condition => {
-          const count = processedData.dentalConditionCounts[condition.id];
-          rows.push([condition.name, condition.category, count]);
-        });
-        rows.push([]);
-        rows.push(['Monthly Dental Exams']);
-        rows.push(['Month', 'Count']);
-        MONTHS.forEach((month, idx) => {
-          rows.push([month, processedData.monthlyDen[idx]]);
-        });
-        break;
+        // Embed Category Chart
+        const catChart = getChartBase64('category-breakdown');
+        if (catChart) {
+          const imgId = workbook.addImage({ base64: catChart, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 1 }, ext: { width: 450, height: 300 } });
+        }
+      }
 
-      case 'conditions':
-        rows.push(['HEALTH CONDITIONS BREAKDOWN']);
-        rows.push(['Condition', 'Category', 'Count', 'Percentage']);
-        const totMed = processedData.totalMed || 1;
-        MEDICAL_CONDITIONS.forEach(condition => {
-          const count = processedData.conditionCounts[condition.id];
-          const pct = totMed > 0 ? Math.round((count / totMed) * 100) + '%' : '0%';
-          rows.push([condition.name, condition.category, count, pct]);
+      // ── Sheet 4: Health Conditions ───────────────────────────────────────
+      {
+        const ws = workbook.addWorksheet('Health Conditions');
+        ws.columns = [{ width: 24 }, { width: 20 }, { width: 10 }, { width: 12 }];
+        let r = addTitleBanner(ws, 'Health Conditions Breakdown', subtitle, 4);
+        r = addSectionHeader(ws, r, 'All Conditions', 4);
+        const headerRow = addTableHeader(ws, r, ['Condition', 'Category', 'Cases', '% of Total']);
+        r = headerRow;
+        MEDICAL_CONDITIONS.forEach((cond, i) => {
+          const count = processedData.conditionCounts[cond.id];
+          r = addDataRow(ws, r, [cond.name, cond.category, count, pctOf(count, totalMed)], { zebra: i % 2 === 1 });
+          applyPercentFormat(ws, r - 1, 4);
         });
-        break;
+        ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 4 } };
+        ws.views = [{ state: 'frozen', ySplit: headerRow }];
 
-      case 'demographics':
-        rows.push(['PATIENT DEMOGRAPHICS']);
-        rows.push(['Type', 'Count', 'Percentage']);
-        const totalUsers = processedData.totalUsers || 1;
+        // Embed Polar Chart
+        const distChart = getChartBase64('condition-distribution');
+        if (distChart) {
+          const imgId = workbook.addImage({ base64: distChart, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 6, row: 1 }, ext: { width: 400, height: 400 } });
+        }
+      }
+
+      // ── Sheet 5: Dental ──────────────────────────────────────────────────
+      {
+        const ws = workbook.addWorksheet('Dental');
+        ws.columns = [{ width: 24 }, { width: 20 }, { width: 10 }, { width: 12 }];
+        let r = addTitleBanner(ws, 'Dental Examinations', subtitle, 4);
+        r = addSectionHeader(ws, r, 'Summary', 4);
+        r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
+        const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
+        const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
+        const denRows = [
+          ['Total Dental Exams', processedData.totalDen, null],
+          ['Approved', approvedDen, pctOf(approvedDen, totalDen)],
+          ['Pending', pendingDen, pctOf(pendingDen, totalDen)],
+        ];
+        denRows.forEach((row, i) => {
+          r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 });
+          if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+        });
+
+        r += 1;
+        r = addSectionHeader(ws, r, 'Dental Conditions', 4);
+        const dentalHeaderRow = addTableHeader(ws, r, ['Condition', 'Category', 'Count', '']);
+        r = dentalHeaderRow;
+        DENTAL_CONDITIONS.forEach((cond, i) => {
+          const count = processedData.dentalConditionCounts[cond.id];
+          r = addDataRow(ws, r, [cond.name, cond.category, count, ''], { zebra: i % 2 === 1 });
+        });
+        ws.autoFilter = { from: { row: dentalHeaderRow, column: 1 }, to: { row: r - 1, column: 3 } };
+
+        // Embed Dental Diagram
+        const dentalChart = getChartBase64('dental-conditions');
+        if (dentalChart) {
+          const imgId = workbook.addImage({ base64: dentalChart, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 1 }, ext: { width: 450, height: 280 } });
+        }
+      }
+
+      // ── Sheet 6: Demographics ────────────────────────────────────────────
+      {
+        const ws = workbook.addWorksheet('Demographics');
+        ws.columns = [{ width: 20 }, { width: 14 }, { width: 14 }, { width: 10 }];
+        let r = addTitleBanner(ws, 'Patient Demographics', subtitle, 4);
+        r = addSectionHeader(ws, r, 'By Role', 4);
+        r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
+
         const typeCounts = { student: 0, faculty: 0, staff: 0 };
         processedData.users.forEach(u => {
           const role = (u.role || '').toLowerCase();
@@ -935,47 +1032,244 @@ export const Reports = () => {
           else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
           else typeCounts.staff++;
         });
-        rows.push(['Total Users', processedData.totalUsers, '']);
-        rows.push(['Students', typeCounts.student, Math.round((typeCounts.student / totalUsers) * 100) + '%']);
-        rows.push(['Faculty', typeCounts.faculty, Math.round((typeCounts.faculty / totalUsers) * 100) + '%']);
-        rows.push(['Staff', typeCounts.staff, Math.round((typeCounts.staff / totalUsers) * 100) + '%']);
-        break;
 
-      case 'monthly':
-        rows.push(['MONTHLY CONSULTATIONS COMPARISON']);
-        rows.push(['Month', 'Medical Exams', 'Dental Exams', 'Total']);
-        MONTHS.forEach((month, idx) => {
-          const med = processedData.monthlyMed[idx];
-          const den = processedData.monthlyDen[idx];
-          rows.push([month, med, den, med + den]);
+        const demoRows = [
+          ['Students', typeCounts.student],
+          ['Faculty', typeCounts.faculty],
+          ['Staff', typeCounts.staff],
+        ];
+        demoRows.forEach((row, i) => {
+          r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], totalUsers), ''], { zebra: i % 2 === 1 });
+          applyPercentFormat(ws, r - 1, 3);
         });
-        break;
 
-      case 'summary':
-        rows.push(['SUMMARY REPORT']);
-        rows.push(['Category', 'Metric', 'Count']);
-        rows.push(['Patients', 'Total Registered', processedData.totalUsers]);
-        rows.push(['Consultations', 'Medical', processedData.totalMed]);
-        rows.push(['Consultations', 'Dental', processedData.totalDen]);
-        rows.push(['Appointments', 'Completed', processedData.completedAppts]);
-        rows.push(['Appointments', 'Pending', processedData.pendingAppts]);
-        rows.push(['Medical Records', 'Approved', processedData.medApprovedCount]);
-        rows.push(['Medical Records', 'Pending', processedData.medPendingCount]);
-        rows.push(['Fitness Status', 'Fit', processedData.fitCount]);
-        rows.push(['Fitness Status', 'Not Fit', processedData.notFitCount]);
-        rows.push(['Findings', 'Normal', processedData.normalFindingsCount]);
-        break;
+        // Embed Demographic Doughnut Chart
+        const demoChart = getChartBase64('patient-demographics');
+        if (demoChart) {
+          const imgId = workbook.addImage({ base64: demoChart, extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 5, row: 1 }, ext: { width: 350, height: 220 } });
+        }
+      }
 
-      default:
-        rows.push(['No data available for this category']);
+      // ── Sheet 7: Patient Findings (detailed) ─────────────────────────────
+      if (processedData.findingsList && processedData.findingsList.length > 0) {
+        const ws = workbook.addWorksheet('Patient Findings');
+        ws.columns = [
+          { width: 24 }, { width: 30 }, { width: 28 }, { width: 28 }, { width: 12 },
+        ];
+        let r = addTitleBanner(ws, 'Patient Findings Detail', subtitle, 5);
+        const headerRow = addTableHeader(ws, r, ['Patient', 'Finding (Examination)', 'Medical History', 'Health Check', 'Status']);
+        r = headerRow;
+        processedData.findingsList.forEach((f, i) => {
+          const status = f.isFit === true ? 'Fit' : f.isFit === false ? 'Not Fit' : 'Pending';
+          r = addDataRow(ws, r, [
+            f.name,
+            f.finding1 || '-',
+            (f.checkedMedical || []).join(', ') || '-',
+            (f.checkedHealth || []).join(', ') || '-',
+            status,
+          ], { zebra: i % 2 === 1 });
+        });
+        ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 5 } };
+        ws.views = [{ state: 'frozen', ySplit: headerRow }];
+      }
+
+      // ── Write file ────────────────────────────────────────────────────
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, `MediTrack_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('Error exporting Excel report:', err);
     }
+  };
 
-    const csvContent = rows.map(row => row.map(escapeCSV).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `MediTrack_${category}_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+  // ── Export Individual Category to Excel (single-sheet, styled) ───────────
+  const exportCategoryToCSV = async (category) => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'MediTrack';
+      workbook.created = new Date();
+
+      const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const rangeLabel = dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year';
+      const subtitle = [`Generated: ${todayLabel}`, `Date Range: ${rangeLabel}`];
+
+      const totalAppts = processedData.totalAppts || 1;
+      const totalMed = processedData.totalMed || 1;
+      const totalDen = processedData.totalDen || 1;
+      const totalUsers = processedData.totalUsers || 1;
+
+      const titles = {
+        appointments: 'Appointments Analysis',
+        medical: 'Medical Examinations',
+        dental: 'Dental Examinations',
+        conditions: 'Health Conditions Breakdown',
+        demographics: 'Patient Demographics',
+        monthly: 'Monthly Consultations Comparison',
+        summary: 'Summary Report',
+      };
+
+      const ws = workbook.addWorksheet(titles[category] ? titles[category].slice(0, 31) : 'Report');
+      ws.columns = [{ width: 26 }, { width: 20 }, { width: 14 }, { width: 12 }];
+      let r = addTitleBanner(ws, `MediTrack — ${titles[category] || 'Report'}`, subtitle, 4);
+
+      switch (category) {
+        case 'appointments': {
+          r = addSectionHeader(ws, r, 'Status Breakdown', 4);
+          r = addTableHeader(ws, r, ['Status', 'Count', 'Percentage', '']);
+          const rows = [
+            ['Total', processedData.totalAppts, null],
+            ['Completed', processedData.completedAppts, pctOf(processedData.completedAppts, totalAppts)],
+            ['Pending', processedData.pendingAppts, pctOf(processedData.pendingAppts, totalAppts)],
+            ['Approved', processedData.approvedAppts, pctOf(processedData.approvedAppts, totalAppts)],
+            ['Missed', processedData.missedAppts, pctOf(processedData.missedAppts, totalAppts)],
+          ];
+          rows.forEach((row, i) => {
+            r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 });
+            if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+          });
+          r += 1;
+          r = addSectionHeader(ws, r, 'Monthly Appointments', 4);
+          r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
+          MONTHS.forEach((m, idx) => {
+            r = addDataRow(ws, r, [m, processedData.monthlyAppts[idx], '', ''], { zebra: idx % 2 === 1 });
+          });
+          break;
+        }
+
+        case 'medical': {
+          r = addSectionHeader(ws, r, 'Summary', 4);
+          r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
+          const rows = [
+            ['Total Medical Exams', processedData.totalMed, null],
+            ['Fit', processedData.fitCount, pctOf(processedData.fitCount, totalMed)],
+            ['Not Fit', processedData.notFitCount, pctOf(processedData.notFitCount, totalMed)],
+            ['Normal Findings', processedData.normalFindingsCount, pctOf(processedData.normalFindingsCount, totalMed)],
+            ['Abnormal Findings', processedData.abnormalFindingsCount, pctOf(processedData.abnormalFindingsCount, totalMed)],
+            ['Approved', processedData.medApprovedCount, pctOf(processedData.medApprovedCount, totalMed)],
+            ['Pending', processedData.medPendingCount, pctOf(processedData.medPendingCount, totalMed)],
+          ];
+          rows.forEach((row, i) => {
+            r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 });
+            if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+          });
+          r += 1;
+          r = addSectionHeader(ws, r, 'Monthly Medical Exams', 4);
+          r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
+          MONTHS.forEach((m, idx) => {
+            r = addDataRow(ws, r, [m, processedData.monthlyMed[idx], '', ''], { zebra: idx % 2 === 1 });
+          });
+          break;
+        }
+
+        case 'dental': {
+          r = addSectionHeader(ws, r, 'Summary', 4);
+          r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
+          const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
+          const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
+          const rows = [
+            ['Total Dental Exams', processedData.totalDen, null],
+            ['Approved', approvedDen, pctOf(approvedDen, totalDen)],
+            ['Pending', pendingDen, pctOf(pendingDen, totalDen)],
+          ];
+          rows.forEach((row, i) => {
+            r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 });
+            if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+          });
+          r += 1;
+          r = addSectionHeader(ws, r, 'Dental Conditions', 4);
+          const headerRow = addTableHeader(ws, r, ['Condition', 'Category', 'Count', '']);
+          r = headerRow;
+          DENTAL_CONDITIONS.forEach((cond, i) => {
+            const count = processedData.dentalConditionCounts[cond.id];
+            r = addDataRow(ws, r, [cond.name, cond.category, count, ''], { zebra: i % 2 === 1 });
+          });
+          ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 3 } };
+          r += 1;
+          r = addSectionHeader(ws, r, 'Monthly Dental Exams', 4);
+          r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
+          MONTHS.forEach((m, idx) => {
+            r = addDataRow(ws, r, [m, processedData.monthlyDen[idx], '', ''], { zebra: idx % 2 === 1 });
+          });
+          break;
+        }
+
+        case 'conditions': {
+          r = addSectionHeader(ws, r, 'All Conditions', 4);
+          const headerRow = addTableHeader(ws, r, ['Condition', 'Category', 'Cases', '% of Total']);
+          r = headerRow;
+          MEDICAL_CONDITIONS.forEach((cond, i) => {
+            const count = processedData.conditionCounts[cond.id];
+            r = addDataRow(ws, r, [cond.name, cond.category, count, pctOf(count, totalMed)], { zebra: i % 2 === 1 });
+            applyPercentFormat(ws, r - 1, 4);
+          });
+          ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 4 } };
+          break;
+        }
+
+        case 'demographics': {
+          r = addSectionHeader(ws, r, 'By Role', 4);
+          r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
+          const typeCounts = { student: 0, faculty: 0, staff: 0 };
+          processedData.users.forEach(u => {
+            const role = (u.role || '').toLowerCase();
+            if (role.includes('student')) typeCounts.student++;
+            else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
+            else typeCounts.staff++;
+          });
+          r = addDataRow(ws, r, ['Total Users', processedData.totalUsers, '', ''], { zebra: false });
+          const rows = [
+            ['Students', typeCounts.student],
+            ['Faculty', typeCounts.faculty],
+            ['Staff', typeCounts.staff],
+          ];
+          rows.forEach((row, i) => {
+            r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], totalUsers), ''], { zebra: i % 2 === 1 });
+            applyPercentFormat(ws, r - 1, 3);
+          });
+          break;
+        }
+
+        case 'monthly': {
+          r = addSectionHeader(ws, r, 'Monthly Consultations Comparison', 4);
+          r = addTableHeader(ws, r, ['Month', 'Medical Exams', 'Dental Exams', 'Total']);
+          MONTHS.forEach((m, idx) => {
+            const med = processedData.monthlyMed[idx];
+            const den = processedData.monthlyDen[idx];
+            r = addDataRow(ws, r, [m, med, den, med + den], { zebra: idx % 2 === 1 });
+          });
+          break;
+        }
+
+        case 'summary': {
+          r = addSectionHeader(ws, r, 'Summary Report', 4);
+          r = addTableHeader(ws, r, ['Category', 'Metric', 'Count', '']);
+          const rows = [
+            ['Patients', 'Total Registered', processedData.totalUsers],
+            ['Consultations', 'Medical', processedData.totalMed],
+            ['Consultations', 'Dental', processedData.totalDen],
+            ['Appointments', 'Completed', processedData.completedAppts],
+            ['Appointments', 'Pending', processedData.pendingAppts],
+            ['Medical Records', 'Approved', processedData.medApprovedCount],
+            ['Medical Records', 'Pending', processedData.medPendingCount],
+            ['Fitness Status', 'Fit', processedData.fitCount],
+            ['Fitness Status', 'Not Fit', processedData.notFitCount],
+            ['Findings', 'Normal', processedData.normalFindingsCount],
+          ];
+          rows.forEach((row, i) => { r = addDataRow(ws, r, [...row, ''], { zebra: i % 2 === 1 }); });
+          break;
+        }
+
+        default:
+          addDataRow(ws, r, ['No data available for this category', '', '', '']);
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, `MediTrack_${category}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('Error exporting category report:', err);
+    }
   };
 
   // ── Get top insights ─────────────────────────────────────────────────────

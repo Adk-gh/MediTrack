@@ -113,7 +113,7 @@ const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 function getDefaultClassification(role) {
   const classMap = {
     administrator: 'System Administrator', admin: 'System Administrator',
-    nurse: 'Nurse Personnel', doctor: 'Physician / Doctor',
+    nurse: 'Nurse Personnel', doctor: 'Physician / Doctor', dentist: 'Dentist',
     staff: 'Non-Teaching Personnel', employee: 'Non-Teaching Personnel',
     guard: 'Security Personnel', technician: 'Non-Teaching Personnel',
     librarian: 'Non-Teaching Personnel', lecturer: 'Teaching Personnel',
@@ -124,7 +124,7 @@ function getDefaultClassification(role) {
 
 function getDefaultJobTitle(role) {
   const titleMap = {
-    nurse: 'Nurse', doctor: 'Physician', admin: 'SysAdmin',
+    nurse: 'Nurse', doctor: 'Physician', dentist: 'Dentist', admin: 'SysAdmin',
     administrator: 'Administrator', lecturer: 'Lecturer', professor: 'Professor',
     instructor: 'Instructor', librarian: 'Librarian', technician: 'Technician',
     guard: 'Security Guard', staff: 'Staff',
@@ -617,7 +617,9 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
         <div className="flex justify-between items-center mb-3">
           <h3 className="font-bold text-sm uppercase text-[#466460]">Clinical Profile</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
-            <i className="fa-solid fa-xmark text-lg"></i>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-4 h-4 fill-current">
+              <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+            </svg>
           </button>
         </div>
       )}
@@ -934,7 +936,9 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
             onClick={onClose}
             className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
           >
-            <i className="fa-solid fa-xmark text-xl"></i>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+              <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+            </svg>
           </button>
         </div>
 
@@ -1089,13 +1093,18 @@ export const Records = () => {
         return;
       }
 
-      const normalized = (data || []).map(doc => ({
-        ...normalizeUser(doc),
-        department: doc.department || 'Unassigned',
-      }));
+const normalized = (data || [])
+  .filter(doc => {
+    const role = String(doc.role || doc.type || '').toLowerCase().trim();
+    return role !== 'sysadmin' && role !== 'administrator' && role !== 'admin';
+  })
+  .map(doc => ({
+    ...normalizeUser(doc),
+    department: doc.department || 'Unassigned',
+  }));
 
-      console.log('[Records] Loaded users:', normalized.length);
-      setPeopleData(normalized);
+console.log('[Records] Loaded users:', normalized.length);
+setPeopleData(normalized);
     } catch (err) {
       console.error('Failed to load users:', err);
       showSnackbar('Could not load users from database', 'error');
@@ -1618,7 +1627,9 @@ export const Records = () => {
                 onClick={() => setShowAddModal(false)}
                 className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
               >
-                <i className="fa-solid fa-xmark text-xl"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+                  <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+                </svg>
               </button>
             </div>
 
@@ -1756,7 +1767,7 @@ export const Records = () => {
                       <div>
                         <label className={formLabelCls}>Classification</label>
                         <select name="classification" value={form.classification} onChange={handleFormChange} className={formSelectCls}>
-                          {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'System Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
+                          {['Teaching Personnel', 'Nurse Personnel', 'Dentist', 'Physician / Doctor', 'System Administrator', 'Non-Teaching Personnel', 'Security Personnel'].map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     </>

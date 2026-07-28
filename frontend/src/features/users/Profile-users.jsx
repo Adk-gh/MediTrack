@@ -110,6 +110,7 @@ const PLSP_OFFICES = [...DEPARTMENTS, ...NON_ACADEMIC_OFFICES];
 const CLASSIFICATIONS = [
   'Teaching Personnel',
   'Nurse Personnel',
+  'Dentist',
   'Physician / Doctor',
   'System Administrator',
   'Non-Teaching Personnel',
@@ -119,6 +120,7 @@ const CLASSIFICATIONS = [
 const JOB_TITLES = [
   'Nurse',
   'Physician',
+  'Dentist',
   'Administrator',
   'Lecturer',
   'Professor',
@@ -130,6 +132,13 @@ const JOB_TITLES = [
 ];
 
 // Validation helpers
+// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
+const normalizeName = (name) => {
+  if (!name) return '';
+  let trimmed = name.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
 const toTitleCase = (str) => {
   if (!str) return '';
   return str.replace(/\w\S*/g, (txt) => {
@@ -577,7 +586,15 @@ export default function ProfileUsers({ onLogout }) {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const sectionData = extractSectionData(editData, editingSection, isStudent);
+      let sectionData = extractSectionData(editData, editingSection, isStudent);
+
+      // Normalize names before saving: first letter capitalized, rest lowercase
+      if (sectionData.firstName) sectionData.firstName = normalizeName(sectionData.firstName);
+      if (sectionData.middleName) sectionData.middleName = normalizeName(sectionData.middleName);
+      if (sectionData.lastName) sectionData.lastName = normalizeName(sectionData.lastName);
+      if (sectionData.emergencyContact?.name) {
+        sectionData.emergencyContact.name = normalizeName(sectionData.emergencyContact.name);
+      }
 
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`, {
         method: 'PUT',

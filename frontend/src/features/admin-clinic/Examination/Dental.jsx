@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabase'; // Adjusted path for the Examination folder
 import DatePicker from '../../../components/Datepicker';
 import DateTimePicker from '../../../components/DateTimePicker';
-import AddressModal from '../../../components/AddressModal';
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -49,12 +48,101 @@ const toothOperations = [
   { value: 'PP',  label: 'Periodontal Pocket (PP)'      },
   { value: 'CA',  label: 'Cervical Abrasion (CA)'        },
   { value: 'R',   label: 'Restorable (R)'                },
+  { value: 'RCT', label: 'Root Canal Treatment (RCT)'    },
+  { value: 'P',   label: 'Pontic (P)'                   },
 ];
+
+// Helper to convert operation abbreviation to full name
+const getOperationFullName = (abbr) => {
+  const op = toothOperations.find(o => o.value === abbr);
+  return op ? op.label : abbr;
+};
+
+// Helper to convert condition abbreviation to full name
+const getConditionFullName = (abbr) => {
+  const cond = toothConditions.find(c => c.value === abbr);
+  return cond ? cond.label : abbr;
+};
+
+// Helper to convert full name back to abbreviation (for display in visit history)
+// FIX: previously this returned the raw letter captured out of the trailing
+// "(X)" in the label (e.g. "Caries (C)" -> "c", "Missing (M)" -> "m",
+// "Indicated for Extraction (X)" -> "x", "Root Fragment (RF)" -> "rf"),
+// but every consumer of this function keys its counts/colors off the
+// toothConditions VALUE ("caries", "missing", "extracted", "root-fragment"),
+// not the raw letter. So caries/missing/extracted/root-fragment counts were
+// always 0 in the Tooth Conditions Chart summary, even though the badge
+// itself displayed the raw condition text. "Filled (●)" happened to work
+// only because "●" isn't A-Za-z, so the regex failed to match and it fell
+// through to the exact label lookup below, which does return the right value.
+// Now we always resolve through the toothConditions list itself so every
+// condition maps to its real value consistently.
+const getConditionAbbr = (fullName) => {
+  if (!fullName) return '';
+  // 1) Exact match against value or label (handles values already stored as
+  //    the short value, e.g. "caries", and full labels, e.g. "Filled (●)")
+  const exact = toothConditions.find(c => c.value === fullName || c.label === fullName);
+  if (exact) return exact.value;
+
+  // 2) Fallback: extract the abbreviation in trailing parentheses and match
+  //    it against each known condition's own abbreviation (not just return it)
+  const match = fullName.match(/\(([A-Za-z-]+)\)$/);
+  if (match) {
+    const abbr = match[1].toLowerCase();
+    const byAbbr = toothConditions.find(c => {
+      const labelMatch = c.label.match(/\(([A-Za-z-]+)\)$/);
+      return labelMatch && labelMatch[1].toLowerCase() === abbr;
+    });
+    if (byAbbr) return byAbbr.value;
+  }
+
+  return fullName;
+};
+
+const getOperationAbbr = (fullName) => {
+  if (!fullName) return '';
+  // Extract abbreviation from format like "Amalgam (AM)"
+  const match = fullName.match(/\(([A-Za-z]+)\)$/);
+  if (match) return match[1];
+  // Check if it's already an abbreviation
+  const found = toothOperations.find(o => o.value === fullName || o.label === fullName);
+  return found ? found.value : fullName;
+};
 
 // ── Shared style tokens ────────────────────────────────────────────────────────
 const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
+const readOnlyInputClass = inputClass + " bg-slate-100 cursor-not-allowed text-slate-600";
 const labelClass   = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1";
+const requiredLabelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1";
 const sectionClass = "bg-slate-50 border-l-4 border-[#466460] px-4 py-2 text-xs font-bold uppercase my-4 flex justify-between items-center text-slate-700";
+
+// ── Helper: Fetch dentists for dropdown ───────────────────────────────────────
+const fetchDentists = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, license_number, role')
+      .eq('role', 'dentist')
+      .order('last_name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching dentists:', error);
+      return [];
+    }
+
+    // Format: "LastName, FirstName D.M.D / License no. XXXXXX"
+    return (data || []).map(doc => ({
+      id: doc.id,
+      display: `${doc.last_name || ''}, ${doc.first_name || ''} D.M.D / License no. ${doc.license_number || ''}`.trim(),
+      licenseNumber: doc.license_number || '',
+      firstName: doc.first_name || '',
+      lastName: doc.last_name || '',
+    }));
+  } catch (err) {
+    console.error('Error fetching dentists:', err);
+    return [];
+  }
+};
 
 // ── Tooth condition → style map ────────────────────────────────────────────────
 const toothConditionStyle = {
@@ -143,9 +231,7 @@ const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
     dVax1Date:      vaxDate('dose1'),
     dVax2Date:      vaxDate('dose2'),
     dBoosterDate:   vaxDate('booster1'),
-    dPatientSig:    existingRecord?.patient_signature || '',
     dExamDate: existingRecord?.exam_date ? existingRecord.exam_date.slice(0, 16) : (new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)),
-    dSigDate: existingRecord?.sig_date ? existingRecord.sig_date.split('T')[0] : (new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)),
     dExaminedBy: existingRecord?.examined_by || '',
     dSchoolYear: existingRecord?.school_year || defaultSchoolYear,
     dSemester: existingRecord?.semester || defaultSemester || '1st Semester',
@@ -161,7 +247,11 @@ const buildDentalHistoryProcedures = (p) => {
   const dh = p?.dentalHistory || existingRecord?.dental_history || {};
   // Parse if string
   const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
-  const procedures = parsedDH?.procedures || {};
+
+  // Handle both nested procedures format and direct format
+  // The data can be stored as { procedures: { "Oral Prophylaxis": "Yes" } } or directly as { "Oral Prophylaxis": "Yes" }
+  const procedures = parsedDH?.procedures || parsedDH || {};
+
   return Object.fromEntries(
     dentalProcedures.map(proc => [proc, procedures[proc] === 'Yes' ? 'Yes' : 'No'])
   );
@@ -262,14 +352,21 @@ const DentalVisitHistory = ({ selectedPatient }) => {
   const dentalRecords = records;
 
   return (
-    <div className="space-y-6">
-      {dentalRecords.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <i className="fa-solid fa-tooth text-[#3b82f6]"></i>
-            <h4 className="text-sm font-bold text-[#466460] uppercase">Dental Records</h4>
-            <span className="text-[9px] bg-[#3b82f6]/20 text-[#3b82f6] px-2 py-0.5 rounded-full font-semibold">{dentalRecords.length}</span>
-          </div>
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#3b82f6]/10 to-transparent">
+        <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+          <i className="fa-solid fa-tooth text-[#3b82f6]"></i> Dental Visit History
+        </h4>
+        {dentalRecords.length > 0 && (
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+            {dentalRecords.length} record{dentalRecords.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      <div className="p-5">
+        <div className="relative pl-6">
+          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
           <div className="space-y-6">
             {dentalRecords.map((r) => {
               // Parse JSON fields
@@ -278,130 +375,144 @@ const DentalVisitHistory = ({ selectedPatient }) => {
               const dentalHistory = parseJson(r.dental_history, {});
 
               return (
-                <div key={r.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
-                    <StatusBadge status={r.status} />
-                  </div>
+                <div key={r.id} className="relative">
+                  <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#3b82f6] ring-4 ring-white"></div>
 
-                  <div className="p-4 text-xs space-y-4">
-                    {/* Basic Info */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{r.examined_by || '-'}</p></div>
-                      <div><p className="text-[7px] text-slate-400 uppercase">Exam Date</p><p className="font-medium">{formatDate(r.exam_date)}</p></div>
-                      <div><p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p><p className="font-mono">{r.teeth_upper || '-'}</p></div>
-                      <div><p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p><p className="font-mono">{r.teeth_lower || '-'}</p></div>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
+                      <StatusBadge status={r.status} />
                     </div>
 
-                    {/* Intraoral Examination */}
-                    {intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
-                      <div className="border-t border-slate-100 pt-3">
-                        <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                          <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
-                        </h5>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
-                            <div key={key} className="bg-slate-50 rounded px-2 py-1">
-                              <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
-                              <span className="font-medium text-slate-700">{String(val)}</span>
-                            </div>
-                          ))}
-                          {intraoral.tmjExam && (
-                            <div className="bg-slate-50 rounded px-2 py-1">
-                              <span className="text-[9px] text-slate-400">TMJ: </span>
-                              <span className="font-medium text-slate-700">Examined</span>
-                            </div>
-                          )}
-                        </div>
+                    <div className="p-4 text-xs space-y-4">
+                      {/* Basic Info */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{r.examined_by || '-'}</p></div>
+                        <div><p className="text-[7px] text-slate-400 uppercase">Exam Date</p><p className="font-medium">{formatDate(r.exam_date)}</p></div>
+                        <div><p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p><p className="font-mono">{r.teeth_upper || '-'}</p></div>
+                        <div><p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p><p className="font-mono">{r.teeth_lower || '-'}</p></div>
                       </div>
-                    )}
 
-                    {/* Tooth Conditions Chart */}
-                    {toothData && Object.keys(toothData).length > 0 && (
-                      <div className="border-t border-slate-100 pt-3">
-                        <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                          <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
-                        </h5>
-
-                        {/* Summary counts */}
-                        <div className="flex gap-2 mb-3 text-xs">
-                          {(() => {
-                            const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
-                            Object.values(toothData).forEach(d => {
-                              if (d.condition && conditions.hasOwnProperty(d.condition)) {
-                                conditions[d.condition]++;
-                              }
-                            });
-                            return (
-                              <>
-                                <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                                <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                                <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                              </>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Individual teeth */}
-                        <div className="grid grid-cols-4 gap-2">
-                          {Object.entries(toothData).map(([tooth, data]) => {
-                            const conditionColors = {
-                              'caries': 'bg-red-100 text-red-700 border-red-300',
-                              'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                              'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                              'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                              'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                            };
-
-                            return (
-                              <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-                                <span className="block font-bold text-xs">#{tooth}</span>
-                                <span className="block text-[9px] capitalize">{data.condition || '-'}</span>
-                                {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
+                      {/* Intraoral Examination */}
+                      {intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
+                          </h5>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
+                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
+                                <span className="font-medium text-slate-700">{String(val)}</span>
                               </div>
-                            );
-                          })}
+                            ))}
+                            {intraoral.tmjExam && (
+                              <div className="bg-slate-50 rounded px-2 py-1">
+                                <span className="text-[9px] text-slate-400">TMJ: </span>
+                                <span className="font-medium text-slate-700">Examined</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Dental History / Procedures */}
-                    {dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
-                      <div className="border-t border-slate-100 pt-3">
-                        <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                          <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
-                        </h5>
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
-                            <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-                              {key}
-                            </span>
-                          ))}
+                      {/* Tooth Conditions Chart */}
+                      {toothData && Object.keys(toothData).length > 0 && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
+                          </h5>
+
+                          {/* Summary counts - convert full names to abbreviations for counting */}
+                          <div className="flex gap-2 mb-3 text-xs">
+                            {(() => {
+                              const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
+                              Object.values(toothData).forEach(d => {
+                                const condAbbr = getConditionAbbr(d.condition);
+                                if (condAbbr && conditions.hasOwnProperty(condAbbr)) {
+                                  conditions[condAbbr]++;
+                                }
+                              });
+                              return (
+                                <>
+                                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
+                                  <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
+                                  <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Individual teeth - display full names but use abbreviations for colors */}
+                          <div className="grid grid-cols-4 gap-2">
+                            {Object.entries(toothData).map(([tooth, data]) => {
+                              const condAbbr = getConditionAbbr(data.condition);
+                              const conditionColors = {
+                                'caries': 'bg-red-100 text-red-700 border-red-300',
+                                'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+                                'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
+                                'missing': 'bg-slate-100 text-slate-600 border-slate-300',
+                                'improved': 'bg-blue-100 text-blue-700 border-blue-300',
+                              };
+
+                              return (
+                                <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[condAbbr] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                                  <span className="block font-bold text-xs">#{tooth}</span>
+                                  <span className="block text-[9px]">{data.condition || '-'}</span>
+                                  {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+
+                      {/* Dental History / Procedures */}
+                      {dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+                            <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
+                          </h5>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
+                              <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
+                                {key}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester }) => {
+export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false }) => {
   const [toothModal, setToothModal]         = useState({ open: false, toothNum: null });
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
   const [showSummary, setShowSummary]       = useState(false);
   const [activeTab, setActiveTab]           = useState('patientProfile');
   const [isSubmitting, setIsSubmitting]     = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [dentists, setDentists]             = useState([]);
 
-  // Address Modal state
-  const [showAddressModal, setShowAddressModal] = useState(false);
+  // Fetch dentists on mount
+  useEffect(() => {
+    const loadDentists = async () => {
+      const docs = await fetchDentists();
+      setDentists(docs);
+    };
+    loadDentists();
+  }, []);
 
   const [dentalHistory, setDentalHistory]   = useState(
     () => buildDentalHistoryProcedures(selectedPatient)
@@ -506,6 +617,22 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
 
   const handleOpenSummary = () => {
+    // Validate required fields
+    const errors = {};
+
+    // Validate exam date
+    if (!dentalFormData.dExamDate?.trim()) errors.dExamDate = 'Examination Date is required';
+
+    // Validate examined by
+    if (!dentalFormData.dExaminedBy?.trim()) errors.dExaminedBy = 'Examined By is required';
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      alert('Please fill in all required fields:\n\n• Examination Date\n• Examined By');
+      return;
+    }
+
+    setValidationErrors({});
     if (!dentalFormData.dLastName) { alert("Please fill in patient's last name."); return; }
     setShowSummary(true);
   };
@@ -522,17 +649,24 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     try {
       // Combine exam date and time by ensuring we append :00 for timestamp formatting
       const examDateTime = dentalFormData.dExamDate ? `${dentalFormData.dExamDate}:00` : null;
-      const sigDateTime = dentalFormData.dSigDate ? `${dentalFormData.dSigDate}T00:00:00` : null;
+
+      // Convert tooth data abbreviations to full names before saving
+      const transformedToothData = {};
+      Object.entries(toothData).forEach(([toothNum, data]) => {
+        transformedToothData[toothNum] = {
+          condition: data.condition ? getConditionFullName(data.condition) : '',
+          operation: data.operation ? getOperationFullName(data.operation) : '',
+        };
+      });
 
       const payload = {
         ...dentalFormData,
-        toothData,
+        toothData: transformedToothData,
         dentalHistory,
         intraoral,
         status: "pending",
         isApproved: false,
         examDateTime,
-        sigDateTime,
       };
 
       // Use selectedPatient.uid directly as user_id (it's the internal UUID from users table)
@@ -570,9 +704,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         dental_history: payload.dentalHistory || {},
         intraoral: payload.intraoral || {},
         examined_by: payload.dExaminedBy || null,
-        patient_signature: payload.dPatientSig || null,
         exam_date: payload.examDateTime || null,
-        sig_date: payload.sigDateTime || null,
         school_year: payload.dSchoolYear || null,
         semester: payload.dSemester || null,
         status: "pending",
@@ -598,40 +730,56 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
+      {/* Tabs - Outside the form so they remain clickable in read-only mode */}
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab('patientProfile')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <i className="fa-solid fa-user mr-1"></i> Patient Profile
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('examination')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <i className="fa-solid fa-tooth mr-1"></i> Examination
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('visitHistory')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <i className="fa-solid fa-clock-rotate-left mr-1"></i> Visit History
+        </button>
+      </div>
+
+      {readOnly && (
+        <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          <i className="fa-solid fa-lock mr-1"></i> Read-only mode - You can view all information but cannot make changes
+        </div>
+      )}
+
       <form
         onSubmit={e => { e.preventDefault(); handleOpenSummary(); }}
-        className="overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
+        className={`overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
           [&::-webkit-scrollbar]:w-[5px]
           [&::-webkit-scrollbar-thumb]:bg-gradient-to-b
           [&::-webkit-scrollbar-thumb]:from-[#466460]
           [&::-webkit-scrollbar-thumb]:to-[#8aacaa]
-          [&::-webkit-scrollbar-thumb]:rounded-full"
+          [&::-webkit-scrollbar-thumb]:rounded-full`}
       >
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setActiveTab('patientProfile')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <i className="fa-solid fa-user mr-1"></i> Patient Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('examination')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <i className="fa-solid fa-tooth mr-1"></i> Examination
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('visitHistory')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <i className="fa-solid fa-clock-rotate-left mr-1"></i> Visit History
-          </button>
-        </div>
+        {readOnly && (
+          <style>{`
+            .dental-form input, .dental-form select, .dental-form textarea,
+            .dental-form radio, .dental-form checkbox {
+              pointer-events: none !important;
+              opacity: 0.7 !important;
+            }
+          `}</style>
+        )}
+        <div className={readOnly ? "dental-form" : ""}>
 
         {activeTab === 'visitHistory' ? (
           <DentalVisitHistory selectedPatient={selectedPatient} />
@@ -639,52 +787,39 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         <>
           {/* ════ PATIENT PROFILE TAB ════ */}
 
-          {/* ─── Patient Information ─────────────────────────────────────────── */}
+          {/* ─── Patient Information (read-only) ─────────────────────────────── */}
           <div className={sectionClass}>Patient Information</div>
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-3"><label className={labelClass}>Last Name</label><input type="text" id="dLastName" className={inputClass} value={dentalFormData.dLastName} onChange={handleDentalChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>First Name</label><input type="text" id="dFirstName" className={inputClass} value={dentalFormData.dFirstName} onChange={handleDentalChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Middle Name</label><input type="text" id="dMiddle" className={inputClass} value={dentalFormData.dMiddle} onChange={handleDentalChange} /></div>
+            <div className="col-span-3"><label className={labelClass}>Last Name</label><input type="text" id="dLastName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dLastName} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>First Name</label><input type="text" id="dFirstName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dFirstName} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Middle Name</label><input type="text" id="dMiddle" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dMiddle} readOnly /></div>
             <div className="col-span-3">
               <label className={labelClass}>Sex</label>
               <div className="flex gap-4 pt-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="dSex" value="Male"   checked={dentalFormData.dSex === 'Male'}   onChange={handleDentalChange} /> Male</label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="dSex" value="Female" checked={dentalFormData.dSex === 'Female'} onChange={handleDentalChange} /> Female</label>
+                <label className="flex items-center gap-2 text-sm cursor-not-allowed text-slate-500"><input type="radio" name="dSex" value="Male"   checked={dentalFormData.dSex === 'Male'}   disabled /> Male</label>
+                <label className="flex items-center gap-2 text-sm cursor-not-allowed text-slate-500"><input type="radio" name="dSex" value="Female" checked={dentalFormData.dSex === 'Female'} disabled /> Female</label>
               </div>
             </div>
-            <div className="col-span-2"><label className={labelClass}>Age</label><input type="number" id="dAge" className={inputClass} value={dentalFormData.dAge} onChange={handleDentalChange} /></div>
+            <div className="col-span-2"><label className={labelClass}>Age</label><input type="number" id="dAge" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dAge} readOnly /></div>
             <div className="col-span-2">
               <label className={labelClass}>Birthday</label>
-              <DatePicker value={dentalFormData.dBirthday} onChange={(val) => handleDentalDateChange('dBirthday', val)} />
+              <DatePicker value={dentalFormData.dBirthday} disabled={true} />
             </div>
             <div className="col-span-4">
               <label className={labelClass}>Address</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  id="dAddress"
-                  className={`${inputClass} cursor-pointer`}
-                  value={dentalFormData.dAddress}
-                  readOnly
-                  placeholder="Click to enter address"
-                  onClick={() => setShowAddressModal(true)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAddressModal(true)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a3.5 3.5 0 114.95 4.95L3.464 16.536" />
-                  </svg>
-                </button>
-              </div>
+              <input
+                type="text"
+                id="dAddress"
+                className={`${inputClass} bg-slate-50 cursor-not-allowed`}
+                value={dentalFormData.dAddress}
+                readOnly
+              />
             </div>
-            <div className="col-span-4"><label className={labelClass}>Cellphone No.</label><input type="text" id="dCellphone" className={inputClass} value={dentalFormData.dCellphone} onChange={handleDentalChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Course / Year / Section</label><input type="text" id="dCourseYear" className={inputClass} value={dentalFormData.dCourseYear} onChange={handleDentalChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Office Address</label><input type="text" id="dOfficeAddress" className={inputClass} value={dentalFormData.dOfficeAddress} onChange={handleDentalChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Tel. No.</label><input type="text" id="dTelNo" className={inputClass} value={dentalFormData.dTelNo} onChange={handleDentalChange} /></div>
-            <div className="col-span-3"><label className={labelClass}>Nationality</label><input type="text" id="dNationality" className={inputClass} value={dentalFormData.dNationality} onChange={handleDentalChange} /></div>
+            <div className="col-span-4"><label className={labelClass}>Cellphone No.</label><input type="text" id="dCellphone" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dCellphone} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Course / Year / Section</label><input type="text" id="dCourseYear" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dCourseYear} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Office Address</label><input type="text" id="dOfficeAddress" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dOfficeAddress} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Tel. No.</label><input type="text" id="dTelNo" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dTelNo} readOnly /></div>
+            <div className="col-span-3"><label className={labelClass}>Nationality</label><input type="text" id="dNationality" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dNationality} readOnly /></div>
           </div>
 
           {/* ─── Dental History ───────────────────────────────────────────────── */}
@@ -848,52 +983,64 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
           </div>
 
           {/* ─── Signature ────────────────────────────────────────────────────── */}
-          <div className={sectionClass}>Signature & Examiner</div>
+          <div className={sectionClass}>Signature & Examiner <span className="text-[10px] font-normal text-red-500">* Required</span></div>
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6">
-              <label className={labelClass}>Examination Date & Time</label>
+              <label className={requiredLabelClass}>Examination Date & Time <span className="text-red-500">*</span></label>
               <DateTimePicker
                 value={dentalFormData.dExamDate}
-                onChange={(val) => handleDentalDateChange('dExamDate', val)}
+                onChange={(val) => { handleDentalDateChange('dExamDate', val); setValidationErrors(prev => ({ ...prev, dExamDate: '' })); }}
               />
             </div>
             <div className="col-span-6">
-              <label className={labelClass}>Examined By</label>
-              <input
-                type="text"
+              <label className={requiredLabelClass}>Examined By <span className="text-red-500">*</span></label>
+              <select
                 id="dExaminedBy"
                 className={inputClass}
-                placeholder="Dentist name and license number"
                 value={dentalFormData.dExaminedBy}
                 onChange={handleDentalChange}
-              />
+              >
+                <option value="">Select Dentist</option>
+                {dentists.map(doc => (
+                  <option key={doc.id} value={doc.display}>{doc.display}</option>
+                ))}
+              </select>
             </div>
           </div>
 
           {/* ─── Action Footer ────────────────────────────────────────────────── */}
-          <div className="mt-9 px-6 py-5 bg-gradient-to-r from-[#f0f7f6] to-[#e8f2f1] rounded-2xl border border-[#d1e7e5] flex justify-between items-center flex-wrap gap-4">
-            <div>
-              <p className="text-sm font-bold text-[#466460] m-0">Ready to submit this dental record?</p>
-              <p className="text-[11px] text-slate-500 mt-1">Review all entries carefully before submitting.</p>
+          {!readOnly ? (
+            <div className="mt-9 px-6 py-5 bg-gradient-to-r from-[#f0f7f6] to-[#e8f2f1] rounded-2xl border border-[#d1e7e5] flex justify-between items-center flex-wrap gap-4">
+              <div>
+                <p className="text-sm font-bold text-[#466460] m-0">Ready to submit this dental record?</p>
+                <p className="text-[11px] text-slate-500 mt-1">Review all entries carefully before submitting.</p>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={handleOpenSummary}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-[1.5px] border-[#466460] bg-[#e0eceb] text-[#466460] font-bold text-sm hover:bg-[#d1e7e5] transition-all">
+                  <i className="fa-solid fa-eye"></i> Review Summary
+                </button>
+                <button type="submit" disabled={isSubmitting}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
+                  {isSubmitting ? (
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                  ) : (
+                    <i className="fa-solid fa-paper-plane"></i>
+                  )}
+                  {isSubmitting ? 'Saving...' : 'Review & Submit'}
+                </button>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={handleOpenSummary}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-[1.5px] border-[#466460] bg-[#e0eceb] text-[#466460] font-bold text-sm hover:bg-[#d1e7e5] transition-all">
-                <i className="fa-solid fa-eye"></i> Review Summary
-              </button>
-              <button type="submit" disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
-                {isSubmitting ? (
-                  <i className="fa-solid fa-spinner fa-spin"></i>
-                ) : (
-                  <i className="fa-solid fa-paper-plane"></i>
-                )}
-                {isSubmitting ? 'Saving...' : 'Review & Submit'}
-              </button>
+          ) : (
+            <div className="mt-9 px-6 py-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+              <p className="text-sm text-amber-700 font-medium">
+                <i className="fa-solid fa-lock mr-2"></i>This record has already been submitted and is shown for reference only.
+              </p>
             </div>
-          </div>
+          )}
         </>
         )}
+      </div>
       </form>
 
       {/* ═══ DENTAL SUMMARY MODAL ══════════════════════════════════════════ */}
@@ -989,22 +1136,31 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
               </SumSection>
             </div>
             <div className="px-7 py-4 border-t border-slate-200 bg-slate-50 flex items-center gap-3 shrink-0">
-              <button onClick={() => setShowSummary(false)} disabled={isSubmitting} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition disabled:opacity-70">
-                <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
-              </button>
-              <div className="flex-1" />
-              <button
-                onClick={handleFinalSubmit}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <i className="fa-solid fa-spinner fa-spin"></i>
-                ) : (
-                  <i className="fa-solid fa-circle-check"></i>
-                )}
-                {isSubmitting ? 'Saving...' : 'Submit Dental Record'}
-              </button>
+              {!readOnly && (
+                <>
+                  <button onClick={() => setShowSummary(false)} disabled={isSubmitting} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-300 transition disabled:opacity-70">
+                    <i className="fa-solid fa-pen-to-square mr-2"></i>Edit
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    onClick={handleFinalSubmit}
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#466460] text-white font-bold text-sm hover:bg-[#3a524f] transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? (
+                      <i className="fa-solid fa-spinner fa-spin"></i>
+                    ) : (
+                      <i className="fa-solid fa-circle-check"></i>
+                    )}
+                    {isSubmitting ? 'Saving...' : 'Submit Dental Record'}
+                  </button>
+                </>
+              )}
+              {readOnly && (
+                <div className="flex-1 text-center text-sm text-slate-500 font-medium">
+                  <i className="fa-solid fa-lock mr-2"></i>View Only - This record has already been submitted
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1034,20 +1190,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
           </div>
         </div>
       )}
-
-      {/* ═══ ADDRESS MODAL ════════════════════════════════════════════════════ */}
-      <AddressModal
-        isOpen={showAddressModal}
-        onClose={() => setShowAddressModal(false)}
-        onConfirm={(addressData) => {
-          setDentalFormData(prev => ({
-            ...prev,
-            dAddress: addressData.homeAddress || '',
-          }));
-          setShowAddressModal(false);
-        }}
-        initialData={dentalFormData}
-      />
     </>
   );
 };

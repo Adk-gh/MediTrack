@@ -47,11 +47,10 @@ const StatusPill = ({ status }) => {
 const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) => {
   const [editStatus, setEditStatus] = useState(record.status || 'pending');
   const [saving, setSaving]         = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
   const ref = useRef(null);
 
   // Flip upward when not enough room below the button
-  const menuHeight = confirmDel ? 210 : 285;
+  const menuHeight = 285;
   const spaceBelow = window.innerHeight - anchorRect.bottom;
   const openUpward = spaceBelow < menuHeight + 8;
   // When opening downward: top of menu = bottom of button + gap
@@ -142,37 +141,15 @@ const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) =
           )}
         </button>
 
-        {!confirmDel ? (
-          <button
-            onClick={() => setConfirmDel(true)}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-500 text-[11px] font-semibold hover:bg-red-50 transition"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Delete record
-          </button>
-        ) : (
-          <div className="bg-red-50 rounded-lg p-2.5 border border-red-100">
-            <p className="text-[10px] text-red-600 font-semibold text-center mb-2">
-              Delete this record?
-            </p>
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => setConfirmDel(false)}
-                className="flex-1 py-1.5 rounded-md border border-slate-200 text-[10px] font-semibold text-slate-500 bg-white hover:bg-slate-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => onDelete(record)}
-                className="flex-1 py-1.5 rounded-md bg-red-600 text-[10px] font-bold text-white hover:bg-red-700 transition"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          onClick={() => onDelete(record)}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-500 text-[11px] font-semibold hover:bg-red-50 transition"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete record
+        </button>
       </div>
     </div>,
     document.body
@@ -312,6 +289,11 @@ export const RecordManagement = () => {
   const [message, setMessage]           = useState(null);
   const snackbarTimer = useRef(null);
 
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const showSnackbar = (msg, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
     setMessage({ text: msg, type });
@@ -390,25 +372,38 @@ export const RecordManagement = () => {
     showSnackbar('Status updated');
   };
 
-  const handleDelete = async (record) => {
+  // Delete modal handlers
+  const openDeleteModal = (record) => {
+    setRecordToDelete(record);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!recordToDelete) return;
+    setDeleting(true);
+
     try {
       // Get current user info for deleted_by
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const name = localStorage.getItem('name') || '';
 
       // Set is_archived to true instead of deleting
-      const table = record._kind === 'medical' ? 'medical_records' : 'dental_records';
+      const table = recordToDelete._kind === 'medical' ? 'medical_records' : 'dental_records';
       const { error } = await supabase.from(table).update({
         is_archived: true,
         deleted_by: name || user.email || 'Admin',
         updated_at: new Date().toISOString()
-      }).eq('id', record._id);
+      }).eq('id', recordToDelete._id);
       if (error) { showSnackbar('Failed to delete record', 'error'); throw error; }
-      setRecords(prev => prev.filter(r => r._id !== record._id));
+      setRecords(prev => prev.filter(r => r._id !== recordToDelete._id));
       showSnackbar('Record archived successfully. You can restore it from the Archives page.');
     } catch (err) {
       console.error('Failed to archive record:', err);
       showSnackbar('Failed to archive record', 'error');
+    } finally {
+      setShowDeleteModal(false);
+      setRecordToDelete(null);
+      setDeleting(false);
     }
   };
 
@@ -548,13 +543,68 @@ export const RecordManagement = () => {
                   key={`${record._kind}-${record._id}`}
                   record={record}
                   onStatusChange={handleStatusChange}
-                  onDelete={handleDelete}
+                  onDelete={openDeleteModal}
                 />
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Archive Record</h3>
+                <p className="text-sm text-slate-500">You can restore it later from Archives</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg p-4 mb-4">
+              <p className="text-sm text-slate-600">
+                Are you sure you want to archive this {recordToDelete?._kind} record for <span className="font-semibold">{recordToDelete?._user ? `${recordToDelete._user.last_name}, ${recordToDelete._user.first_name}` : 'Unknown Patient'}</span>?
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                Current status: <span className="font-semibold">{recordToDelete?.status || 'Pending'}</span>
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setRecordToDelete(null); }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Archiving...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
+                    </svg>
+                    Archive
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Snackbar */}
       {message && (

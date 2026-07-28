@@ -7,6 +7,84 @@ import { DentalExaminationReport } from '../../components/DentalExaminationRepor
 import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
 
+// Abbreviate program names
+const shortenCourse = (courseName) => {
+  if (!courseName) return '';
+  const courseMap = {
+    'Bachelor of Science in Information Technology': 'BSIT',
+    'Bachelor of Science in Information System': 'BSIS',
+    'Bachelor of Science in Computer Engineering': 'BSCpE',
+    'Bachelor of Science in Industrial Engineering': 'BSIE',
+    'Bachelor of Science in Entrepreneurship': 'BSEntrep',
+    'Bachelor of Science in Public Administration': 'BSPA',
+    'Bachelor of Science in Office Administration': 'BSOA',
+    'Bachelor of Science in Business Administration Major in Human Resource Development Management': 'BSBA-HRDM',
+    'Bachelor of Science in Business Administration Major in Financial Management': 'BSBA-FM',
+    'Bachelor of Science in Business Administration Major in Marketing Management': 'BSBA-MM',
+    'Bachelor of Science in Economics': 'BSEcon',
+    'Bachelor of Arts in Communication': 'BAC',
+    'Bachelor of Science in Psychology': 'BSPsych',
+    'Bachelor of Arts in Political Science': 'BAPolSci',
+    'Bachelor of Science in Tourism Management': 'BSTM',
+    'Bachelor of Science in Hospitality Management': 'BSHM',
+    'Bachelor of Science in Accountancy': 'BSA',
+    'Bachelor of Science in Accountancy Information System': 'BSAIS',
+    'Bachelor of Science in Management Accounting': 'BSMA',
+  };
+  return courseMap[courseName] || courseName;
+};
+
+// Normalize patient data similar to Records.jsx
+const normalizePatientData = (uid, d) => {
+  const firstName     = d.firstName    || d.first_name    || '';
+  const lastName      = d.lastName     || d.last_name     || '';
+  const middleName = d.middleName || d.middle_name   || '';
+  const suffix        = d.suffix       || '';
+  const universityId  = d.universityId || d.university_id || d.studentId || d.student_id || '';
+
+  const name = lastName
+    ? `${lastName}, ${firstName} ${middleName} ${suffix}`.trim()
+    : firstName || '—';
+
+  return {
+    uid, name, firstName, lastName, middleName, suffix,
+    id:             universityId || uid,
+    universityId,
+    studentId:      d.studentId  || d.student_id  || universityId || '',
+    role:           d.role       || '',
+    prog:           d.program    || d.course       || '',
+    program:        d.program    || d.course       || '',
+    year:           d.yearLevel  || d.year_level   || '',
+    yearLevel:      d.yearLevel  || d.year_level   || '',
+    section:        d.section    || '',
+    age:            d.age        || '',
+    gender:         d.gender     || d.sex          || '',
+    sex:            d.gender     || d.sex          || '',
+    birthdate:      d.birthday   || d.birthdate    || '',
+    birthday:       d.birthday   || d.birthdate    || '',
+    email:          d.email      || '',
+    phoneNumber:    d.phoneNumber || d.phone_number || d.contact_no || '',
+    department:     d.department || '',
+    jobTitle:       d.jobTitle   || d.job_title    || '',
+    classification: d.classification || '',
+    homeAddress:    d.homeAddress || d.home_address || d.address || '',
+    religion:       d.religion   || '',
+    nationality:    d.nationality || '',
+    civilStatus:    d.civilStatus || d.civil_status || '',
+    bloodType:      d.bloodType  || d.blood_type   || '',
+    emergencyContact: d.emergencyContact || d.emergency_contact || {
+      name: '', relationship: '', phone: '', address: ''
+    },
+    vaccinations: d.vaccinations || {
+      dose1:    { vaccineName: '', date: '' },
+      dose2:    { vaccineName: '', date: '' },
+      booster1: { vaccineName: '', date: '' },
+      booster2: { vaccineName: '', date: '' },
+    },
+    dentalHistory: d.dentalHistory || d.dental_history || {},
+  };
+};
+
 // Maps questionnaire keys (q1, q2...) to the actual question text from the exam form
 const HEALTH_HISTORY_QUESTIONS = [
   { q: 'Are you in good health?', name: 'q1', detail: null },
@@ -297,6 +375,9 @@ export const Approvals = () => {
   // Full exam edit modal - shows the actual Medical/Dental form
   const [showFullExamModal, setShowFullExamModal] = useState(false);
   const [examRecordData, setExamRecordData] = useState(null);
+  const [normalizedPatient, setNormalizedPatient] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
   // Fetch current user info and set default exam type
   useEffect(() => {
@@ -423,6 +504,7 @@ export const Approvals = () => {
     isFit: record.is_fit,
     isNormalFindings: record.is_normal_findings,
     certificateIssued,
+    issue_cert: record.issue_cert ?? false,
 
     // Patient profile info (now nested under patient_info)
     contactNo: patientInfo.contact_no || '',
@@ -543,7 +625,7 @@ export const Approvals = () => {
             middleName: mName,
             lastName: lName,
             type: record.role || userData.role || 'student',
-            courseYear: record.course_year || userData.course_year || userData.program || '',
+            courseYear: userData.program || '',
             department: userData.department || record.department || '',
             program: userData.program || record.program || '',
             yearLevel: userData.year_level || record.year_level || '',
@@ -558,8 +640,9 @@ export const Approvals = () => {
             treatments: record.treatments ? (typeof record.treatments === 'string' ? JSON.parse(record.treatments) : record.treatments) : mapDentalProcedures(record.dental_history || {}),
             examinedBy: record.examined_by,
             sigDate: record.sig_date,
-            patientSignature: record.patient_signature,
+            patientSignature: '',
             reportForwarded,
+            issue_cert: record.issue_cert ?? false,
             age: record.age || userData.age || '',
             sex: record.sex || userData.sex || '',
             address: record.address || userData.address || '',
@@ -670,18 +753,31 @@ export const Approvals = () => {
     };
   }, [selectedExam, examType]);
 
-  // Derived Filter Lists based on current data
-  const uniqueRoles = ['All', ...new Set(examinations.map(e => e.type).filter(Boolean))].sort();
-  const uniqueDepts = ['All', ...new Set(examinations.map(e => e.department).filter(d => d && d !== 'N/A'))].sort();
+  // Derived Filter Lists based on current data (both medical and dental)
+  const allExaminations = [...examinations, ...dentalExaminations];
+  const uniqueRoles = ['All', ...new Set(allExaminations.map(e => e.type).filter(Boolean))].sort();
+  const uniqueDepts = ['All', ...new Set(allExaminations.map(e => e.department).filter(d => d && d !== 'N/A'))].sort();
   const uniquePrograms = ['All', ...new Set(
-    examinations
+    allExaminations
       .filter(e => filterDept === 'All' || e.department === filterDept)
       .map(e => e.program)
       .filter(p => p && p !== 'N/A')
   )].sort();
 
-  // Apply Filters
+  // Apply Filters for Medical
   const filteredExaminations = examinations.filter(exam => {
+    const matchSearch = exam.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        exam.patientId.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchRole = filterRole === 'All' || exam.type === filterRole;
+    const matchDept = filterDept === 'All' || exam.department === filterDept;
+    const matchProgram = filterProgram === 'All' || exam.program === filterProgram;
+
+    return matchSearch && matchRole && matchDept && matchProgram;
+  });
+
+  // Apply Filters for Dental
+  const filteredDentalExaminations = dentalExaminations.filter(exam => {
     const matchSearch = exam.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         exam.patientId.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -717,6 +813,46 @@ export const Approvals = () => {
     return `${month} ${day}, ${year}. ${time}`;
   };
 
+  // Helper to convert full name to abbreviation for condition matching
+  // FIX: added 'f' -> 'filled' to abbrMap, and a fullName.includes('filled')
+  // fallback check — previously "Filled" conditions were never recognized,
+  // so the Filled count in the Tooth Conditions Chart always showed 0.
+  const getConditionAbbrFromFull = (fullName) => {
+    if (!fullName) return '';
+    // Handle formats like "Caries (C)" or just "caries"
+    const match = fullName.match(/\(([A-Za-z-]+)\)$/);
+    if (match) {
+      const abbr = match[1].toLowerCase();
+      // Map common abbreviations
+      const abbrMap = {
+        'c': 'caries',
+        'f': 'filled',
+        'm': 'missing',
+        'x': 'extracted',
+        'rf': 'root-fragment',
+        'im': 'improved',
+      };
+      return abbrMap[abbr] || abbr;
+    }
+    // Check if it's already an abbreviation (case-insensitive)
+    const lower = fullName.toLowerCase();
+    if (lower.includes('caries')) return 'caries';
+    if (lower.includes('filled')) return 'filled';
+    if (lower.includes('missing')) return 'missing';
+    if (lower.includes('extracted')) return 'extracted';
+    if (lower.includes('root fragment')) return 'root-fragment';
+    if (lower.includes('improved')) return 'improved';
+    return fullName;
+  };
+
+  // Helper to convert full operation name to abbreviation
+  const getOperationAbbrFromFull = (fullName) => {
+    if (!fullName) return '';
+    const match = fullName.match(/\(([A-Za-z]+)\)$/);
+    if (match) return match[1];
+    return fullName;
+  };
+
   // Helper to extract tooth conditions for restoration/extraction display
   const extractToothConditions = (toothData, conditions) => {
     if (!toothData || typeof toothData !== 'object') return '';
@@ -729,8 +865,17 @@ export const Approvals = () => {
       'missing': 'Missing',
     };
     const filtered = Object.entries(toothData)
-      .filter(([, data]) => data?.condition && conditions.includes(data.condition))
-      .map(([num, data]) => `Tooth #${num}: ${conditionLabels[data.condition] || data.condition}${data.operation ? ' (' + data.operation + ')' : ''}`);
+      .filter(([, data]) => {
+        if (!data?.condition) return false;
+        // Convert full name to abbreviation if needed
+        const condAbbr = getConditionAbbrFromFull(data.condition);
+        return conditions.includes(condAbbr);
+      })
+      .map(([num, data]) => {
+        const condAbbr = getConditionAbbrFromFull(data.condition);
+        const opAbbr = getOperationAbbrFromFull(data.operation);
+        return `Tooth #${num}: ${conditionLabels[condAbbr] || data.condition}${data.operation ? ' (' + opAbbr + ')' : ''}`;
+      });
     return filtered.length > 0 ? filtered.join('\n') : 'None';
   };
 
@@ -771,8 +916,8 @@ export const Approvals = () => {
         age: exam.age,
         sex: exam.sex,
         address: exam.address || '',
-        course: exam.course_year || '',
-        yearSection: exam.course_year || '',
+        course: shortenCourse(exam.program) || '',
+        yearSection: [shortenCourse(exam.program), exam.yearLevel, exam.section].filter(Boolean).join(' '),
         year: exam.yearLevel || exam.year || '',
         gradeLevel: exam.yearLevel || exam.year || '',
         // Pass through exam date and examined by - use multiple fallbacks
@@ -787,8 +932,8 @@ export const Approvals = () => {
         // Map to DentalExaminationReport expected fields
         parentName: '',
         // Check dental_history first for saved restoration/extraction, then fall back to tooth_data
-        restoration: exam.dental_history?.needs_restoration || extractToothConditions(exam.tooth_data || {}, ['caries', 'filled', 'improved']),
-        extraction: exam.dental_history?.for_extraction || extractToothConditions(exam.tooth_data || {}, ['extracted', 'root-fragment']),
+        restoration: exam.dental_history?.['needs_restoration'] || extractToothConditions(exam.tooth_data || {}, ['caries', 'filled', 'improved']),
+        extraction: exam.dental_history?.['for_extraction'] || extractToothConditions(exam.tooth_data || {}, ['extracted', 'root-fragment']),
         // Use stored treatments if available, otherwise map from dental_history
         treatments: exam.treatments && Object.keys(exam.treatments).length > 0
           ? exam.treatments
@@ -819,7 +964,6 @@ export const Approvals = () => {
         status: 'approved',
         is_approved: true,
         approved_at: new Date().toISOString(),
-        issue_cert: false,
       }).eq('id', exam.recordId || exam.id);
 
       if (error) throw error;
@@ -847,7 +991,6 @@ export const Approvals = () => {
         status: 'approved',
         is_approved: true,
         approved_at: new Date().toISOString(),
-        issue_cert: false,
       }).eq('id', exam.recordId || exam.id);
 
       if (error) throw error;
@@ -905,8 +1048,6 @@ export const Approvals = () => {
           status: 'approved',
           is_approved: true,
           approved_at: new Date().toISOString(),
-          patient_signature: data.patientSignature || null,
-          sig_date: data.sigDate || null,
           examined_by: data.examinedBy || null,
           exam_date: data.examDate || null,
           issue_cert: true,
@@ -992,6 +1133,7 @@ export const Approvals = () => {
   const handleEdit = async () => {
     if (!selectedExam) return;
 
+    setModalLoading(true);
     try {
       const table = examType === 'dental' ? 'dental_records' : 'medical_records';
       const recordId = selectedExam.recordId || selectedExam.id;
@@ -1005,6 +1147,12 @@ export const Approvals = () => {
 
       if (error) throw error;
 
+      // Get user data
+      const userData = Array.isArray(record.users) ? record.users[0] || {} : record.users || {};
+
+      // Set normalized patient for the modal (like Records.jsx does)
+      setNormalizedPatient(normalizePatientData(record.user_id, userData));
+
       // Format the data for Medical/Dental components
       if (examType === 'dental') {
         // Parse JSONB fields for dental
@@ -1013,8 +1161,6 @@ export const Approvals = () => {
           if (typeof str === 'object') return str;
           try { return JSON.parse(str); } catch { return fallback; }
         };
-
-        const userData = Array.isArray(record.users) ? record.users[0] || {} : record.users || {};
 
         // Build dental form data that matches what Dental.jsx expects
         // Pass record data in a way that works with buildDentalForm
@@ -1032,7 +1178,7 @@ export const Approvals = () => {
           birthday: record.birthday || userData.birthday,
           homeAddress: record.address || userData.home_address || userData.address,
           phoneNumber: record.cellphone || userData.phone_number || userData.contact_no,
-          program: record.course_year || userData.program,
+          program: record.program || userData.program,
           yearLevel: record.year_level || userData.year_level,
           section: record.section || userData.section,
           role: record.role || userData.role,
@@ -1058,7 +1204,6 @@ export const Approvals = () => {
             teeth_lower: record.teeth_lower,
             examined_by: record.examined_by,
             exam_date: record.exam_date,
-            patient_signature: record.patient_signature,
             sig_date: record.sig_date,
             school_year: record.school_year,
             semester: record.semester,
@@ -1086,7 +1231,7 @@ export const Approvals = () => {
           teethLower: record.teeth_lower,
           examinedBy: record.examined_by,
           examDate: record.exam_date,
-          patientSignature: record.patient_signature,
+          patientSignature: '',
           sigDate: record.sig_date,
           schoolYear: record.school_year,
           semester: record.semester,
@@ -1101,8 +1246,6 @@ export const Approvals = () => {
           if (typeof str === 'object') return str;
           try { return JSON.parse(str); } catch { return fallback; }
         };
-
-        const userData = Array.isArray(record.users) ? record.users[0] || {} : record.users || {};
 
         // Build medical form data that matches what Medical.jsx expects
         const medicalData = {
@@ -1193,10 +1336,14 @@ export const Approvals = () => {
         setExamRecordData(medicalData);
       }
 
+      // Increment resetKey to ensure Medical/Dental components re-render with new data
+      setResetKey(k => k + 1);
       setShowFullExamModal(true);
     } catch (err) {
       console.error('Error fetching record for view:', err);
       showSnackbar('Failed to load examination record', 'error');
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -1321,7 +1468,7 @@ export const Approvals = () => {
               </h3>
               <p className="text-xs text-slate-500 mt-1">
                 {exam.patientId || exam.university_id || exam.universityId || exam.patientId || '—'} •
-                {exam.courseYear || exam.course_year || exam.course || '—'}
+                {exam.courseYear || exam.program || exam.course || '—'}
               </p>
             </div>
             <StatusBadge status={exam.status} />
@@ -1384,13 +1531,14 @@ export const Approvals = () => {
               <i className="fa-solid fa-teeth-open mr-2"></i>Tooth Conditions Chart
             </h4>
 
-            {/* Summary counts */}
+            {/* Summary counts - convert full names to abbreviations for counting */}
             <div className="flex gap-4 mb-4 text-xs">
               {(() => {
                 const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
                 Object.values(toothData).forEach(d => {
-                  if (d.condition && conditions.hasOwnProperty(d.condition)) {
-                    conditions[d.condition]++;
+                  const condAbbr = getConditionAbbrFromFull(d.condition);
+                  if (condAbbr && conditions.hasOwnProperty(condAbbr)) {
+                    conditions[condAbbr]++;
                   }
                 });
                 return (
@@ -1403,9 +1551,10 @@ export const Approvals = () => {
               })()}
             </div>
 
-            {/* Individual teeth */}
+            {/* Individual teeth - display full names but use abbreviations for colors */}
             <div className="grid grid-cols-4 gap-2">
               {Object.entries(toothData).map(([tooth, data]) => {
+                const condAbbr = getConditionAbbrFromFull(data.condition);
                 const conditionColors = {
                   'caries': 'bg-red-100 text-red-700 border-red-300',
                   'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
@@ -1415,7 +1564,7 @@ export const Approvals = () => {
                   'root-fragment': 'bg-amber-100 text-amber-700 border-amber-300',
                 };
                 return (
-                  <div key={tooth} className={`text-xs px-2 py-2 rounded border ${conditionColors[data.condition] || 'bg-slate-50 text-slate-600'}`}>
+                  <div key={tooth} className={`text-xs px-2 py-2 rounded border ${conditionColors[condAbbr] || 'bg-slate-50 text-slate-600'}`}>
                     <span className="font-bold">#{tooth}</span>
                     <span className="block">{data.condition || '—'}</span>
                     {data.operation && <span className="text-[10px] opacity-75">{data.operation}</span>}
@@ -1528,9 +1677,15 @@ export const Approvals = () => {
                                 <SectionLabel icon="fa-teeth-open" color="text-[#466460]">Tooth Conditions Chart</SectionLabel>
                                 <div className="flex gap-2 my-2 text-xs">
                                   {(() => {
+                                    // FIX: was comparing conditions.hasOwnProperty(d.condition) directly
+                                    // against the raw stored condition string (e.g. "Filled (●)"),
+                                    // which never matched any of the lowercase keys below and so
+                                    // "Filled" never got counted here either. Route through
+                                    // getConditionAbbrFromFull for consistency with the main chart above.
                                     const conditions = { caries: 0, filled: 0, extracted: 0 };
                                     Object.values(cToothData).forEach(d => {
-                                      if (d.condition && conditions.hasOwnProperty(d.condition)) conditions[d.condition]++;
+                                      const condAbbr = getConditionAbbrFromFull(d.condition);
+                                      if (condAbbr && conditions.hasOwnProperty(condAbbr)) conditions[condAbbr]++;
                                     });
                                     return (
                                       <>
@@ -1543,6 +1698,7 @@ export const Approvals = () => {
                                 </div>
                                 <div className="grid grid-cols-4 gap-2">
                                   {Object.entries(cToothData).map(([tooth, data]) => {
+                                    const condAbbr = getConditionAbbrFromFull(data.condition);
                                     const conditionColors = {
                                       'caries': 'bg-red-100 text-red-700 border-red-300',
                                       'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
@@ -1551,7 +1707,7 @@ export const Approvals = () => {
                                       'improved': 'bg-blue-100 text-blue-700 border-blue-300',
                                     };
                                     return (
-                                      <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[data.condition] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                                      <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[condAbbr] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
                                         <span className="block font-bold text-xs">#{tooth}</span>
                                         <span className="block text-[10px] capitalize">{data.condition || '—'}</span>
                                       </div>
@@ -2051,10 +2207,7 @@ export const Approvals = () => {
               {examType === 'dental' && ' - Dental'}
             </h3>
             <span className="text-[9px] bg-[#e0eceb] px-2 py-0.5 rounded-full text-[#466460] font-semibold">
-              {examType === 'dental' ? dentalExaminations.filter(e => {
-                const matchSearch = e.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || e.patientId.toLowerCase().includes(searchTerm.toLowerCase());
-                return matchSearch;
-              }).length : filteredExaminations.length}
+              {examType === 'dental' ? filteredDentalExaminations.length : filteredExaminations.length}
             </span>
           </div>
 
@@ -2110,14 +2263,8 @@ export const Approvals = () => {
               Loading records...
             </div>
           ) : examType === 'dental' ? (
-            dentalExaminations.filter(e => {
-              const matchSearch = e.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || e.patientId.toLowerCase().includes(searchTerm.toLowerCase());
-              return matchSearch;
-            }).length > 0 ? (
-              dentalExaminations.filter(e => {
-                const matchSearch = e.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || e.patientId.toLowerCase().includes(searchTerm.toLowerCase());
-                return matchSearch;
-              }).map(renderDentalExamItem)
+            filteredDentalExaminations.length > 0 ? (
+              filteredDentalExaminations.map(renderDentalExamItem)
             ) : (
               <div className="text-center text-slate-400 text-sm py-12">
                 <i className="fa-solid fa-tooth text-3xl mb-2 opacity-50 block"></i>
@@ -2149,32 +2296,27 @@ export const Approvals = () => {
                 {/* Dental Actions */}
                 {examType === 'dental' ? (
                   <>
-                    {/* Always show View button for dental */}
                     <button
                       onClick={handleEdit}
                       className="bg-slate-100 text-slate-600 border-none px-4 py-2 rounded-lg font-semibold text-xs hover:bg-slate-200 transition flex items-center gap-1.5"
                     >
                       <i className="fa-solid fa-eye"></i> View
                     </button>
-                    {activeTab === 'pending' && (
-                      <>
-                        <button
-                          onClick={() => setShowApproveModal(true)}
-                          disabled={loading}
-                          className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white border-none px-5 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                        >
-                          {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check-circle"></i>}
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => setShowReportForm(true)}
-                          className="bg-gradient-to-r from-[#e07a5f] to-[#c96a4f] text-white border-none px-4 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm"
-                        >
-                          <i className="fa-solid fa-file-pdf"></i> View/Edit Report
-                        </button>
-                      </>
+
+                    {/* Pending Tab: Approve Record (modal decides approve-only vs. send report) */}
+                    {activeTab === 'pending' && selectedExam.status !== 'approved' && (
+                      <button
+                        onClick={() => setShowApproveModal(true)}
+                        disabled={loading}
+                        className="bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white border-none px-5 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                      >
+                        {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check-circle"></i>}
+                        Approve Record
+                      </button>
                     )}
-                    {activeTab === 'approved' && !selectedExam.reportForwarded && (
+
+                    {/* Approved Tab: Generate Report OR View Report Forwarded status */}
+                    {activeTab === 'approved' && !selectedExam.issue_cert && (
                       <button
                         onClick={() => setShowReportForm(true)}
                         className="bg-gradient-to-r from-[#e07a5f] to-[#c96a4f] text-white border-none px-4 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm"
@@ -2182,16 +2324,17 @@ export const Approvals = () => {
                         <i className="fa-solid fa-file-pdf"></i> Generate Report
                       </button>
                     )}
-                    {activeTab === 'approved' && selectedExam.reportForwarded && (
+
+                    {activeTab === 'approved' && selectedExam.issue_cert && (
                       <div className="flex items-center gap-2 border-l border-slate-200 pl-2">
                         <span className="text-[10px] text-[#466460] bg-emerald-100 border border-[#466460]/30 px-2 py-1.5 rounded-md font-bold flex items-center gap-1.5">
                           <i className="fa-solid fa-paper-plane"></i> Report Forwarded
                         </span>
                         <button
                           onClick={() => setShowReportForm(true)}
-                          className="text-[#466460] hover:underline text-xs font-semibold"
+                          className="bg-white border border-[#466460] text-[#466460] px-4 py-2 rounded-lg font-bold text-xs hover:bg-[#e0eceb] transition flex items-center gap-1.5 shadow-sm"
                         >
-                          View/Edit
+                          <i className="fa-solid fa-eye"></i> View/Edit Report
                         </button>
                       </div>
                     )}
@@ -2219,7 +2362,7 @@ export const Approvals = () => {
                   )}
 
                   {/* Approved Tab: Issue Certificate OR View Certificate */}
-                  {activeTab === 'approved' && !selectedExam.certificateIssued && (
+                  {activeTab === 'approved' && !selectedExam.issue_cert && (
                     <button
                       onClick={() => setShowCertForm(true)}
                       className="bg-gradient-to-r from-[#e07a5f] to-[#c96a4f] text-white border-none px-4 py-2 rounded-lg font-bold text-xs hover:opacity-90 transition flex items-center gap-1.5 shadow-sm"
@@ -2228,7 +2371,7 @@ export const Approvals = () => {
                     </button>
                   )}
 
-                  {activeTab === 'approved' && selectedExam.certificateIssued && (
+                  {activeTab === 'approved' && selectedExam.issue_cert && (
                     <div className="flex items-center gap-2 border-l border-slate-200 pl-2">
                       <span className="text-[10px] text-[#466460] bg-emerald-100 border border-[#466460]/30 px-2 py-1.5 rounded-md font-bold flex items-center gap-1.5">
                         <i className="fa-solid fa-paper-plane"></i> Cert Forwarded
@@ -2261,7 +2404,9 @@ export const Approvals = () => {
                 <i className="fa-solid fa-clipboard-check"></i> Approve Examination
               </h3>
               <button onClick={() => setShowApproveModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-4 h-4 fill-current">
+                  <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+                </svg>
               </button>
             </div>
             <div className="p-6">
@@ -2346,7 +2491,9 @@ export const Approvals = () => {
                 <i className="fa-solid fa-pen-to-square"></i> Edit Record
               </h3>
               <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-4 h-4 fill-current">
+                  <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+                </svg>
               </button>
             </div>
             <div className="p-6 space-y-4">
@@ -2479,13 +2626,16 @@ export const Approvals = () => {
                 <i className="fa-solid fa-tooth"></i> Dental Examination Report
               </h3>
               <button onClick={() => setShowReportForm(false)} className="text-slate-400 hover:text-red-500 transition-colors rounded-full p-1 hover:bg-slate-200" title="Close">
-                <i className="fa-solid fa-xmark text-xl"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+                  <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+                </svg>
               </button>
             </div>
             <div className="overflow-y-auto custom-scrollbar p-6 bg-[#f8fafc] flex-1">
               <DentalExaminationReport
                 examination={selectedExam}
                 onSubmit={handleSaveDentalReport}
+                readOnly={selectedExam.issue_cert}
               />
             </div>
           </div>
@@ -2499,10 +2649,12 @@ export const Approvals = () => {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <h3 className="font-bold text-[#466460] text-sm flex items-center gap-2">
-                <i className="fa-solid fa-file-medical"></i> {activeTab === 'approved' && selectedExam.certificateIssued ? 'Edit/View Medical Certificate' : 'Issue Medical Certificate'}
+                <i className="fa-solid fa-file-medical"></i> {activeTab === 'approved' && selectedExam.issue_cert ? 'Edit/View Medical Certificate' : 'Issue Medical Certificate'}
               </h3>
               <button onClick={() => setShowCertForm(false)} className="text-slate-400 hover:text-red-500 transition-colors rounded-full p-1 hover:bg-slate-200" title="Close">
-                <i className="fa-solid fa-xmark text-xl"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+                  <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+                </svg>
               </button>
             </div>
             <div className="overflow-y-auto custom-scrollbar p-6 bg-[#f8fafc] flex-1">
@@ -2510,6 +2662,7 @@ export const Approvals = () => {
                 examination={selectedExam}
                 onSubmit={handleSubmitCertificate}
                 onEdit={handleEdit}
+                readOnly={selectedExam.issue_cert}
               />
             </div>
           </div>
@@ -2517,86 +2670,112 @@ export const Approvals = () => {
         document.body
       )}
 
-      {/* --- FULL EXAMINATION MODAL - MEDICAL --- */}
-      {showFullExamModal && examRecordData && examType === 'medical' && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+      {/* --- FULL EXAMINATION MODAL (Unified - like Records.jsx) --- */}
+      {showFullExamModal && examRecordData && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}></div>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); setNormalizedPatient(null); }}></div>
 
           {/* Modal Content */}
-          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
             {/* Header */}
             <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
-                  <i className="fa-solid fa-file-medical text-white text-lg"></i>
+                  <i className="fa-solid fa-user text-white text-lg"></i>
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-slate-800">
-                    {examRecordData.firstName || examRecordData.lastName ? `${examRecordData.firstName || ''} ${examRecordData.middleName || ''} ${examRecordData.lastName || ''}`.trim() : examRecordData.name || 'Medical Examination'}
+                    {normalizedPatient?.name || examRecordData.name || 'Patient Examination'}
                   </h3>
                   <p className="text-sm text-slate-500 mt-0.5">
-                    {examRecordData.id || examRecordData.university_id || examRecordData.student_id || ''} • {examRecordData.department || examRecordData.program || ''}
+                    {normalizedPatient?.id || examRecordData.id || examRecordData.university_id || ''} •
+                    {normalizedPatient?.department || examRecordData.department || ''}
+                    {normalizedPatient?.prog || examRecordData.program ? ` • ${normalizedPatient?.prog || examRecordData.program}` : ''}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}
+                onClick={() => { setShowFullExamModal(false); setExamRecordData(null); setNormalizedPatient(null); }}
                 className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
               >
-                <i className="fa-solid fa-xmark text-xl"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+                  <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+                </svg>
               </button>
             </div>
-            <div className="overflow-y-auto custom-scrollbar flex-1 bg-[#f8fafc]">
-              <Medical
-                selectedPatient={examRecordData}
-                showMessage={(msg) => showSnackbar(msg, 'success')}
-                defaultSchoolYear={examRecordData.schoolYear || ''}
-                defaultSemester=""
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
 
-      {/* --- FULL EXAMINATION MODAL - DENTAL --- */}
-      {showFullExamModal && examRecordData && examType === 'dental' && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}></div>
-
-          {/* Modal Content */}
-          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
-                  <i className="fa-solid fa-tooth text-white text-lg"></i>
+            {/* Tabs and School Year */}
+            <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
+              <div className="flex gap-2">
+              {examType === 'medical' ? (
+                <div className="px-6 py-3 text-base font-semibold rounded-lg bg-[#466460] text-white shadow-md flex items-center gap-2">
+                  <i className="fa-solid fa-stethoscope"></i>
+                  Medical Examination
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800">
-                    {examRecordData.firstName || examRecordData.lastName ? `${examRecordData.firstName || ''} ${examRecordData.middleName || ''} ${examRecordData.lastName || ''}`.trim() : examRecordData.name || 'Dental Examination'}
-                  </h3>
-                  <p className="text-sm text-slate-500 mt-0.5">
-                    {examRecordData.id || examRecordData.university_id || examRecordData.student_id || ''} • {examRecordData.program || examRecordData.course || ''}
-                  </p>
+              ) : (
+                <div className="px-6 py-3 text-base font-semibold rounded-lg bg-[#466460] text-white shadow-md flex items-center gap-2">
+                  <i className="fa-solid fa-tooth"></i>
+                  Dental Examination
                 </div>
+              )}
               </div>
-              <button
-                onClick={() => { setShowFullExamModal(false); setExamRecordData(null); }}
-                className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
-              >
-                <i className="fa-solid fa-xmark text-xl"></i>
-              </button>
+              <div className="ml-auto flex items-center gap-3">
+                <span className="text-xs font-semibold text-slate-500">School Year:</span>
+                <select
+                  value={examRecordData.schoolYear || examRecordData.school_year || ''}
+                  className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+                >
+                  <option value="">Select</option>
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const y = new Date().getFullYear() - 5 + i;
+                    return <option key={y} value={`${y}-${y + 1}`}>{`${y}-${y + 1}`}</option>;
+                  })}
+                </select>
+                <select
+                  value={examRecordData.semester || '1st Semester'}
+                  className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+                >
+                  <option value="1st Semester">1st Semester</option>
+                  <option value="2nd Semester">2nd Semester</option>
+                  <option value="Mid Year">Mid Year</option>
+                </select>
+              </div>
             </div>
-            <div className="overflow-y-auto custom-scrollbar flex-1 bg-[#f8fafc]">
-              <Dental
-                selectedPatient={examRecordData}
-                showMessage={(msg) => showSnackbar(msg, 'success')}
-                defaultSchoolYear={examRecordData.schoolYear || ''}
-                defaultSemester={examRecordData.semester || '1st Semester'}
-              />
+
+            {/* Form Content */}
+            <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+              {modalLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="text-center text-slate-400">
+                    <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 block text-[#466460]"></i>
+                    <p className="text-sm font-semibold">Loading patient data…</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {examType === 'medical' && (
+                    <Medical
+                      key={`medical-${resetKey}`}
+                      selectedPatient={examRecordData}
+                      showMessage={(msg) => showSnackbar(msg, 'success')}
+                      defaultSchoolYear={examRecordData.schoolYear || examRecordData.school_year || ''}
+                      defaultSemester={examRecordData.semester || '1st Semester'}
+                      readOnly={activeTab === 'approved'}
+                    />
+                  )}
+                  {examType === 'dental' && (
+                    <Dental
+                      key={`dental-${resetKey}`}
+                      selectedPatient={examRecordData}
+                      showMessage={(msg) => showSnackbar(msg, 'success')}
+                      defaultSchoolYear={examRecordData.schoolYear || examRecordData.school_year || ''}
+                      defaultSemester={examRecordData.semester || '1st Semester'}
+                      readOnly={activeTab === 'approved'}
+                    />
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>,

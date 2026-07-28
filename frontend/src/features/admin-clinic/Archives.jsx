@@ -1,5 +1,5 @@
 // frontend/src/features/admin-clinic/Archives.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 
@@ -20,6 +20,7 @@ export default function Archives() {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all');
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // For instant search input
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const limit = 20;
@@ -91,7 +92,7 @@ export default function Archives() {
           ...r,
           archiveType: 'user',
           table: 'users',
-          id: r.uid,
+          originalId: r.uid,
           displayName: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email || r.university_id || 'User',
           detail: r.university_id || r.email || '',
           deletedBy: r.deleted_by || 'System'
@@ -128,8 +129,8 @@ export default function Archives() {
           archiveType: 'medical_record',
           table: 'medical_records',
           id: r.id,
-          displayName: r.patient_name || r.patientId || 'Medical Record',
-          detail: `Type: ${r.record_type || 'General'} | Visit: ${r.visit_date || 'N/A'}`,
+          displayName: `${r.last_name || ''}, ${r.first_name || ''} ${r.middle_name ? r.middle_name + ' ' : ''}`.trim() || 'Medical Record',
+          detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date ? new Date(r.exam_date).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}`,
           deletedBy: r.deleted_by || 'System'
         })),
         ...(dentalData.data || []).map(r => ({
@@ -137,8 +138,8 @@ export default function Archives() {
           archiveType: 'dental_record',
           table: 'dental_records',
           id: r.id,
-          displayName: r.patient_name || r.patientId || 'Dental Record',
-          detail: `Type: ${r.record_type || 'Dental'} | Visit: ${r.visit_date || 'N/A'}`,
+          displayName: `${r.last_name || ''}, ${r.first_name || ''} ${r.middle_name ? r.middle_name + ' ' : ''}`.trim() || 'Dental Record',
+          detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date ? new Date(r.exam_date).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}`,
           deletedBy: r.deleted_by || 'System'
         })),
       ];
@@ -205,18 +206,20 @@ export default function Archives() {
 
   useEffect(() => {
     fetchArchives();
-  }, [filterType, page]);
+  }, [filterType, page, search]);
+
+  // Debounced search - fetches archives when search stabilizes
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
 
   useEffect(() => {
     fetchStats();
   }, []);
-
-  // Handle search
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    fetchArchives();
-  };
 
   // View archive details
   const handleView = (archive) => {
@@ -236,19 +239,32 @@ export default function Archives() {
 
     setActionLoading(true);
     try {
-      // Users table uses 'uid' as primary key, others use 'id'
-      const idColumn = selectedArchive.table === 'users' ? 'uid' : 'id';
+      // Use backend API for restore (enables audit logging)
+      const token = localStorage.getItem('token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-      const { error } = await supabase
-        .from(selectedArchive.table)
-        .update({
-          is_archived: false,
-          deleted_by: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq(idColumn, selectedArchive.id);
+      // Determine the correct ID to use based on table type
+      // Users table uses 'uid', others use 'id'
+      const idToUse = selectedArchive.table === 'users' ? selectedArchive.uid : selectedArchive.id;
 
-      if (error) throw error;
+      const response = await fetch(`${API_URL}/archives/${idToUse}/restore?table=${selectedArchive.table}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+      });
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (e) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(result?.message || result?.error || 'Failed to restore');
+      }
 
       showSnackbar('Item restored successfully!', 'success');
       setShowRestoreModal(false);
@@ -271,19 +287,34 @@ export default function Archives() {
 
   const confirmPermanentDelete = async () => {
     if (!selectedArchive) return;
-    if (!window.confirm('WARNING: This action cannot be undone! The item will be permanently deleted.')) return;
 
     setActionLoading(true);
     try {
-      // Users table uses 'uid' as primary key, others use 'id'
-      const idColumn = selectedArchive.table === 'users' ? 'uid' : 'id';
+      // Use backend API for permanent delete (enables audit logging)
+      const token = localStorage.getItem('token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-      const { error } = await supabase
-        .from(selectedArchive.table)
-        .delete()
-        .eq(idColumn, selectedArchive.id);
+      // Use the original ID (uid for users, id for others) and pass table name
+      const idToUse = selectedArchive.table === 'users' ? selectedArchive.uid : selectedArchive.id;
 
-      if (error) throw error;
+      const response = await fetch(`${API_URL}/archives/${idToUse}/delete?table=${selectedArchive.table}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+      });
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (e) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(result?.message || result?.error || 'Failed to delete');
+      }
 
       showSnackbar('Item permanently deleted!', 'success');
       setShowDeleteModal(false);
@@ -369,21 +400,25 @@ export default function Archives() {
           </select>
 
           {/* Search */}
-          <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+          <div className="flex-1 flex gap-2">
             <input
               type="text"
               placeholder="Search archives..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent"
             />
-            <button
-              type="submit"
-              className="px-5 py-2.5 bg-[#466460] text-white rounded-lg text-sm font-medium hover:bg-[#3a524d] transition"
-            >
-              Search
-            </button>
-          </form>
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="px-3 py-2.5 text-slate-400 hover:text-slate-600 transition"
+                title="Clear search"
+              >
+                <i className="fa-solid fa-times"></i>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -432,7 +467,9 @@ export default function Archives() {
                       <div className="text-sm font-medium text-slate-700">
                         {archive.displayName}
                       </div>
-                      <div className="text-xs text-slate-400">ID: {String(archive.id).substring(0, 12)}...</div>
+                      {(archive.archiveType !== 'medical_record' && archive.archiveType !== 'dental_record') && (
+                        <div className="text-xs text-slate-400">ID: {String(archive.id).substring(0, 12)}...</div>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       <div className="text-sm text-slate-600 max-w-xs truncate" title={archive.detail}>

@@ -69,6 +69,35 @@ const setCachedPresence = (isOnline) => {
   } catch {}
 };
 
+// ── Fetch sender roles from users table ────────────────────────────────────────
+const fetchSenderRoles = async (senderIds) => {
+  if (!senderIds || senderIds.length === 0) return {};
+  const uniqueIds = [...new Set(senderIds.filter(Boolean))];
+  const { data } = await supabase
+    .from('users')
+    .select('id, role, first_name, last_name, sex')
+    .in('id', uniqueIds);
+  if (!data) return {};
+  const roleMap = {};
+  data.forEach(u => {
+    roleMap[u.id] = { role: u.role, first_name: u.first_name, last_name: u.last_name, sex: u.sex };
+  });
+  return roleMap;
+};
+
+// Gender icon helper
+const getGenderIcon = (sex) => {
+  if (!sex) return null;
+  const s = sex.toLowerCase();
+  if (s === 'male') {
+    return <span className="text-blue-500" title="Male">♂</span>;
+  }
+  if (s === 'female') {
+    return <span className="text-pink-500" title="Female">♀</span>;
+  }
+  return null;
+};
+
 const formatTime = (ts) => {
   if (!ts) return '';
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -260,6 +289,9 @@ export default function ConsultationUsers() {
   const [loadingMore,     setLoadingMore]     = useState(false);
   const [showHistoryMenu, setShowHistoryMenu] = useState(false);
   const [clinicUnreadCount, setClinicUnreadCount] = useState(0);
+  const [senderRoles, setSenderRoles] = useState({}); // Cache for sender roles from users table
+  const [hasRecords,    setHasRecords]     = useState(false);
+  const [loadingRecords, setLoadingRecords] = useState(true);
 
   // 🟢 NEW: Tracks the most recent ENDED consultation id per type (medical/dental)
   // for this patient. Populated whenever we fetch consultation history, so that
@@ -271,6 +303,43 @@ export default function ConsultationUsers() {
     lastEndedByTypeRef.current = next;
     setLastEndedByType(next);
   }, []);
+
+  // ── Check if user has medical or dental records ──
+  useEffect(() => {
+    const checkRecords = async () => {
+      if (!profileCache?.internalUserId) {
+        setLoadingRecords(false);
+        setHasRecords(false);
+        return;
+      }
+      try {
+        // Check medical records (any status except archived)
+        const { data: medicalData } = await supabase
+          .from('medical_records')
+          .select('id, status')
+          .eq('user_id', profileCache.internalUserId)
+          .eq('is_archived', false);
+
+        // Check dental records (any status except archived)
+        const { data: dentalData } = await supabase
+          .from('dental_records')
+          .select('id, status')
+          .eq('user_id', profileCache.internalUserId)
+          .eq('is_archived', false);
+
+        console.log('[Consultation] Medical records:', medicalData);
+        console.log('[Consultation] Dental records:', dentalData);
+
+        setHasRecords((medicalData && medicalData.length > 0) || (dentalData && dentalData.length > 0));
+      } catch (err) {
+        console.error('Error checking records:', err);
+        setHasRecords(false);
+      } finally {
+        setLoadingRecords(false);
+      }
+    };
+    checkRecords();
+  }, [profileCache?.internalUserId]);
 
   // Update localStorage with clinic unread count for nav indicator
   useEffect(() => {
@@ -555,6 +624,13 @@ export default function ConsultationUsers() {
     }
 
     setHasMoreMessages(data.length === MSG_PAGE_SIZE);
+
+    // Fetch sender roles from users table
+    const senderIds = ordered.map(m => m.sender_id).filter(Boolean);
+    if (senderIds.length > 0) {
+      const roles = await fetchSenderRoles(senderIds);
+      setSenderRoles(prev => ({ ...prev, ...roles }));
+    }
   }, []);
 
   // ── 2. Consultation fetch + realtime listeners ────────────────────────
@@ -831,6 +907,11 @@ export default function ConsultationUsers() {
               if (msgs.some(m => m.id === payload.new.id)) return msgs;
               return [...msgs, payload.new];
             });
+            // Fetch sender role for new message
+            if (payload.new.sender_id) {
+              const roles = await fetchSenderRoles([payload.new.sender_id]);
+              setSenderRoles(prev => ({ ...prev, ...roles }));
+            }
           } else if (isEndedRef.current && currentRoomId) {
             // If we're in ended/history mode and a new message arrives for a different room,
             // check if it's for a newer consultation
@@ -1065,6 +1146,13 @@ export default function ConsultationUsers() {
       setMessages(prev => [...ordered, ...prev]);
       setHasMoreMessages(data.length === MSG_PAGE_SIZE);
 
+      // Fetch sender roles for new messages
+      const senderIds = ordered.map(m => m.sender_id).filter(Boolean);
+      if (senderIds.length > 0) {
+        const roles = await fetchSenderRoles(senderIds);
+        setSenderRoles(prev => ({ ...prev, ...roles }));
+      }
+
       // After React re-renders, restore scroll so the user stays in place
       requestAnimationFrame(() => {
         if (!scrollEl) return;
@@ -1123,20 +1211,27 @@ export default function ConsultationUsers() {
       // 3. Reactivate if an existing record was found
       if (existingEndedId) {
         console.log('[Chat] Reactivating existing ended consultation:', existingEndedId, 'type:', option.type);
-        const { data: updated, error: updateErr } = await supabase
-          .from('consultations')
-          .update({ status: 'active', ended_at: null, updated_at: new Date().toISOString() })
-          .eq('id', existingEndedId)
-          .eq('patient_id', internalUserId) // guard: only ever touch this patient's own row
-          .select()
-          .single();
 
-        if (updateErr || !updated) {
-          console.error('[Chat] Failed to reactivate consultation, falling back to create:', updateErr);
-        } else {
-          roomId = updated.id;
-          consultation = updated;
+        // Use backend API for reactivation (enables audit logging)
+        const token = localStorage.getItem('token');
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+        const reactivateResponse = await fetch(`${API_URL}/consultations/${existingEndedId}/reactivate`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+        });
+
+        const reactivateResult = await reactivateResponse.json();
+
+        if (reactivateResult.success && reactivateResult.data) {
+          roomId = reactivateResult.data.id;
+          consultation = reactivateResult.data;
           isReactivation = true;
+        } else {
+          console.error('[Chat] Failed to reactivate consultation:', reactivateResult.message);
         }
       }
 
@@ -1182,11 +1277,17 @@ export default function ConsultationUsers() {
           .single();
 
         if (verifyData?.status !== 'active') {
-          console.log('[Chat] Fix: Manually updating status to active...');
-          await supabase
-            .from('consultations')
-            .update({ status: 'active', ended_at: null })
-            .eq('id', roomId);
+          console.log('[Chat] Fix: Manually updating status to active via API...');
+          const token = localStorage.getItem('token');
+          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+          await fetch(`${API_URL}/consultations/${roomId}/reactivate`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+          });
         }
       }
 
@@ -1261,7 +1362,7 @@ export default function ConsultationUsers() {
         consultation_id: activeRoomId,
         sender_id:       internalUserId,
         sender_name:     internalName,
-        sender_role:     currentUser.role || 'student',
+        sender_role:     currentUser.role || 'student' ,
         message:         text,
         created_at:      new Date().toISOString(),
       });
@@ -1454,9 +1555,46 @@ export default function ConsultationUsers() {
                 <circle cx="12" cy="7" r="4" />
               </svg>
             </div>
-            <p className="text-[10px] font-bold" style={{ color: msgCfg.accent }}>
-              {item.sender_name || 'Clinic Staff'}
-            </p>
+            {(() => {
+              // Get role from sender_roles cache or fallback to sender_role field
+              const senderInfo = senderRoles[item.sender_id] || {};
+              const role = senderInfo.role || item.sender_role || 'staff';
+              const firstName = senderInfo.first_name || '';
+              const lastName = senderInfo.last_name || '';
+              const roleLower = role.toLowerCase();
+
+              // Format name: use first_name/last_name from users table if available, else use sender_name
+              let displayName = item.sender_name || 'Clinic Staff';
+              if (firstName || lastName) {
+                displayName = `${firstName} ${lastName}`.trim();
+              }
+
+              // Add "Dr." prefix for doctors
+              if (roleLower === 'doctor') {
+                displayName = `Dr. ${displayName}`;
+              }
+
+              // Role badge styling
+              const roleBadgeClass = roleLower === 'doctor'
+                ? 'bg-emerald-100 text-emerald-700'
+                : roleLower === 'nurse'
+                  ? 'bg-blue-100 text-blue-700'
+                  : roleLower === 'dentist'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-slate-100 text-slate-600';
+
+              return (
+                <>
+                  <p className="text-[10px] font-bold" style={{ color: msgCfg.accent }}>
+                    {displayName}
+                    {getGenderIcon(senderInfo.sex)}
+                  </p>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold capitalize ${roleBadgeClass}`}>
+                    {role}
+                  </span>
+                </>
+              );
+            })()}
           </div>
         )}
         <div
@@ -1485,265 +1623,283 @@ export default function ConsultationUsers() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#f4f7f5' }}>
       <style>{ptrStyles}</style>
 
-      {/* 1. STICKY HEADER */}
-      <div
-        style={{ position: 'sticky', top: 0, zIndex: 20, background: '#ffffff', borderBottom: '1px solid #edf3f0', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', flexShrink: 0 }}
-        className="px-5 py-4 flex items-center gap-3 transition-all duration-300"
-      >
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300"
-          style={{ backgroundColor: cfg.accentLight }}
-        >
-          {consultType === 'dental' && !isEnded ? (
-            <svg viewBox="0 0 64 64" fill="none" stroke={cfg.accent} strokeWidth="2.4" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke={cfg.accent} strokeWidth="1.5" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
-            </svg>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-bold text-[#1a2e22]">
-              {cfg.label}{!isEnded && ' Consultation'}
-            </h3>
-            <span
-              className="text-[9px] px-2 py-0.5 rounded-full font-bold transition-colors duration-300"
-              style={{ backgroundColor: cfg.accentLight, color: cfg.accent }}
-            >
-              {cfg.sublabel}
-            </span>
-          </div>
-          <span
-            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide mt-0.5 transition-colors duration-300"
-            style={{
-              backgroundColor: isClinicOnline ? cfg.accentLight : '#f1f5f9',
-              color:           isClinicOnline ? cfg.accent      : '#94a3b8',
-            }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isClinicOnline ? cfg.accent : '#94a3b8' }} />
-            {isClinicOnline ? 'Clinic Online' : 'Clinic Offline'}
-          </span>
-        </div>
-
-        {/* Hamburger Menu for Chat History */}
-        {isEnded && (
-          <div className="relative">
-            <button
-              onClick={() => setShowHistoryMenu(!showHistoryMenu)}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors"
-              title="View Chat History"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-[#466460]">
-                <circle cx="12" cy="5" r="1.5" />
-                <circle cx="12" cy="12" r="1.5" />
-                <circle cx="12" cy="19" r="1.5" />
+      {/* Conditionally render: If no records, show ONLY the empty state covering the whole page */}
+      {!loadingRecords && !hasRecords ? (
+        <div className="flex-1 flex items-center justify-center p-8 h-full">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
+              <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-            </button>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Visit the Clinic First</h3>
+            <p className="text-[13px] text-[#64748b]">
+              Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before accessing digital consultations.
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* If the user HAS records, render the Chat UI */
+        <>
+          {/* 1. STICKY HEADER */}
+          <div
+            style={{ position: 'sticky', top: 0, zIndex: 20, background: '#ffffff', borderBottom: '1px solid #edf3f0', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', flexShrink: 0 }}
+            className="px-5 py-4 flex items-center gap-3 transition-all duration-300"
+          >
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300"
+              style={{ backgroundColor: cfg.accentLight }}
+            >
+              {consultType === 'dental' && !isEnded ? (
+                <svg viewBox="0 0 64 64" fill="none" stroke={cfg.accent} strokeWidth="2.4" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                    d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke={cfg.accent} strokeWidth="1.5" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
+                </svg>
+              )}
+            </div>
 
-            {/* Dropdown Menu */}
-            {showHistoryMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowHistoryMenu(false)}
-                />
-                <div
-                  className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-20"
-                  onClick={(e) => e.stopPropagation()}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-[#1a2e22]">
+                  {cfg.label}{!isEnded && ' Consultation'}
+                </h3>
+                <span
+                  className="text-[9px] px-2 py-0.5 rounded-full font-bold transition-colors duration-300"
+                  style={{ backgroundColor: cfg.accentLight, color: cfg.accent }}
                 >
-                  <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
-                    Chat History
-                  </div>
-                  <button
-                    onClick={() => { handleHistoryFilterSwitch('medical'); setShowHistoryMenu(false); }}
-                    className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${
-                      historyFilter === 'medical'
-                        ? 'bg-[#1a5c3a]/10 text-[#1a5c3a]'
-                        : 'text-[#466460] hover:bg-slate-50'
-                    }`}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Medical History
-                  </button>
-                  <button
-                    onClick={() => { handleHistoryFilterSwitch('dental'); setShowHistoryMenu(false); }}
-                    className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${
-                      historyFilter === 'dental'
-                        ? 'bg-[#1a4a7a]/10 text-[#1a4a7a]'
-                        : 'text-[#466460] hover:bg-slate-50'
-                    }`}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Dental History
-                  </button>
-                </div>
-              </>
+                  {cfg.sublabel}
+                </span>
+              </div>
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide mt-0.5 transition-colors duration-300"
+                style={{
+                  backgroundColor: isClinicOnline ? cfg.accentLight : '#f1f5f9',
+                  color:           isClinicOnline ? cfg.accent      : '#94a3b8',
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isClinicOnline ? cfg.accent : '#94a3b8' }} />
+                {isClinicOnline ? 'Clinic Online' : 'Clinic Offline'}
+              </span>
+            </div>
+
+            {/* Hamburger Menu for Chat History */}
+            {isEnded && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowHistoryMenu(!showHistoryMenu)}
+                  className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors"
+                  title="View Chat History"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-[#466460]">
+                    <circle cx="12" cy="5" r="1.5" />
+                    <circle cx="12" cy="12" r="1.5" />
+                    <circle cx="12" cy="19" r="1.5" />
+                  </svg>
+                </button>
+
+                {/* Dropdown Menu */}
+                {showHistoryMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowHistoryMenu(false)}
+                    />
+                    <div
+                      className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-20"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
+                        Chat History
+                      </div>
+                      <button
+                        onClick={() => { handleHistoryFilterSwitch('medical'); setShowHistoryMenu(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${
+                          historyFilter === 'medical'
+                            ? 'bg-[#1a5c3a]/10 text-[#1a5c3a]'
+                            : 'text-[#466460] hover:bg-slate-50'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Medical History
+                      </button>
+                      <button
+                        onClick={() => { handleHistoryFilterSwitch('dental'); setShowHistoryMenu(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${
+                          historyFilter === 'dental'
+                            ? 'bg-[#1a4a7a]/10 text-[#1a4a7a]'
+                            : 'text-[#466460] hover:bg-slate-50'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Dental History
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* 2. SCROLLABLE MESSAGES */}
-      <div
-        ref={setScrollRef}
-        onTouchStart={!isEnded ? ptrTouchStart : undefined}
-        onTouchMove={!isEnded  ? ptrTouchMove  : undefined}
-        onTouchEnd={!isEnded   ? ptrTouchEnd   : undefined}
-        style={{
-          flex:         1,
-          overflowY:    'auto',
-          minHeight:    0,
-          position:     'relative',
-          touchAction:  'manipulation',
-        }}
-        className="px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5]"
-      >
-        {/* PTR indicator — first child, only mounted during an active consultation */}
-        {!isEnded && <PullIndicator indicatorRef={indicatorRef} />}
+          {/* 2. SCROLLABLE MESSAGES */}
+          <div
+            ref={setScrollRef}
+            onTouchStart={!isEnded ? ptrTouchStart : undefined}
+            onTouchMove={!isEnded  ? ptrTouchMove  : undefined}
+            onTouchEnd={!isEnded   ? ptrTouchEnd   : undefined}
+            style={{
+              flex:         1,
+              overflowY:    'auto',
+              minHeight:    0,
+              position:     'relative',
+              touchAction:  'manipulation',
+            }}
+            className="px-4 py-5 flex flex-col gap-2 bg-[#f4f7f5]"
+          >
+            {/* PTR indicator — first child, only mounted during an active consultation */}
+            {!isEnded && <PullIndicator indicatorRef={indicatorRef} />}
 
-        {/* Centered loading spinner */}
-        {loadingHistory && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 5 }}>
-            <div className="flex items-center gap-2 text-[#9bb5a5] bg-white/80 px-3 py-2 rounded-full shadow-sm">
-              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-              <span className="text-[10px]">Loading…</span>
-            </div>
-          </div>
-        )}
-
-        {/* Load more button — top of list */}
-        {!loadingHistory && hasMoreMessages && (
-          <div className="flex justify-center mb-2">
-            <button
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="flex items-center gap-2 px-4 py-2 rounded-full text-[11px] font-bold bg-white border border-[#c4dbd8] text-[#466460] hover:border-[#466460] hover:shadow-sm transition disabled:opacity-50"
-            >
-              {loadingMore ? (
-                <>
-                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+            {/* Centered loading spinner */}
+            {loadingHistory && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 5 }}>
+                <div className="flex items-center gap-2 text-[#9bb5a5] bg-white/80 px-3 py-2 rounded-full shadow-sm">
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                   </svg>
-                  Loading…
-                </>
-              ) : '↑ Load earlier messages'}
-            </button>
-          </div>
-        )}
-
-        {/* Active session messages */}
-        {/* DEBUG: isEnded=, sessionReady=, messages.length=, loadingHistory= */}
-        {!isEnded && sessionReady && groupedMessages.map((item, i) => renderMessage(item, i))}
-
-        {/* Ended session — history + divider */}
-        {isEnded && messages.length > 0 && (
-          <>
-            {sessionReady && groupedMessages.map((item, i) => renderMessage(item, i, typeConfig.generic))}
-            <div className="flex items-center gap-3 my-4 opacity-60">
-              <div className="flex-1 h-px bg-slate-300" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
-              <div className="flex-1 h-px bg-slate-300" />
-            </div>
-          </>
-        )}
-
-        {/* Greeting — shown when consultation has ended (including when viewing history) */}
-        {!loadingHistory && isEnded && (
-          <div className="mt-2 mb-2 flex flex-col gap-3">
-            <div className="flex items-end gap-2">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" className="w-3.5 h-3.5">
-                  <rect x="3" y="8" width="18" height="13" rx="2" />
-                  <path strokeLinecap="round" d="M8 8V6a4 4 0 018 0v2" />
-                  <circle cx="9" cy="14" r="1" fill="#466460" />
-                  <circle cx="15" cy="14" r="1" fill="#466460" />
-                </svg>
+                  <span className="text-[10px]">Loading…</span>
+                </div>
               </div>
-              <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm bg-white border border-[#c4dbd8] text-[#1a2e22]">
-                <span>👋 Hello! I'm the MediTrack assistant.</span>
-                <br />
-                <strong>What brings you in today?</strong> Please select the type of consultation you need:
-              </div>
-            </div>
+            )}
 
-            {/* OPTION BUTTONS WITH UI LOCK */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-9 max-w-[90%]">
-              {INITIAL_OPTIONS.map((opt, idx) => {
-                const isThisLoading = startingOption === opt.label;
-                const isDisabled = !sessionReady || startingOption !== null;
-
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => handleOptionSelect(opt)}
-                    disabled={isDisabled}
-                    className={`text-left text-[12px] font-bold px-4 py-3 rounded-xl border-2 bg-white transition-all duration-300 border-[#c4dbd8] text-[#466460] flex items-center justify-between ${
-                      isDisabled
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:shadow-md active:scale-[0.98] hover:border-[#466460]'
-                    }`}
-                  >
-                    <span>{opt.label}</span>
-                    {isThisLoading && (
-                      <svg className="animate-spin w-4 h-4 text-[#466460]" viewBox="0 0 24 24" fill="none">
+            {/* Load more button — top of list */}
+            {!loadingHistory && hasMoreMessages && (
+              <div className="flex justify-center mb-2">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-[11px] font-bold bg-white border border-[#c4dbd8] text-[#466460] hover:border-[#466460] hover:shadow-sm transition disabled:opacity-50"
+                >
+                  {loadingMore ? (
+                    <>
+                      <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                       </svg>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                      Loading…
+                    </>
+                  ) : '↑ Load earlier messages'}
+                </button>
+              </div>
+            )}
 
+            {/* Active session messages */}
+            {!isEnded && sessionReady && groupedMessages.map((item, i) => renderMessage(item, i))}
+
+            {/* Ended session — history + divider */}
+            {isEnded && messages.length > 0 && (
+              <>
+                {sessionReady && groupedMessages.map((item, i) => renderMessage(item, i, typeConfig.generic))}
+                <div className="flex items-center gap-3 my-4 opacity-60">
+                  <div className="flex-1 h-px bg-slate-300" />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
+                  <div className="flex-1 h-px bg-slate-300" />
+                </div>
+              </>
+            )}
+
+            {/* Greeting — shown when consultation has ended (including when viewing history) */}
+            {!loadingHistory && isEnded && (
+              <div className="mt-2 mb-2 flex flex-col gap-3">
+                <div className="flex items-end gap-2">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 bg-[#e0eceb]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" className="w-3.5 h-3.5">
+                      <rect x="3" y="8" width="18" height="13" rx="2" />
+                      <path strokeLinecap="round" d="M8 8V6a4 4 0 018 0v2" />
+                      <circle cx="9" cy="14" r="1" fill="#466460" />
+                      <circle cx="15" cy="14" r="1" fill="#466460" />
+                    </svg>
+                  </div>
+                  <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm bg-white border border-[#c4dbd8] text-[#1a2e22]">
+                    <span>👋 Hello! I'm the MediTrack assistant.</span>
+                    <br />
+                    <strong>What brings you in today?</strong> Please select the type of consultation you need:
+                  </div>
+                </div>
+
+                {/* OPTION BUTTONS WITH UI LOCK */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-9 max-w-[90%]">
+                  {INITIAL_OPTIONS.map((opt, idx) => {
+                    const isThisLoading = startingOption === opt.label;
+                    const isDisabled = !sessionReady || startingOption !== null;
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleOptionSelect(opt)}
+                        disabled={isDisabled}
+                        className={`text-left text-[12px] font-bold px-4 py-3 rounded-xl border-2 bg-white transition-all duration-300 border-[#c4dbd8] text-[#466460] flex items-center justify-between ${
+                          isDisabled
+                            ? 'opacity-50 cursor-not-allowed'
+                            : 'hover:shadow-md active:scale-[0.98] hover:border-[#466460]'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {isThisLoading && (
+                          <svg className="animate-spin w-4 h-4 text-[#466460]" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
-        )}
 
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 3. STICKY INPUT BAR */}
-      <div
-        style={{ position: 'sticky', bottom: 0, zIndex: 20, background: '#ffffff', borderTop: '1px solid #edf3f0', boxShadow: '0 -4px 10px rgba(0,0,0,0.04)', flexShrink: 0 }}
-        className="px-4 py-3 flex gap-3 items-center transition-colors duration-300"
-      >
-        <input
-          type="text"
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
-          disabled={isEnded || !sessionReady}
-          className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
-          style={{ borderColor: cfg.accentBorder }}
-          onFocus={e => !isEnded && (e.target.style.borderColor = cfg.accent)}
-          onBlur={e  =>             (e.target.style.borderColor = cfg.accentBorder)}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!inputValue.trim() || isEnded || !sessionReady}
-          className="w-11 h-11 rounded-full flex items-center justify-center text-white transition disabled:opacity-40 flex-shrink-0 shadow-md duration-300"
-          style={{ backgroundColor: cfg.accent }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 ml-[-2px] mt-[2px]">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
-      </div>
+          {/* 3. STICKY INPUT BAR */}
+          <div
+            style={{ position: 'sticky', bottom: 0, zIndex: 20, background: '#ffffff', borderTop: '1px solid #edf3f0', boxShadow: '0 -4px 10px rgba(0,0,0,0.04)', flexShrink: 0 }}
+            className="px-4 py-3 flex gap-3 items-center transition-colors duration-300"
+          >
+            <input
+              type="text"
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
+              disabled={isEnded || !sessionReady}
+              className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
+              style={{ borderColor: cfg.accentBorder }}
+              onFocus={e => !isEnded && (e.target.style.borderColor = cfg.accent)}
+              onBlur={e  =>             (e.target.style.borderColor = cfg.accentBorder)}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!inputValue.trim() || isEnded || !sessionReady}
+              className="w-11 h-11 rounded-full flex items-center justify-center text-white transition disabled:opacity-40 flex-shrink-0 shadow-md duration-300"
+              style={{ backgroundColor: cfg.accent }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 ml-[-2px] mt-[2px]">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

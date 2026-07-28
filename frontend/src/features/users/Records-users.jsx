@@ -33,7 +33,38 @@ const clearCache = (userId) => {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt = (v) => (!v || v === '') ? '—' : v;
+const fmt = (v) => {
+  if (!v || v === '') return '—';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return v;
+};
+
+// Abbreviate program names
+const shortenCourse = (courseName) => {
+  if (!courseName) return '';
+  const courseMap = {
+    'Bachelor of Science in Information Technology': 'BSIT',
+    'Bachelor of Science in Information System': 'BSIS',
+    'Bachelor of Science in Computer Engineering': 'BSCpE',
+    'Bachelor of Science in Industrial Engineering': 'BSIE',
+    'Bachelor of Science in Entrepreneurship': 'BSEntrep',
+    'Bachelor of Science in Public Administration': 'BSPA',
+    'Bachelor of Science in Office Administration': 'BSOA',
+    'Bachelor of Science in Business Administration Major in Human Resource Development Management': 'BSBA-HRDM',
+    'Bachelor of Science in Business Administration Major in Financial Management': 'BSBA-FM',
+    'Bachelor of Science in Business Administration Major in Marketing Management': 'BSBA-MM',
+    'Bachelor of Science in Economics': 'BSEcon',
+    'Bachelor of Arts in Communication': 'BAC',
+    'Bachelor of Science in Psychology': 'BSPsych',
+    'Bachelor of Arts in Political Science': 'BAPolSci',
+    'Bachelor of Science in Tourism Management': 'BSTM',
+    'Bachelor of Science in Hospitality Management': 'BSHM',
+    'Bachelor of Science in Accountancy': 'BSA',
+    'Bachelor of Science in Accountancy Information System': 'BSAIS',
+    'Bachelor of Science in Management Accounting': 'BSMA',
+  };
+  return courseMap[courseName] || courseName;
+};
 
 const formatDate = (raw) => {
   if (!raw) return '—';
@@ -43,6 +74,20 @@ const formatDate = (raw) => {
     if (!isNaN(d)) return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   }
   return raw;
+};
+
+const formatDateTime = (raw) => {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (isNaN(d)) return raw;
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
 };
 
 // ── PTR spinner keyframe ──────────────────────────────────────────────────────
@@ -128,7 +173,7 @@ const TagList = ({ items, color }) => {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {items.map((item, i) => (
         <span key={i} style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 20, padding: '3px 10px', fontSize: 10, fontWeight: 600 }}>
-          {item}
+          {typeof item === 'object' ? JSON.stringify(item) : item}
         </span>
       ))}
     </div>
@@ -186,9 +231,29 @@ export default function RecordsUsers() {
 
       const internalUserId = userRow.id;
 
+      // Also get user's program/year/section from users table
+      const userProgram   = userRow.program;
+      const userYearLevel = userRow.year_level;
+      const userSection   = userRow.section;
+
+      // The `users` table has no pre-combined "course_year" column — only
+      // separate `program` / `year_level` / `section` fields. Build the
+      // combined "Program YearLevel - Section" string ourselves so there's
+      // still something sensible to fall back to when a dental record
+      // itself doesn't have `course_year` saved. This can still contain the
+      // FULL program name at this point — DentalExaminationReport's
+      // shortenCourse() finds and abbreviates the program name wherever it
+      // sits inside the combined string, so it doesn't need to already be
+      // abbreviated here.
+      const buildCombinedCourseYear = (program, yearLevel, section) => {
+        const yearSectionPart = [yearLevel, section].filter(Boolean).join(' - ');
+        return [program, yearSectionPart].filter(Boolean).join(' ');
+      };
+      const userCombinedCourseYear = buildCombinedCourseYear(userProgram, userYearLevel, userSection);
+
       const [medRes, denRes] = await Promise.all([
-        supabase.from('medical_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
-        supabase.from('dental_records').select('*').eq('user_id', internalUserId).eq('status', 'approved'),
+        supabase.from('medical_records').select('*').eq('user_id', internalUserId).eq('status', 'approved').eq('is_archived', false),
+        supabase.from('dental_records').select('*').eq('user_id', internalUserId).eq('status', 'approved').eq('is_archived', false),
       ]);
 
       // Medical mapping
@@ -239,6 +304,7 @@ export default function RecordsUsers() {
         finding1:        d.finding1 || '',
         isFit:           d.is_fit,
         isNormalFindings: d.is_normal_findings,
+        issue_cert:      d.issue_cert || false,
       }));
 
       // Dental mapping
@@ -247,13 +313,15 @@ export default function RecordsUsers() {
         id:            d.id,
         approved_at:   d.approved_at || d.created_at,
         created_at:    d.created_at,
-        dFirstName:    d.first_name,
-        dMiddleName:   d.middle_name,
-        dLastName:     d.last_name,
-        dAge:          d.age,
-        dSex:          d.sex,
-        dCourseYear:   d.course_year,
-        dAddress:      d.address,
+        dFirstName:    d.first_name || userRow.first_name,
+        dMiddleName:   d.middle_name || userRow.middle_name,
+        dLastName:     d.last_name || userRow.last_name,
+        dAge:          d.age || userRow.age,
+        dSex:          d.sex || userRow.sex,
+        // Use program from users table (not empty per user)
+        // Use course_year from dental_records and abbreviate it
+        dCourseYear:   shortenCourse(d.course_year) || '',
+        dAddress:      d.address || userRow.home_address,
         dLastVisit:    d.last_visit,
         dPrevDentist:  d.prev_dentist,
         dExaminedBy:   d.examined_by,
@@ -262,6 +330,10 @@ export default function RecordsUsers() {
         dentalHistory: d.dental_history || {},
         toothData:     d.tooth_data     || {},
         intraoral:     d.intraoral      || {},
+        issue_cert:    d.issue_cert || false,
+        // year_level and section are not in dental_records, use users table
+        dYearLevel:    userYearLevel || '',
+        dSection:      userSection || '',
       }));
 
       const combined = [...medDocs, ...denDocs].sort((a, b) => {
@@ -352,7 +424,9 @@ export default function RecordsUsers() {
           r.lastName, r.firstName, r.middleName,
           r.dLastName, r.dFirstName, r.dMiddleName,
           r.dLastName + ' ' + r.dFirstName,
-          r.lastName + ' ' + r.firstName
+          r.lastName + ' ' + r.firstName,
+          r.dLastName + ' ' + r.dMiddleName + ' ' + r.dFirstName,
+          r.lastName + ' ' + r.middleName + ' ' + r.firstName
         ].filter(Boolean).map(n => n.toLowerCase()).join(' ');
 
         if (patientName.includes(query)) return true;
@@ -401,15 +475,24 @@ export default function RecordsUsers() {
   });
 
   const buildDentalExamination = (rec) => ({
-    patientName:  `${rec.dLastName || ''}, ${rec.dFirstName || ''}`,
+    patientName:  `${rec.dLastName || ''}, ${rec.dFirstName || ''} ${rec.dMiddleName || ''}`.trim(),
     firstName:    rec.dFirstName || '',
-    middleName:  rec.dMiddleName || '',
+    middleName:   rec.dMiddleName || '',
     lastName:     rec.dLastName || '',
     age:          rec.dAge,
     sex:          rec.dSex,
     address:      rec.dAddress || '',
     course:       rec.dCourseYear || '',
+    // Mirror `course` exactly (same as Approvals.jsx) so
+    // DentalExaminationReport's own abbreviation/dedupe logic
+    // (`yearSection.includes(shortProgram)`) works correctly instead of
+    // concatenating a full program name with a separately-built year/section
+    // string.
     yearSection:  rec.dCourseYear || '',
+    // Feeds the "Grade Level" field in DentalExaminationReport
+    // (examination.gradeLevel || examination.year).
+    year:         rec.dYearLevel || '',
+    gradeLevel:   rec.dYearLevel || '',
     examDate:     formatDateClean(rec.dExamDate || rec.dSigDate),
     // Pass JSONB fields directly
     dentalHistory: rec.dentalHistory || {},
@@ -598,7 +681,9 @@ export default function RecordsUsers() {
                       {rec.recordType === 'dental' ? 'Dental Examination' : 'Medical Examination'}
                     </div>
                     <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
-                      {fmt(rec.course || rec.dCourseYear)}
+                      {rec.recordType === 'dental'
+                        ? [rec.dCourseYear, rec.dYearLevel, rec.dSection].filter(Boolean).join(' - ')
+                        : fmt(rec.course || '')}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -636,8 +721,7 @@ export default function RecordsUsers() {
     .map(([num, data]) => `Tooth ${num}: ${data.condition.toUpperCase()}${data.operation ? ` (${data.operation})` : ''}`);
 
   const tabs = [{ key: 'summary', label: 'Summary' }];
-  if (isMedical) tabs.push({ key: 'certificate', label: 'Certificate' });
-  if (!isMedical) tabs.push({ key: 'certificate', label: 'Certificate' });
+  if (rec.issue_cert) tabs.push({ key: 'certificate', label: isMedical ? 'Certificate' : 'Report' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -693,7 +777,7 @@ export default function RecordsUsers() {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#1a2e22' }}>Examination Approved</div>
                 <div style={{ fontSize: 10, color: '#2d7a52', marginTop: 2 }}>
-                  Recorded on {formatDate(rec.approved_at || rec.created_at)}
+                  Approved at {formatDateTime(rec.approved_at || rec.created_at)}
                 </div>
               </div>
             </div>
@@ -823,12 +907,14 @@ export default function RecordsUsers() {
                   </div>
                 )}
 
-                <button
-                  onClick={() => setView('certificate')}
-                  style={{ width: '100%', background: '#1a5c3a', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}
-                >
-                  View Medical Certificate →
-                </button>
+                {rec.issue_cert && (
+                  <button
+                    onClick={() => setView('certificate')}
+                    style={{ width: '100%', background: '#1a5c3a', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}
+                  >
+                    View Medical Certificate →
+                  </button>
+                )}
               </>
             ) : (
 
@@ -836,9 +922,9 @@ export default function RecordsUsers() {
               <>
                 <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                   <SectionHead label="Patient Information" />
-                  <InfoRow label="Name"         value={`${rec.dFirstName || ''} ${rec.dLastName || ''}`.trim()} />
+                  <InfoRow label="Name"         value={`${rec.dFirstName || ''} ${rec.dMiddleName || ''} ${rec.dLastName || ''}`.trim()} />
                   <InfoRow label="Age / Sex"    value={`${fmt(rec.dAge)} / ${fmt(rec.dSex)}`} />
-                  <InfoRow label="Course/Year"  value={rec.dCourseYear} />
+                  <InfoRow label="Course/Year"  value={[rec.dCourseYear, rec.dYearLevel, rec.dSection].filter(Boolean).join(' - ')} />
                   <InfoRow label="Address"      value={rec.dAddress} />
                   <InfoRow label="Exam Date"    value={formatDate(rec.dExamDate || rec.dSigDate)} />
                   <InfoRow label="Examined By"  value={rec.dExaminedBy} />
@@ -868,12 +954,14 @@ export default function RecordsUsers() {
                   <TagList items={affectedTeeth} color="amber" />
                 </div>
 
-                <button
-                  onClick={() => setView('certificate')}
-                  style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}
-                >
-                  View Dental Certificate →
-                </button>
+                {rec.issue_cert && (
+                  <button
+                    onClick={() => setView('certificate')}
+                    style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}
+                  >
+                    View Dental Report →
+                  </button>
+                )}
               </>
             )}
           </div>

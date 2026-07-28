@@ -5,6 +5,7 @@ import { AuthLayout } from '../layouts/AuthLayout.jsx';
 import { loginSchema, getFieldErrors } from '../validation/schemas.js';
 import { useLoading } from '../context/LoadingContext.jsx';
 import authService from '../services/auth.service';
+import { startTokenRefresh } from '../services/token.service';
 
 const LoginForm = () => {
   const navigate = useNavigate();
@@ -51,10 +52,15 @@ const LoginForm = () => {
       if (response.success && response.data) {
         const user = response.data;
         localStorage.setItem('token', user.token);
+        localStorage.setItem('refresh_token', user.refresh_token || '');
         localStorage.setItem('role', user.role || 'student');
         localStorage.setItem('uid', user.uid);
         localStorage.setItem('name', `${user.firstName || ''} ${user.lastName || ''}`.trim());
         localStorage.setItem('user', JSON.stringify(user));
+
+        // 🟢 NEW: Start automatic token refresh to prevent logout on token expiry
+        startTokenRefresh();
+
         const role = user.role?.toLowerCase().trim() || 'student';
         hideLoading();
         if (['nurse', 'doctor', 'dentist', 'sysadmin', 'administrator'].includes(role)) {

@@ -5,6 +5,7 @@ const examinationsController = require("./examinations.controller");
 const { authorized } = require("../../middleware/authorized");
 const validateData = require("../../validation/validate-data");
 const { createExaminationSchema, updateExaminationSchema } = require("./examinations.validation");
+const { auditLog } = require('../../middleware/auditLogger');
 
 // 1. Base route
 router.get("/", authorized, examinationsController.getAllExaminations);
@@ -17,8 +18,8 @@ router.get("/dental", authorized, examinationsController.getDentalExaminations);
 router.get("/:id", authorized, examinationsController.getExaminationById);
 
 // 4. Mutations
-router.post("/", validateData(createExaminationSchema), examinationsController.createExamination);
-router.put("/:id", validateData(updateExaminationSchema), examinationsController.updateExamination);
-router.delete("/:id", authorized, examinationsController.deleteExamination);
+router.post("/", auditLog('create', 'examination', (req) => `Created new ${req.body.examination_type || 'medical'} examination`), validateData(createExaminationSchema), examinationsController.createExamination);
+router.put("/:id", auditLog('update', 'examination', (req) => `Updated examination ID: ${req.params.id}`), validateData(updateExaminationSchema), examinationsController.updateExamination);
+router.delete("/:id", authorized, auditLog('delete', 'examination', (req) => `Archived examination ID: ${req.params.id}`), examinationsController.deleteExamination);
 
 module.exports = router;

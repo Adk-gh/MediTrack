@@ -39,11 +39,16 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const normaliseRole = (raw = '') => {
-  const r = raw.toLowerCase();
-  if (r.includes('student')) return 'student';
-  if (['instructor', 'faculty', 'lecturer', 'professor'].some(k => r.includes(k))) return 'faculty';
-  if (['doctor', 'physician', 'nurse', 'dentist'].some(k => r.includes(k))) return 'staff';
-  return 'staff';
+  const r = String(raw).toLowerCase();
+
+  // 1. Clinic Staff
+  if (['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k))) return 'staff';
+
+  // 2. Faculty Staff
+  if (['instructor', 'faculty', 'lecturer', 'professor', 'dean'].some(k => r.includes(k))) return 'faculty';
+
+  // 3. Students (and default fallback)
+  return 'student';
 };
 
 const getAuthHeaders = () => {
@@ -97,7 +102,8 @@ function DashboardContent() {
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState(null);
   const [filter,         setFilter]         = useState('all');
-  const [yearFilter,     setYearFilter]     = useState(String(new Date().getFullYear()));
+  const [schoolYearFilter, setSchoolYearFilter] = useState('all');
+  const [semesterFilter,  setSemesterFilter]  = useState('all');
 
   // ── Fetch from Supabase API ───────────────────────────────
   const fetchDashboardData = useCallback(async () => {
@@ -118,28 +124,29 @@ function DashboardContent() {
       if (usersRes.ok) {
         const usersData = await usersRes.json();
         const raw = usersData.data || usersData || [];
-        setUsers(raw.map(u => ({
-          uid:        u.uid || u.id,
-          name:       `${u.last_name || u.lastName || ''}, ${u.first_name || u.firstName || ''}`.replace(/^,\s*/, '') || u.name || 'Unknown',
-          type:       normaliseRole(u.role || ''),
-          role:       u.role || 'student',
-          prog:       u.program || u.course || '',
-          year:       u.year_level || u.yearLevel || '',
-          section:    u.section || '',
-          email:      u.email || '',
-          department: u.department || '',
-          createdAt:  u.created_at ||  '',
+        // Exclude archived users — only show is_archived === false (or missing/undefined)
+        const activeRaw = raw.filter(u => u.is_archived !== true);
+        setUsers(activeRaw.map(u => ({
+          uid:          u.id, // Explicitly mapped to 'id' from users table
+          universityId: u.university_id || u.universityId || u.idno || '',
+          name:         `${u.last_name || u.lastName || ''}, ${u.first_name || u.firstName || ''}`.replace(/^,\s*/, '') || u.name || 'Unknown',
+          type:         normaliseRole(u.role || u.type || u.user_type || 'student'),
+          role:         u.role || 'student',
+          prog:         u.program || u.course || '',
+          year:         u.year_level || u.yearLevel || '',
+          section:      u.section || '',
+          email:        u.email || '',
+          department:   u.department || '',
+          createdAt:    u.created_at ||  '',
         })));
       }
 
       // ── Medical Records ──────────────────────────────────
-      // Try the examinations endpoint first, fallback to medical_records
       let medData = [];
       if (medRes && medRes.ok) {
         const json = await medRes.json();
         medData = json.data || json || [];
       } else {
-        // Fallback: try medical_records directly
         const fallback = await fetch(`${API_URL}/examinations`, { headers }).catch(() => null);
         if (fallback && fallback.ok) {
           const json = await fallback.json();
@@ -147,13 +154,17 @@ function DashboardContent() {
           medData = all.filter(r => (r.type || r.record_type || '').toLowerCase().includes('medical') || r.examType === 'medical');
         }
       }
+      // Exclude archived records — only show is_archived === false (or missing/undefined)
+      medData = medData.filter(r => r.is_archived !== true);
       setMedicalRecords(medData.map(r => ({
         ...r,
-        kind:    'Medical',
-        dateObj: r.exam_date || r.examDate || r.created_at || r.createdAt
+        kind:       'Medical',
+        dateObj:    r.exam_date || r.examDate || r.created_at || r.createdAt
           ? new Date(r.exam_date || r.examDate || r.created_at || r.createdAt)
           : new Date(),
-        userId: r.user_id || r.userId || r.uid,
+        userId:     r.user_id, // Explicitly mapped to 'user_id' from records
+        schoolYear: r.school_year || r.schoolYear || '',
+        semester:   r.semester || '',
       })));
 
       // ── Dental Records ────────────────────────────────────
@@ -169,13 +180,17 @@ function DashboardContent() {
           denData = all.filter(r => (r.type || r.record_type || '').toLowerCase().includes('dental') || r.examType === 'dental');
         }
       }
+      // Exclude archived records — only show is_archived === false (or missing/undefined)
+      denData = denData.filter(r => r.is_archived !== true);
       setDentalRecords(denData.map(r => ({
         ...r,
-        kind:    'Dental',
-        dateObj: r.created_at || r.createdAt || r.exam_date || r.examDate
+        kind:       'Dental',
+        dateObj:    r.created_at || r.createdAt || r.exam_date || r.examDate
           ? new Date(r.created_at || r.createdAt || r.exam_date || r.examDate)
           : new Date(),
-        userId: r.user_id || r.userId || r.uid,
+        userId:     r.user_id, // Explicitly mapped to 'user_id' from records
+        schoolYear: r.school_year || r.schoolYear || '',
+        semester:   r.semester || '',
       })));
 
     } catch (err) {
@@ -244,43 +259,74 @@ function DashboardContent() {
     [...medicalRecords, ...dentalRecords].sort((a, b) => b.dateObj - a.dateObj),
   [medicalRecords, dentalRecords]);
 
+  // ── Filtered records by school year and semester ─────────────────────
+  const filteredAllRecords = useMemo(() => {
+    return allRecords.filter(r => {
+      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
+      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
+      return matchesSchoolYear && matchesSemester;
+    });
+  }, [allRecords, schoolYearFilter, semesterFilter]);
+
   // ── Filtered users ────────────────────────────────────────
   const filteredUsers = useMemo(() =>
     filter === 'all' ? users : users.filter(u => u.type === filter),
   [users, filter]);
 
-  // ── Available years from records ──────────────────────────
-  const availableYears = useMemo(() => {
-    const yrs = new Set(allRecords.map(r => r.dateObj?.getFullYear()).filter(Boolean));
-    return ['all', ...Array.from(yrs).sort((a, b) => b - a).map(String)];
+  // ── Available school years from records ─────────────────────
+  const availableSchoolYears = useMemo(() => {
+    const yrs = new Set(allRecords.map(r => r.schoolYear).filter(Boolean));
+    return ['all', ...Array.from(yrs).sort()];
   }, [allRecords]);
 
   // ── Line Chart: visits over time ──────────────────────────
   const trendData = useMemo(() => {
-    const years = yearFilter === 'all'
-      ? availableYears.filter(y => y !== 'all').map(Number).sort((a, b) => a - b)
-      : [parseInt(yearFilter)];
-    if (years.length === 0) years.push(new Date().getFullYear());
+    const filteredRecords = allRecords.filter(r => {
+      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
+      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
+      return matchesSchoolYear && matchesSemester;
+    });
 
-    const labels = [];
-    years.forEach(yr => MONTHS.forEach(m => labels.push(`${m} ${yr}`)));
+    let labels = [];
+    let ymTargets = [];
+
+    if (filteredRecords.length > 0) {
+      const dates = filteredRecords.map(r => r.dateObj).filter(Boolean);
+      const minDate = new Date(Math.min(...dates));
+      const maxDate = new Date(Math.max(...dates));
+
+      let current = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+      const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+
+      while (current <= end) {
+        const y = current.getFullYear();
+        const m = current.getMonth();
+        ymTargets.push(`${y}-${String(m).padStart(2, '0')}`);
+        labels.push(`${MONTHS[m]} ${y}`);
+        current.setMonth(current.getMonth() + 1);
+      }
+    } else {
+      const y = new Date().getFullYear();
+      ymTargets = MONTHS.map((m, i) => `${y}-${String(i).padStart(2, '0')}`);
+      labels = MONTHS.map(m => `${m} ${y}`);
+    }
 
     const types = filter === 'all' ? ['student', 'faculty', 'staff'] : [filter];
     const borderDashes = { student: [], faculty: [6, 3], staff: [2, 3] };
 
-    const recordsWithTypes = allRecords.map(r => ({
-      uType: users.find(u => u.uid === r.userId)?.type || 'staff',
-      yr:    r.dateObj?.getFullYear(),
-      mo:    r.dateObj?.getMonth(),
-    }));
+    const recordsWithTypes = filteredRecords.map(r => {
+      // Clean, exact ID match based on your schema
+      const user = users.find(u => r.userId && String(u.uid) === String(r.userId));
+      return {
+        uType: user?.type || 'student',
+        ymString: r.dateObj ? `${r.dateObj.getFullYear()}-${String(r.dateObj.getMonth()).padStart(2, '0')}` : null,
+      };
+    });
 
     const datasets = types.map(t => ({
       label:            t.charAt(0).toUpperCase() + t.slice(1),
-      data:             labels.map(lbl => {
-        const [moName, yrStr] = lbl.split(' ');
-        const mIdx = MONTHS.indexOf(moName);
-        const yNum = parseInt(yrStr);
-        return recordsWithTypes.filter(r => r.uType === t && r.yr === yNum && r.mo === mIdx).length;
+      data:             ymTargets.map(ymTarget => {
+        return recordsWithTypes.filter(r => r.uType === t && r.ymString === ymTarget).length;
       }),
       borderColor:      TYPE_COLORS[t],
       backgroundColor:  TYPE_COLORS[t] + '18',
@@ -293,19 +339,32 @@ function DashboardContent() {
     }));
 
     return { labels, datasets };
-  }, [filter, yearFilter, allRecords, users, availableYears]);
+  }, [filter, schoolYearFilter, semesterFilter, allRecords, users]);
 
   // ── Doughnut: record type distribution ───────────────────
-  const recordsChartData = useMemo(() => ({
-    config: {
-      labels:   ['Medical Records', 'Dental Records'],
-      datasets: [{
-        data:            [medicalRecords.length || 0, dentalRecords.length || 0],
-        backgroundColor: RECORD_COLORS,
-        borderWidth:     0,
-      }],
-    },
-  }), [medicalRecords, dentalRecords]);
+  const recordsChartData = useMemo(() => {
+    const filteredMedical = medicalRecords.filter(r => {
+      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
+      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
+      return matchesSchoolYear && matchesSemester;
+    });
+    const filteredDental = dentalRecords.filter(r => {
+      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
+      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
+      return matchesSchoolYear && matchesSemester;
+    });
+
+    return {
+      config: {
+        labels:   ['Medical Records', 'Dental Records'],
+        datasets: [{
+          data:            [filteredMedical.length || 0, filteredDental.length || 0],
+          backgroundColor: RECORD_COLORS,
+          borderWidth:     0,
+        }],
+      },
+    };
+  }, [medicalRecords, dentalRecords, schoolYearFilter, semesterFilter]);
 
   // ── Bar: patient type breakdown ───────────────────────────
   const typeChartData = useMemo(() => {
@@ -351,35 +410,35 @@ function DashboardContent() {
 
   // ── Render ────────────────────────────────────────────────
   return (
-    <div className="flex-1 h-full min-h-0 overflow-y-auto bg-[#f4f7f6] px-4 md:px-6 py-4 md:py-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="flex-1 h-full min-h-0 overflow-y-auto bg-[#f4f7f6] px-6 py-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
 
       {/* ── Stat Cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mb-5 md:mb-6">
+      <div className="grid grid-cols-4 gap-5 mb-6">
         {loading ? [1,2,3,4].map(i => <StatSkeleton key={i} />) : (
           <>
-            <GlassCard className="p-4 md:p-5">
+            <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Patients</p>
-              <h4 className="text-2xl md:text-3xl font-bold text-slate-800">{users.length}</h4>
+              <h4 className="text-3xl font-bold text-slate-800">{users.length}</h4>
               <p className="text-xs text-emerald-500 mt-1">Active users</p>
             </GlassCard>
 
-            <GlassCard className="p-4 md:p-5">
+            <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Today's Appts</p>
-              <h4 className="text-2xl md:text-3xl font-bold text-slate-800">{todayAppts.length}</h4>
+              <h4 className="text-3xl font-bold text-slate-800">{todayAppts.length}</h4>
               <p className={`text-xs mt-1 ${pendingCount > 0 ? 'text-amber-500' : 'text-slate-400'}`}>
                 {pendingCount > 0 ? `${pendingCount} request${pendingCount > 1 ? 's' : ''} pending` : 'none pending'}
               </p>
             </GlassCard>
 
-            <GlassCard className="p-4 md:p-5">
+            <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Medical</p>
-              <h4 className="text-2xl md:text-3xl font-bold text-slate-800">{medicalRecords.length}</h4>
+              <h4 className="text-3xl font-bold text-slate-800">{filteredAllRecords.filter(r => r.kind === 'Medical').length}</h4>
               <p className="text-xs text-emerald-500 mt-1">Exams recorded</p>
             </GlassCard>
 
-            <GlassCard className="p-4 md:p-5">
+            <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Dental</p>
-              <h4 className="text-2xl md:text-3xl font-bold text-slate-800">{dentalRecords.length}</h4>
+              <h4 className="text-3xl font-bold text-slate-800">{filteredAllRecords.filter(r => r.kind === 'Dental').length}</h4>
               <p className="text-xs text-emerald-500 mt-1">Exams recorded</p>
             </GlassCard>
           </>
@@ -387,7 +446,7 @@ function DashboardContent() {
       </div>
 
       {/* ── Analytics Card ── */}
-      <GlassCard className="p-4 md:p-5 mb-5 md:mb-6">
+      <GlassCard className="p-5 mb-6">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
           <h3 className="font-bold text-base text-[#466460]">
             <i className="fa-solid fa-chart-mixed mr-2"></i>Health Analytics
@@ -414,20 +473,31 @@ function DashboardContent() {
         <div className="mb-5">
           <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
             <SectionLabel icon="fa-chart-line">Patient Visits Over Time</SectionLabel>
-            <div className="flex gap-1.5 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
-              {availableYears.map(y => (
-                <button
-                  key={y}
-                  onClick={() => setYearFilter(y)}
-                  className={`px-2.5 py-[3px] rounded-full text-[10px] font-semibold whitespace-nowrap border transition-all duration-200
-                    ${yearFilter === y
-                      ? 'bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white border-transparent'
-                      : 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0] hover:border-[#e07a5f]'
-                    }`}
-                >
-                  {y === 'all' ? 'All Years' : y}
-                </button>
-              ))}
+            <div className="flex gap-2 flex-wrap items-center">
+              {/* Semester Filter */}
+              <select
+                value={semesterFilter}
+                onChange={(e) => setSemesterFilter(e.target.value)}
+                className="px-2.5 py-[3px] rounded-full text-[10px] font-semibold border border-[#e2e8f0] bg-white text-[#475569] focus:outline-none focus:border-[#466460]"
+              >
+                <option value="all">All Semesters</option>
+                <option value="1st Semester">1st Semester</option>
+                <option value="2nd Semester">2nd Semester</option>
+                <option value="Mid Year">Mid Year</option>
+              </select>
+
+              {/* School Year Filter */}
+              <select
+                value={schoolYearFilter}
+                onChange={(e) => setSchoolYearFilter(e.target.value)}
+                className="px-2.5 py-[3px] rounded-full text-[10px] font-semibold border border-[#e2e8f0] bg-white text-[#475569] focus:outline-none focus:border-[#466460]"
+              >
+                {availableSchoolYears.map(sy => (
+                  <option key={sy} value={sy}>
+                    {sy === 'all' ? 'All School Years' : sy}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -449,8 +519,8 @@ function DashboardContent() {
             )}
           </div>
 
-          <div className="w-full h-[220px] md:h-[260px] relative">
-            {loading ? <ChartSkeleton h="220px" /> : (
+          <div className="w-full h-[30vh] min-h-[220px] relative">
+            {loading ? <ChartSkeleton h="100%" /> : (
               <Line
                 data={trendData}
                 options={{
@@ -459,7 +529,7 @@ function DashboardContent() {
                   plugins: { legend: { display: false } },
                   scales: {
                     x: {
-                      ticks: { font: { size: 10 }, maxRotation: 45, maxTicksLimit: yearFilter === 'all' ? 12 : 8 },
+                      ticks: { font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
                       grid:  { color: 'rgba(0,0,0,0.04)' },
                     },
                     y: {
@@ -477,7 +547,7 @@ function DashboardContent() {
         <hr className="border-slate-100 mb-5" />
 
         {/* Doughnut + Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-2 gap-5">
           <div>
             <SectionLabel icon="fa-file-medical">Record Type Distribution</SectionLabel>
             <div className="h-[180px] flex justify-center items-center">
@@ -521,18 +591,26 @@ function DashboardContent() {
       </GlassCard>
 
       {/* ── Pending Appointments + Recent Records + Alerts ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-5 pb-6">
+      <div className="grid grid-cols-3 gap-5 pb-6">
 
         {/* Pending Appointments (spans 2 cols) */}
-        <GlassCard className="p-0 overflow-hidden lg:col-span-2 flex flex-col h-[400px]">
-          <div className="p-4 md:p-5 border-b border-[#eef2f6] shrink-0 bg-white flex justify-between items-center">
-            <h3 className="font-bold text-sm text-[#466460]">
+        <GlassCard className="p-0 overflow-hidden col-span-2 flex flex-col h-[400px]">
+          <div className="p-5 border-b border-[#eef2f6] shrink-0 bg-white flex justify-between items-center">
+            <h3 className="font-bold text-sm text-[#466460] flex items-center">
               <i className="fa-regular fa-calendar-clock mr-2"></i>Action Required: Pending Appointments
+              {pendingAppointments.length > 0 && (
+                <span className="ml-3 text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-full">
+                  {pendingAppointments.length} Pending
+                </span>
+              )}
             </h3>
             {pendingAppointments.length > 0 && (
-              <span className="text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-full">
-                {pendingAppointments.length} Pending
-              </span>
+              <button
+                onClick={() => navigate('/appointments')}
+                className="text-xs font-bold text-[#466460] hover:underline flex items-center gap-1"
+              >
+                View All <i className="fa-solid fa-arrow-right"></i>
+              </button>
             )}
           </div>
 
@@ -559,33 +637,48 @@ function DashboardContent() {
               <div className="space-y-2">
                 {pendingAppointments.map((appt, i) => {
                   const bTime = new Date(
-                    appt?.bookedAt || appt?.created_at || appt?.created_at || appt?.date || Date.now()
+                    appt?.bookedAt || appt?.createdAt || appt?.created_at || appt?.date || Date.now()
                   ).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-                  // Support both old Firebase shape and new Supabase shape
-                  const patientName = appt?.name || appt?.patientName || appt?.student_name || appt?.studentName || 'Unknown Patient';
-                  const patientId   = appt?.idno || appt?.university_id || appt?.universityId || 'No ID';
-                  const patientProg = appt?.prog || appt?.program || appt?.dept || appt?.department || 'N/A';
+                  const matchedUser = users.find(u =>
+                    String(u.uid) === String(appt?.user_id || appt?.userId || appt?.patient_id || appt?.patientId || appt?.student_id)
+                  );
+
+                  const patientName = matchedUser?.name || appt?.name || appt?.patientName || appt?.student_name || appt?.studentName || 'Unknown Patient';
+                  const patientId   = matchedUser?.universityId || appt?.university_id || appt?.universityId || appt?.idno || 'No ID';
+                  const patientProg = matchedUser?.prog || appt?.prog || appt?.program || appt?.dept || appt?.department || 'N/A';
                   const reason      = appt?.reason || appt?.consultation_type || appt?.type || 'Consultation';
 
                   return (
                     <div
                       key={appt?.id || i}
-                      onClick={() => navigate('/appointments')}
-                      className="flex items-start gap-3 p-3 bg-white border border-slate-100 rounded-xl cursor-pointer hover:border-[#8aacaa] hover:shadow-sm transition-all group"
+                      className="grid grid-cols-12 items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-[#8aacaa] hover:shadow-sm transition-all group"
                     >
-                      <div className="font-['DM_Mono',monospace] text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-1.5 py-0.5 mt-0.5 shrink-0">
-                        #{i + 1}
+                      {/* Grid Column 1: # and Patient Name */}
+                      <div className="col-span-5 flex items-center gap-3 min-w-0">
+                        <div className="font-['DM_Mono',monospace] text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-1.5 py-0.5 shrink-0">
+                          #{i + 1}
+                        </div>
+                        <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">
+                          {patientName}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">{patientName}</div>
-                        <div className="text-[10px] text-[#64748b] mt-0.5 truncate">{patientId} &middot; {patientProg}</div>
-                        <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2 py-0.5 rounded-full inline-block mt-1.5 font-medium truncate max-w-full">
+
+                      {/* Grid Column 2: ID & Program */}
+                      <div className="col-span-3 text-[10px] text-[#64748b] truncate">
+                        {patientId} &middot; {patientProg}
+                      </div>
+
+                      {/* Grid Column 3: Consultation Reason Badge */}
+                      <div className="col-span-2 truncate">
+                        <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2 py-0.5 rounded-full inline-block font-medium truncate max-w-full">
                           {reason}
                         </span>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-[9px] text-slate-400 flex items-center gap-1 justify-end mt-1">
+
+                      {/* Grid Column 4: Date & Time */}
+                      <div className="col-span-2 text-right shrink-0">
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
                           <i className="fa-regular fa-clock"></i>
                           {bTime.split(',')[0]}
                         </div>
@@ -596,21 +689,10 @@ function DashboardContent() {
               </div>
             )}
           </div>
-
-          {pendingAppointments.length > 0 && (
-            <div className="p-3 border-t border-slate-100 bg-white shrink-0">
-              <button
-                onClick={() => navigate('/appointments')}
-                className="w-full py-2 text-xs font-bold text-[#466460] bg-[#e0eceb] rounded-lg hover:bg-[#466460] hover:text-white transition-colors flex justify-center items-center gap-2"
-              >
-                Go to Appointments <i className="fa-solid fa-arrow-right"></i>
-              </button>
-            </div>
-          )}
         </GlassCard>
 
         {/* Right column: Recent Records + Alerts */}
-        <div className="flex flex-col gap-4 md:gap-5 h-[400px]">
+        <div className="flex flex-col gap-5 h-[400px]">
 
           {/* Recent Records */}
           <GlassCard className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -632,17 +714,18 @@ function DashboardContent() {
                     </div>
                   ))}
                 </div>
-              ) : allRecords.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">No records added yet</p>
+              ) : filteredAllRecords.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">No records found for selected filters</p>
               ) : (
                 <div className="space-y-2">
-                  {allRecords.slice(0, 6).map((rec, i) => {
-                    const user = users.find(u => u.uid === rec.userId) || {};
+                  {filteredAllRecords.slice(0, 6).map((rec, i) => {
+                    // Exact match lookup
+                    const user = users.find(u => rec.userId && String(u.uid) === String(rec.userId)) || {};
                     const isMed = rec.kind === 'Medical';
                     return (
                       <div key={rec.id || i} className="flex items-center gap-3 p-2.5 bg-white border border-slate-100 rounded-lg">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                          isMed ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'
+                          isMed ? 'bg-[#81b29a]/20 text-[#466460]' : 'bg-[#e07a5f]/20 text-[#e07a5f]'
                         }`}>
                           <i className={`fa-solid ${isMed ? 'fa-stethoscope' : 'fa-tooth'} text-xs`}></i>
                         </div>
@@ -651,7 +734,7 @@ function DashboardContent() {
                             {isMed ? 'Medical Exam' : 'Dental Exam'}
                           </p>
                           <p className="text-[10px] text-slate-500 truncate">
-                            {user.name || 'Unknown Patient'}
+                            {user.name || rec.userId || 'ID Missing'}
                           </p>
                         </div>
                         <div className="text-right shrink-0">
@@ -688,12 +771,18 @@ function DashboardContent() {
                 <p className="text-xs text-slate-400 text-center py-2">All clear — no alerts</p>
               ) : (
                 <div className="space-y-2 max-h-[110px] overflow-y-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
-                  {alerts.map((alert, idx) => (
-                    <div key={idx} className="flex items-center gap-3 p-2.5 bg-white border border-slate-100 rounded-lg">
-                      <i className={`fa-solid ${alert.icon} text-sm ${alert.type === 'warning' ? 'text-amber-500' : 'text-blue-500'}`}></i>
-                      <p className="text-[11px] font-medium text-slate-600 leading-tight">{alert.text}</p>
-                    </div>
-                  ))}
+                  {alerts.map((alert, idx) => {
+                    const isWarning = alert.type === 'warning';
+                    return (
+                      <div key={idx} className={`flex items-start gap-3 p-2.5 bg-white border border-slate-100 rounded-lg border-l-4 ${isWarning ? 'border-l-amber-500' : 'border-l-[#466460]'}`}>
+                        <i className={`fa-solid ${alert.icon} text-sm mt-0.5 ${isWarning ? 'text-amber-500' : 'text-[#466460]'}`}></i>
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-700">{isWarning ? 'Action Required' : 'System Update'}</p>
+                          <p className="text-[10px] font-medium text-slate-500 leading-tight mt-0.5">{alert.text}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

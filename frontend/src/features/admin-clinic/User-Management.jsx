@@ -217,7 +217,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
       if (!response.ok) throw new Error(result.error || 'Failed to update auth user');
 
       const newUser = {
-        uid: result.uid,
+        uid: result.userId,
         first_name: normalizeName(form.first_name), middle_name: normalizeName(form.middle_name),
         last_name: normalizeName(form.last_name), suffix: form.suffix || '',
         email: form.email.toLowerCase(), university_id: form.university_id,
@@ -447,7 +447,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
                     <div>
                       <label className={labelCls}>Classification</label>
                       <select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>
-                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Physician / Doctor'].map(c => <option key={c} value={c}>{c}</option>)}
+                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Dentist','Physician / Doctor'].map(c => <option key={c} value={c}>{c}</option>)}
                         {isCurrentUserSysAdmin && <option value="System Administrator">System Administrator</option>}
                       </select>
                     </div>
@@ -770,17 +770,24 @@ export const UserManagement = () => {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      // Get current user info for deleted_by
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const name = localStorage.getItem('name') || '';
+      // Use backend API for archiving (enables audit logging)
+      const token = localStorage.getItem('token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-      // Set is_archived to true instead of deleting
-      const { error } = await supabase.from('users').update({
-        is_archived: true,
-        deleted_by: name || user.email || 'Admin',
-        updated_at: new Date().toISOString()
-      }).eq('uid', deleteTarget.uid);
-      if (error) throw error;
+      const response = await fetch(`${API_URL}/user/users/${deleteTarget.uid}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to archive user');
+      }
+
       setUsers(users.filter(u => u.uid !== deleteTarget.uid));
       showSnackbar('User archived successfully. You can restore them from the Archives page.', 'success');
     } catch (err) {
@@ -1116,23 +1123,45 @@ export const UserManagement = () => {
         />
       )}
 
-      {/* ── Delete Modal ── */}
+      {/* Delete Confirmation Modal */}
       {showDeleteModal && deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={e => e.target === e.currentTarget && setShowDeleteModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-amber-600 to-amber-700 px-6 py-5 text-white rounded-t-2xl flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              <h3 className="text-lg font-bold">Archive User</h3>
-            </div>
-            <div className="p-6">
-              <p className="text-slate-600 text-sm md:text-base mb-5">
-                Are you sure you want to archive <strong>{getFullName(deleteTarget)}</strong>? You can restore them later from the Archives page.
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => setShowDeleteModal(false)} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-                <button onClick={confirmDelete} className="flex-1 bg-amber-600 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-amber-700 transition">Archive</button>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
               </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Archive User</h3>
+                <p className="text-sm text-slate-500">You can restore it later from Archives</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg p-4 mb-4">
+              <p className="text-sm text-slate-600">
+                Are you sure you want to archive <span className="font-semibold">{getFullName(deleteTarget)}</span>?
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                Email: <span className="font-semibold">{deleteTarget?.email}</span>
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
+                </svg>
+                Archive
+              </button>
             </div>
           </div>
         </div>

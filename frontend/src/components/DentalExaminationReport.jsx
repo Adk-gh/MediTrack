@@ -55,9 +55,8 @@ const TextInput = memo(({ value, onChange, placeholder, readOnly, width = '100%'
 // ── Main component
 export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnly = false }) => {
   // Debug: log examination data
-  console.log('[DentalExaminationReport] examination:', examination);
-  console.log('[DentalExaminationReport] treatments:', examination?.treatments);
-  console.log('[DentalExaminationReport] treatmentRemarks:', examination?.treatmentRemarks);
+  // Debug logging
+  // console.log('[DentalExaminationReport] examination:', examination);
 
   // Build full name from first, middle, last name
   const patientFullName = [examination?.firstName, examination?.middleName, examination?.lastName].filter(Boolean).join(' ');
@@ -68,11 +67,39 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   // Only initialize state from examination on first load
   const [initialized, setInitialized] = useState(false);
 
+  // Extract restoration and extraction from toothData
+  const extractToothConditions = (toothData, conditions) => {
+    if (!toothData || typeof toothData !== 'object') return '';
+
+    const conditionLabels = {
+      'Filled (●)': 'Filled',
+      'Caries (C)': 'Caries',
+      'Missing (M)': 'Missing',
+      'Filled': 'Filled',
+      'Caries': 'Caries',
+      'Missing': 'Missing',
+    };
+    const filtered = Object.entries(toothData)
+      .filter(([, data]) => data?.condition && conditions.some(c => data.condition.includes(c)))
+      .map(([num, data]) => `Tooth #${num}: ${conditionLabels[data.condition] || data.condition}${data.operation ? ` (${data.operation})` : ''}`);
+    return filtered.length > 0 ? filtered.join('\n') : '';
+  };
+
   useEffect(() => {
     if (examination && !initialized) {
       const name = [examination?.firstName, examination?.middleName, examination?.lastName].filter(Boolean).join(' ');
-      setRestoration(examination?.restoration || '');
-      setExtraction(examination?.extraction || '');
+
+      // Extract restoration (Filled) and extraction (Missing) from toothData
+      const toothData = examination?.toothData || {};
+      const extractedRestoration = extractToothConditions(toothData, ['Filled', 'Caries']);
+      const extractedExtraction = extractToothConditions(toothData, ['Missing', 'Extracted']);
+
+      // Only use existing restoration/extraction if they have actual content (not 'None')
+      const existingRestoration = examination?.restoration && examination?.restoration !== 'None' ? examination?.restoration : '';
+      const existingExtraction = examination?.extraction && examination?.extraction !== 'None' ? examination?.extraction : '';
+
+      setRestoration(existingRestoration || extractedRestoration || '');
+      setExtraction(existingExtraction || extractedExtraction || '');
       setParentName(name || examination?.parentName || '');
       setTreatmentRemarks({
         oralProphylaxis: '',
@@ -139,24 +166,6 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   const [downloading, setDownloading] = useState(false);
   const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
 
-  // ── Fetch Logo from Supabase Storage ──────────────────────────────────────
-  // Using direct URL from Supabase
-  /* eslint-disable no-unused-vars */
-  useEffect(() => {
-    const fetchLogo = async () => {
-      try {
-        const { data, error } = await supabase.storage
-          .from('images')
-          .getPublicUrl('plsp-logo.jpg');
-        if (error) throw error;
-        setLogoUrl(data.publicUrl);
-      } catch (error) {
-        console.error('[DentalExaminationReport] Error fetching logo:', error);
-      }
-    };
-    fetchLogo();
-  }, []);
-
   const handleRestoration = useCallback((v) => setRestoration(v), []);
   const handleExtraction = useCallback((v) => setExtraction(v), []);
   const toggleTreatment = (key) => {
@@ -201,7 +210,17 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   };
   const examDate = formatDateOnly(examination.examDate);
 
-  // Shorten course name to abbreviation
+  // Shorten course name to abbreviation.
+  //
+  // This needs to handle THREE shapes of input:
+  //   1. Just the program name on its own, e.g. "Bachelor of Science in
+  //      Information Technology" (exact match against the map).
+  //   2. The program name embedded inside a longer combined string, e.g.
+  //      "Bachelor of Science in Information Technology 3rd Year D" (the
+  //      program name plus year/section glued together). This is the shape
+  //      that was slipping through unabbreviated before, because the old
+  //      version only ever checked for an EXACT whole-string match.
+  //   3. Already abbreviated, e.g. "BSIT 3rd Year - D" — nothing to do.
   const shortenCourse = (courseName) => {
     if (!courseName) return '';
     const courseMap = {
@@ -244,9 +263,52 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       // CNAHS - College of Nursing and Allied Health Sciences
       'Bachelor of Science in Nursing': 'BSN',
     };
-    return courseMap[courseName] || courseName;
+
+    // Normalize whitespace/case so near-matches (trailing spaces, stray
+    // casing from the DB) still map to an abbreviation instead of falling
+    // through to the full, much longer name.
+    const trimmed = courseName.trim();
+
+    // 1) Fast path: value is *exactly* one of the known program names.
+    if (courseMap[trimmed]) return courseMap[trimmed];
+    const normalized = trimmed.toLowerCase().replace(/\s+/g, ' ');
+    const exactMatch = Object.keys(courseMap).find(
+      k => k.toLowerCase().replace(/\s+/g, ' ') === normalized
+    );
+    if (exactMatch) return courseMap[exactMatch];
+
+    // 2) Substring path: the program name is embedded inside a longer
+    // string, e.g. "...Information Technology 3rd Year D". Find the
+    // matching full name and swap out only that portion, keeping whatever
+    // comes before/after (the year/section text) intact. Keys are checked
+    // longest-first so a program name that's itself a substring of another,
+    // longer one (e.g. "Accountancy" inside "Accountancy Information
+    // System") can't match too early and clip the wrong text.
+    const keysByLength = Object.keys(courseMap).sort((a, b) => b.length - a.length);
+    for (const fullNameKey of keysByLength) {
+      const normalizedFull = fullNameKey.toLowerCase().replace(/\s+/g, ' ');
+      const idx = normalized.indexOf(normalizedFull);
+      if (idx !== -1) {
+        const before = trimmed.slice(0, idx);
+        const after = trimmed.slice(idx + fullNameKey.length);
+        return `${before}${courseMap[fullNameKey]}${after}`.replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    // 3) No match at all (already abbreviated, or an unrecognized program) —
+    // return as-is.
+    return trimmed;
   };
   const shortProgram = shortenCourse(program);
+
+  // Abbreviate whichever combined course/year/section string is actually
+  // present. `course` and `yearSection` are expected to carry the same
+  // value (set that way in Records-users.jsx / Approvals.jsx), so a single
+  // abbreviation pass over that combined string is enough — this replaces
+  // the old include()-based dedupe check, which only worked if `yearSection`
+  // was already abbreviated and broke (duplicating text, or leaving the
+  // full program name untouched) whenever it wasn't.
+  const courseYearSectionValue = shortenCourse(yearSection || program);
 
   // ── PDF Generation (compact A4) ─────────────────────────────────────────
   const handleDownload = async () => {
@@ -260,17 +322,91 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
 
       const ln = (n = 1, h = 5) => { y += n * h; };
 
-      const field = (value, x, fieldW, baseY) => {
+      // Single-page guarantee: this form must always export as exactly one
+      // page, so we never call doc.addPage(). The old version had a
+      // page-break safety net that started a fresh page whenever a section
+      // (mainly the restoration/extraction tooth lists) ran long — that's
+      // what let a busy exam spill onto a 2nd page. Instead, the
+      // variable-length sections (see fitMultilineBlock below) are bounded
+      // to a fixed max height and shrink their own font size to fit within
+      // it, so total page height stays constant no matter how much tooth
+      // data there is.
+
+      // Auto-fitting multi-line text block: shrinks font size to keep
+      // wrapped text within a fixed maxHeight, and — only as an absolute
+      // last resort, if even the smallest font still overflows — truncates
+      // remaining lines with an ellipsis. This is what keeps the
+      // Restoration/Extraction box height constant regardless of how many
+      // teeth are listed, which in turn is what keeps the whole report on
+      // a single page.
+      const fitMultilineBlock = (text, boxWidth, maxHeight, opts = {}) => {
+        const maxFontSize = opts.maxFontSize ?? 8;
+        const minFontSize = opts.minFontSize ?? 5.5;
+        const vPadding = opts.vPadding ?? 6;
+        const hPadding = opts.hPadding ?? 6;
+        if (!text) return { lines: [], fontSize: maxFontSize, lineHeight: maxFontSize * 0.52 };
+
+        doc.setFont('helvetica', 'normal');
+        let fontSize = maxFontSize;
+        let lines = [];
+        let lineHeight = fontSize * 0.52;
+
+        while (fontSize >= minFontSize) {
+          doc.setFontSize(fontSize);
+          lines = doc.splitTextToSize(text, boxWidth - hPadding);
+          lineHeight = fontSize * 0.52;
+          if (lines.length * lineHeight + vPadding <= maxHeight) break;
+          fontSize -= 0.5;
+        }
+
+        // Still doesn't fit even at the smallest readable size: clip lines
+        // to whatever fits in maxHeight rather than letting the box (and
+        // therefore the page) grow.
+        doc.setFontSize(fontSize);
+        lineHeight = fontSize * 0.52;
+        const maxLines = Math.max(1, Math.floor((maxHeight - vPadding) / lineHeight));
+        if (lines.length > maxLines) {
+          lines = lines.slice(0, maxLines);
+          lines[maxLines - 1] = lines[maxLines - 1].replace(/\s+$/, '') + ' …';
+        }
+
+        return { lines, fontSize, lineHeight };
+      };
+
+      // Auto-fitting field: shrinks font size (and, as a last resort,
+      // truncates with an ellipsis) so a long value can never overflow past
+      // its allotted width and bleed into neighboring labels/fields. This is
+      // what was causing the garbled "double text" look on Course/Year/Section
+      // whenever the course name didn't get abbreviated.
+      const field = (value, x, fieldW, baseY, opts = {}) => {
         const fy = baseY ?? y;
         doc.setDrawColor(120, 120, 120);
         doc.setLineWidth(0.3);
         doc.line(x, fy + 0.8, x + fieldW, fy + 0.8);
-        if (value) {
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(9);
-          doc.setTextColor(15, 23, 42);
-          doc.text(value, x + fieldW / 2, fy, { align: 'center', baseline: 'bottom' });
+        if (!value) return;
+
+        const maxSize = opts.maxFontSize ?? 9;
+        const minSize = opts.minFontSize ?? 6;
+        const padding = 2;
+        let size = maxSize;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(size);
+
+        while (size > minSize && doc.getTextWidth(value) > fieldW - padding) {
+          size -= 0.5;
+          doc.setFontSize(size);
         }
+
+        let displayValue = value;
+        if (doc.getTextWidth(displayValue) > fieldW - padding) {
+          while (displayValue.length > 1 && doc.getTextWidth(displayValue + '…') > fieldW - padding) {
+            displayValue = displayValue.slice(0, -1);
+          }
+          displayValue += '…';
+        }
+
+        doc.text(displayValue, x + fieldW / 2, fy, { align: 'center', baseline: 'bottom' });
       };
 
       const itext = (text, x, curY, style = 'normal', size = 9, color = [71, 85, 105]) => {
@@ -281,16 +417,27 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
         return x + doc.getTextWidth(text);
       };
 
+      // Real checkbox: a small square outline vertically centered on the
+      // label text (not just resting on the baseline), with the checkmark
+      // drawn INSIDE it when checked. The previous version anchored the
+      // box's bottom edge exactly to the text baseline, so the whole
+      // 3.6mm box sat above the baseline — well above the cap-height of a
+      // 9pt label — which is what made every checkbox look like it was
+      // floating above its row instead of sitting level with the text.
+      // Shifting it down so its vertical center lines up with the middle
+      // of the label fixes this for every treatment row, since they all
+      // share this same function.
+      const CHECKBOX_SIZE = 3.6;
       const checkbox = (x, cy, checked) => {
-        doc.setDrawColor(15, 23, 42);
+        const boxY = cy - CHECKBOX_SIZE + 0.9;
+        doc.setDrawColor(100, 116, 139);
         doc.setLineWidth(0.3);
-        doc.line(x, cy, x + 8, cy); // Simple underline for checks in this form style
+        doc.rect(x, boxY, CHECKBOX_SIZE, CHECKBOX_SIZE);
         if (checked) {
-          // Draw a proper checkmark using lines instead of unicode character
           doc.setDrawColor(15, 23, 42);
           doc.setLineWidth(0.5);
-          doc.line(x + 1, cy - 0.5, x + 3, cy + 1.5);
-          doc.line(x + 3, cy + 1.5, x + 7, cy - 2);
+          doc.line(x + 0.6, boxY + CHECKBOX_SIZE * 0.55, x + CHECKBOX_SIZE * 0.42, boxY + CHECKBOX_SIZE - 0.5);
+          doc.line(x + CHECKBOX_SIZE * 0.42, boxY + CHECKBOX_SIZE - 0.5, x + CHECKBOX_SIZE - 0.5, boxY + 0.5);
         }
       };
 
@@ -365,74 +512,158 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       doc.setFontSize(9);
       doc.setTextColor(51, 65, 85);
       const para = "We would like to inform you that we are conducting a routine dental examination to all our students to determine their oral health status and promote proper dental health care. We have given your son/daughter a dental check-up and below are the following findings and recommendations.";
-      const splitPara = doc.splitTextToSize(para, cw - 10);
-      doc.text(splitPara, mar + 10, y);
+      // First-line indent only (matches the on-screen text-indent style):
+      // pad the start with spaces before wrapping so jsPDF's own line-break
+      // measurement naturally pushes just the first line in, while wrapped
+      // lines fall back to the normal left margin.
+      const indentMm = 10;
+      const spaceW = doc.getTextWidth(' ');
+      const numSpaces = Math.max(1, Math.round(indentMm / spaceW));
+      const splitPara = doc.splitTextToSize(' '.repeat(numSpaces) + para, cw);
+      doc.text(splitPara, mar, y);
       ln(1, 20);
 
-      // Findings Grid
+      // ── Findings: two independently-sized columns (mirrors the on-screen
+      // side-by-side layout) instead of stacking both lists in one column at
+      // a fixed offset. Box height now grows with however many lines each
+      // list actually needs, so Restoration and Extraction can never overlap
+      // regardless of how many teeth are listed.
+      const colGap = 8;
+      const colW = (cw - colGap) / 2;
+      const restColX = mar;
+      const extColX = mar + colW + colGap;
+
+      // Bounded box: capped at maxBoxH regardless of how many teeth are
+      // listed. Long lists shrink their own font (via fitMultilineBlock)
+      // instead of growing the box — that's what guarantees the rest of
+      // the form (treatments, signatures, footer) never gets pushed onto a
+      // second page.
+      //
+      // Why 36mm specifically: everything else on this form (header,
+      // greeting, treatments list, signatures, student info, footer note,
+      // and the metadata table) adds up to a fixed ~244mm regardless of
+      // content. An A4 page is 297mm tall, and we want roughly the same
+      // ~14mm margin at the bottom as at the top — so the box (plus its
+      // own 6mm padding) can only safely take (297 - 14 - 244) ≈ 39mm.
+      // 36mm keeps a small buffer under that so the metadata table always
+      // stays fully on the page instead of running past the physical
+      // bottom edge, which is what was happening with the old 90mm cap.
+      const minBoxH = 16;
+      const maxBoxH = 36;
+      const restFit = fitMultilineBlock(restoration, colW, maxBoxH);
+      const extrFit = fitMultilineBlock(extraction, colW, maxBoxH);
+      const boxH = Math.min(
+        maxBoxH,
+        Math.max(
+          restFit.lines.length * restFit.lineHeight,
+          extrFit.lines.length * extrFit.lineHeight,
+          minBoxH - 6
+        ) + 6
+      );
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Needs Restoration (Filling):', restColX, y);
+      doc.text('For Extraction:', extColX, y);
+
+      ln(1, 6);
+      const boxTop = y - 4;
+
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.3);
+      doc.rect(restColX, boxTop, colW, Math.max(boxH, minBoxH));
+      doc.rect(extColX, boxTop, colW, Math.max(boxH, minBoxH));
+
+      doc.setTextColor(15, 23, 42);
       doc.setFont('helvetica', 'normal');
-      doc.text('Needs Restoration (Filling):', mar, y);
-      doc.text('For Extraction:', mar, y + 25);
+      if (restFit.lines.length) {
+        doc.setFontSize(restFit.fontSize);
+        doc.text(restFit.lines, restColX + 3, y + 1);
+      }
+      if (extrFit.lines.length) {
+        doc.setFontSize(extrFit.fontSize);
+        doc.text(extrFit.lines, extColX + 3, y + 1);
+      }
 
-      // Dental Cross Grid (Mental mapping of the quadrants)
-      const gridX = mar + 45;
-      doc.setDrawColor(15, 23, 42);
-      doc.setLineWidth(0.4);
-      doc.line(gridX, y + 8, gridX + 80, y + 8); // Horizontal
-      doc.line(gridX + 40, y - 2, gridX + 40, y + 38); // Vertical
-
-      // Add quadrant notes if any (simplified mapping for PDF text)
-      if(restoration) { doc.setFontSize(8); doc.text(doc.splitTextToSize(restoration, 35), gridX + 2, y + 4); }
-      if(extraction) { doc.setFontSize(8); doc.text(doc.splitTextToSize(extraction, 35), gridX + 2, y + 14); }
-
-      ln(1, 45);
+      ln(1, Math.max(boxH, minBoxH) + 6);
 
       // Other Treatments
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.text('Other Treatments Needed:', mar, y);
-      ln(1, 6);
+      ln(1, 7);
 
       const tH = 6;
-      // Helper to display treatment with checkbox and remarks
-      const treatmentWithRemark = (label, checked, remark, xPos) => {
-        itext(label, xPos, y);
-        checkbox(xPos + 30, y, checked);
-        if (remark) {
+
+      // treatmentRow: draws "Label ____" with the checkbox line placed right
+      // after the label's ACTUAL rendered width, instead of a fixed +30mm
+      // offset. The fixed offset is what made the checkbox underline collide
+      // with (and strike through) longer labels like "Orthodontic Treatment"
+      // / "Prosthodontic Treatment" / "Endodontic Treatment" in the exported
+      // PDF. Any optional detail field and/or doctor's remark are then laid
+      // out one after another starting from wherever the checkbox actually
+      // ended, so nothing after it can overlap either.
+      const treatmentRow = (label, checked, xPos, opts = {}) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text(label, xPos, y, { baseline: 'bottom' });
+        const labelW = doc.getTextWidth(label);
+
+        const boxX = xPos + labelW + 4;
+        checkbox(boxX, y, checked);
+        let cursorX = boxX + CHECKBOX_SIZE + 4;
+
+        if (opts.detailValue !== undefined) {
+          // Rows with a blank line (Orthodontic/Prosthodontic/Endodontic):
+          // put the remark ON the line itself instead of floating it off to
+          // the side in parentheses — that's what made it look disconnected
+          // from its own line in the export. Detail + remark are combined
+          // when both are present.
+          const detailW = opts.detailWidth || 60;
+          const lineText = [opts.detailValue, opts.remark].filter(Boolean).join(' — ');
+          field(lineText, cursorX, detailW, y);
+          cursorX += detailW + 4;
+        } else if (opts.remark) {
+          // Rows with no line (Oral Prophylaxis, Gum Treatment, etc.) keep
+          // the compact parenthetical remark right after the checkbox. Uses
+          // the same baseline as the label and checkbox (y, baseline:
+          // 'bottom') instead of an extra +1.2 offset, which was making the
+          // remark sit visibly lower than the rest of the row instead of
+          // reading straight across.
           doc.setFont('helvetica', 'italic');
           doc.setFontSize(7.5);
           doc.setTextColor(80, 80, 80);
-          doc.text(`(${remark})`, xPos + 35, y + 1.5);
-          doc.setFont('helvetica', 'normal');
+          doc.text(`(${opts.remark})`, cursorX, y, { baseline: 'bottom' });
         }
       };
 
-      // Col 1
-      treatmentWithRemark('Oral Prophylaxis', treatments.oralProphylaxis, treatmentRemarks.oralProphylaxis, mar);
-      treatmentWithRemark('Fluoride Treatment', treatments.fluoride, treatmentRemarks.fluoride, mar + 65);
-      treatmentWithRemark('Sealant', treatments.sealant, treatmentRemarks.sealant, mar + 125);
+      // Row 1 — three short items side by side
+      treatmentRow('Oral Prophylaxis', treatments.oralProphylaxis, mar, { remark: treatmentRemarks.oralProphylaxis });
+      treatmentRow('Fluoride Treatment', treatments.fluoride, mar + 65, { remark: treatmentRemarks.fluoride });
+      treatmentRow('Sealant', treatments.sealant, mar + 125, { remark: treatmentRemarks.sealant });
 
       ln(1, tH);
-      treatmentWithRemark('Gum Treatment', treatments.gumTreatment, treatmentRemarks.gumTreatment, mar);
+      treatmentRow('Gum Treatment', treatments.gumTreatment, mar, { remark: treatmentRemarks.gumTreatment });
       ln(1, tH);
-      treatmentWithRemark('Orthodontic Treatment', treatments.orthodontic, treatmentRemarks.orthodontic, mar);
-      field(treatmentDetails.orthodontic, mar + 45, 45, y);
+      treatmentRow('Orthodontic Treatment', treatments.orthodontic, mar, { remark: treatmentRemarks.orthodontic });
       ln(1, tH);
-      treatmentWithRemark('Prosthodontic Treatment', treatments.prosthodontic, treatmentRemarks.prosthodontic, mar);
-      field(treatmentDetails.prosthodontic, mar + 48, 42, y);
+      treatmentRow('Prosthodontic Treatment', treatments.prosthodontic, mar, { remark: treatmentRemarks.prosthodontic });
       ln(1, tH);
-      treatmentWithRemark('Endodontic Treatment', treatments.endodontic, treatmentRemarks.endodontic, mar);
-      field(treatmentDetails.endodontic, mar + 45, 45, y);
+      treatmentRow('Endodontic Treatment', treatments.endodontic, mar, { remark: treatmentRemarks.endodontic });
       ln(1, tH);
-      treatmentWithRemark('TMJ Treatment', treatments.tmj, treatmentRemarks.tmj, mar);
+      treatmentRow('TMJ Treatment', treatments.tmj, mar, { remark: treatmentRemarks.tmj });
       ln(1, tH);
-      treatmentWithRemark('Dental X-ray', treatments.xray, treatmentRemarks.xray, mar);
+      treatmentRow('Dental X-ray', treatments.xray, mar, { remark: treatmentRemarks.xray });
 
-      ln(1, 15);
+      ln(1, 10);
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105);
       doc.text('Please let him/ her see your family dentist as soon as possible. THANK YOU.', mar, y);
 
-      ln(1, 15);
+      ln(1, 10);
 
       // Doctor Signature
       const docSigX = W - mar - 50;
@@ -446,38 +677,58 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       doc.setFontSize(8);
       doc.text('DENTIST II', docSigX + 22.5, y + 5, { align: 'center' });
 
-      ln(1, 20);
+      ln(1, 12);
 
-      // Student Info Block
+      // ── Student Info Block ──────────────────────────────────────────────
+      // A horizontal rule above "Name of Student" mirrors the printed form,
+      // visually separating this block from the doctor's signature above it.
+      doc.setDrawColor(15, 23, 42);
+      doc.setLineWidth(0.8);
+      doc.line(mar, y - 4, W - mar, y - 4);
+      ln(1, 4);
+
       const blockY = y;
-      itext('Name of Student', mar, blockY); field(fullName, mar + 28, 60, blockY);
-      itext('Course/Year/Section', mar, blockY + 7); field(`${shortProgram} ${yearSection}`, mar + 32, 56, blockY + 7);
-      itext('Name of Family Dentist', mar, blockY + 14); field(familyDentist, mar + 35, 53, blockY + 14);
+      itext('Name of Student', mar, blockY);
+      field(fullName, mar + 30, (W - mar) - (mar + 30), blockY);
 
-      itext('Grade Level', mar + 92, blockY + 7); field(gradeLevel, mar + 110, 30, blockY + 7);
+      itext('Course/Year/Section', mar, blockY + 8);
+      field(courseYearSectionValue, mar + 34, 60, blockY + 8);
+      itext('Grade Level', mar + 104, blockY + 8);
+      field(gradeLevel, mar + 122, 24, blockY + 8);
+
+      itext('Name of Family Dentist', mar, blockY + 16);
+      field(familyDentist, mar + 38, (W - mar) - (mar + 38), blockY + 16);
+
+      y = blockY + 16;
 
       // Status Block
-      ln(1, 25);
-      itext('Treatment Complete', mar + 40, y);
+      ln(1, 12);
+      const statusLineW = 45;
+      let statusLabelEnd = itext('Treatment Complete', mar + 40, y);
+      let statusLineX = statusLabelEnd + 6;
+      field('', statusLineX, statusLineW, y);
       if (status.complete) {
         doc.setDrawColor(15, 23, 42);
         doc.setLineWidth(0.5);
-        doc.line(mar + 72, y - 0.5, mar + 75, y + 2);
-        doc.line(mar + 75, y + 2, mar + 80, y - 2);
+        doc.line(statusLineX + 2, y - 1.5, statusLineX + 6, y + 1);
+        doc.line(statusLineX + 6, y + 1, statusLineX + 14, y - 4);
       }
       ln(1, 6);
-      itext('Not Completed', mar + 40, y);
+      statusLabelEnd = itext('Not Completed', mar + 40, y);
+      statusLineX = statusLabelEnd + 6;
+      field('', statusLineX, statusLineW, y);
       if (status.notCompleted) {
         doc.setDrawColor(15, 23, 42);
         doc.setLineWidth(0.5);
-        doc.line(mar + 65, y - 0.5, mar + 68, y + 2);
-        doc.line(mar + 68, y + 2, mar + 73, y - 2);
+        doc.line(statusLineX + 2, y - 1.5, statusLineX + 6, y + 1);
+        doc.line(statusLineX + 6, y + 1, statusLineX + 14, y - 4);
       }
       ln(1, 6);
       itext('Follow-up', mar + 40, y); field(status.followUp, mar + 57, 45, y);
 
       ln(1, 15);
       const famSigX = W - mar - 50;
+      doc.setDrawColor(15, 23, 42);
       doc.line(famSigX, y, W - mar, y);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
@@ -566,7 +817,7 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
         <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 11, color: '#334155' }}>
           {label}
         </span>
-        
+
       </div>
       {hasRemark && (
         <input
@@ -696,7 +947,7 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
             <div></div>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120 }}>Course/Year/Section</span>
-              <TextInput value={`${shortProgram} ${yearSection}`} readOnly={readOnly} />
+              <TextInput value={courseYearSectionValue} readOnly={readOnly} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 80, marginLeft: 20 }}>Grade Level</span>

@@ -258,6 +258,7 @@ function getDefaultClassification(role) {
     'admin':         'System Administrator',
     'nurse':         'Nurse Personnel',
     'doctor':        'Physician / Doctor',
+    'dentist':       'Dentist',
     'staff':         'Non-Teaching Personnel',
     'employee':      'Non-Teaching Personnel',
     'guard':         'Security Personnel',
@@ -274,6 +275,7 @@ function getDefaultJobTitle(role) {
   const titleMap = {
     'nurse':         'Nurse',
     'doctor':        'Physician',
+    'dentist':       'Dentist',
     'admin':         'System Administrator',
     'administrator': 'System Administrator',
     'lecturer':      'Lecturer',
@@ -1064,7 +1066,7 @@ const ProfileSetup = ({ user, onComplete }) => {
                   <div>
                     <label className={labelCls}>Classification <span className="text-red-400">*</span></label>
                     <select id="classification" required className={selectCls} value={formData.classification} onChange={handleChange}>
-                      {['Teaching Personnel', 'Nurse Personnel', 'Physician / Doctor', 'Non-Teaching Personnel', 'Security Personnel'].map(c => (
+                      {['Teaching Personnel', 'Nurse Personnel', 'Dentist', 'Physician / Doctor', 'Non-Teaching Personnel', 'Security Personnel'].map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>

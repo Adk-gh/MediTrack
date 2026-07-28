@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Consultations.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
@@ -20,12 +21,111 @@ const formatDate = (ts) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// ── Linkify: Converts URLs in text to clickable links ────────────────────────
+const LinkifiedText = ({ text, isPatient = false }) => {
+  // Regex to match URLs (including Google Meet links)
+  const urlRegex = /(https?:\/\/[^\s<]+)/g;
+
+  // Link color based on sender
+  const linkColor = isPatient ? '#a8d5ba' : '#60a5fa';
+  const linkHoverColor = isPatient ? '#c8e6cf' : '#93c5fd';
+
+  if (!text) return null;
+
+  const parts = text.split(urlRegex);
+
+  if (parts.length === 1) {
+    // No URLs found, just return text with preserved newlines
+    const lines = text.split('\n');
+    return (
+      <span>
+        {lines.map((line, i) => (
+          <React.Fragment key={i}>
+            {line}
+            {i < lines.length - 1 && <br />}
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  }
+
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          // This is a URL
+          return (
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline break-all hover:opacity-80"
+              style={{ color: linkColor }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+            </a>
+          );
+        }
+        // Regular text - preserve newlines
+        const lines = part.split('\n');
+        return (
+          <React.Fragment key={i}>
+            {lines.map((line, j) => (
+              <React.Fragment key={j}>
+                {line}
+                {j < lines.length - 1 && <br />}
+              </React.Fragment>
+            ))}
+          </React.Fragment>
+        );
+      })}
+    </span>
+  );
+};
+
 const getRoleClass = (role) => {
   if (!role) return 'bg-slate-100 text-slate-600';
   const r = role.toLowerCase();
   if (r === 'student') return 'bg-blue-100 text-blue-700';
   if (r === 'instructor' || r === 'faculty') return 'bg-purple-100 text-purple-700';
   return 'bg-green-100 text-green-700';
+};
+
+// Gender icon helper
+const getGenderIcon = (sex) => {
+  if (!sex) return null;
+  const s = sex.toLowerCase();
+  if (s === 'male') {
+    return <span className="text-blue-500" title="Male">♂</span>;
+  }
+  if (s === 'female') {
+    return <span className="text-pink-500" title="Female">♀</span>;
+  }
+  return null;
+};
+
+// Full name helper - builds full name from users table fields
+const getFullName = (profile) => {
+  if (!profile) return 'Unknown';
+  const parts = [];
+  if (profile.first_name) parts.push(profile.first_name);
+  if (profile.middle_name) parts.push(profile.middle_name);
+  if (profile.last_name) parts.push(profile.last_name);
+  if (profile.suffix) parts.push(profile.suffix);
+  return parts.length > 0 ? parts.join(' ') : 'Unknown';
+};
+
+// Format name for list display (Last, First Middle)
+const formatNameForList = (profile) => {
+  if (!profile?.first_name && !profile?.last_name) return 'Unknown';
+  const parts = [];
+  if (profile.last_name) parts.push(profile.last_name);
+  if (profile.first_name) parts.push(profile.first_name);
+  if (profile.middle_name) parts.push(profile.middle_name);
+  if (profile.suffix) parts.push(profile.suffix);
+  return parts.join(', ');
 };
 
 const TABS = [
@@ -37,7 +137,7 @@ const TABS = [
     light:   '#e8f5ee',
     border:  '#b2d9c2',
     icon: (color) => (
-      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" className="w-3.5 h-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" className="w-4 h-4">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
         <rect x="3" y="3" width="18" height="18" rx="3" strokeWidth="1.5" />
       </svg>
@@ -51,13 +151,499 @@ const TABS = [
     light:   '#e8f0fa',
     border:  '#b2c8e8',
     icon: (color) => (
-      <svg viewBox="0 0 64 64" fill="none" stroke={color} strokeWidth="3" className="w-3.5 h-3.5">
+      <svg viewBox="0 0 64 64" fill="none" stroke={color} strokeWidth="3" className="w-4 h-4">
         <path strokeLinecap="round" strokeLinejoin="round"
           d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z" />
       </svg>
     ),
   },
 ];
+
+// ============================================================
+// PATIENT RECORDS MODAL — compact clinical profile + full visit history
+// ============================================================
+
+// Safely parse a jsonb field that may arrive as a string, object, or null.
+const pjson = (v, fallback = {}) => {
+  if (!v) return fallback;
+  if (typeof v === 'string') {
+    try { return JSON.parse(v) || fallback; } catch { return fallback; }
+  }
+  if (typeof v === 'object') return v;
+  return fallback;
+};
+
+const fmtDateTime = (ts) => {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts);
+  return d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+};
+
+const StatusPill = ({ status }) => {
+  const map = {
+    approved: 'bg-emerald-100 text-emerald-700',
+    pending:  'bg-amber-100 text-amber-700',
+    rejected: 'bg-red-100 text-red-700',
+  };
+  return (
+    <span className={`text-[11px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500'}`}>
+      {status || 'unknown'}
+    </span>
+  );
+};
+
+const tintMap = {
+  amber:  'bg-amber-50 text-amber-700 border-amber-100',
+  purple: 'bg-purple-50 text-purple-700 border-purple-100',
+  cyan:   'bg-cyan-50 text-cyan-700 border-cyan-100',
+};
+
+const TagRow = ({ label, items, tint }) => {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((it, i) => (
+          <span key={i} className={`text-xs px-2 py-1 rounded-full border font-medium ${tintMap[tint]}`}>{it}</span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const MiniStat = ({ label, value }) => (
+  <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+    <p className="text-[10px] text-slate-400 uppercase font-semibold">{label}</p>
+    <p className="text-sm font-semibold text-slate-700">{value || '—'}</p>
+  </div>
+);
+
+const MedicalRecordRow = ({ r, isOpen, onToggle }) => {
+  const vitals = r.vital_records || {};
+  const meds   = r.checked_medical || [];
+  const fam    = r.checked_family || [];
+  const health = r.checked_health || [];
+  const hasVitals = vitals.bp || vitals.pr || vitals.rr || vitals.temp;
+  const hasBody   = r.height || r.weight || r.bmi || r.waist;
+
+  return (
+    <div className="relative pl-6">
+      <div className="absolute left-[7px] top-4 w-3 h-3 rounded-full bg-[#466460] ring-4 ring-white"></div>
+      <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50 transition text-left"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}></i>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-700 truncate">{fmtDateTime(r.exam_date || r.created_at)}</p>
+              <p className="text-xs text-slate-400 truncate">
+                {r.nurse_on_duty ? `Nurse: ${r.nurse_on_duty}` : 'Medical Exam'}{r.physician ? ` • Dr. ${r.physician}` : ''}
+              </p>
+            </div>
+          </div>
+          <StatusPill status={r.status} />
+        </button>
+
+        {isOpen && (
+          <div className="px-4 pb-4 pt-1 border-t border-slate-100 space-y-3 text-sm">
+            {hasVitals && (
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5">Vital Signs</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {[['BP', vitals.bp, 'mmHg'], ['PR', vitals.pr, 'bpm'], ['RR', vitals.rr, 'cpm'], ['Temp', vitals.temp, '°C']]
+                    .filter(([, v]) => v)
+                    .map(([l, v, u]) => (
+                      <div key={l} className="bg-rose-50/60 border border-rose-100 rounded-lg p-2 text-center">
+                        <p className="text-[10px] text-rose-400 uppercase font-semibold">{l}</p>
+                        <p className="font-bold text-rose-700 text-sm">{v} <span className="text-[11px] font-medium">{u}</span></p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {hasBody && (
+              <div className="grid grid-cols-4 gap-2">
+                <MiniStat label="Height" value={r.height ? `${r.height} cm` : ''} />
+                <MiniStat label="Weight" value={r.weight ? `${r.weight} kg` : ''} />
+                <MiniStat label="BMI" value={r.bmi} />
+                <MiniStat label="Waist" value={r.waist ? `${r.waist} cm` : ''} />
+              </div>
+            )}
+
+            {(meds.length > 0 || fam.length > 0 || health.length > 0) && (
+              <div className="space-y-2.5">
+                <TagRow label="Past Medical History" items={meds} tint="amber" />
+                <TagRow label="Family History" items={fam} tint="purple" />
+                <TagRow label="Other Conditions" items={health} tint="cyan" />
+              </div>
+            )}
+
+            {(r.finding1 || r.remarks) && (
+              <div className="bg-[#f7fbfa] border border-[#e0eceb] rounded-lg p-3">
+                <p className="text-[11px] font-bold text-[#466460] uppercase mb-1.5">Findings / Remarks</p>
+                <p className="text-slate-700 leading-relaxed text-sm">
+                  {r.finding1 || ''}{r.finding1 && r.remarks ? ' — ' : ''}{r.remarks || ''}
+                </p>
+              </div>
+            )}
+
+            {!hasVitals && !hasBody && meds.length === 0 && fam.length === 0 && health.length === 0 && !r.finding1 && !r.remarks && (
+              <p className="text-slate-400 italic text-sm">No additional details recorded for this visit.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DentalRecordRow = ({ r, isOpen, onToggle }) => {
+  const toothData      = pjson(r.tooth_data, {});
+  const dentalHistory  = pjson(r.dental_history, {});
+  const intraoral      = pjson(r.intraoral, {});
+  const proceduresDone = Object.entries(dentalHistory).filter(([, v]) => v === 'Yes').map(([k]) => k);
+  const teethNoted     = Object.entries(toothData).filter(([, d]) => d?.condition);
+  const intraoralNoted = Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam');
+
+  return (
+    <div className="relative pl-6">
+      <div className="absolute left-[7px] top-4 w-3 h-3 rounded-full bg-[#3b82f6] ring-4 ring-white"></div>
+      <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50 transition text-left"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}></i>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-700 truncate">{fmtDateTime(r.exam_date || r.created_at)}</p>
+              <p className="text-xs text-slate-400 truncate">
+                {r.examined_by ? `Dr. ${r.examined_by}` : 'Dental Visit'}
+              </p>
+            </div>
+          </div>
+          <StatusPill status={r.status} />
+        </button>
+
+        {isOpen && (
+          <div className="px-4 pb-4 pt-1 border-t border-slate-100 space-y-3 text-sm">
+            {(r.teeth_upper || r.teeth_lower) && (
+              <div className="grid grid-cols-2 gap-2">
+                <MiniStat label="Upper Teeth" value={r.teeth_upper} />
+                <MiniStat label="Lower Teeth" value={r.teeth_lower} />
+              </div>
+            )}
+
+            {intraoralNoted.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5">Intraoral Findings</p>
+                <div className="flex flex-wrap gap-2">
+                  {intraoralNoted.map(([k, v]) => (
+                    <span key={k} className="text-xs bg-slate-50 border border-slate-100 rounded px-2 py-1 capitalize">
+                      {k.replace(/([A-Z])/g, ' $1').trim()}: {String(v)}
+                    </span>
+                  ))}
+                  {intraoral.tmjExam && (
+                    <span className="text-xs bg-slate-50 border border-slate-100 rounded px-2 py-1">TMJ Examined</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {teethNoted.length > 0 && (
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5">Tooth Conditions</p>
+                <div className="flex flex-wrap gap-2">
+                  {teethNoted.map(([num, d]) => (
+                    <span key={num} className="text-xs px-2 py-1 rounded bg-slate-100 border border-slate-200 font-semibold">
+                      #{num}: {d.condition}{d.operation ? ` (${d.operation})` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <TagRow label="Procedures Done" items={proceduresDone} tint="cyan" />
+
+            {teethNoted.length === 0 && intraoralNoted.length === 0 && proceduresDone.length === 0 && !r.teeth_upper && !r.teeth_lower && (
+              <p className="text-slate-400 italic text-sm">No additional details recorded for this visit.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const PR_TABS = [
+  { key: 'profile', label: 'Profile',       icon: 'fa-id-card' },
+  { key: 'medical', label: 'Medical Visits', icon: 'fa-stethoscope' },
+  { key: 'dental',  label: 'Dental Visits',  icon: 'fa-tooth' },
+];
+
+const PatientRecordsModal = ({ patientId, patientName, patientRole, consultationType, onClose }) => {
+  const [activeTab, setActiveTab]           = useState('profile');
+  const [profile, setProfile]               = useState(null);
+  const [medicalRecords, setMedicalRecords] = useState([]);
+  const [dentalRecords, setDentalRecords]   = useState([]);
+  const [loading, setLoading]               = useState(true);
+  const [expandedId, setExpandedId]         = useState(null);
+
+  // Determine which tabs to show based on consultation type
+  const visibleTabs = consultationType === 'dental'
+    ? PR_TABS.filter(t => t.key === 'profile' || t.key === 'dental')
+    : consultationType === 'medical'
+      ? PR_TABS.filter(t => t.key === 'profile' || t.key === 'medical')
+      : PR_TABS;
+
+  // Set default active tab based on consultation type
+  useEffect(() => {
+    if (consultationType === 'dental') {
+      setActiveTab('dental');
+    } else if (consultationType === 'medical') {
+      setActiveTab('medical');
+    } else {
+      setActiveTab('profile');
+    }
+  }, [consultationType]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    let isMounted = true;
+    setLoading(true);
+    setExpandedId(null);
+    setActiveTab('profile');
+
+    (async () => {
+      try {
+        const [{ data: userData }, { data: medData }, { data: denData }] = await Promise.all([
+          supabase.from('users').select('*').eq('id', patientId).maybeSingle(),
+          supabase.from('medical_records').select('*').eq('user_id', patientId).order('created_at', { ascending: false }),
+          supabase.from('dental_records').select('*').eq('user_id', patientId).order('created_at', { ascending: false }),
+        ]);
+        if (!isMounted) return;
+        setProfile(userData || null);
+        setMedicalRecords(medData || []);
+        setDentalRecords(denData || []);
+      } catch (err) {
+        console.error('[PatientRecordsModal] Failed to load patient data:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [patientId]);
+
+  const p         = profile || {};
+  const emergency = pjson(p.emergency_contact);
+  const vax       = pjson(p.vaccinations);
+  const hasVax    = Object.values(vax || {}).some(v => v?.vaccineName);
+  const isStudent = (patientRole || p.role || '').toLowerCase() === 'student';
+  const initials  = (patientName || '?').charAt(0).toUpperCase();
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
+
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[650px] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-5 py-4 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center text-white font-bold text-lg shrink-0">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-base text-slate-800 truncate">{patientName}</p>
+            <div className="flex items-center gap-2 mt-1">
+              {getGenderIcon(p.sex)}
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getRoleClass(patientRole || p.role)}`}>
+                {patientRole || p.role || 'patient'}
+              </span>
+              {p.university_id && <span className="text-xs text-slate-400">{p.university_id}</span>}
+            </div>
+          </div>
+          <button
+  onClick={onClose}
+  className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
+>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
+    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+  </svg>
+</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="shrink-0 flex gap-2 px-5 py-3 border-b border-slate-200 bg-slate-50">
+          {visibleTabs.map(({ key, label, icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-3.5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                activeTab === key ? 'bg-[#466460] text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:shadow-sm'
+              }`}
+            >
+              <i className={`fa-solid ${icon}`}></i>
+              {label}
+              {key === 'medical' && medicalRecords.length > 0 && (
+                <span className={`text-xs rounded-full px-1.5 ${activeTab === key ? 'bg-white/20' : 'bg-slate-200'}`}>{medicalRecords.length}</span>
+              )}
+              {key === 'dental' && dentalRecords.length > 0 && (
+                <span className={`text-xs rounded-full px-1.5 ${activeTab === key ? 'bg-white/20' : 'bg-slate-200'}`}>{dentalRecords.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5 bg-slate-50/40 min-h-0 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+          {loading ? (
+            <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
+              <i className="fa-solid fa-circle-notch fa-spin text-xl mr-2"></i> Loading records…
+            </div>
+          ) : activeTab === 'profile' ? (
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                  <i className="fa-solid fa-id-card"></i> Personal Information
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                  <MiniStat label="Age" value={p.age} />
+                  <MiniStat label="Gender" value={p.sex || p.gender} />
+                  <MiniStat label="Birthdate" value={p.birthday} />
+                  <MiniStat label="Blood Type" value={p.blood_type} />
+                  <MiniStat label="Civil Status" value={p.civil_status} />
+                  <MiniStat label="Nationality" value={p.nationality} />
+                  <MiniStat label="Religion" value={p.religion} />
+                  <MiniStat label="Home Address" value={p.home_address} />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                  <i className="fa-solid fa-graduation-cap"></i> {isStudent ? 'Academic' : 'Work'} Information
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                  {isStudent ? (
+                    <>
+                      <MiniStat label="Program" value={p.program} />
+                      <MiniStat label="Year Level" value={p.year_level} />
+                      <MiniStat label="Section" value={p.section} />
+                      <MiniStat label="Classification" value={p.student_classification} />
+                    </>
+                  ) : (
+                    <>
+                      <MiniStat label="Department" value={p.department} />
+                      <MiniStat label="Job Title" value={p.job_title} />
+                      <MiniStat label="Classification" value={p.classification} />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                  <i className="fa-solid fa-phone"></i> Contact Information
+                </p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <MiniStat label="Email" value={p.email} />
+                  <MiniStat label="Phone" value={p.phone_number} />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                  <i className="fa-solid fa-triangle-exclamation"></i> Emergency Contact
+                </p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
+                    <p className="text-[10px] text-red-400 uppercase font-semibold">Name</p>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {emergency?.name || '—'}{emergency?.relationship ? ` (${emergency.relationship})` : ''}
+                    </p>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
+                    <p className="text-[10px] text-red-400 uppercase font-semibold">Phone</p>
+                    <p className="text-sm font-semibold text-slate-700">{emergency?.phone || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {hasVax && (
+                <div>
+                  <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-syringe"></i> Vaccinations
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(vax).map(([key, v]) =>
+                      v?.vaccineName ? (
+                        <span key={key} className="text-xs px-2.5 py-1.5 rounded-full bg-green-100 text-green-700 font-medium capitalize">
+                          {key.replace('dose', 'Dose ').replace('booster', 'Booster ')}: {v.vaccineName}
+                        </span>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!profile && (
+                <p className="text-sm text-slate-400 italic text-center py-6">No profile data found for this patient.</p>
+              )}
+            </div>
+          ) : activeTab === 'medical' ? (
+            medicalRecords.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-white">
+                <i className="fa-solid fa-file-medical text-3xl text-slate-300 mb-2 block"></i>
+                <p className="text-base text-slate-400">No medical visit history found.</p>
+              </div>
+            ) : (
+              <div className="relative pl-2">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+                <div className="space-y-2.5">
+                  {medicalRecords.map(r => (
+                    <MedicalRecordRow
+                      key={r.id}
+                      r={r}
+                      isOpen={expandedId === r.id}
+                      onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          ) : (
+            dentalRecords.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-white">
+                <i className="fa-solid fa-tooth text-3xl text-slate-300 mb-2 block"></i>
+                <p className="text-base text-slate-400">No dental visit history found.</p>
+              </div>
+            ) : (
+              <div className="relative pl-2">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+                <div className="space-y-2.5">
+                  {dentalRecords.map(r => (
+                    <DentalRecordRow
+                      key={r.id}
+                      r={r}
+                      isOpen={expandedId === r.id}
+                      onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const Consultations = () => {
   const navigate    = useNavigate();
@@ -84,10 +670,16 @@ export const Consultations = () => {
   const [patientProfiles, setPatientProfiles]   = useState({});
   const [loadingMsgs, setLoadingMsgs]           = useState(false);
   const [toast, setToast]                       = useState(null);
-  const [showPatientPanel, setShowPatientPanel] = useState(false);
+  const [showPatientModal, setShowPatientModal] = useState(false);
+  const [newConsultationAlert, setNewConsultationAlert] = useState(null); // 🟢 NEW: Real-time alert for new consultations
 
   // 🔴 FIXED: Core internal tracking states for the staff member
   const [internalStaffId, setInternalStaffId]   = useState(null);
+  // 🟢 NEW: Staff's real first+last name (from `users` table), used as sender_name
+  // when sending messages — previously we fell back to currentUser.name, which
+  // doesn't exist on the localStorage user object, so every message was saved as
+  // "Clinic Staff" no matter who actually replied.
+  const [internalStaffName, setInternalStaffName] = useState(null);
   const [sessionReady, setSessionReady]         = useState(false);
 
   const messagesEndRef  = useRef(null);
@@ -99,6 +691,83 @@ export const Consultations = () => {
   const isSendingRef    = useRef(false); // Track if sending to skip realtime dupes
 
   const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
+
+  // ── Token Management Helper ─────────────────────────────────────────────
+  // Returns true when a raw JWT access token is expired (or unparseable).
+  const isTokenExpired = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      // exp is in seconds; subtract 30s so we refresh slightly early
+      return Date.now() / 1000 > payload.exp - 30;
+    } catch {
+      return true;
+    }
+  };
+
+  // Ensures we have a valid session, proactively refreshing if needed.
+  // This keeps the user logged in seamlessly without manual intervention.
+  const ensureValidSession = useCallback(async () => {
+    try {
+      // First check if Supabase already has a valid session
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.warn('[Clinic] Session error:', error.message);
+        return null;
+      }
+
+      if (session) {
+        // Session is valid - update localStorage for other components that depend on it
+        localStorage.setItem('token', session.access_token);
+        if (session.refresh_token) {
+          localStorage.setItem('refresh_token', session.refresh_token);
+        }
+        // Update Supabase realtime auth
+        try { supabase.realtime.setAuth(session.access_token); } catch {}
+        return session.access_token;
+      }
+
+      // No session - try to refresh using stored tokens
+      const accessToken = localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('refresh_token') || '';
+
+      if (!accessToken) {
+        console.warn('[Clinic] No tokens available');
+        return null;
+      }
+
+      // Check if token is expired
+      if (!isTokenExpired(accessToken)) {
+        // Token valid, just set session
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        try { supabase.realtime.setAuth(accessToken); } catch {}
+        return accessToken;
+      }
+
+      // Token expired - refresh it
+      console.log('[Clinic] Token expired, refreshing...');
+      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+
+      if (!refreshErr && refreshed?.session) {
+        const newAccess = refreshed.session.access_token;
+        const newRefresh = refreshed.session.refresh_token;
+        localStorage.setItem('token', newAccess);
+        if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
+        try { supabase.realtime.setAuth(newAccess); } catch {}
+        console.log('[Clinic] Token refreshed successfully');
+        return newAccess;
+      }
+
+      console.warn('[Clinic] Token refresh failed');
+      return null;
+    } catch (err) {
+      console.error('[Clinic] ensureValidSession error:', err);
+      return null;
+    }
+  }, []);
 
   // ── 1. Secure Authentication & Fetch Internal Staff ID ───────────────
   useEffect(() => {
@@ -115,7 +784,7 @@ export const Consultations = () => {
         });
       }
 
-      // Resolve the internal users.id for the logged-in staff member
+      // Resolve the internal users.id (and real name) for the logged-in staff member
       const { data: profiles, error } = await supabase
         .from('users')
         .select('id, first_name, last_name, role')
@@ -125,6 +794,10 @@ export const Consultations = () => {
       const profile = profiles?.[0];
       if (profile) {
         setInternalStaffId(profile.id);
+        // 🟢 NEW: Build "First Last" from the users table row — this is what
+        // gets saved as sender_name on every outgoing message.
+        const staffName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
+        setInternalStaffName(staffName || null);
         // Set presence using the valid internal ID
         consultationsService.setUserPresence(profile.id, 'online');
       }
@@ -133,13 +806,21 @@ export const Consultations = () => {
 
     initAdminSession();
 
+    // ── Proactive token refresh every 10 minutes ─────────────────────────
+    // This ensures the token is refreshed before it expires, preventing
+    // any interruption to the user's session
+    const tokenRefreshInterval = setInterval(() => {
+      ensureValidSession().catch(() => {});
+    }, 10 * 60 * 1000);
+
     return () => {
+      clearInterval(tokenRefreshInterval);
       const storedId = localStorage.getItem('_internalStaffId');
       if (storedId) {
         consultationsService.setUserPresence(storedId, 'offline').catch(() => {});
       }
     };
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, ensureValidSession]);
 
   useEffect(() => {
     if (internalStaffId) localStorage.setItem('_internalStaffId', internalStaffId);
@@ -179,15 +860,19 @@ export const Consultations = () => {
     if (!sessionReady) return;
     const loadConsultations = async () => {
       try {
+        // Ensure valid session before making API calls
+        await ensureValidSession();
+
         console.log('[Clinic] Loading consultations...');
         const data = await consultationsService.getAllConsultations(null, true); // Force refresh
-        console.log('[Clinic] Raw data from API:', data?.map(c => ({ id: c.id, status: c.status, patient_id: c.patient_id })));
+        console.log('[Clinic] Raw data from API:', data?.map(c => ({ id: c.id, status: c.status, patient_id: c.patient_id, is_archived: c.is_archived, consultation_type: c.consultation_type })));
 
         // Load conversations with last message and unread count
         const consultationsWithLastMessage = await Promise.all(
           (data || []).map(async (conv) => {
             try {
-              const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
+              // 🟢 FIX: Force refresh to get fresh messages
+              const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
               const lastMsg = msgs?.slice(-1)[0];
               // Count unread messages (from patients, not from staff)
               // Only count if internalStaffId is available and sender_id exists
@@ -223,19 +908,130 @@ export const Consultations = () => {
     };
     loadConsultations();
 
+    // 🔴 ENHANCED: More robust realtime handling for consultation status changes
     convChannelRef.current = consultationsService.subscribeToConsultations((payload) => {
+      console.log('[Clinic] Realtime consultation event:', payload.eventType, payload.new);
+
       if (payload.eventType === 'INSERT') {
-        const newConv = { ...payload.new, last_message: '', last_timestamp: 0 };
-        setConversations(prev => [newConv, ...prev]);
-        // REMOVED: Auto-select new consultation - user selects manually
+        // New consultation created - add to list and refresh messages/last message
+        const newConv = { ...payload.new, last_message: '', last_timestamp: 0, unread_count: 0 };
+
+        // 🟢 NEW: Show alert notification for new consultation
+        const patientName = payload.new.patient_name || 'A patient';
+        const consultType = payload.new.consultation_type === 'dental' ? 'Dental' : 'Medical';
+        setNewConsultationAlert({
+          id: payload.new.id,
+          message: `${patientName} started a new ${consultType} consultation`,
+          type: payload.new.consultation_type
+        });
+        // Auto-dismiss alert after 5 seconds
+        setTimeout(() => setNewConsultationAlert(null), 5000);
+
+        // Immediately fetch the last message and update
+        consultationsService.getMessagesByConsultationId(payload.new.id, true).then(msgs => {
+          if (msgs && msgs.length > 0) {
+            const lastMsg = msgs[msgs.length - 1];
+            setConversations(prev => {
+              const idx = prev.findIndex(c => c.id === payload.new.id);
+              if (idx !== -1) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], last_message: lastMsg.message, last_timestamp: new Date(lastMsg.created_at).getTime() };
+                return updated;
+              }
+              return [{ ...newConv, last_message: lastMsg.message, last_timestamp: new Date(lastMsg.created_at).getTime() }, ...prev];
+            });
+          } else {
+            setConversations(prev => {
+              // Avoid duplicates
+              if (prev.some(c => c.id === newConv.id)) return prev;
+              return [newConv, ...prev];
+            });
+          }
+        }).catch(() => {
+          // Fallback: just add the conversation
+          setConversations(prev => {
+            if (prev.some(c => c.id === newConv.id)) return prev;
+            return [newConv, ...prev];
+          });
+        });
       } else if (payload.eventType === 'UPDATE') {
-        setConversations(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+        const updatedConv = payload.new;
+
+        // Check if status changed to active - need to refresh data and show alert
+        setConversations(prev => {
+          const idx = prev.findIndex(c => c.id === updatedConv.id);
+
+          // Get existing conversation for comparison
+          const existing = idx !== -1 ? prev[idx] : null;
+          const statusChanged = existing && existing.status !== updatedConv.status;
+
+          // 🟢 NEW: Alert when consultation is reactivated (ended -> active)
+          if (statusChanged && updatedConv.status === 'active') {
+            const patientName = existing?.patient_name || updatedConv.patient_name || 'A patient';
+            const consultType = updatedConv.consultation_type === 'dental' ? 'Dental' : 'Medical';
+            setNewConsultationAlert({
+              id: updatedConv.id,
+              message: `${patientName} reactivated their ${consultType} consultation`,
+              type: updatedConv.consultation_type
+            });
+            setTimeout(() => setNewConsultationAlert(null), 5000);
+          }
+
+          if (idx === -1) {
+            // Conversation not in list - add it if it's active
+            if (updatedConv.status === 'active') {
+              return [{ ...updatedConv, last_message: '', last_timestamp: 0, unread_count: 0 }, ...prev];
+            }
+            return prev;
+          }
+
+          // If status changed to active, refresh the conversation data
+          if (statusChanged && updatedConv.status === 'active') {
+            // Fetch fresh data for this conversation
+            consultationsService.getMessagesByConsultationId(updatedConv.id, true).then(msgs => {
+              if (msgs && msgs.length > 0) {
+                const lastMsg = msgs[msgs.length - 1];
+                setConversations(prev => prev.map(c =>
+                  c.id === updatedConv.id
+                    ? { ...c, ...updatedConv, last_message: lastMsg.message, last_timestamp: new Date(lastMsg.created_at).getTime() }
+                    : c
+                ));
+              } else {
+                setConversations(prev => prev.map(c => c.id === updatedConv.id ? { ...c, ...updatedConv } : c));
+              }
+            }).catch(() => {
+              setConversations(prev => prev.map(c => c.id === updatedConv.id ? { ...c, ...updatedConv } : c));
+            });
+          }
+
+          return prev.map(c => c.id === updatedConv.id ? { ...c, ...updatedConv } : c);
+        });
+
+        // If this is the selected conversation, refresh messages too
+        if (selectedConvId === updatedConv.id && updatedConv.status === 'active') {
+          consultationsService.getMessagesByConsultationId(updatedConv.id, true).then(msgs => {
+            if (msgs) {
+              const formatted = (msgs || []).map(msg => ({
+                ...msg,
+                text: msg.message,
+                timestamp: new Date(msg.created_at).getTime(),
+                sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
+                read_at: msg.read_at,
+              }));
+              setMessages(formatted);
+            }
+          }).catch(() => {});
+        }
       }
     });
 
     // Poll for unread count updates more frequently (every 3 seconds) to detect when patient reads messages
+    // 🟢 FIX: Clear message cache before polling to ensure fresh data
     const pollInterval = setInterval(async () => {
       try {
+        // Clear message cache for all conversations to ensure we get fresh data
+        consultationsService.clearMessagesCache();
+
         const data = await consultationsService.getAllConsultations(null, true);
         if (!data) return;
 
@@ -244,7 +1040,8 @@ export const Consultations = () => {
         const updatedConversations = await Promise.all(
           (data || []).map(async (conv) => {
             try {
-              const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
+              // 🟢 FIX: Force refresh to get fresh messages
+              const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
               const lastMsg = msgs?.slice(-1)[0];
               const unreadCount = internalStaffId
                 ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
@@ -324,6 +1121,8 @@ export const Consultations = () => {
               read_at: newMsg.read_at,
             }];
           });
+          // 🟢 FIX: Clear message cache so next fetch gets fresh data
+          consultationsService.clearMessagesCache(convId);
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' }, (payload) => {
@@ -371,7 +1170,12 @@ export const Consultations = () => {
 
       setLoadingMsgs(true);
       try {
-        const data = await consultationsService.getMessagesByConsultationId(selectedConvId);
+        // Ensure valid session before loading messages
+        await ensureValidSession();
+
+        // 🟢 FIX: Always get fresh data for the selected conversation
+        // This ensures new messages are displayed immediately
+        const data = await consultationsService.getMessagesByConsultationId(selectedConvId, true);
         // 🔴 FIXED: Classify styling based on the staff's internal ID, not the raw UID
         const formatted = (data || []).map(msg => ({
           ...msg,
@@ -393,7 +1197,7 @@ export const Consultations = () => {
     // updates for every conversation, including whichever one is open.
   }, [selectedConvId, sessionReady]);
 
-  useEffect(() => { setShowPatientPanel(false); }, [selectedConvId]);
+  useEffect(() => { setShowPatientModal(false); }, [selectedConvId]);
   useEffect(() => { selectedConvIdRef.current = selectedConvId; }, [selectedConvId]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -409,6 +1213,10 @@ export const Consultations = () => {
   const sendMessage = async () => {
     // 🔴 FIXED: Ensure the staff ID is fully loaded before allowing sends
     if (!selectedConvId || !messageInput.trim() || !internalStaffId) return;
+
+    // Ensure valid session before sending
+    await ensureValidSession();
+
     const text = messageInput.trim();
     setMessageInput('');
     isSendingRef.current = true; // Prevent realtime dupe
@@ -416,7 +1224,11 @@ export const Consultations = () => {
       await consultationsService.sendMessage(selectedConvId, {
         text,
         sender_id: internalStaffId, // 🔴 FIXED: Injects the secure Postgres Internal Table ID
-        sender_name: currentUser.name || 'Clinic Staff',
+        // 🟢 FIXED: Use the staff member's real first+last name (fetched from the
+        // `users` table in initAdminSession) instead of currentUser.name, which
+        // doesn't exist on the localStorage user object and always fell back to
+        // the generic "Clinic Staff" placeholder.
+        sender_name: internalStaffName || currentUser.name || 'Clinic Staff',
         sender_role: currentUser.role || 'staff',
       });
 
@@ -448,6 +1260,9 @@ export const Consultations = () => {
   const markMessagesAsRead = async () => {
     const isEnded = conversations.find(c => c.id === selectedConvId)?.status === 'ended';
     if (!selectedConvId || !internalStaffId || isEnded) return;
+
+    // Ensure valid session before making API call
+    await ensureValidSession();
 
     console.log('[Clinic] Marking messages as read for consultation:', selectedConvId, 'staffId:', internalStaffId);
 
@@ -489,6 +1304,10 @@ export const Consultations = () => {
   // ── End Consultation ──────────────────────────────────────────────────
   const handleEndConsultation = async () => {
     if (!selectedConvId) return;
+
+    // Ensure valid session before making API call
+    await ensureValidSession();
+
     try {
       await consultationsService.endConsultation(selectedConvId);
       await consultationsService.sendMessage(selectedConvId, {
@@ -528,9 +1347,7 @@ export const Consultations = () => {
   const isConvEnded    = selectedConv?.status === 'ended';
   const patientId     = selectedConv?.patient_id;
   const patientProfile = patientProfiles[patientId] || {};
-  const patientName    = patientProfile.first_name
-    ? `${patientProfile.last_name || ''}, ${patientProfile.first_name || ''}`.trim()
-    : selectedConv?.patient_name || 'Unknown';
+  const patientName    = getFullName(patientProfile);
   const isPatientOnline = onlinePresence[patientId]?.status === 'online';
 
   const onlineClinicStaff = Object.entries(onlinePresence)
@@ -539,8 +1356,11 @@ export const Consultations = () => {
     .map(([, p]) => p.name || 'Staff');
 
   const visibleConversations = conversations.filter(conv => {
-    // Filter by tab
-    if (conv.consultation_type !== activeTab) return false;
+    // Filter by tab - only filter if activeTab is set
+    if (activeTab && conv.consultation_type !== activeTab) return false;
+
+    // Filter by archived status - only show non-archived (is_archived is null or false)
+    if (conv.is_archived === true) return false;
 
     // Filter by status
     if (filterStatus === 'active' && conv.status === 'ended') return false;
@@ -561,13 +1381,35 @@ export const Consultations = () => {
       if (!matchesName && !matchesId && !matchesProgram) return false;
     }
 
-    return conv.last_message || conv.id === selectedConvId;
+    return true; // Show all consultations in the list
   }).sort((a, b) => {
     // Sort by last_timestamp: newest first (desc) or oldest first (asc)
     const timeA = a.last_timestamp || 0;
     const timeB = b.last_timestamp || 0;
     return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
   });
+
+  // Debug: show why each conversation passes/fails filter
+  const debugFilter = conversations.map(conv => {
+    const tabMatch = activeTab ? conv.consultation_type === activeTab : true;
+    const archivedMatch = conv.is_archived !== true;
+    const statusMatch = filterStatus === 'all' ||
+      (filterStatus === 'active' && conv.status === 'active') ||
+      (filterStatus === 'ended' && conv.status === 'ended');
+    return {
+      id: conv.id,
+      type: conv.consultation_type,
+      status: conv.status,
+      archived: conv.is_archived,
+      tabMatch,
+      archivedMatch,
+      statusMatch,
+      passes: tabMatch && archivedMatch && statusMatch
+    };
+  });
+  console.log('[Clinic] filter debug:', debugFilter);
+  console.log('[Clinic] visibleConversations:', visibleConversations.map(c => ({ id: c.id, status: c.status, type: c.consultation_type, archived: c.is_archived })));
+  console.log('[Clinic] filterStatus:', filterStatus, 'activeTab:', activeTab);
 
   const unreadByTab = {};
   allowedTabs.forEach(tab => {
@@ -580,23 +1422,6 @@ export const Consultations = () => {
     }
   });
 
-  const handleOpenExamination = () => {
-    if (!patientId) return;
-    const person = {
-      uid: patientId, name: patientName,
-      firstName: patientProfile.first_name || '', lastName: patientProfile.last_name || '',
-      id: patientProfile.university_id || patientProfile.student_id || patientId,
-      role: patientProfile.role || '', prog: patientProfile.program || patientProfile.course || '',
-      year: patientProfile.year_level || '', section: patientProfile.section || '',
-      age: patientProfile.age || '', gender: patientProfile.gender || patientProfile.sex || '',
-      birthdate: patientProfile.birthdate || '', email: patientProfile.email || '',
-      phoneNumber: patientProfile.phone_number || '', department: patientProfile.department || '',
-      _raw: patientProfile,
-    };
-    localStorage.setItem('selectedPatient', JSON.stringify(person));
-    navigate(`/examinations?patientId=${patientId}`);
-  };
-
   return (
     <div className="flex h-full bg-white overflow-hidden relative">
       {/* ── MAGIC FIX: Hide hamburger when a chat is open on mobile ── */}
@@ -608,6 +1433,19 @@ export const Consultations = () => {
               display: none !important;
             }
           }
+          @keyframes slide-in {
+            from {
+              transform: translateX(100%);
+              opacity: 0;
+            }
+            to {
+              transform: translateX(0);
+              opacity: 1;
+            }
+          }
+          .animate-slide-in {
+            animation: slide-in 0.3s ease-out forwards;
+          }
         `}</style>
       )}
 
@@ -616,11 +1454,11 @@ export const Consultations = () => {
         selectedConvId ? 'hidden md:flex' : 'flex'
       }`}>
         <div className="p-4 border-b border-slate-200 bg-white">
-          <h3 className="font-extrabold text-[#466460] text-base">
+          <h3 className="font-extrabold text-[#466460] text-lg">
             <i className="fa-regular fa-comment-dots mr-2"></i>Consultations
           </h3>
           {onlineClinicStaff.length > 0 && (
-            <p className="text-[10px] text-emerald-600 mt-1 font-semibold">
+            <p className="text-xs text-emerald-600 mt-1 font-semibold">
               <i className="fa-solid fa-circle text-[7px] mr-1"></i>
               {onlineClinicStaff.join(', ')} also online
             </p>
@@ -638,19 +1476,19 @@ export const Consultations = () => {
                   setActiveTab(tab.key);
                   if (selectedConv && selectedConv.consultation_type !== tab.key) setSelectedConvId(null);
                 }}
-                className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 text-xs font-bold transition-all relative"
+                className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 text-sm font-bold transition-all relative"
                 style={{ color: isActive ? tab.accent : '#94a3b8', backgroundColor: isActive ? tab.light : 'transparent' }}
               >
                 <div className="flex items-center gap-1.5">
                   {tab.icon(isActive ? tab.accent : '#94a3b8')}
                   <span>{tab.label}</span>
                   {unreadByTab[tab.key] > 0 && (
-                    <span className="text-[8px] font-bold rounded-full px-1.5 py-0.5 text-white min-w-[16px] text-center" style={{ backgroundColor: '#e07a5f' }}>
+                    <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 text-white min-w-[18px] text-center" style={{ backgroundColor: '#e07a5f' }}>
                       {unreadByTab[tab.key]}
                     </span>
                   )}
                 </div>
-                <span className="text-[8px] font-normal" style={{ color: isActive ? tab.accent : '#94a3b8' }}>
+                <span className="text-[10px] font-normal" style={{ color: isActive ? tab.accent : '#94a3b8' }}>
                   {tab.sublabel}
                 </span>
                 {isActive && (
@@ -680,16 +1518,15 @@ export const Consultations = () => {
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center text-sm font-bold"
             >
               {sortOrder === 'desc' ? (
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-[#466460]">
-                  <path d="M3 5V15M3 15L8 10M3 15L-2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M9 10V2M9 2L14 7M9 2L4 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M9 3V15M9 15L4 10M9 15L14 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               ) : (
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path d="M3 13V3M3 3L8 8M3 3L-2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M9 8V16M9 16L14 11M9 16L4 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 15V3M9 3L4 8M9 3L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
+              
             </button>
           </div>
           <div className="flex gap-2 items-center">
@@ -718,9 +1555,7 @@ export const Consultations = () => {
             </div>
           ) : visibleConversations.map(conv => {
             const profile = patientProfiles[conv.patient_id] || {};
-            const displayName = profile.first_name
-              ? `${profile.last_name || ''}, ${profile.first_name || ''}`.trim()
-              : conv.patient_name || 'Unknown';
+            const displayName = formatNameForList(profile);
             const initial  = displayName.charAt(0).toUpperCase();
             const isOnline = onlinePresence[conv.patient_id]?.status === 'online';
             const isActive = selectedConvId === conv.id;
@@ -775,8 +1610,9 @@ export const Consultations = () => {
                     </span>
                   </div>
                   <div className="flex items-center gap-1 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(conv.patient_role)}`}>
-                      {conv.patient_role || 'patient'}
+                    {getGenderIcon(profile.sex)}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(profile.role || conv.patient_role)}`}>
+                      {profile.role || conv.patient_role || 'patient'}
                     </span>
                     <p className={`text-sm truncate ${hasUnread ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
                       {conv.last_message || 'No messages'}
@@ -796,12 +1632,14 @@ export const Consultations = () => {
           {/* Chat Header */}
           <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3 flex-shrink-0">
             <button
-              onClick={() => { setSelectedConvId(null); setShowPatientPanel(false); }}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
-              title="Close conversation"
-            >
-              <i className="fa-solid fa-xmark"></i>
-            </button>
+  onClick={() => { setSelectedConvId(null); setShowPatientModal(false); }}
+  className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
+  title="Back to conversations"
+>
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+  </svg>
+</button>
 
             {selectedConv ? (
               <>
@@ -809,7 +1647,7 @@ export const Consultations = () => {
                   const t = TABS.find(tab => tab.key === selectedConv.consultation_type) || TABS[0];
                   return (
                     <div
-                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold flex-shrink-0"
+                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold flex-shrink-0"
                       style={{ backgroundColor: t.light, color: t.accent }}
                     >
                       {t.icon(t.accent)}
@@ -828,13 +1666,19 @@ export const Consultations = () => {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm text-slate-800 truncate">{patientName}</p>
-                  <p className="text-[10px] text-slate-400 truncate">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-base text-slate-800 truncate">{patientName}</p>
+                    {getGenderIcon(patientProfile.sex)}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patient_role)}`}>
+                      {patientProfile.role || selectedConv?.patient_role || 'patient'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 truncate">
                     {patientProfile.university_id && `${patientProfile.university_id} • `}
                     {patientProfile.program && `${patientProfile.program}`}
                     {patientProfile.section && ` Sec ${patientProfile.section}`}
                   </p>
-                  <p className="text-[10px] text-slate-400 truncate">
+                  <p className="text-xs text-slate-400 truncate">
                     {isConvEnded
                       ? <span className="text-slate-500 font-semibold">● Session Ended</span>
                       : isPatientOnline
@@ -849,30 +1693,26 @@ export const Consultations = () => {
                     <button
                       onClick={handleEndConsultation}
                       title="End Consultation"
-                      className="flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm"
+                      className="flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-xs font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm"
                     >
-                      <i className="fa-solid fa-check-double text-[12px] md:text-[10px]"></i>
+                      <i className="fa-solid fa-check-double text-sm md:text-xs"></i>
                       <span className="hidden md:inline">End Consult</span>
                     </button>
                   )}
                   <button
-                    onClick={() => setShowPatientPanel(v => !v)}
-                    title={showPatientPanel ? 'Hide Records' : 'View Records'}
-                    className={`flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
-                      showPatientPanel
-                        ? 'bg-[#466460] text-white'
-                        : 'bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white'
-                    }`}
+                    onClick={() => setShowPatientModal(true)}
+                    title="View Records"
+                    className="flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white"
                   >
-                    <i className="fa-solid fa-address-card text-[12px] md:text-[10px]"></i>
-                    <span className="hidden md:inline">{showPatientPanel ? 'Hide' : 'Records'}</span>
+                    <i className="fa-solid fa-address-card text-sm md:text-xs"></i>
+                    <span className="hidden md:inline">Records</span>
                   </button>
                 </div>
               </>
             ) : (
               <div className="hidden md:block">
-                <p className="font-bold text-sm text-slate-800">Consultation Thread</p>
-                <p className="text-[10px] text-slate-400">Select a patient to view conversation</p>
+                <p className="font-bold text-base text-slate-800">Consultation Thread</p>
+                <p className="text-xs text-slate-400">Select a patient to view conversation</p>
               </div>
             )}
           </div>
@@ -901,7 +1741,7 @@ export const Consultations = () => {
                   if (item.type === 'date') {
                     return (
                       <div key={item.id} className="flex justify-center my-2">
-                        <span className="bg-slate-200 text-slate-500 px-3 py-1 rounded-full text-[10px] font-semibold">
+                        <span className="bg-slate-200 text-slate-500 px-3 py-1 rounded-full text-xs font-semibold">
                           {item.label}
                         </span>
                       </div>
@@ -915,22 +1755,22 @@ export const Consultations = () => {
                     <div key={item.id} className={`flex flex-col ${isClinic ? 'items-end' : 'items-start'}`}>
                       {isClinic && (
                         <div className="flex items-center gap-1.5 mb-0.5 mr-2">
-                          <p className="text-[9px] text-slate-400 font-semibold">{item.sender_name || 'Clinic Staff'}</p>
+                          <p className="text-xs text-slate-400 font-semibold">{item.sender_name || 'Clinic Staff'}</p>
                           {item.sender_role && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold capitalize">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold capitalize">
                               {item.sender_role}
                             </span>
                           )}
                         </div>
                       )}
-                      <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm ${
+                      <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-base leading-relaxed break-words shadow-sm ${
                         isClinic
                           ? 'bg-[#466460] text-white rounded-br-sm'
                           : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
                       }`}>
-                        {item.text}
+                        <LinkifiedText text={item.text} isPatient={!isClinic} />
                       </div>
-                      <div className={`text-[9px] text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
+                      <div className={`text-xs text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
                         <span>{formatTime(item.timestamp)}</span>
                         {/* Seen indicator - only show for clinic messages */}
                         {isClinic && (
@@ -945,7 +1785,7 @@ export const Consultations = () => {
                 {isConvEnded && (
                   <div className="flex items-center gap-3 my-4 opacity-60">
                     <div className="flex-1 h-px bg-slate-300"></div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
                     <div className="flex-1 h-px bg-slate-300"></div>
                   </div>
                 )}
@@ -969,150 +1809,32 @@ export const Consultations = () => {
               onChange={e => setMessageInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
               disabled={!selectedConvId || isConvEnded || !sessionReady}
-              className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-base outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
             <button
-              onClick={sendMessage}
-              disabled={!selectedConvId || !messageInput.trim() || isConvEnded || !sessionReady}
-              className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
-            >
-              <i className="fa-regular fa-paper-plane"></i>
-            </button>
+  onClick={sendMessage}
+  disabled={!selectedConvId || !messageInput.trim() || isConvEnded || !sessionReady}
+  className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+    <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
+  </svg>
+</button>
           </div>
         </div>
-
-        {/* ── Patient Records Side Panel ── */}
-        {showPatientPanel && selectedConv && (
-          <div className="absolute inset-0 z-50 md:relative md:z-auto w-full md:w-[420px] flex-shrink-0 md:border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-            <div className="px-4 py-3 md:py-3.5 border-b border-slate-200 flex items-center justify-between bg-white shadow-sm md:shadow-none flex-shrink-0">
-              <p className="text-xs font-extrabold text-[#466460] flex items-center gap-1.5">
-                <i className="fa-solid fa-address-card text-[11px]"></i>
-                Patient Records
-              </p>
-              <button
-                onClick={() => setShowPatientPanel(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100"
-              >
-                <i className="fa-solid fa-xmark text-sm"></i>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="relative flex-shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-lg">
-                    {patientName.charAt(0).toUpperCase()}
-                  </div>
-                  {isPatientOnline && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-sm text-slate-800 leading-tight truncate">{patientName}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.university_id || patientProfile.student_id || '—'}</p>
-                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patient_role)}`}>
-                    {patientProfile.role || selectedConv?.patient_role || 'patient'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: 'Age',    value: patientProfile.age    || '—' },
-                  { label: 'Gender', value: patientProfile.gender || patientProfile.sex || '—' },
-                  { label: 'Blood',  value: patientProfile.blood_type || '—' },
-                  { label: 'Civil',  value: patientProfile.civil_status || '—' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                    <p className="text-[8px] text-slate-400 uppercase tracking-wide">{label}</p>
-                    <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {patientProfile.birthdate && (
-                <div className="bg-slate-50 rounded-lg p-2 border border-slate-100">
-                  <p className="text-[8px] text-slate-400 uppercase tracking-wide">Birthdate</p>
-                  <p className="text-xs font-bold text-slate-700 mt-0.5">{patientProfile.birthdate}</p>
-                </div>
-              )}
-
-              <div>
-                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Contact</p>
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
-                    <i className="fa-solid fa-envelope text-[#466460] w-3"></i>
-                    <span className="truncate">{patientProfile.email || '—'}</span>
-                  </p>
-                  {patientProfile.phone_number && (
-                    <p className="text-[11px] text-slate-600 flex items-center gap-1.5">
-                      <i className="fa-solid fa-phone text-[#466460] w-3"></i>
-                      {patientProfile.phone_number}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {(patientProfile.program || patientProfile.course || patientProfile.department) && (
-                <div>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Program</p>
-                  <p className="text-[11px] font-semibold text-slate-700">
-                    {patientProfile.program || patientProfile.course || '—'}
-                    {patientProfile.year_level ? ` · ${patientProfile.year_level}` : ''}
-                    {patientProfile.section   ? ` · Sec ${patientProfile.section}` : ''}
-                  </p>
-                  {patientProfile.department && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{patientProfile.department}</p>
-                  )}
-                </div>
-              )}
-
-              {patientProfile.home_address && (
-                <div>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Address</p>
-                  <p className="text-[11px] text-slate-600">{patientProfile.home_address}</p>
-                </div>
-              )}
-
-              {patientProfile.emergency_contact?.name && (
-                <div>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-2">Emergency Contact</p>
-                  <p className="text-[11px] font-semibold text-slate-700">
-                    {patientProfile.emergency_contact.name}
-                    {patientProfile.emergency_contact.relationship
-                      ? ` (${patientProfile.emergency_contact.relationship})` : ''}
-                  </p>
-                  {patientProfile.emergency_contact.phone && (
-                    <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                      <i className="fa-solid fa-phone text-[9px]"></i>
-                      {patientProfile.emergency_contact.phone}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Sticky Action Footer */}
-            <div className="p-4 bg-white border-t border-slate-100 flex flex-col gap-2 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
-              <button
-                onClick={handleOpenExamination}
-                className="w-full bg-gradient-to-br from-[#e07a5f] to-[#c96a4f] text-white text-[12px] font-bold py-3 md:py-2.5 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-sm"
-              >
-                <i className="fa-solid fa-stethoscope text-[12px]"></i>
-                Open Full Examination
-              </button>
-
-              <button
-                onClick={() => navigate('/records')}
-                className="w-full bg-[#e0eceb] text-[#466460] text-[12px] font-bold py-3 md:py-2.5 rounded-xl hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
-              >
-                <i className="fa-solid fa-folder-open text-[12px]"></i>
-                Go to Records
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Patient Records Modal */}
+      {showPatientModal && selectedConv && createPortal(
+        <PatientRecordsModal
+          patientId={patientId}
+          patientName={patientName}
+          patientRole={patientProfile.role || selectedConv?.patient_role}
+          consultationType={selectedConv?.consultation_type}
+          onClose={() => setShowPatientModal(false)}
+        />,
+        document.body
+      )}
 
       {/* Toast */}
       {toast && (
@@ -1121,6 +1843,39 @@ export const Consultations = () => {
         }`}>
           <i className={`fa-solid ${toast.type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'}`}></i>
           {toast.text}
+        </div>
+      )}
+
+      {/* 🟢 NEW: Real-time consultation alert - shows when patient starts/reactivates consultation */}
+      {newConsultationAlert && (
+        <div
+          className="fixed top-4 right-4 z-[70] animate-slide-in cursor-pointer"
+          onClick={() => {
+            setSelectedConvId(newConsultationAlert.id);
+            setNewConsultationAlert(null);
+          }}
+        >
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border-l-4 bg-white ${
+            newConsultationAlert.type === 'dental'
+              ? 'border-l-blue-500'
+              : 'border-l-emerald-500'
+          }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+              newConsultationAlert.type === 'dental' ? 'bg-blue-100' : 'bg-emerald-100'
+            }`}>
+              <i className={`fa-solid fa-bell ${newConsultationAlert.type === 'dental' ? 'text-blue-500' : 'text-emerald-500'}`}></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-800 truncate">New Consultation!</p>
+              <p className="text-xs text-slate-500 truncate">{newConsultationAlert.message}</p>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setNewConsultationAlert(null); }}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+          </div>
         </div>
       )}
     </div>

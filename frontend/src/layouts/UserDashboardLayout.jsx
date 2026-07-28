@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { UserNotificationBell, UserNotificationPanel } from "../components/UserNotifications.jsx";
 import { supabase } from "../supabase";
 import notificationsService from "../services/notifications.service.js";
+import { createPortal } from "react-dom";
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
 const HomeIcon = ({ active }) => (
@@ -192,33 +193,32 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
         )}
       </div>
 
-      {/* ── Sign Out Confirmation Modal ── */}
-      {showLogoutModal && (
-        <div
-          onClick={(e) => e.target === e.currentTarget && setShowLogoutModal(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.55)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 999999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-        >
+        {showLogoutModal && createPortal(
           <div
+            onClick={(e) => e.target === e.currentTarget && setShowLogoutModal(false)}
             style={{
-              background: '#fff',
-              padding: '36px 32px',
-              borderRadius: 20,
-              width: '100%',
-              maxWidth: 320,
-              textAlign: 'center',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.55)',
+              backdropFilter: 'blur(3px)',
+              zIndex: 999999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16
             }}
           >
+            <div
+              style={{
+                background: '#fff',
+                padding: '36px 32px',
+                borderRadius: 20,
+                width: '100%',
+                maxWidth: 320,
+                textAlign: 'center',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+              }}
+            >
             <h3 style={{ margin: '0 0 8px', color: '#1a1a1a', fontSize: 20, fontWeight: 800 }}>
               Confirm Sign Out
             </h3>
@@ -266,8 +266,9 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+  document.body
+)}
     </>
   );
 }
@@ -508,12 +509,6 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
                 </button>
               );
             })}
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <div className="bg-slate-50 rounded-2xl p-3 mb-2">
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">Status</p>
-                <p className="text-[11px] font-bold text-emerald-600">CLEARED / FIT</p>
-              </div>
-            </div>
           </nav>
         </aside>
 

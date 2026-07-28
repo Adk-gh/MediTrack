@@ -354,7 +354,7 @@ const DrumColumn = ({ items, selIdx, onSelect, disablePastDates, getIsDisabled }
                 alignItems: 'center',
                 justifyContent: 'center',
                 scrollSnapAlign: 'center',
-                fontSize: dist === 0 ? 20 : 16,
+                fontSize: dist === 0 ? 24 : 18,
                 fontWeight: weight,
                 color,
                 opacity,
@@ -418,7 +418,7 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit, disablePastDates 
 
   return (
     <div className="flex flex-col">
-      <div className="text-center text-[13px] font-semibold text-[#1e293b] mb-3 tracking-wide">
+      <div className="text-center text-[15px] font-semibold text-[#1e293b] mb-3 tracking-wide">
         Select Date
       </div>
       <div className="flex items-center justify-center gap-1 px-2" style={{ height: 44 * 7 }}>
@@ -429,14 +429,14 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit, disablePastDates 
       <div className="flex border-t border-[#eef2f6] mt-2">
         <button
           onClick={onCancel}
-          className="flex-1 py-[14px] text-[14px] font-semibold text-[#475569] bg-transparent border-none cursor-pointer hover:bg-[#f8fafc] transition-colors rounded-bl-[12px]"
+          className="flex-1 py-[14px] text-[16px] font-semibold text-[#475569] bg-transparent border-none cursor-pointer hover:bg-[#f8fafc] transition-colors rounded-bl-[12px]"
         >
           Cancel
         </button>
         <div className="w-px bg-[#eef2f6]" />
         <button
           onClick={onSubmit}
-          className="flex-1 py-[14px] text-[14px] font-semibold text-[#e05a2b] bg-transparent border-none cursor-pointer hover:bg-[#fff5f2] transition-colors rounded-br-[12px]"
+          className="flex-1 py-[14px] text-[16px] font-semibold text-[#e05a2b] bg-transparent border-none cursor-pointer hover:bg-[#fff5f2] transition-colors rounded-br-[12px]"
         >
           Submit
         </button>
@@ -448,7 +448,7 @@ const DrumDatePicker = ({ value, onChange, onCancel, onSubmit, disablePastDates 
 // ── Sub-components ────────────────────────────────────────────────────────────
 const Snackbar = ({ message, type, visible }) => (
   <div className={`fixed bottom-7 left-1/2 z-[9999] flex items-center gap-2.5 px-5 py-3 rounded-xl
-    text-white text-[13px] font-semibold shadow-[0_8px_24px_rgba(0,0,0,0.2)]
+    text-white text-[15px] font-semibold shadow-[0_8px_24px_rgba(0,0,0,0.2)]
     transition-transform duration-400 font-['DM_Sans',sans-serif]
     ${visible ? 'translate-x-[-50%] translate-y-0' : 'translate-x-[-50%] translate-y-[80px]'}
     ${type === 'success'
@@ -458,10 +458,10 @@ const Snackbar = ({ message, type, visible }) => (
         : 'bg-gradient-to-br from-[#991b1b] to-[#dc2626]'}`}
   >
     {type === 'success'
-      ? <IconCircleCheck size={14} color="white" />
+      ? <IconCircleCheck size={16} color="white" />
       : type === 'warning'
-        ? <IconCircleExclamation size={14} color="white" />
-        : <IconCircleExclamation size={14} color="white" />
+        ? <IconCircleExclamation size={16} color="white" />
+        : <IconCircleExclamation size={16} color="white" />
     }
     {message}
   </div>
@@ -654,9 +654,6 @@ export const Appointments = () => {
   );
 
   // ── Rejected Appointments ──
-  // NOTE: assumes declineAppointment sets status to 'declined'. If your
-  // AppointmentContext uses a different string (e.g. 'rejected'), update
-  // the filter below to match.
   const rejectedAppts = appointments
     .filter(a => a.status === 'declined')
     .sort((a, b) => new Date(b.bookedAt || b.created_at) - new Date(a.bookedAt || a.created_at));
@@ -711,7 +708,6 @@ export const Appointments = () => {
       (a.reason || '').toLowerCase().includes(searchTerm);
     return matchStatus && matchSearch;
   }).sort((a, b) => {
-    // Sort by date (newest first), then by time
     const dateA = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
     const dateB = new Date(Number(b.year), Number(b.month) - 1, Number(b.day));
     if (dateB.getTime() !== dateA.getTime()) return dateB.getTime() - dateA.getTime();
@@ -724,7 +720,6 @@ export const Appointments = () => {
   const selectedDayAppts = scheduledAppts
     .filter(a => Number(a.year) === calYear && Number(a.month) === calMonth && Number(a.day) === selectedDay)
     .sort((a, b) => {
-      // Order: approved → missed → done
       const order = { approved: 0, missed: 1, done: 2 };
       const oa = order[a.status] ?? 3;
       const ob = order[b.status] ?? 3;
@@ -819,22 +814,14 @@ export const Appointments = () => {
     : null;
 
   // ── Pending List ──────────────────────────────────────────────────────────
-  // NOTE: this is called directly as PendingList() below (not rendered as
-  // <PendingList />). Rendering it as a JSX component tag would make React
-  // treat it as a brand-new component type on every keystroke (since this
-  // function is redefined on every render of Appointments), which forces a
-  // full unmount/remount of this subtree — including the <input> — and wipes
-  // focus after every character typed. Calling it as a plain function inlines
-  // its returned elements into the existing tree instead, so React just
-  // updates them and the input keeps focus.
   const PendingList = () => (
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
-          <div className="text-[13px] font-semibold text-[#1e293b]">Pending Requests</div>
-          <div className="text-[10px] text-[#64748b] mt-[1px]">Select patients to schedule in batch</div>
+          <div className="text-[16px] font-semibold text-[#1e293b]">Pending Requests</div>
+          <div className="text-[12px] text-[#64748b] mt-[1px]">Select patients to schedule in batch</div>
         </div>
-        <span className="text-[10px] font-semibold text-[#854F0B] bg-[#FAEEDA] px-[9px] py-[2px] rounded-[20px]">
+        <span className="text-[12px] font-semibold text-[#854F0B] bg-[#FAEEDA] px-[9px] py-[2px] rounded-[20px]">
           {pendingRequests.length} pending
         </span>
       </div>
@@ -845,12 +832,12 @@ export const Appointments = () => {
           placeholder="Search name, ID, dept..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-          className="w-full px-[11px] py-[6px] border border-[#e2e8f0] rounded-lg text-[12px] bg-[#f8fafc]
+          className="w-full px-[11px] py-[8px] border border-[#e2e8f0] rounded-lg text-[14px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
         {filteredPending.length > 0 && (
           <div className="flex items-center justify-between px-[2px]">
-            <span className="text-[10px] text-[#64748b]">
+            <span className="text-[12px] text-[#64748b]">
               {selectedIds.size > 0
                 ? `${selectedIds.size} of ${filteredPending.length} selected`
                 : `${filteredPending.length} shown`}
@@ -858,13 +845,13 @@ export const Appointments = () => {
             <div className="flex gap-2">
               {selectedIds.size < filteredPending.length && (
                 <button onClick={selectAll}
-                  className="text-[10px] font-semibold text-[#466460] hover:underline bg-transparent border-none cursor-pointer p-0">
+                  className="text-[12px] font-semibold text-[#466460] hover:underline bg-transparent border-none cursor-pointer p-0">
                   Select all
                 </button>
               )}
               {selectedIds.size > 0 && (
                 <button onClick={clearAll}
-                  className="text-[10px] font-semibold text-[#94a3b8] hover:underline bg-transparent border-none cursor-pointer p-0">
+                  className="text-[12px] font-semibold text-[#94a3b8] hover:underline bg-transparent border-none cursor-pointer p-0">
                   Clear
                 </button>
               )}
@@ -874,13 +861,13 @@ export const Appointments = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0 bg-white
-        [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+        [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
         {filteredPending.length === 0 ? (
-          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[12px]">
-            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[14px]">
+            <div className="flex justify-center mb-3 text-[#cbd5e1]">
               {pendingRequests.length === 0
-                ? <IconInbox size={28} />
-                : <IconMagnifyingGlass size={28} />
+                ? <IconInbox size={32} />
+                : <IconMagnifyingGlass size={32} />
               }
             </div>
             {pendingRequests.length === 0 ? 'All requests processed' : 'No results found'}
@@ -893,54 +880,60 @@ export const Appointments = () => {
             <div
               key={r.id}
               onClick={() => toggleSelect(r.id)}
-              className={`flex items-start gap-[9px] px-[11px] py-[10px] border rounded-[10px] mb-[5px]
+              className={`flex items-start gap-[10px] px-[12px] py-[12px] border rounded-[10px] mb-[6px]
                 cursor-pointer transition-all relative overflow-hidden group
                 ${isChecked
                   ? 'border-[#466460] bg-[#E1F5EE]'
                   : 'border-[#eef2f6] hover:border-[#f0a030] hover:bg-[#fffdf7]'}`}
             >
-              <div className={`absolute left-0 top-0 bottom-0 w-[3px] transition-opacity duration-150
+              <div className={`absolute left-0 top-0 bottom-0 w-[4px] transition-opacity duration-150
                 ${isChecked ? 'bg-[#466460] opacity-100' : 'bg-[#EF9F27] opacity-0 group-hover:opacity-100'}`} />
 
-              <div className={`w-[17px] h-[17px] rounded-[4px] border-2 flex items-center justify-center
+              <div className={`w-[20px] h-[20px] rounded-[4px] border-2 flex items-center justify-center
                 shrink-0 mt-[1px] transition-all
                 ${isChecked
                   ? 'bg-[#466460] border-[#466460]'
                   : 'bg-white border-[#cbd5e1] group-hover:border-[#466460]'}`}>
-                {isChecked && <IconCheck size={9} />}
+                {isChecked && <IconCheck size={11} />}
               </div>
 
-              <div className={`font-['DM_Mono',monospace] text-[10px] font-medium rounded-[5px] px-[6px]
-                py-[2px] min-w-[26px] text-center shrink-0 mt-[1px]
+              <div className={`font-['DM_Mono',monospace] text-[12px] font-medium rounded-[5px] px-[8px]
+                py-[2px] min-w-[28px] text-center shrink-0 mt-[1px]
                 ${isChecked ? 'text-[#0F6E56] bg-[#E1F5EE] border border-[#9FE1CB]' : 'text-[#854F0B] bg-[#FAEEDA]'}`}>
                 #{rank}
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-[#1e293b] leading-[1.3]">{r.name}</div>
-                <div className="text-[10px] text-[#64748b] mt-[2px] leading-[1.5]">
-                  {getUserData(r).university_id} &middot; {getUserData(r).department}
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-[15px] font-semibold text-[#1e293b] leading-[1.3] truncate">
+                  {r.name}
                 </div>
-                <div className="text-[10px] text-[#64748b] leading-[1.5]">
-                  {getUserData(r).program} &middot; Sec {getUserData(r).section}
-                </div>
-                <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px]
-                  rounded-[20px] inline-block mt-[3px] font-medium">{r.reason}</span>
-                <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
-                  <IconClock size={10} />
-                  Requested {bTime}
-                </div>
+                <span className="text-[12px] text-[#6d28d9] bg-[#ede9fe] px-[8px] py-[2px]
+                  rounded-[20px] font-medium shrink-0 whitespace-nowrap">
+                  {r.reason}
+                </span>
               </div>
+              <div className="text-[12px] text-[#64748b] mt-[4px] leading-[1.5]">
+                {getUserData(r).university_id} &middot; {getUserData(r).department}
+              </div>
+              <div className="text-[12px] text-[#64748b] leading-[1.5]">
+                {getUserData(r).program} &middot; Sec {getUserData(r).section}
+              </div>
+              <div className="text-[11px] text-[#94a3b8] mt-[5px] flex items-center gap-[4px]">
+                <IconClock size={11} />
+                Requested {bTime}
+              </div>
+            </div>
             </div>
           );
         })}
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="shrink-0 border-t-2 border-[#e0eceb] bg-[#f8fdfc] px-3 py-3 flex flex-col gap-2.5">
+        <div className="shrink-0 border-t-2 border-[#e0eceb] bg-[#f8fdfc] px-4 py-4 flex flex-col gap-3">
           {!selectedDay && (
-            <div className="text-[10.5px] text-[#854F0B] bg-[#FAEEDA] px-2 py-[6px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[5px]">
-              <IconCircleInfo size={13} />
+            <div className="text-[12.5px] text-[#854F0B] bg-[#FAEEDA] px-3 py-[8px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[6px]">
+              <IconCircleInfo size={14} />
               Select a date on the calendar to schedule
             </div>
           )}
@@ -953,22 +946,22 @@ export const Appointments = () => {
                 setBatchModal(true);
               }}
               disabled={!selectedDay}
-              className={`flex-1 py-[8px] border-none rounded-[8px] text-[12px] font-semibold flex items-center justify-center gap-[5px] transition-all
+              className={`flex-1 py-[10px] border-none rounded-[8px] text-[14px] font-semibold flex items-center justify-center gap-[6px] transition-all
                 ${selectedDay
                   ? 'bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white cursor-pointer hover:opacity-90'
                   : 'bg-[#e2e8f0] text-[#94a3b8] cursor-not-allowed'}`}
             >
-              <IconCalendarCheck size={13} />
+              <IconCalendarCheck size={14} />
               Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
             </button>
             <button
               onClick={handleDeclineClick}
               title="Decline selected"
-              className="px-[13px] py-[8px] bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]
-                rounded-[8px] text-[12px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]
+              className="px-[16px] py-[10px] bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]
+                rounded-[8px] text-[14px] font-semibold cursor-pointer transition-colors hover:bg-[#fee2e2]
                 flex items-center justify-center"
             >
-              <IconXmark size={12} />
+              <IconXmark size={14} />
             </button>
           </div>
         </div>
@@ -977,36 +970,33 @@ export const Appointments = () => {
   );
 
   // ── Approved Appointments List ─────────────────────────────────────────────
-  // Same note as PendingList — call as ApprovedList(), don't render as <ApprovedList />.
   const ApprovedList = () => (
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
-          <div className="text-[13px] font-semibold text-[#1e293b]">Approved Appointments</div>
-          <div className="text-[10px] text-[#64748b] mt-[1px]">View all scheduled appointments</div>
+          <div className="text-[16px] font-semibold text-[#1e293b]">Approved Appointments</div>
+          <div className="text-[12px] text-[#64748b] mt-[1px]">View all scheduled appointments</div>
         </div>
-        <span className="text-[10px] font-semibold text-[#0F6E56] bg-[#E1F5EE] px-[9px] py-[2px] rounded-[20px]">
+        <span className="text-[12px] font-semibold text-[#0F6E56] bg-[#E1F5EE] px-[9px] py-[2px] rounded-[20px]">
           {allApprovedAppts.length} total
         </span>
       </div>
 
-      {/* Search and Filter Bar */}
       <div className="px-3 py-2 border-b border-[#eef2f6] shrink-0 flex flex-col gap-1.5 bg-white">
         <input
           type="text"
           placeholder="Search name, ID, dept, reason..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-          className="w-full px-[11px] py-[6px] border border-[#e2e8f0] rounded-lg text-[12px] bg-[#f8fafc]
+          className="w-full px-[11px] py-[8px] border border-[#e2e8f0] rounded-lg text-[14px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
         <div className="flex gap-2">
-          {/* Status Filter */}
           <div className="relative flex-1">
             <select
               value={filterStatus}
               onChange={e => setFilterStatus(e.target.value)}
-              className="w-full appearance-none px-[10px] py-[6px] pr-[24px] border border-[#e2e8f0] rounded-lg text-[11px]
+              className="w-full appearance-none px-[12px] py-[8px] pr-[28px] border border-[#e2e8f0] rounded-lg text-[13px]
                 bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
             >
               <option value="All">All Status</option>
@@ -1014,14 +1004,13 @@ export const Appointments = () => {
               <option value="done">Done</option>
               <option value="missed">Missed</option>
             </select>
-            <IconChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
+            <IconChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
           </div>
-          {/* Date Range Filter */}
           <div className="relative flex-1">
             <select
               value={filterDateRange}
               onChange={e => setFilterDateRange(e.target.value)}
-              className="w-full appearance-none px-[10px] py-[6px] pr-[24px] border border-[#e2e8f0] rounded-lg text-[11px]
+              className="w-full appearance-none px-[12px] py-[8px] pr-[28px] border border-[#e2e8f0] rounded-lg text-[13px]
                 bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
             >
               <option value="All">All Dates</option>
@@ -1029,32 +1018,31 @@ export const Appointments = () => {
               <option value="thisWeek">This Week</option>
               <option value="thisMonth">This Month</option>
             </select>
-            <IconChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
+            <IconChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
           </div>
         </div>
-        <div className="text-[10px] text-[#64748b] px-[2px]">
+        <div className="text-[12px] text-[#64748b] px-[2px] mt-1">
           {filteredApproved.length} appointment{filteredApproved.length !== 1 ? 's' : ''} shown
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0 bg-white
-        [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+        [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
         {filteredApproved.length === 0 ? (
-          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[12px]">
-            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[14px]">
+            <div className="flex justify-center mb-3 text-[#cbd5e1]">
               {allApprovedAppts.length === 0
-                ? <IconInbox size={28} />
-                : <IconMagnifyingGlass size={28} />
+                ? <IconInbox size={32} />
+                : <IconMagnifyingGlass size={32} />
               }
             </div>
             {allApprovedAppts.length === 0 ? 'No approved appointments yet' : 'No results match your filters'}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {filteredApproved.map(a => {
               const isDone   = a.status === 'done';
               const isMissed = a.status === 'missed';
-              // Build date from year/month/day fields, or fallback to created_at if available
               const dateObj = (a.year && a.month && a.day)
                 ? new Date(Number(a.year), Number(a.month) - 1, Number(a.day))
                 : (a.created_at ? new Date(a.created_at) : new Date());
@@ -1064,44 +1052,44 @@ export const Appointments = () => {
                 <div
                   key={a.id}
                   onClick={() => setDetailModal(a)}
-                  className={`flex items-start gap-[9px] px-[11px] py-[10px] border rounded-[10px] cursor-pointer transition-all
+                  className={`flex items-start gap-[10px] px-[12px] py-[12px] border rounded-[10px] cursor-pointer transition-all
                     ${isDone
                       ? 'border-[#eef2f6] bg-[#f8fafc] hover:border-[#cbd5e1]'
                       : isMissed
                         ? 'border-[#fde68a] bg-[#fffbeb] hover:border-[#f59e0b]'
                         : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
                 >
-                  <div className={`w-[17px] h-[17px] rounded-full flex items-center justify-center shrink-0 mt-[1px]
+                  <div className={`w-[20px] h-[20px] rounded-full flex items-center justify-center shrink-0 mt-[2px]
                     ${isDone ? 'bg-[#94a3b8]' : isMissed ? 'bg-[#f59e0b]' : 'bg-[#1D9E75]'}`}>
                     {isDone ? (
-                      <IconCheck size={9} color="white" />
+                      <IconCheck size={11} color="white" />
                     ) : isMissed ? (
-                      <IconBanCircle size={10} color="white" />
+                      <IconBanCircle size={12} color="white" />
                     ) : null}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[12px] font-semibold leading-[1.3]
+                    <div className={`text-[15px] font-semibold leading-[1.3]
                       ${isDone ? 'text-[#94a3b8]' : isMissed ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
                       {a.name}
                     </div>
-                    <div className="text-[10px] text-[#64748b] mt-[2px]">
+                    <div className="text-[12px] text-[#64748b] mt-[4px]">
                       {getUserData(a).university_id} &middot; {getUserData(a).department}
                     </div>
-                    <div className="text-[10px] text-[#64748b]">
+                    <div className="text-[12px] text-[#64748b] mt-[2px]">
                       {getUserData(a).program} &middot; Sec {getUserData(a).section}
                     </div>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px] rounded-[20px]">
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <span className="text-[12px] text-[#6d28d9] bg-[#ede9fe] px-[8px] py-[2px] rounded-[20px]">
                         {a.reason}
                       </span>
-                      <span className={`text-[9px] font-semibold px-[8px] py-[1px] rounded-[20px] uppercase
+                      <span className={`text-[11px] font-bold px-[8px] py-[2px] rounded-[20px] uppercase
                         ${isDone ? 'bg-[#f1f5f9] text-[#64748b]' : isMissed ? 'bg-[#fef3c7] text-[#92400e]' : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
                         {a.status}
                       </span>
                     </div>
-                    <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
-                      <IconCalendar size={10} />
+                    <div className="text-[11px] text-[#94a3b8] mt-[5px] flex items-center gap-[4px]">
+                      <IconCalendar size={11} />
                       {apptDate} &middot; {a.time}
                     </div>
                   </div>
@@ -1109,9 +1097,9 @@ export const Appointments = () => {
                   {!isDone && !isMissed && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleMarkDone(e, a.id); }}
-                      className="px-[8px] py-[3px] text-[9px] font-bold rounded-[6px] border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer transition-colors shrink-0 hover:bg-[#EAF3DE] flex items-center gap-[3px]"
+                      className="px-[10px] py-[4px] text-[11px] font-bold rounded-[6px] border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer transition-colors shrink-0 hover:bg-[#EAF3DE] flex items-center gap-[4px]"
                     >
-                      <IconCheck size={8} style={{ stroke: '#1D9E75' }} />
+                      <IconCheck size={10} style={{ stroke: '#1D9E75' }} />
                       Done
                     </button>
                   )}
@@ -1125,15 +1113,14 @@ export const Appointments = () => {
   );
 
   // ── Rejected Appointments List ─────────────────────────────────────────────
-  // Same note as PendingList — call as RejectedList(), don't render as <RejectedList />.
   const RejectedList = () => (
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
-          <div className="text-[13px] font-semibold text-[#1e293b]">Declined Requests</div>
-          <div className="text-[10px] text-[#64748b] mt-[1px]">Requests that were declined</div>
+          <div className="text-[16px] font-semibold text-[#1e293b]">Declined Requests</div>
+          <div className="text-[12px] text-[#64748b] mt-[1px]">Requests that were declined</div>
         </div>
-        <span className="text-[10px] font-semibold text-[#991b1b] bg-[#fef2f2] px-[9px] py-[2px] rounded-[20px]">
+        <span className="text-[12px] font-semibold text-[#991b1b] bg-[#fef2f2] px-[9px] py-[2px] rounded-[20px]">
           {rejectedAppts.length} rejected
         </span>
       </div>
@@ -1144,19 +1131,19 @@ export const Appointments = () => {
           placeholder="Search name, ID, dept..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-          className="w-full px-[11px] py-[6px] border border-[#e2e8f0] rounded-lg text-[12px] bg-[#f8fafc]
+          className="w-full px-[11px] py-[8px] border border-[#e2e8f0] rounded-lg text-[14px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
       </div>
 
       <div className="flex-1 overflow-y-auto px-[10px] py-[8px] min-h-0 bg-white
-        [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+        [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
         {filteredRejected.length === 0 ? (
-          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[12px]">
-            <div className="flex justify-center mb-2 text-[#cbd5e1]">
+          <div className="text-center py-[30px] px-4 text-[#94a3b8] text-[14px]">
+            <div className="flex justify-center mb-3 text-[#cbd5e1]">
               {rejectedAppts.length === 0
-                ? <IconInbox size={28} />
-                : <IconMagnifyingGlass size={28} />
+                ? <IconInbox size={32} />
+                : <IconMagnifyingGlass size={32} />
               }
             </div>
             {rejectedAppts.length === 0 ? 'No rejected requests' : 'No results found'}
@@ -1167,26 +1154,26 @@ export const Appointments = () => {
             <div
               key={r.id}
               onClick={() => setDetailModal(r)}
-              className="flex items-start gap-[9px] px-[11px] py-[10px] border border-[#eef2f6]
-                rounded-[10px] mb-[5px] cursor-pointer transition-all relative overflow-hidden
+              className="flex items-start gap-[10px] px-[12px] py-[12px] border border-[#eef2f6]
+                rounded-[10px] mb-[6px] cursor-pointer transition-all relative overflow-hidden
                 hover:border-[#fca5a5] hover:bg-[#fffafa]"
             >
-              <div className="w-[17px] h-[17px] rounded-full bg-[#dc2626] flex items-center justify-center shrink-0 mt-[1px]">
-                <IconXmark size={9} color="white" />
+              <div className="w-[20px] h-[20px] rounded-full bg-[#dc2626] flex items-center justify-center shrink-0 mt-[2px]">
+                <IconXmark size={11} color="white" />
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-[#1e293b] leading-[1.3]">{r.name}</div>
-                <div className="text-[10px] text-[#64748b] mt-[2px] leading-[1.5]">
+                <div className="text-[15px] font-semibold text-[#1e293b] leading-[1.3]">{r.name}</div>
+                <div className="text-[12px] text-[#64748b] mt-[4px] leading-[1.5]">
                   {getUserData(r).university_id} &middot; {getUserData(r).department}
                 </div>
-                <div className="text-[10px] text-[#64748b] leading-[1.5]">
+                <div className="text-[12px] text-[#64748b] leading-[1.5]">
                   {getUserData(r).program} &middot; Sec {getUserData(r).section}
                 </div>
-                <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-[6px] py-[1px]
-                  rounded-[20px] inline-block mt-[3px] font-medium">{r.reason}</span>
-                <div className="text-[9px] text-[#94a3b8] mt-[3px] flex items-center gap-[3px]">
-                  <IconClock size={10} />
+                <span className="text-[12px] text-[#6d28d9] bg-[#ede9fe] px-[8px] py-[2px]
+                  rounded-[20px] inline-block mt-[5px] font-medium">{r.reason}</span>
+                <div className="text-[11px] text-[#94a3b8] mt-[5px] flex items-center gap-[4px]">
+                  <IconClock size={11} />
                   Requested {bTime}
                 </div>
               </div>
@@ -1248,49 +1235,46 @@ export const Appointments = () => {
   };
 
   // ── Calendar Panel ────────────────────────────────────────────────────────
-  // Same note as PendingList — call as CalendarPanel(), don't render as <CalendarPanel />.
   const CalendarPanel = () => (
-
     <div className="flex flex-col h-full bg-[#fafbfc] overflow-hidden w-full">
-      <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
+      <div className="px-4 py-4 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <button
           onClick={() => changeMonth(-1)}
-          className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
+          className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[32px] h-[32px]
             rounded-[8px] flex items-center justify-center transition-colors
             hover:bg-[#E1F5EE] hover:border-[#466460] hover:text-[#466460]"
         >
-          <IconChevronLeft size={12} />
+          <IconChevronLeft size={14} />
         </button>
 
-        <span className="text-[14px] font-semibold text-[#1e293b]">{MONTHS[calMonth - 1]} {calYear}</span>
+        <span className="text-[18px] font-bold text-[#1e293b]">{MONTHS[calMonth - 1]} {calYear}</span>
 
         <button
           onClick={() => changeMonth(1)}
-          className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[28px] h-[28px]
+          className="bg-transparent border border-[#e2e8f0] text-[#475569] w-[32px] h-[32px]
             rounded-[8px] flex items-center justify-center transition-colors
             hover:bg-[#E1F5EE] hover:border-[#466460] hover:text-[#466460]"
         >
-          <IconChevronRight size={12} />
+          <IconChevronRight size={14} />
         </button>
       </div>
 
-      {/* Legend — now includes Missed */}
-      <div className="flex gap-[14px] px-4 py-[7px] border-b border-[#eef2f6] bg-white shrink-0">
+      <div className="flex gap-[16px] px-4 py-[10px] border-b border-[#eef2f6] bg-white shrink-0">
         {[['#1D9E75','Approved'],['#f59e0b','Missed'],['#94a3b8','Done']].map(([color, label]) => (
-          <div key={label} className="flex items-center gap-[5px] text-[10px] text-[#64748b]">
-            <div className="w-[7px] h-[7px] rounded-full" style={{ background: color }}></div>
+          <div key={label} className="flex items-center gap-[6px] text-[12px] text-[#64748b]">
+            <div className="w-[8px] h-[8px] rounded-full" style={{ background: color }}></div>
             <span>{label}</span>
           </div>
         ))}
       </div>
 
-      <div className="px-3 pt-2 pb-2 shrink-0 bg-white border-b border-[#eef2f6]">
-        <div className="grid grid-cols-7 mb-1">
+      <div className="px-3 pt-3 pb-3 shrink-0 bg-white border-b border-[#eef2f6]">
+        <div className="grid grid-cols-7 mb-2">
           {WEEKDAYS.map(d => (
-            <div key={d} className="text-center text-[10px] font-semibold text-[#94a3b8] py-[3px]">{d}</div>
+            <div key={d} className="text-center text-[12px] font-semibold text-[#94a3b8] py-[3px]">{d}</div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-[2px]">
+        <div className="grid grid-cols-7 gap-[4px]">
           {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
           {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
             const isToday = today.getFullYear() === calYear
@@ -1312,7 +1296,7 @@ export const Appointments = () => {
               <div
                 key={day}
                 onClick={() => setSelectedDay(day)}
-                className={`min-h-[40px] sm:min-h-[46px] border px-1 py-1 rounded-[8px] transition-all cursor-pointer
+                className={`min-h-[44px] sm:min-h-[50px] border px-2 py-1.5 rounded-[8px] transition-all cursor-pointer
                   ${isSel
                     ? 'bg-[#466460] border-[#466460]'
                     : isToday
@@ -1321,7 +1305,7 @@ export const Appointments = () => {
                         ? 'border-transparent hover:bg-[#f1f5f9]'
                         : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB]'}`}
               >
-                <div className={`text-[11px] font-semibold
+                <div className={`text-[13px] font-bold
                   ${isSel
                     ? 'text-white'
                     : isToday
@@ -1331,9 +1315,9 @@ export const Appointments = () => {
                         : 'text-[#475569]'}`}>
                   {day}
                 </div>
-                <div className="flex gap-[2px] flex-wrap mt-[2px]">
+                <div className="flex gap-[3px] flex-wrap mt-[3px]">
                   {dayAppts.slice(0, 4).map((a, i) => (
-                    <div key={i} className={`w-[5px] h-[5px] rounded-full
+                    <div key={i} className={`w-[6px] h-[6px] rounded-full
                       ${a.status === 'done'
                         ? 'bg-[#94a3b8]'
                         : a.status === 'missed'
@@ -1348,33 +1332,33 @@ export const Appointments = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3
-        [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4
+        [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
         {!selectedDay ? (
-          <div className="text-center py-8 px-4 text-[#94a3b8] text-[12px]">
-            <div className="flex justify-center mb-2 text-[#cbd5e1]">
-              <IconCalendar size={28} />
+          <div className="text-center py-8 px-4 text-[#94a3b8] text-[14px]">
+            <div className="flex justify-center mb-3 text-[#cbd5e1]">
+              <IconCalendar size={32} />
             </div>
             <p>Select a date to view appointments</p>
           </div>
         ) : selectedDayAppts.length === 0 ? (
           <>
-            <div className="text-[12px] font-semibold text-[#1e293b] mb-2 flex justify-between items-center">
+            <div className="text-[15px] font-bold text-[#1e293b] mb-3 flex justify-between items-center">
               <span>{MONTHS[calMonth - 1]} {selectedDay}, {calYear}</span>
-              <span className="text-[10px] text-[#64748b] font-normal">No appointments</span>
+              <span className="text-[12px] text-[#64748b] font-normal">No appointments</span>
             </div>
-            <div className="text-center py-8 px-4 text-[#94a3b8] text-[12px]">
-              <div className="flex justify-center mb-2 text-[#cbd5e1]">
-                <IconCalendarXmark size={28} />
+            <div className="text-center py-8 px-4 text-[#94a3b8] text-[14px]">
+              <div className="flex justify-center mb-3 text-[#cbd5e1]">
+                <IconCalendarXmark size={32} />
               </div>
               <p>No approved appointments on this date</p>
             </div>
           </>
         ) : (
           <>
-            <div className="text-[12px] font-semibold text-[#1e293b] mb-3 flex justify-between items-center">
+            <div className="text-[15px] font-bold text-[#1e293b] mb-4 flex justify-between items-center">
               <span>{MONTHS[calMonth - 1]} {selectedDay}, {calYear}</span>
-              <span className="text-[10px] text-[#64748b] font-normal">
+              <span className="text-[12px] text-[#64748b] font-normal">
                 {selectedDayAppts.length} appt{selectedDayAppts.length !== 1 ? 's' : ''}&nbsp;&middot;&nbsp;
                 {selectedDayAppts.filter(a => a.status === 'done').length} done
                 {selectedDayAppts.filter(a => a.status === 'missed').length > 0 && (
@@ -1389,25 +1373,25 @@ export const Appointments = () => {
               const slotInfo  = HOUR_SLOTS.find(s => s.value === time);
               const slotLabel = slotInfo ? slotInfo.label : time;
               return (
-                <div key={time} className="mb-3 last:mb-0">
+                <div key={time} className="mb-4 last:mb-0">
                   <div
                     onClick={() => toggleSlot(time)}
-                    className="flex items-center justify-between px-3 py-2.5 bg-[#f8fafc] border border-[#eef2f6] rounded-[8px] cursor-pointer hover:bg-[#f1f5f9] transition-colors mb-2"
+                    className="flex items-center justify-between px-4 py-3 bg-[#f8fafc] border border-[#eef2f6] rounded-[8px] cursor-pointer hover:bg-[#f1f5f9] transition-colors mb-2"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <IconClock size={13} className="text-[#466460]" style={{ color: '#466460' }} />
-                      <span className="text-[12px] font-bold text-[#1e293b]">{slotLabel}</span>
-                      <span className="text-[10px] text-[#64748b] bg-white border border-[#e2e8f0] px-2 py-[2px] rounded-full font-medium shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <IconClock size={15} className="text-[#466460]" style={{ color: '#466460' }} />
+                      <span className="text-[14px] font-bold text-[#1e293b]">{slotLabel}</span>
+                      <span className="text-[12px] text-[#64748b] bg-white border border-[#e2e8f0] px-2.5 py-[3px] rounded-full font-bold shadow-sm">
                         {appts.length} appt{appts.length !== 1 ? 's' : ''}
                       </span>
                     </div>
                     {isExpanded
-                      ? <IconChevronUp size={11} style={{ color: '#94a3b8' }} />
-                      : <IconChevronDown size={11} style={{ color: '#94a3b8' }} />
+                      ? <IconChevronUp size={13} style={{ color: '#94a3b8' }} />
+                      : <IconChevronDown size={13} style={{ color: '#94a3b8' }} />
                     }
                   </div>
                   {isExpanded && (
-                    <div className="flex flex-col gap-1 pl-[6px] border-l-2 border-[#eef2f6] ml-[10px]">
+                    <div className="flex flex-col gap-2 pl-[8px] border-l-[3px] border-[#eef2f6] ml-[12px]">
                       {appts.map(a => {
                         const isDone   = a.status === 'done';
                         const isMissed = a.status === 'missed';
@@ -1416,37 +1400,36 @@ export const Appointments = () => {
                           <div
                             key={a.id}
                             onClick={() => setDetailModal(a)}
-                            className={`flex items-center gap-2 px-[10px] py-[8px] border rounded-[8px]
-                              text-[12px] bg-white transition-all cursor-pointer
+                            className={`flex items-center gap-3 px-[12px] py-[10px] border rounded-[8px]
+                              bg-white transition-all cursor-pointer
                               ${isDone
                                 ? 'bg-[#f8fafc] opacity-[0.72] border-[#eef2f6] hover:border-[#cbd5e1]'
                                 : isMissed
                                   ? 'bg-[#fffbeb] border-[#fde68a] hover:border-[#f59e0b]'
                                   : 'border-[#eef2f6] hover:border-[#8aacaa] hover:bg-[#fafffe]'}`}
                           >
-                            {/* Queue badge / status icon */}
-                            <span className={`font-['DM_Mono',monospace] text-[10px] font-bold text-white
-                              rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0 leading-[1.6] flex items-center justify-center
+                            <span className={`font-['DM_Mono',monospace] text-[12px] font-bold text-white
+                              rounded-[5px] px-[8px] py-[3px] min-w-[30px] text-center shrink-0 leading-[1.6] flex items-center justify-center
                               ${isDone ? 'bg-[#94a3b8]' : isMissed ? 'bg-[#f59e0b]' : 'bg-[#466460]'}`}>
                               {isDone
-                                ? <IconCheck size={9} />
+                                ? <IconCheck size={11} />
                                 : isMissed
-                                  ? <IconBanCircle size={10} color="white" />
+                                  ? <IconBanCircle size={12} color="white" />
                                   : `#${queueIdx + 1}`
                               }
                             </span>
                             <div className="flex-1 min-w-0">
-                              <div className={`font-semibold text-[12px] truncate
+                              <div className={`font-bold text-[15px] truncate
                                 ${isDone
                                   ? 'line-through text-[#94a3b8]'
                                   : isMissed
                                     ? 'line-through text-[#b45309]'
                                     : 'text-[#1e293b]'}`}>{a.name}</div>
-                              <div className="text-[10px] text-[#64748b] mt-[1px] truncate">
+                              <div className="text-[12px] text-[#64748b] mt-[2px] truncate">
                                 {a.reason} &middot; {getUserData(a).program}
                               </div>
                             </div>
-                            <span className={`text-[9px] font-semibold px-[8px] py-[2px] rounded-[20px]
+                            <span className={`text-[11px] font-bold px-[10px] py-[3px] rounded-[20px]
                               shrink-0 uppercase tracking-[0.03em] hidden sm:inline
                               ${isDone
                                 ? 'bg-[#f1f5f9] text-[#64748b]'
@@ -1455,16 +1438,15 @@ export const Appointments = () => {
                                   : 'bg-[#EAF3DE] text-[#3B6D11]'}`}>
                               {isDone ? 'done' : isMissed ? 'missed' : 'approved'}
                             </span>
-                            {/* Only show "Done" button for approved (not missed/done) */}
                             {!isDone && !isMissed && (
                               <button
                                 onClick={(e) => handleMarkDone(e, a.id)}
-                                className="ml-1 px-[8px] py-[3px] text-[9px] font-bold rounded-[6px]
+                                className="ml-2 px-[10px] py-[5px] text-[11px] font-bold rounded-[6px]
                                   border border-[#1D9E75] text-[#1D9E75] bg-white cursor-pointer
                                   transition-colors shrink-0 whitespace-nowrap hover:bg-[#EAF3DE]
-                                  flex items-center gap-[3px]"
+                                  flex items-center gap-[4px]"
                               >
-                                <IconCheck size={8} style={{ stroke: '#1D9E75' }} />
+                                <IconCheck size={10} style={{ stroke: '#1D9E75' }} />
                                 Done
                               </button>
                             )}
@@ -1493,46 +1475,46 @@ export const Appointments = () => {
         <div className="flex border-b border-[#eef2f6] bg-white shrink-0 overflow-x-auto">
           <button
             onClick={() => { setMobileView('pending'); setActiveTab('pending'); }}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
+            className={`flex-1 py-4 text-[14px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap
               ${mobileView === 'pending' && activeTab === 'pending' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
-            <IconClock size={13} /> Pending
+            <IconClock size={15} /> Pending
             {pendingRequests.length > 0 && (
-              <span className="text-[9px] font-bold bg-[#FAEEDA] text-[#854F0B] px-1.5 py-0.5 rounded-full">
+              <span className="text-[11px] font-bold bg-[#FAEEDA] text-[#854F0B] px-2 py-1 rounded-full">
                 {pendingRequests.length}
               </span>
             )}
           </button>
           <button
             onClick={() => { setMobileView('pending'); setActiveTab('approved'); }}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
+            className={`flex-1 py-4 text-[14px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap
               ${mobileView === 'pending' && activeTab === 'approved' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
           >
-            <IconCircleCheck size={13} /> Approved
+            <IconCircleCheck size={15} /> Approved
             {allApprovedAppts.length > 0 && (
-              <span className="text-[9px] font-bold bg-[#E1F5EE] text-[#0F6E56] px-1.5 py-0.5 rounded-full">
+              <span className="text-[11px] font-bold bg-[#E1F5EE] text-[#0F6E56] px-2 py-1 rounded-full">
                 {allApprovedAppts.length}
               </span>
             )}
           </button>
           <button
             onClick={() => { setMobileView('pending'); setActiveTab('rejected'); }}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
+            className={`flex-1 py-4 text-[14px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap
               ${mobileView === 'pending' && activeTab === 'rejected' ? 'text-[#991b1b] border-b-2 border-[#991b1b]' : 'text-[#94a3b8]'}`}
           >
-            <IconCircleXmark size={13} /> Declined
+            <IconCircleXmark size={15} /> Declined
             {rejectedAppts.length > 0 && (
-              <span className="text-[9px] font-bold bg-[#fef2f2] text-[#991b1b] px-1.5 py-0.5 rounded-full">
+              <span className="text-[11px] font-bold bg-[#fef2f2] text-[#991b1b] px-2 py-1 rounded-full">
                 {rejectedAppts.length}
               </span>
             )}
           </button>
           <button
             onClick={() => setMobileView('calendar')}
-            className={`flex-1 py-3 text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap
-              ${mobileView === 'calendar' ? 'text-[#466460] border-b-2 border-[#466460]' : 'text-[#94a3b8]'}`}
+            className={`flex-1 py-4 text-[14px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap
+              ${mobileView === 'calendar' ? 'text-[#466460] border-b-[3px] border-[#466460]' : 'text-[#94a3b8]'}`}
           >
-            <IconCalendar size={13} /> Calendar
+            <IconCalendar size={15} /> Calendar
           </button>
         </div>
         <div className="flex-1 overflow-hidden h-full flex flex-col">
@@ -1550,33 +1532,32 @@ export const Appointments = () => {
 
       {/* ── TABLET ── */}
       <div className="hidden md:flex lg:hidden flex-1 min-h-0 w-full h-full">
-        {/* Left panel with tabs - 1/3 width like Approvals.jsx */}
+        {/* Left panel with tabs - 1/3 width */}
         <div className="w-1/3 border-r border-[#eef2f6] flex flex-col bg-white shadow-sm z-10">
-          {/* Tabs for tablet */}
           <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
+              className={`px-4 py-3 text-[13px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Pending
-              {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+              {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#466460] rounded-t-full"></div>}
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
+              className={`px-4 py-3 text-[13px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Approved
-              {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+              {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#466460] rounded-t-full"></div>}
             </button>
             <button
               onClick={() => setActiveTab('rejected')}
-              className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all relative
+              className={`px-4 py-3 text-[13px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'rejected' ? 'text-[#991b1b]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Declined
-              {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#991b1b] rounded-t-full"></div>}
+              {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#991b1b] rounded-t-full"></div>}
             </button>
           </div>
           <div className="flex-1 overflow-hidden min-h-0">
@@ -1587,7 +1568,7 @@ export const Appointments = () => {
                 : RejectedList()}
           </div>
         </div>
-        {/* Right panel - Calendar - 2/3 width */}
+        {/* Right panel - Calendar */}
         <div className="flex-1 overflow-hidden h-full flex flex-col">
           {CalendarPanel()}
         </div>
@@ -1595,42 +1576,40 @@ export const Appointments = () => {
 
       {/* ── DESKTOP ── */}
       <div className="hidden lg:flex flex-1 min-h-0 w-full h-full">
-        {/* Left panel with tabs - 1/3 width like Approvals.jsx */}
+        {/* Left panel with tabs - 1/3 width */}
         <div className="w-1/3 border-r border-[#eef2f6] flex flex-col bg-white shadow-sm z-10 overflow-hidden h-full">
-          {/* Desktop Tabs */}
           <div className="flex border-b border-[#eef2f6] bg-white shrink-0">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+              className={`flex-1 py-4 text-[13px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <div className="flex items-center justify-center gap-2">
-                <IconClock size={13} /> Pending
+                <IconClock size={15} /> Pending
               </div>
-              {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+              {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#466460] rounded-t-full"></div>}
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+              className={`flex-1 py-4 text-[13px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <div className="flex items-center justify-center gap-2">
-                <IconCircleCheck size={13} /> Approved
+                <IconCircleCheck size={15} /> Approved
               </div>
-              {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
+              {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#466460] rounded-t-full"></div>}
             </button>
             <button
               onClick={() => setActiveTab('rejected')}
-              className={`flex-1 py-3 text-[11px] font-bold uppercase tracking-wider transition-all relative
+              className={`flex-1 py-4 text-[13px] font-bold uppercase tracking-wider transition-all relative
                 ${activeTab === 'rejected' ? 'text-[#991b1b]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <div className="flex items-center justify-center gap-2">
-                <IconCircleXmark size={13} /> Rejected
+                <IconCircleXmark size={15} /> Rejected
               </div>
-              {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#991b1b] rounded-t-full"></div>}
+              {activeTab === 'rejected' && <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#991b1b] rounded-t-full"></div>}
             </button>
           </div>
-          {/* List content */}
           <div className="flex-1 overflow-hidden">
             {activeTab === 'pending'
               ? PendingList()
@@ -1652,32 +1631,31 @@ export const Appointments = () => {
         <ModalOverlay onClose={() => setBatchModal(false)}>
           <div className="bg-white w-full sm:max-w-[460px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
             max-h-[92vh] overflow-y-auto animate-[fadeIn_0.25s_ease-out]
-            [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[3px]">
+            [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
 
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
-              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
             </div>
 
-            <div className="px-5 pt-4 pb-3 border-b border-[#eef2f6]">
-              <div className="text-[15px] font-semibold text-[#1e293b] flex items-center gap-2">
-                <IconCalendarCheck size={15} style={{ color: '#0F6E56' }} />
+            <div className="px-6 pt-5 pb-4 border-b border-[#eef2f6]">
+              <div className="text-[18px] font-bold text-[#1e293b] flex items-center gap-2">
+                <IconCalendarCheck size={18} style={{ color: '#0F6E56' }} />
                 Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
               </div>
-              <div className="text-[11px] text-[#64748b] mt-[2px]">
+              <div className="text-[13px] text-[#64748b] mt-[4px]">
                 All selected patients will be assigned the same date and time slot.
               </div>
             </div>
 
-            <div className="px-5 py-4 flex flex-col gap-4">
-
+            <div className="px-6 py-5 flex flex-col gap-5">
               {/* ── Date field ── */}
               <div>
-                <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-1">
+                <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
                   Appointment Date *
                 </label>
                 <button
                   onClick={() => setShowDatePicker(true)}
-                  className="w-full px-[10px] py-[8px] border border-[#e2e8f0] rounded-[8px] text-[13px]
+                  className="w-full px-[12px] py-[10px] border border-[#e2e8f0] rounded-[8px] text-[15px]
                     bg-white text-left outline-none focus:border-[#466460] transition-colors cursor-pointer
                     flex items-center justify-between hover:border-[#466460]"
                 >
@@ -1688,35 +1666,35 @@ export const Appointments = () => {
                         })
                       : 'Tap to select a date…'}
                   </span>
-                  <IconCalendar size={13} style={{ color: '#466460' }} />
+                  <IconCalendar size={15} style={{ color: '#466460' }} />
                 </button>
               </div>
 
               {/* ── Time slot ── */}
               <div>
-                <label className="block text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+                <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
                   Time Slot (1-hour window)
                 </label>
                 <div className="relative">
                   <select
                     value={batchSlot}
                     onChange={e => setBatchSlot(e.target.value)}
-                    className="w-full appearance-none px-[10px] py-[8px] border border-[#e2e8f0] rounded-[8px] text-[13px]
+                    className="w-full appearance-none px-[12px] py-[10px] border border-[#e2e8f0] rounded-[8px] text-[15px]
                       bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
                   >
                     {HOUR_SLOTS.map(slot => (
                       <option key={slot.value} value={slot.value}>{slot.label}</option>
                     ))}
                   </select>
-                  <IconChevronDown size={10} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
+                  <IconChevronDown size={12} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
                 </div>
               </div>
 
               {/* ── Summary banner ── */}
               {batchDate && (
-                <div className="flex items-start gap-3 px-3 py-3 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
-                  <IconCircleInfo size={13} style={{ color: '#3B6D11', marginTop: 1, flexShrink: 0 }} />
-                  <div className="text-[11px] text-[#3B6D11] leading-[1.6]">
+                <div className="flex items-start gap-3 px-4 py-4 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
+                  <IconCircleInfo size={15} style={{ color: '#3B6D11', marginTop: 1, flexShrink: 0 }} />
+                  <div className="text-[13px] text-[#3B6D11] leading-[1.6]">
                     <span className="font-bold">{selectedIds.size} patient{selectedIds.size > 1 ? 's' : ''}</span>
                     {' '}will be scheduled on{' '}
                     <span className="font-bold">
@@ -1734,22 +1712,22 @@ export const Appointments = () => {
               {/* ── Patient list ── */}
               {selectedItems.length > 0 && (
                 <div>
-                  <div className="text-[10px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+                  <div className="text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-3">
                     Patients in This Batch
                   </div>
                   <div className="border border-[#e2e8f0] rounded-[10px] overflow-hidden">
                     {selectedItems.map((item, i) => (
                       <div key={item.id}
-                        className={`flex items-center gap-3 px-3 py-[8px] text-[12px]
+                        className={`flex items-center gap-3 px-4 py-[10px] text-[14px]
                           ${i < selectedItems.length - 1 ? 'border-b border-[#f1f5f9]' : ''}
                           ${i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}`}>
-                        <span className="font-['DM_Mono',monospace] text-[10px] font-bold text-white
-                          bg-[#466460] rounded-[5px] px-[6px] py-[2px] min-w-[26px] text-center shrink-0">
+                        <span className="font-['DM_Mono',monospace] text-[12px] font-bold text-white
+                          bg-[#466460] rounded-[5px] px-[8px] py-[3px] min-w-[30px] text-center shrink-0">
                           #{pendingRequests.findIndex(x => x.id === item.id) + 1}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[#1e293b] truncate">{item.name}</div>
-                          <div className="text-[10px] text-[#64748b] truncate">{getUserData(item).universityId} &middot; {item.reason} &middot; {getUserData(item).program}</div>
+                          <div className="font-semibold text-[#1e293b] truncate text-[14px]">{item.name}</div>
+                          <div className="text-[12px] text-[#64748b] truncate mt-[2px]">{getUserData(item).universityId} &middot; {item.reason} &middot; {getUserData(item).program}</div>
                         </div>
                       </div>
                     ))}
@@ -1758,22 +1736,22 @@ export const Appointments = () => {
               )}
             </div>
 
-            <div className="flex gap-2 px-5 py-4 border-t border-[#eef2f6] bg-white sticky bottom-0">
+            <div className="flex gap-3 px-6 py-5 border-t border-[#eef2f6] bg-white sticky bottom-0">
               <button
                 onClick={handleBatchApprove}
                 disabled={!batchDate}
-                className="flex-1 py-[10px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
-                  border-none rounded-[10px] text-[13px] font-semibold cursor-pointer
+                className="flex-1 py-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
+                  border-none rounded-[10px] text-[15px] font-semibold cursor-pointer
                   transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
                   flex items-center justify-center gap-2"
               >
-                <IconCircleCheck size={14} color="white" />
+                <IconCircleCheck size={16} color="white" />
                 Confirm &amp; Approve All
               </button>
               <button
                 onClick={() => setBatchModal(false)}
-                className="px-5 py-[10px] bg-[#f1f5f9] text-[#475569] border-none
-                  rounded-[10px] text-[13px] font-semibold cursor-pointer
+                className="px-6 py-[12px] bg-[#f1f5f9] text-[#475569] border-none
+                  rounded-[10px] text-[15px] font-semibold cursor-pointer
                   transition-colors hover:bg-[#e2e8f0]"
               >
                 Cancel
@@ -1793,10 +1771,10 @@ export const Appointments = () => {
               animate-[fadeIn_0.2s_ease-out] overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex justify-center pt-3 pb-1 sm:hidden">
-              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            <div className="flex justify-center pt-4 pb-2 sm:hidden">
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
             </div>
-            <div className="px-5 pt-3 pb-2">
+            <div className="px-6 pt-4 pb-3">
               <DrumDatePicker
                 value={batchDate || new Date().toISOString().slice(0, 10)}
                 onChange={setBatchDate}
@@ -1815,42 +1793,38 @@ export const Appointments = () => {
       {declineModal.open && (
         <ModalOverlay onClose={handleDeclineCancel}>
           <div className="bg-white w-full sm:max-w-[400px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
-            p-6 animate-[fadeIn_0.25s_ease-out]">
-            <div className="flex justify-center -mt-1 mb-3 sm:hidden">
-              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            p-8 animate-[fadeIn_0.25s_ease-out]">
+            <div className="flex justify-center -mt-2 mb-4 sm:hidden">
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Icon */}
-            <div className="flex justify-center mb-4">
-              <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <div className="flex justify-center mb-5">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                 </svg>
               </div>
             </div>
 
-            {/* Title */}
-            <h3 className="text-center text-lg font-bold text-slate-800 mb-2">
+            <h3 className="text-center text-xl font-bold text-slate-800 mb-3">
               Decline Request{declineModal.ids.length > 1 ? 's' : ''}?
             </h3>
 
-            {/* Message */}
-            <p className="text-center text-sm text-slate-500 mb-6">
+            <p className="text-center text-base text-slate-500 mb-8">
               Are you sure you want to decline {declineModal.ids.length} appointment request{declineModal.ids.length > 1 ? 's' : ''}?
               This action cannot be undone.
             </p>
 
-            {/* Buttons */}
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               <button
                 onClick={handleDeclineCancel}
-                className="flex-1 px-5 py-2.5 bg-slate-100 text-slate-600 border-none rounded-xl text-sm font-semibold cursor-pointer hover:bg-slate-200 transition-colors"
+                className="flex-1 px-5 py-3 bg-slate-100 text-slate-600 border-none rounded-xl text-base font-semibold cursor-pointer hover:bg-slate-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeclineConfirm}
-                className="flex-1 px-5 py-2.5 bg-red-600 text-white border-none rounded-xl text-sm font-semibold cursor-pointer hover:bg-red-700 transition-colors"
+                className="flex-1 px-5 py-3 bg-red-600 text-white border-none rounded-xl text-base font-semibold cursor-pointer hover:bg-red-700 transition-colors"
               >
                 Yes, Decline
               </button>
@@ -1863,12 +1837,12 @@ export const Appointments = () => {
       {detailModal && (
         <ModalOverlay onClose={() => setDetailModal(null)}>
           <div className="bg-white w-full sm:max-w-[420px] sm:mx-4 sm:rounded-[14px] rounded-t-[20px]
-            max-h-[85vh] overflow-y-auto p-[22px] animate-[fadeIn_0.3s_ease-out]">
-            <div className="flex justify-center -mt-1 mb-3 sm:hidden">
-              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            max-h-[85vh] overflow-y-auto p-[26px] animate-[fadeIn_0.3s_ease-out]">
+            <div className="flex justify-center -mt-2 mb-4 sm:hidden">
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
             </div>
-            <h3 className="m-0 mb-[14px] text-[#466460] text-[1rem] font-semibold flex items-center gap-2">
-              <IconUserClock size={16} style={{ color: '#466460' }} />
+            <h3 className="m-0 mb-[16px] text-[#466460] text-[1.1rem] font-bold flex items-center gap-2">
+              <IconUserClock size={18} style={{ color: '#466460' }} />
               Appointment Details
             </h3>
             <div className="divide-y divide-[#f1f5f9]">
@@ -1886,35 +1860,35 @@ export const Appointments = () => {
                 ...(detailModal.time ? [{ Icon: IconClock, label: 'Time', value: detailModal.time }] : []),
                 { Icon: IconCircleCheck,   label: 'Status',     value: detailModal.status?.charAt(0).toUpperCase() + detailModal.status?.slice(1) },
               ].map(({ Icon, label, value }) => (
-                <div key={label} className="flex items-center gap-[10px] py-[6px] text-[12px]">
-                  <Icon size={14} style={{ color: '#0F6E56', flexShrink: 0 }} />
-                  <span className="text-[#64748b] min-w-[100px]">{label}</span>
-                  <span className={`font-medium ${label === 'Status' && (detailModal.status === 'missed' || detailModal.status === 'declined') ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
+                <div key={label} className="flex items-center gap-[12px] py-[8px] text-[14px]">
+                  <Icon size={16} style={{ color: '#0F6E56', flexShrink: 0 }} />
+                  <span className="text-[#64748b] min-w-[110px]">{label}</span>
+                  <span className={`font-bold ${label === 'Status' && (detailModal.status === 'missed' || detailModal.status === 'declined') ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
                     {value}
                   </span>
                 </div>
               ))}
             </div>
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-3 mt-6">
               {detailModal.status !== 'declined' && (
                 <button
                   onClick={() => handleExaminePatient(detailModal)}
                   disabled={detailModal.status === 'done' || detailModal.status === 'missed'}
-                  className={`flex-1 p-[9px] border-none rounded-[8px] font-semibold
-                    text-[12px] text-white flex items-center justify-center gap-2 transition-opacity
+                  className={`flex-1 p-[12px] border-none rounded-[10px] font-semibold
+                    text-[14px] text-white flex items-center justify-center gap-2 transition-opacity
                     ${(detailModal.status === 'done' || detailModal.status === 'missed')
                       ? 'bg-gradient-to-br from-[#94a3b8] to-[#64748b] cursor-not-allowed opacity-60'
                       : 'bg-gradient-to-br from-[#466460] to-[#5a7a76] cursor-pointer hover:opacity-90'
                     }`}
                 >
-                  <IconStethoscope size={13} style={{ color: 'white' }} />
+                  <IconStethoscope size={15} style={{ color: 'white' }} />
                   Examine Patient
                 </button>
               )}
               <button
                 onClick={() => setDetailModal(null)}
-                className="flex-1 p-[9px] border-none rounded-[8px] cursor-pointer font-semibold
-                  text-[12px] bg-[#e2e8f0] text-[#475569]"
+                className="flex-1 p-[12px] border-none rounded-[10px] cursor-pointer font-semibold
+                  text-[14px] bg-[#e2e8f0] text-[#475569]"
               >
                 Close
               </button>

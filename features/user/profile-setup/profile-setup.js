@@ -47,6 +47,15 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
     console.log('>>> [DEBUG] userRole evaluated as:', userRole);
     console.log('>>> [DEBUG] userRole === student?', userRole === 'student');
 
+    // Skip profile setup for admin/sysadmin - they don't need university ID, department, etc.
+    if (userRole === 'sysadmin' || userRole === 'admin') {
+      console.log(`[profile-setup] Skipping profile setup for admin: ${uid}`);
+      return res.status(200).json({
+        success: true,
+        message: 'Admin profile updated successfully!',
+      });
+    }
+
     const updateData = {
       first_name: firstName || '',
       middle_name: middleName || '',

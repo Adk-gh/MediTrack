@@ -330,7 +330,9 @@ export const AppointmentManagement = () => {
   const handleEditSave = async () => {
     if (!appointmentToEdit) return;
 
-    if (!editForm.year || !editForm.month || !editForm.day) {
+    const isFinalStatus = ['done', 'missed', 'rejected'].includes(editForm.status);
+
+    if (!isFinalStatus && (!editForm.year || !editForm.month || !editForm.day)) {
       showSnackbar('Please select a valid date', 'error');
       return;
     }
@@ -339,11 +341,15 @@ export const AppointmentManagement = () => {
     try {
       const updates = {
         status: editForm.status,
-        year: Number(editForm.year),
-        month: Number(editForm.month),
-        day: Number(editForm.day),
-        time: editForm.time || null,
       };
+
+      // Only update date/time if not in final status (done, missed, rejected)
+      if (!isFinalStatus) {
+        updates.year = Number(editForm.year);
+        updates.month = Number(editForm.month);
+        updates.day = Number(editForm.day);
+        updates.time = editForm.time || null;
+      }
 
       if (typeof appointmentsService.updateAppointment === 'function') {
         await appointmentsService.updateAppointment(appointmentToEdit.id, updates);
@@ -398,7 +404,7 @@ export const AppointmentManagement = () => {
         const { y: fy, m: fm, d: fd } = fromDateInputValue(bulkFromDate);
         const data = await appointmentsService.getAllAppointments(true);
         const matches = (data || []).filter(
-          a => Number(a.year) === fy && Number(a.month) === fm && Number(a.day) === fd
+          a => Number(a.year) === fy && Number(a.month) === fm && Number(a.day) === fd && a.status === 'approved'
         );
         if (!cancelled) setBulkMatches(matches);
       } catch (err) {
@@ -421,7 +427,7 @@ export const AppointmentManagement = () => {
       return;
     }
     if (bulkMatches.length === 0) {
-      showSnackbar('No appointments found on that date', 'error');
+      showSnackbar('No approved appointments found on that date', 'error');
       return;
     }
 
@@ -430,27 +436,19 @@ export const AppointmentManagement = () => {
       const { y: fy, m: fm, d: fd } = fromDateInputValue(bulkFromDate);
       const { y: ty, m: tm, d: td } = fromDateInputValue(bulkToDate);
 
-      if (typeof appointmentsService.bulkRescheduleByDate === 'function') {
-        // Preferred: a dedicated service method (can also handle patient
-        // notifications server-side, similar to the bulk-scheduling flow).
-        await appointmentsService.bulkRescheduleByDate({
-          fromYear: fy, fromMonth: fm, fromDay: fd,
-          toYear: ty, toMonth: tm, toDay: td,
-        });
-      } else {
-        // Fallback: direct Supabase bulk update matching on the old date.
-        // Adjust the table/column names if your schema differs.
-        const { error } = await supabase
-          .from('appointments')
-          .update({ year: ty, month: tm, day: td })
-          .eq('year', fy)
-          .eq('month', fm)
-          .eq('day', fd);
-        if (error) throw error;
-      }
+      // Only reschedule approved appointments
+      const { error } = await supabase
+        .from('appointments')
+        .update({ year: ty, month: tm, day: td, updated_at: new Date().toISOString() })
+        .eq('year', fy)
+        .eq('month', fm)
+        .eq('day', fd)
+        .eq('status', 'approved');
+
+      if (error) throw error;
 
       showSnackbar(
-        `Moved ${bulkMatches.length} appointment${bulkMatches.length !== 1 ? 's' : ''} from ${formatDate(fy, fm, fd)} to ${formatDate(ty, tm, td)}`
+        `Rescheduled ${bulkMatches.length} approved appointment${bulkMatches.length !== 1 ? 's' : ''} from ${formatDate(fy, fm, fd)} to ${formatDate(ty, tm, td)}`
       );
       setShowBulkModal(false);
       setBulkFromDate('');
@@ -702,19 +700,21 @@ export const AppointmentManagement = () => {
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => handleEditClick(apt)}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white transition-all font-semibold"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
                             title="Edit Appointment"
                           >
-                            <i className="fa-solid fa-pen mr-1"></i>
-                            Edit
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+                            </svg>
                           </button>
                           <button
                             onClick={() => handleDeleteClick(apt)}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all font-semibold"
-                            title="Delete Appointment"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all"
+                            title="Archive Appointment"
                           >
-                            <i className="fa-solid fa-trash-can mr-1"></i>
-                            Delete
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
                           </button>
                         </div>
                       </td>
@@ -753,7 +753,9 @@ export const AppointmentManagement = () => {
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
-                <i className="fa-solid fa-pen text-[#466460] text-xl"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+                </svg>
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Edit Appointment</h3>
@@ -781,25 +783,27 @@ export const AppointmentManagement = () => {
               {/* Date */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Date
+                  Date {['done', 'missed', 'rejected'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
                 </label>
                 <DatePicker
                   value={toDateInputValue(editForm.year, editForm.month, editForm.day)}
                   onChange={handleEditDateChange}
                   placeholder="Select date"
+                  disabled={['done', 'missed', 'rejected'].includes(editForm.status)}
                 />
               </div>
 
               {/* Time */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Time
+                  Time {['done', 'missed', 'rejected'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
                 </label>
                 <input
                   type="time"
                   value={editForm.time || ''}
                   onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
+                  disabled={['done', 'missed', 'rejected'].includes(editForm.status)}
                 />
               </div>
             </div>
@@ -877,27 +881,27 @@ export const AppointmentManagement = () => {
             {/* Preview / warning */}
             <div className="bg-slate-50 rounded-lg p-4 mb-5">
               {!bulkFromDate ? (
-                <p className="text-sm text-slate-500">Pick the original date to see how many appointments will be affected.</p>
+                <p className="text-sm text-slate-500">Pick the original date to see how many approved appointments will be affected.</p>
               ) : bulkChecking ? (
                 <p className="text-sm text-slate-500 flex items-center gap-2">
                   <i className="fa-solid fa-spinner fa-spin"></i>
-                  Checking appointments on {formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}...
+                  Checking approved appointments on {formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}...
                 </p>
               ) : bulkMatches.length === 0 ? (
                 <p className="text-sm text-amber-600">
                   <i className="fa-solid fa-triangle-exclamation mr-1"></i>
-                  No appointments found on this date.
+                  No approved appointments found on this date.
                 </p>
               ) : (
                 <p className="text-sm text-slate-700">
-                  <span className="font-semibold">{bulkMatches.length}</span> appointment{bulkMatches.length !== 1 ? 's' : ''} will move
+                  <span className="font-semibold">{bulkMatches.length}</span> approved appointment{bulkMatches.length !== 1 ? 's' : ''} will move
                   {bulkToDate ? (
                     <> from <span className="font-semibold">{formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}</span> to{' '}
                     <span className="font-semibold">{formatDate(...Object.values(fromDateInputValue(bulkToDate)))}</span>.</>
                   ) : (
                     <> off <span className="font-semibold">{formatDate(...Object.values(fromDateInputValue(bulkFromDate)))}</span> once you pick a new date.</>
                   )}
-                  {' '}Times stay the same. This can't be undone automatically.
+                  {' '}Only approved appointments can be rescheduled. This can't be undone automatically.
                 </p>
               )}
             </div>
@@ -965,18 +969,20 @@ export const AppointmentManagement = () => {
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 transition-all flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
                 disabled={deleting}
               >
                 {deleting ? (
                   <>
                     <i className="fa-solid fa-spinner fa-spin"></i>
-                    Deleting...
+                    Archiving...
                   </>
                 ) : (
                   <>
-                    <i className="fa-solid fa-trash-can"></i>
-                    Delete
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                    Archive
                   </>
                 )}
               </button>

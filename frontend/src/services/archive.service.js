@@ -1,9 +1,11 @@
 // C:\Users\HP\MediTrack\frontend\src\services\archive.service.js
+import { getValidToken } from './token.service.js';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Get auth token from localStorage
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
+// Get auth token - uses centralized token service for automatic refresh
+const getAuthHeaders = async () => {
+  const token = await getValidToken();
   return {
     headers: {
       Authorization: `Bearer ${token}`,

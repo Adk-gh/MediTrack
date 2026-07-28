@@ -286,9 +286,17 @@ export const ApprovalManagement = () => {
     if (!recordToDelete) return;
     setDeleting(true);
     try {
+      // Get current user info for deleted_by
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const name = localStorage.getItem('name') || '';
+
       // Set is_archived to true instead of deleting
       const tableName = recordToDelete.recordType === 'medical' ? 'medical_records' : 'dental_records';
-      const { error } = await supabase.from(tableName).update({ is_archived: true }).eq('id', recordToDelete.id);
+      const { error } = await supabase.from(tableName).update({
+        is_archived: true,
+        deleted_by: name || user.email || 'Admin',
+        updated_at: new Date().toISOString()
+      }).eq('id', recordToDelete.id);
 
       if (error) throw error;
 
@@ -526,19 +534,21 @@ export const ApprovalManagement = () => {
                               });
                               setShowEditModal(true);
                             }}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-[#466460] hover:text-white transition-all font-semibold"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
                             title="Edit Record"
                           >
-                            <i className="fa-solid fa-pen-to-square mr-1"></i>
-                            Edit
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+                            </svg>
                           </button>
                           <button
                             onClick={() => handleDeleteClick(record)}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all font-semibold"
-                            title="Delete Record"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all"
+                            title="Archive Record"
                           >
-                            <i className="fa-solid fa-trash-can mr-1"></i>
-                            Delete
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
                           </button>
                         </div>
                       </td>
@@ -614,7 +624,9 @@ export const ApprovalManagement = () => {
                   </>
                 ) : (
                   <>
-                    <i className="fa-solid fa-archive"></i>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
+                    </svg>
                     Archive
                   </>
                 )}
@@ -629,8 +641,10 @@ export const ApprovalManagement = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-[#466460]/10 flex items-center justify-center">
-                <i className="fa-solid fa-pen-to-square text-[#466460] text-xl"></i>
+              <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+                </svg>
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Edit Record</h3>
@@ -662,16 +676,6 @@ export const ApprovalManagement = () => {
                     }`}
                   >
                     <i className="fa-solid fa-check-circle mr-1"></i> Approved
-                  </button>
-                  <button
-                    onClick={() => setEditData({ ...editData, status: 'rejected' })}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
-                      editData.status === 'rejected'
-                        ? 'bg-red-100 text-red-700 border-2 border-red-400'
-                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                    }`}
-                  >
-                    <i className="fa-solid fa-xmark-circle mr-1"></i> Rejected
                   </button>
                 </div>
               </div>

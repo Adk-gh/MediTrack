@@ -1,6 +1,21 @@
 // C:\Users\HP\MediTrack\controllers\auth.controller.js
 const userService = require('../features/user/user.service');
 const supabase = require('../configs/supabase');
+const { sendEmail } = require('../configs/email');
+const crypto = require('crypto');
+
+// In-memory store for reset tokens (use Redis for production)
+const passwordResetTokens = new Map();
+
+// Clean up expired tokens every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, data] of passwordResetTokens) {
+    if (data.expiresAt < now) {
+      passwordResetTokens.delete(token);
+    }
+  }
+}, 60 * 60 * 1000);
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -10,18 +25,127 @@ exports.forgotPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.CLIENT_URL || 'http://localhost:3000'}/reset-password`
-    });
+    // Check if user exists in our users table
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('uid, email, first_name, last_name')
+      .eq('email', email.toLowerCase())
+      .single();
 
-    if (error) {
-      console.error('Forgot password error:', error);
-      return res.status(400).json({ success: false, message: error.message });
+    // Even if user not found, don't reveal that
+    // Just say email sent (prevents email enumeration)
+    const userExists = !userError && userData;
+
+    if (userExists) {
+      console.log('>>> [Forgot] User found, generating token for:', email);
+
+      // Generate secure reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+
+      // Store token
+      passwordResetTokens.set(resetToken, {
+        uid: userData.uid,
+        email: userData.email.toLowerCase(),
+        expiresAt,
+      });
+
+      console.log('>>> [Forgot] Token stored. All tokens:', Array.from(passwordResetTokens.keys()));
+
+      // Build reset URL
+      const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const resetUrl = `${baseUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
+
+      console.log('>>> [Forgot] Reset URL:', resetUrl);
+
+      // Send custom email
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333;">MediTrack Password Reset</h2>
+          <p>Hi ${userData.first_name},</p>
+          <p>We received a request to reset your password. Click the button below to create a new password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
+          </div>
+          <p>Or copy and paste this link: <br><span style="color: #4F46E5;">${resetUrl}</span></p>
+          <p style="color: #666; font-size: 14px;">This link expires in 1 hour.</p>
+          <p style="color: #666; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+          <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
+        </div>
+      `;
+
+      const emailResult = await sendEmail({
+        to: email,
+        subject: 'MediTrack - Password Reset Request',
+        html: emailHtml,
+      });
+
+      console.log('>>> [Forgot] Email send result:', emailResult);
     }
 
-    res.json({ success: true, message: 'Password reset email sent. Check your inbox.' });
+    // Always return success (don't reveal if email exists or not)
+    res.json({ success: true, message: 'If an account exists with this email, you will receive a password reset link.' });
   } catch (error) {
     console.error('Forgot password error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// Custom reset password using token
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, email, password } = req.body;
+
+    console.log('>>> [Reset] Token:', token);
+    console.log('>>> [Reset] Email:', email);
+    console.log('>>> [Reset] Stored tokens:', Array.from(passwordResetTokens.keys()));
+
+    if (!token || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Token, email, and new password are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    // Verify token
+    const tokenData = passwordResetTokens.get(token);
+
+    console.log('>>> [Reset] Token data:', tokenData);
+
+    if (!tokenData) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+    }
+
+    if (tokenData.expiresAt < Date.now()) {
+      passwordResetTokens.delete(token);
+      return res.status(400).json({ success: false, message: 'Reset token has expired' });
+    }
+
+    // Compare emails (both lowercase)
+    const submittedEmail = email.toLowerCase().trim();
+    if (tokenData.email !== submittedEmail) {
+      console.log('>>> [Reset] Email mismatch:', { stored: tokenData.email, submitted: submittedEmail });
+      return res.status(400).json({ success: false, message: 'Invalid token for this email' });
+    }
+
+    // Update password in Supabase Auth
+    const { error: updateError } = await supabase.auth.admin.updateUserById(tokenData.uid, {
+      password: password
+    });
+
+    if (updateError) {
+      console.error('Reset password error:', updateError);
+      return res.status(400).json({ success: false, message: 'Failed to update password' });
+    }
+
+    // Delete the used token
+    passwordResetTokens.delete(token);
+
+    res.json({ success: true, message: 'Password updated successfully!' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

@@ -5,11 +5,12 @@ const announcementsController = require("./announcements.controller");
 const { authorized } = require("../../middleware/authorized");
 const validateData = require("../../validation/validate-data");
 const { createAnnouncementSchema, updateAnnouncementSchema } = require("./announcements.validation");
+const { auditLog } = require('../../middleware/auditLogger');
 
 router.get("/", announcementsController.getAllAnnouncements);
 router.get("/:id", announcementsController.getAnnouncementById);
-router.post("/", validateData(createAnnouncementSchema), announcementsController.createAnnouncement);
-router.put("/:id", validateData(updateAnnouncementSchema), announcementsController.updateAnnouncement);
-router.delete("/:id", authorized, announcementsController.deleteAnnouncement);
+router.post("/", auditLog('create', 'announcement', (req) => `Created announcement: ${req.body.title || 'Untitled'}`), validateData(createAnnouncementSchema), announcementsController.createAnnouncement);
+router.put("/:id", auditLog('update', 'announcement', (req) => `Updated announcement ID: ${req.params.id}`), validateData(updateAnnouncementSchema), announcementsController.updateAnnouncement);
+router.delete("/:id", authorized, auditLog('delete', 'announcement', (req) => `Archived announcement ID: ${req.params.id}`), announcementsController.deleteAnnouncement);
 
 module.exports = router;

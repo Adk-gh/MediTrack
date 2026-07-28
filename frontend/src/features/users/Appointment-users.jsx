@@ -146,6 +146,76 @@ export default function AppointmentUsers() {
   const [myAppointments, setMyAppointments] = useState([]);
   const [loadingAppts,   setLoadingAppts]   = useState(true);
   const [userProfile,    setUserProfile]    = useState(null);
+  const [hasRecords,    setHasRecords]     = useState(false);
+  const [loadingRecords, setLoadingRecords] = useState(true);
+
+  // ── Get internal user ID (not Supabase Auth UID) ──
+  const getInternalUserId = async () => {
+    if (!currentPatient?.uid && !currentPatient?.idno) return null;
+
+    // Try by auth uid first
+    if (currentPatient.uid) {
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('uid', currentPatient.uid)
+        .maybeSingle();
+      if (data?.id) return data.id;
+    }
+
+    // Fallback by university_id
+    if (currentPatient.idno) {
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('university_id', currentPatient.idno)
+        .maybeSingle();
+      if (data?.id) return data.id;
+    }
+
+    return null;
+  };
+
+  // ── Check if user has medical or dental records ──
+  useEffect(() => {
+    const checkRecords = async () => {
+      const internalId = await getInternalUserId();
+      console.log('[Appointment] Checking records for internal ID:', internalId, 'currentPatient:', currentPatient);
+
+      if (!internalId) {
+        setLoadingRecords(false);
+        setHasRecords(false);
+        return;
+      }
+      try {
+        // Check medical records (any status except archived)
+        const { data: medicalData } = await supabase
+          .from('medical_records')
+          .select('id, status')
+          .eq('user_id', internalId)
+          .eq('is_archived', false);
+
+        console.log('[Appointment] Medical records:', medicalData);
+
+        // Check dental records (any status except archived)
+        const { data: dentalData } = await supabase
+          .from('dental_records')
+          .select('id, status')
+          .eq('user_id', internalId)
+          .eq('is_archived', false);
+
+        console.log('[Appointment] Dental records:', dentalData);
+
+        setHasRecords((medicalData && medicalData.length > 0) || (dentalData && dentalData.length > 0));
+      } catch (err) {
+        console.error('Error checking records:', err);
+        setHasRecords(false);
+      } finally {
+        setLoadingRecords(false);
+      }
+    };
+    checkRecords();
+  }, [currentPatient?.uid, currentPatient?.idno]);
 
   // ── Fetch user profile from database ──
   useEffect(() => {
@@ -270,6 +340,25 @@ export default function AppointmentUsers() {
     );
   }
 
+  // ── Guard: No medical/dental records ───────────────────────────────────────
+  if (!loadingRecords && !hasRecords) {
+    return (
+      <div className="flex flex-col h-full bg-[#f7faf8] items-center justify-center p-8">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
+            <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Visit the Clinic First</h3>
+          <p className="text-[13px] text-[#64748b]">
+            Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before requesting digital appointments.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const hasActiveAppointment = myAppointments.some(
     (appt) => appt.status?.toLowerCase() === 'pending' || appt.status?.toLowerCase() === 'approved'
   );
@@ -366,10 +455,8 @@ export default function AppointmentUsers() {
         </div>
       )}
 
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-
-        {/* Top action bar — not part of the scroll area, so PTR won't fire here */}
-        <div className="shrink-0 p-5 pb-3 flex flex-col gap-4">
+      {/* Top action bar — not part of the scroll area, so PTR won't fire here */}
+      <div className="shrink-0 p-5 pb-3 flex flex-col gap-4">
           <div
             className="flex justify-end"
             title={hasActiveAppointment ? "You can only have one active appointment request at a time." : ""}
@@ -481,7 +568,6 @@ export default function AppointmentUsers() {
             </div>
           )}
         </div>
-      </div>
 
       {/* ── Submission Request Modal ── */}
       {showModal && (
@@ -735,4 +821,4 @@ export default function AppointmentUsers() {
       )}
     </div>
   );
-}
+};

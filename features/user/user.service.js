@@ -152,6 +152,9 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
   }
 
   const user = userResponse.user;
+  console.log('>>> [Auth] userResponse:', JSON.stringify(userResponse));
+  console.log('>>> [Auth] user.id:', user?.id);
+
   if (!user) {
     throw new Error('Failed to create user account');
   }
@@ -172,14 +175,69 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
     created_at:             new Date().toISOString(),
   };
 
-  const { error: insertError } = await supabase
+  // Check if user already exists by email (might have been created via different method)
+  const { data: existingByEmail } = await supabase
     .from('users')
-    .insert(newUser);
+    .select('*')
+    .eq('email', email.toLowerCase())
+    .maybeSingle();
+
+  if (existingByEmail) {
+    // If user exists but has different UID, update to match Auth UID
+    if (existingByEmail.uid !== user.id) {
+      console.log('>>> [DB] User exists with different UID, updating to match Auth UID');
+      await supabase
+        .from('users')
+        .update({
+          uid: user.id,
+          first_name: normalizeName(firstName),
+          last_name: normalizeName(lastName),
+          middle_name: normalizeName(middleName),
+          university_id: ocrId,
+          role,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingByEmail.id);
+
+      return {
+        uid: user.id,
+        firstName,
+        lastName,
+        middleName: middleName || '',
+        suffix: suffix || '',
+        email: email.toLowerCase(),
+        universityId: ocrId,
+        isVerified: true,
+        role,
+        isProfileSetup: false,
+      };
+    }
+
+    // User exists with same UID, return it
+    return {
+      uid: existingByEmail.uid,
+      firstName: existingByEmail.first_name,
+      lastName: existingByEmail.last_name,
+      middleName: existingByEmail.middle_name || '',
+      suffix: existingByEmail.suffix || '',
+      email: existingByEmail.email,
+      universityId: existingByEmail.university_id,
+      isVerified: existingByEmail.is_verified,
+      role: existingByEmail.role,
+      isProfileSetup: existingByEmail.is_profile_setup || false,
+    };
+  }
+
+  // Insert new user
+  const { data: insertData, error: insertError } = await supabase
+    .from('users')
+    .insert(newUser)
+    .select();
 
   if (insertError) {
-    console.error('>>> [DB] Insert error:', insertError);
+    console.error('>>> [DB] Insert error:', JSON.stringify(insertError));
     await supabase.auth.admin.deleteUser(user.id);
-    throw new Error('Failed to save user profile');
+    throw new Error('Failed to save user profile: ' + insertError.message);
   }
 
   console.log(`>>> [DB] User saved with role: "${role}"`);
@@ -219,13 +277,61 @@ exports.loginUser = async ({ email, password }) => {
     .select('*')
     .eq('uid', user.id)
     .eq('is_archived', false)
-    .single();
+    .maybeSingle(); // Use maybeSingle to handle no rows without throwing
 
-  if (profileError || !userData) {
-    console.error('>>> [Profile] fetch error:', profileError?.message);
-    const e = new Error('User profile not found.');
-    e.statusCode = 404;
-    throw e;
+  // If user not found in users table, auto-create from auth metadata
+  if (!userData) {
+    console.log('>>> [Profile] No user record found, auto-creating from auth...');
+
+    // Extract name from auth metadata
+    const firstName = user.user_metadata?.firstName || user.email?.split('@')[0] || 'User';
+    const lastName = user.user_metadata?.lastName || '';
+
+    const newUser = {
+      uid: user.id,
+      email: user.email?.toLowerCase() || '',
+      first_name: firstName,
+      last_name: lastName,
+      middle_name: '',
+      suffix: '',
+      role: 'student', // Default role
+      is_verified: true,
+      is_profile_setup: false,
+      profile_complete: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: createdUser, error: createError } = await supabase
+      .from('users')
+      .insert(newUser)
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('>>> [Profile] Auto-create failed:', createError.message);
+      const e = new Error('Failed to create user profile.');
+      e.statusCode = 500;
+      throw e;
+    }
+
+    console.log('>>> [Profile] Auto-created user record for:', user.id);
+    return {
+      token: session.access_token,
+      refreshToken: session.refresh_token,
+      uid: createdUser.uid,
+      firstName: createdUser.first_name,
+      lastName: createdUser.last_name,
+      middleName: createdUser.middle_name || '',
+      suffix: createdUser.suffix || '',
+      email: createdUser.email,
+      role: createdUser.role,
+      universityId: createdUser.university_id,
+      department: createdUser.department || '',
+      program: createdUser.program || '',
+      isVerified: createdUser.is_verified,
+      isProfileSetup: createdUser.is_profile_setup || false,
+    };
   }
 
   // 3. Return camelCase shape — now includes refreshToken ✅

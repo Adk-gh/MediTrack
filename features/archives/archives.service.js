@@ -1,5 +1,5 @@
 // features/archives/archives.service.js
-const { supabase } = require('../../configs/database');
+const supabase = require('../../configs/database');
 
 const ARCHIVE_TABLE = 'archives';
 
@@ -75,99 +75,53 @@ exports.getArchiveById = async (id) => {
   return data;
 };
 
-// Restore an item from archives
-exports.restoreFromArchives = async (id) => {
-  // Get the archive entry
-  const archive = await exports.getArchiveById(id);
-  if (!archive) throw new Error('Archive not found');
-
-  const data = typeof archive.data === 'string' ? JSON.parse(archive.data) : archive.data;
-  const { type, original_id: originalId } = archive;
-
-  let result;
-
-  switch (type) {
-    case ARCHIVE_TYPES.RECORD:
-      // Restore to users table
-      const { error: recordError } = await supabase
-        .from('users')
-        .insert({ ...data, id: originalId });
-      if (recordError) throw recordError;
-      break;
-
-    case ARCHIVE_TYPES.ANNOUNCEMENT:
-      const { error: announceError } = await supabase
-        .from('announcements')
-        .insert({ ...data, id: originalId });
-      if (announceError) throw announceError;
-      break;
-
-    case ARCHIVE_TYPES.USER:
-      // Restore to users table (different structure)
-      const { error: userError } = await supabase
-        .from('users')
-        .insert(data);
-      if (userError) throw userError;
-      break;
-
-    case ARCHIVE_TYPES.CONSULTATION:
-      const { error: consultError } = await supabase
-        .from('consultations')
-        .insert({ ...data, id: originalId });
-      if (consultError) throw consultError;
-      break;
-
-    case ARCHIVE_TYPES.APPOINTMENT:
-      const { error: apptError } = await supabase
-        .from('appointments')
-        .insert({ ...data, id: originalId });
-      if (apptError) throw apptError;
-      break;
-
-    case ARCHIVE_TYPES.EXAMINATION:
-      // Try medical first, then dental
-      const { error: examError } = await supabase
-        .from('medical_examinations')
-        .insert({ ...data, id: originalId });
-      if (examError) {
-        const { error: dentalError } = await supabase
-          .from('dental_examinations')
-          .insert({ ...data, id: originalId });
-        if (dentalError) throw dentalError;
-      }
-      break;
-
-    case ARCHIVE_TYPES.AUDIT_LOG:
-      const { error: auditError } = await supabase
-        .from('audit_logs')
-        .insert({ ...data, id: originalId });
-      if (auditError) throw auditError;
-      break;
-
-    default:
-      throw new Error(`Unknown archive type: ${type}`);
+// Restore an item from archives - simple version
+// The frontend fetches directly from original tables where is_archived = true
+// This endpoint just sets is_archived = false
+exports.restoreFromArchives = async (id, tableName) => {
+  if (!tableName) {
+    throw new Error('Table name is required');
   }
 
-  // Mark as permanently deleted (since it's been restored)
+  // For users, the ID column is 'uid', for others it's 'id'
+  const idColumn = tableName === 'users' ? 'uid' : 'id';
+
+  // Restore by setting is_archived to false
   const { error: updateError } = await supabase
-    .from(ARCHIVE_TABLE)
-    .update({ is_permanently_deleted: true, restored_at: new Date().toISOString() })
-    .eq('id', id);
+    .from(tableName)
+    .update({
+      is_archived: false,
+      deleted_by: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq(idColumn, id);
 
-  if (updateError) throw updateError;
+  if (updateError) {
+    throw updateError;
+  }
 
-  return { success: true, type, originalId };
+  return { success: true, tableName, id };
 };
 
 // Permanently delete an archive entry
-exports.permanentDelete = async (id) => {
+exports.permanentDelete = async (id, tableName) => {
+  // Delete directly from the original table based on tableName
+  if (!tableName) {
+    throw new Error('Table name is required');
+  }
+
+  // Determine the ID column
+  const idColumn = tableName === 'users' ? 'uid' : 'id';
+
+  // Delete from the original table
   const { error } = await supabase
-    .from(ARCHIVE_TABLE)
+    .from(tableName)
     .delete()
-    .eq('id', id);
+    .eq(idColumn, id);
 
   if (error) throw error;
-  return { id };
+
+  return { id, tableName };
 };
 
 // Clean up old archives (older than 2 years)
