@@ -18,6 +18,8 @@ const LoginForm = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [touched, setTouched] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [resendStatus, setResendStatus] = useState('');
 
   useEffect(() => {
     setIsLoaded(true);
@@ -49,6 +51,16 @@ const LoginForm = () => {
     showLoading('Signing in', 'light');
     try {
       const response = await authService.login({ email, password });
+
+      // Check if email needs verification
+      if (response.needsVerification) {
+        hideLoading();
+        setLoading(false);
+        setError(`${response.message} You can request a new verification email below.`);
+        setShowResendVerification(true);
+        return;
+      }
+
       if (response.success && response.data) {
         const user = response.data;
         localStorage.setItem('token', user.token);
@@ -76,6 +88,29 @@ const LoginForm = () => {
       setError(err.message || 'Invalid email or password');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) {
+      setResendStatus('Please enter your email address first');
+      return;
+    }
+    setResendStatus('Sending...');
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/send-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setResendStatus('Verification email sent! Check your inbox.');
+      } else {
+        setResendStatus(data.message || 'Failed to send verification email');
+      }
+    } catch (err) {
+      setResendStatus('Network error. Please try again.');
     }
   };
 
@@ -408,6 +443,28 @@ const LoginForm = () => {
               </div>
             </div>
             <Link to="/forgot-password" className="lf-forgot-desktop">Forgot password?</Link>
+
+            {/* Resend Verification Section */}
+            {showResendVerification && (
+              <div style={{ marginTop: 16, padding: 12, background: '#fef3c7', borderRadius: 8, border: '1px solid #fcd34d' }}>
+                <p style={{ fontSize: 13, color: '#92400e', marginBottom: 8 }}>
+                  Need a new verification email?
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  style={{ fontSize: 13, color: '#466460', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  Resend Verification Email
+                </button>
+                {resendStatus && (
+                  <p style={{ fontSize: 12, color: resendStatus.includes('sent') ? '#059669' : '#dc2626', marginTop: 8 }}>
+                    {resendStatus}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="lf-desktop-actions lf-btn-group">
               <button type="submit" disabled={loading} className="lf-btn-primary-desktop">
                 {loading && <span className="lf-spinner" />}
@@ -496,6 +553,27 @@ const LoginForm = () => {
             </div>
 
             <Link to="/forgot-password" className="m-forgot">Forgot password?</Link>
+
+            {/* Resend Verification Section - Mobile */}
+            {showResendVerification && (
+              <div style={{ marginBottom: 16, padding: 12, background: '#fef3c7', borderRadius: 14, border: '1px solid #fcd34d' }}>
+                <p style={{ fontSize: 13, color: '#92400e', marginBottom: 8 }}>
+                  Need a new verification email?
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  style={{ fontSize: 13, color: '#466460', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  Resend Verification Email
+                </button>
+                {resendStatus && (
+                  <p style={{ fontSize: 12, color: resendStatus.includes('sent') ? '#059669' : '#dc2626', marginTop: 8 }}>
+                    {resendStatus}
+                  </p>
+                )}
+              </div>
+            )}
 
             <button type="submit" disabled={loading} className="m-btn-primary">
               {loading && <span className="lf-spinner" />}

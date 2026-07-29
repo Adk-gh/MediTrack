@@ -179,7 +179,7 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [ ] for the user management add button to add confirmation email to send email to vefiy the login
 * [ ] the name of the doctor and dentist to be added in certificate for the medical and dental certificate should be set in the admin side.
 * [ ] the uploading of health documents is not working
-* [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years after graduation(for student) after no longer working (for employee)
+* [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years (for student) (for employee) it should be marked as is\_archived == True
 * [ ] add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
 * [ ] add a notification for new messages arriving(use notifier.js)
 * [ ] user notifications
@@ -189,8 +189,8 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [x] i need to make the profile-users.jsx to scroll smoother in mobile view. i think the pulltorefresh is casuing some issue
 * [x] there should be a mobile version of the forget password also for typing the new password there should also be a mobile version
 * [x] the middle name input box for the mobile view of SignupForm.jsx exceeds the maximum width of the container.
-* [ ] the forget password is not working when i deployed it,&#x20;
-* [ ] use the same resend for the email verification instead of the supabase email verification
+* [x] the forget password is not working when i deployed it,&#x20;
+* [x] use the same resend for the email verification instead of the supabase email verification
 
 # ===============testing(07/18)==================
 

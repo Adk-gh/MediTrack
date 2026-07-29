@@ -16,6 +16,7 @@ import { LoadingProvider, useLoading } from './context/LoadingContext.jsx';
 import LoginForm from './features/LoginForm.jsx';
 import ForgotPassword from './features/ForgotPassword.jsx';
 import ResetPassword from './features/ResetPassword.jsx';
+import VerifyEmail from './features/VerifyEmail.jsx';
 import { DashboardLayout } from './layouts/DashboardLayout.jsx';
 import Records from './features/admin-clinic/Records.jsx';
 import Appointments from './features/admin-clinic/Appointments.jsx';
@@ -287,6 +288,7 @@ function App() {
             <Route path="/login"            element={<LoginForm />} />
             <Route path="/forgot-password"  element={<ForgotPassword />} />
             <Route path="/reset-password"   element={<ResetPassword />} />
+            <Route path="/verify-email"    element={<VerifyEmail />} />
             <Route path="/onboarding"       element={<OnboardingPage />} />
 
             {/* Admin / Clinic */}

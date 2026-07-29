@@ -764,6 +764,34 @@ export const UserManagement = () => {
     }
   };
 
+  // Resend verification email
+  const resendVerificationEmail = async (user) => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${API_URL}/auth/admin-resend-verification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId: user.uid })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showSnackbar('Verification email sent to ' + user.email, 'success');
+      } else {
+        showSnackbar(data.message || 'Failed to send verification email', 'error');
+      }
+    } catch (err) {
+      console.error('Error sending verification email:', err);
+      showSnackbar('Error sending verification email', 'error');
+    }
+  };
+
   // ── Delete ────────────────────────────────────────────────────────────────
   const openDeleteModal = (user) => { setDeleteTarget(user); setShowDeleteModal(true); };
 
@@ -880,14 +908,14 @@ export const UserManagement = () => {
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
-                {['Name','University ID','Role','Department','Sex','Status','Actions'].map(h => (
+                {['Name','University ID','Role','Department','Sex','Email','Profile','Actions'].map(h => (
                   <th key={h} className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-400">
+                <tr><td colSpan={8} className="text-center py-10 text-slate-400">
                   <div className="flex items-center justify-center gap-2">
                     <svg className="animate-spin w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -897,7 +925,7 @@ export const UserManagement = () => {
                   </div>
                 </td></tr>
               ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-10 text-slate-400">No users found</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-slate-400">No users found</td></tr>
               ) : filteredUsers.map(user => (
                 <tr key={user.id} className="border-b border-slate-100 hover:bg-[#e0eceb]/40 transition-colors">
                   <td className="p-3">
@@ -919,6 +947,23 @@ export const UserManagement = () => {
                   </td>
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.department || '—'}</td>
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.sex || '—'}</td>
+                  <td className="p-3 whitespace-nowrap">
+                    {user.is_verified
+                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Verified</span>
+                      : <div className="flex items-center gap-1">
+                          <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-red-100 text-red-700">Unverified</span>
+                          <button
+                            onClick={() => resendVerificationEmail(user)}
+                            title="Resend verification email"
+                            className="w-6 h-6 flex items-center justify-center rounded text-[#466460] hover:bg-[#e0eceb] transition"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                            </svg>
+                          </button>
+                        </div>
+                    }
+                  </td>
                   <td className="p-3 whitespace-nowrap">
                     {user.profile_complete
                       ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Active</span>
@@ -1086,6 +1131,15 @@ export const UserManagement = () => {
                       <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${editForm.is_verified ? 'translate-x-5' : 'translate-x-0.5'}`} />
                     </button>
                     <span className="text-sm text-slate-700 font-medium">Email Verified</span>
+                    {!editForm.is_verified && (
+                      <button
+                        type="button"
+                        onClick={() => resendVerificationEmail(editTarget)}
+                        className="ml-auto text-xs text-[#466460] hover:text-[#3a524f] underline font-medium"
+                      >
+                        Resend Email
+                      </button>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 py-1">
                     <button type="button" onClick={() => field('profile_complete', !editForm.profile_complete)}

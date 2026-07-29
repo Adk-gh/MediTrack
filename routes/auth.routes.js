@@ -52,4 +52,13 @@ router.post('/forgot-password', authController.forgotPassword);
 // 4. Reset Password: Update password with token
 router.post('/reset-password', authController.resetPassword);
 
+// 5. Send Email Verification
+router.post('/send-verification', authController.sendVerificationEmail);
+
+// 6. Verify Email
+router.post('/verify-email', authController.verifyEmail);
+
+// 7. Admin: Resend Verification Email
+router.post('/admin-resend-verification', authController.adminResendVerification);
+
 module.exports = router;

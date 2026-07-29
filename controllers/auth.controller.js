@@ -7,12 +7,20 @@ const crypto = require('crypto');
 // In-memory store for reset tokens (use Redis for production)
 const passwordResetTokens = new Map();
 
+// In-memory store for email verification tokens
+const emailVerificationTokens = new Map();
+
 // Clean up expired tokens every hour
 setInterval(() => {
   const now = Date.now();
   for (const [token, data] of passwordResetTokens) {
     if (data.expiresAt < now) {
       passwordResetTokens.delete(token);
+    }
+  }
+  for (const [token, data] of emailVerificationTokens) {
+    if (data.expiresAt < now) {
+      emailVerificationTokens.delete(token);
     }
   }
 }, 60 * 60 * 1000);
@@ -169,10 +177,46 @@ exports.register = async (req, res) => {
       idFile
     );
 
+    // Send verification email
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    emailVerificationTokens.set(verifyToken, {
+      uid: userData.uid,
+      email: email.toLowerCase(),
+      expiresAt,
+    });
+
+    const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(email.toLowerCase())}`;
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #333;">Welcome to MediTrack!</h2>
+        <p>Hi ${firstName},</p>
+        <p>Thank you for registering. Please verify your email address by clicking the button below:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
+        </div>
+        <p>Or copy and paste this link: <br><span style="color: #466460;">${verifyUrl}</span></p>
+        <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+        <p style="color: #666; font-size: 14px;">If you didn't create an account, please ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: email,
+      subject: 'MediTrack - Email Verification',
+      html: emailHtml,
+    });
+
     return res.status(201).json({
       success: true,
-      message: "Registration successful! ID Verified.",
-      data: userData
+      message: "Registration successful! Please check your email to verify your account.",
+      data: userData,
+      needsVerification: true
     });
 
   } catch (error) {
@@ -183,12 +227,224 @@ exports.register = async (req, res) => {
   }
 };
 
+// --- Email Verification ---
+
+// Send verification email
+exports.sendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    // Check if user exists
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('uid, email, first_name, is_verified')
+      .eq('email', email.toLowerCase())
+      .single();
+
+    if (userError || !userData) {
+      // Don't reveal if user exists
+      return res.json({ success: true, message: 'If an account exists with this email, you will receive a verification link.' });
+    }
+
+    // Check if already verified
+    if (userData.is_verified) {
+      return res.json({ success: true, message: 'This email is already verified. You can login.' });
+    }
+
+    // Generate verification token
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    emailVerificationTokens.set(verifyToken, {
+      uid: userData.uid,
+      email: userData.email.toLowerCase(),
+      expiresAt,
+    });
+
+    // Build verification URL
+    const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
+
+    // Send verification email
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #333;">Welcome to MediTrack!</h2>
+        <p>Hi ${userData.first_name},</p>
+        <p>Thank you for registering. Please verify your email address by clicking the button below:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
+        </div>
+        <p>Or copy and paste this link: <br><span style="color: #466460;">${verifyUrl}</span></p>
+        <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+        <p style="color: #666; font-size: 14px;">If you didn't create an account, please ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
+      </div>
+    `;
+
+    const emailResult = await sendEmail({
+      to: email,
+      subject: 'MediTrack - Email Verification',
+      html: emailHtml,
+    });
+
+    console.log('>>> [Verify] Email send result:', emailResult);
+
+    // Always return success (don't reveal if email exists)
+    return res.json({ success: true, message: 'If an account exists with this email, you will receive a verification link.' });
+
+  } catch (error) {
+    console.error('Send verification email error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// Verify email endpoint
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token, email } = req.body;
+
+    if (!token || !email) {
+      return res.status(400).json({ success: false, message: 'Token and email are required' });
+    }
+
+    console.log('>>> [Verify] Token:', token);
+    console.log('>>> [Verify] Email:', email);
+
+    // Verify token
+    const tokenData = emailVerificationTokens.get(token);
+
+    if (!tokenData) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification token' });
+    }
+
+    if (tokenData.expiresAt < Date.now()) {
+      emailVerificationTokens.delete(token);
+      return res.status(400).json({ success: false, message: 'Verification token has expired' });
+    }
+
+    // Compare emails
+    const submittedEmail = email.toLowerCase().trim();
+    if (tokenData.email !== submittedEmail) {
+      return res.status(400).json({ success: false, message: 'Invalid token for this email' });
+    }
+
+    // Update user as verified
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ is_verified: true })
+      .eq('uid', tokenData.uid);
+
+    if (updateError) {
+      console.error('Verify email error:', updateError);
+      return res.status(400).json({ success: false, message: 'Failed to verify email' });
+    }
+
+    // Delete the used token
+    emailVerificationTokens.delete(token);
+
+    res.json({ success: true, message: 'Email verified successfully! You can now login.' });
+
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// Admin: Resend verification email for any user
+exports.adminResendVerification = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    // Get user by ID
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('uid, email, first_name, is_verified')
+      .eq('uid', userId)
+      .single();
+
+    if (userError || !userData) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Check if already verified
+    if (userData.is_verified) {
+      return res.json({ success: true, message: 'This user is already verified' });
+    }
+
+    // Generate new verification token
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    emailVerificationTokens.set(verifyToken, {
+      uid: userData.uid,
+      email: userData.email.toLowerCase(),
+      expiresAt,
+    });
+
+    const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #333;">Verify Your MediTrack Email</h2>
+        <p>Hi ${userData.first_name},</p>
+        <p>An administrator has requested to verify your email. Please click the button below to verify:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
+        </div>
+        <p>Or copy and paste this link: <br><span style="color: #466460;">${verifyUrl}</span></p>
+        <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
+      </div>
+    `;
+
+    const emailResult = await sendEmail({
+      to: userData.email,
+      subject: 'MediTrack - Email Verification Request',
+      html: emailHtml,
+    });
+
+    console.log('>>> [Admin Resend] Email send result:', emailResult);
+
+    return res.json({ success: true, message: 'Verification email sent successfully' });
+
+  } catch (error) {
+    console.error('Admin resend verification error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: "Email and password are required." });
+    }
+
+    // Check if email is verified
+    const { data: userCheck } = await supabase
+      .from('users')
+      .select('is_verified')
+      .eq('email', email.toLowerCase())
+      .single();
+
+    if (userCheck && !userCheck.is_verified) {
+      return res.status(403).json({
+        success: false,
+        message: "Email not verified. Please verify your email first.",
+        needsVerification: true
+      });
     }
 
     // Ensure your userService.loginUser is returning the full database row!
