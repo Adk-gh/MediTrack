@@ -174,8 +174,8 @@ PENDING ITEMS 📋=============as of (07/28/26)
 
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
 * [ ] make sure to check if the edit function is working for the admin page
-* [ ] dont count if role is sysadmin. for the users count, etc etc in dashboard.jsx user management, and reports.jsx
-* [ ] i need to make sure that the ocr settings saves into the database.
+* [x] dont count if role is sysadmin. for the users count, etc etc in dashboard.jsx user management, and reports.jsx
+* [x] i need to make sure that the ocr settings is actually being saved into the database. or the changes in the ocr settings is being absorb by the ocr? since it will be the one identifying the parameter of the ocr
 * [ ] for the user management add button to add confirmation email to send email to vefiy the login
 * [ ] the name of the doctor and dentist to be added in certificate for the medical and dental certificate should be set in the admin side.
 * [ ] the uploading of health documents is not working
@@ -185,11 +185,12 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [ ] user notifications
 * [ ] make the settings functional
 * [ ] make sure to trigger the auditlogs in the admin pages as well.
-* [ ] modify the  banner text in the hompage-users.jsx which show if theres an incompletes items in the profile-users. while telling them that theres a incomplete items it should also tell users to complete their profile before going to the clinic for f2f consultation
-* [ ] i need to make the profile-users.jsx to scroll smoother in mobile view. i think the pulltorefresh is casuing some issue
+* [x] modify the  banner text in the hompage-users.jsx which show if theres an incompletes items in the profile-users. while telling them that theres a incomplete items it should also tell users to complete their profile before going to the clinic for f2f consultation
+* [x] i need to make the profile-users.jsx to scroll smoother in mobile view. i think the pulltorefresh is casuing some issue
 * [x] there should be a mobile version of the forget password also for typing the new password there should also be a mobile version
 * [x] the middle name input box for the mobile view of SignupForm.jsx exceeds the maximum width of the container.
-* [ ] the forget password is not working when i deployed it
+* [ ] the forget password is not working when i deployed it, re\_XY5yDiNH\_PAFFCyY3hbLRPZeGa1XViZUA
+* [ ] use the same resend for the email verification instead of the supabase email verification
 
 # ===============testing(07/18)==================
 

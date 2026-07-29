@@ -51,6 +51,12 @@ const normaliseRole = (raw = '') => {
   return 'student';
 };
 
+// Helper to check if a role is clinic staff
+const isClinicStaff = (role) => {
+  const r = (role || '').toLowerCase();
+  return ['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k));
+};
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return {
@@ -97,6 +103,7 @@ function DashboardContent() {
 
   // ── State ─────────────────────────────────────────────────
   const [users,          setUsers]          = useState([]);
+  const [clinicStaffCount, setClinicStaffCount] = useState(0);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [dentalRecords,  setDentalRecords]  = useState([]);
   const [loading,        setLoading]        = useState(true);
@@ -124,9 +131,17 @@ function DashboardContent() {
       if (usersRes.ok) {
         const usersData = await usersRes.json();
         const raw = usersData.data || usersData || [];
-        // Exclude archived users — only show is_archived === false (or missing/undefined)
-        const activeRaw = raw.filter(u => u.is_archived !== true);
-        setUsers(activeRaw.map(u => ({
+        // Exclude archived users and sysadmin (but keep clinic staff to count separately)
+        const activeRaw = raw.filter(u => {
+          const role = (u.role || '').toLowerCase();
+          return u.is_archived !== true && role !== 'sysadmin';
+        });
+
+        // Separate patients (students + faculty) from clinic staff
+        const patients = activeRaw.filter(u => !isClinicStaff(u.role));
+        const clinicStaff = activeRaw.filter(u => isClinicStaff(u.role));
+
+        setUsers(patients.map(u => ({
           uid:          u.id, // Explicitly mapped to 'id' from users table
           universityId: u.university_id || u.universityId || u.idno || '',
           name:         `${u.last_name || u.lastName || ''}, ${u.first_name || u.firstName || ''}`.replace(/^,\s*/, '') || u.name || 'Unknown',
@@ -139,6 +154,7 @@ function DashboardContent() {
           department:   u.department || '',
           createdAt:    u.created_at ||  '',
         })));
+        setClinicStaffCount(clinicStaff.length);
       }
 
       // ── Medical Records ──────────────────────────────────
@@ -413,13 +429,19 @@ function DashboardContent() {
     <div className="flex-1 h-full min-h-0 overflow-y-auto bg-[#f4f7f6] px-6 py-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
 
       {/* ── Stat Cards ── */}
-      <div className="grid grid-cols-4 gap-5 mb-6">
-        {loading ? [1,2,3,4].map(i => <StatSkeleton key={i} />) : (
+      <div className="grid grid-cols-5 gap-5 mb-6">
+        {loading ? [1,2,3,4,5].map(i => <StatSkeleton key={i} />) : (
           <>
             <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Patients</p>
               <h4 className="text-3xl font-bold text-slate-800">{users.length}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Active users</p>
+              <p className="text-xs text-emerald-500 mt-1">Students + Faculty</p>
+            </GlassCard>
+
+            <GlassCard className="p-5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Clinic Staff</p>
+              <h4 className="text-3xl font-bold text-slate-800">{clinicStaffCount}</h4>
+              <p className="text-xs text-emerald-500 mt-1">Doctor + Nurse + Dentist</p>
             </GlassCard>
 
             <GlassCard className="p-5">

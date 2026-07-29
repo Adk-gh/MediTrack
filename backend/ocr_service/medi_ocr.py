@@ -9,6 +9,9 @@ import traceback
 from flask import Flask, request, jsonify
 from PIL import Image
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from supabase import create_client, Client
 
 # --- 1. ENVIRONMENT SETUP ---
 temp_dir = tempfile.gettempdir()
@@ -26,6 +29,17 @@ os.environ['FLAGS_use_mkldnn'] = '0'
 os.environ['FLAGS_enable_mkldnn'] = '0'
 
 app = Flask(__name__)
+
+# --- RATE LIMITER SETUP ---
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+# More restrictive limits for OCR endpoint
+OCR_RATE_LIMIT = "10 per minute"  # 10 OCR requests per minute per IP
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
 @app.after_request
@@ -34,6 +48,15 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
+
+# Rate limit error handler
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({
+        "success": False,
+        "error": "Rate limit exceeded. Please try again later.",
+        "retry_after": e.description
+    }), 429
 
 @app.route("/config", methods=["OPTIONS"])
 def config_options():
@@ -45,8 +68,19 @@ def ocr_options():
 
 ocr_engine = None
 
-# --- 2. CONFIG FILE SETUP ---
-CONFIG_FILE = os.path.join(temp_dir, "ocr_config.json")
+# --- 2. SUPABASE SETUP ---
+# Get from environment variables (set in Google Cloud Run or .env)
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
+
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    print("[WARNING] SUPABASE_URL or SUPABASE_SERVICE_KEY not set. Using fallback mode.", flush=True)
+
+# Initialize Supabase client
+if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+else:
+    supabase_client = None
 
 DEFAULT_CONFIG = {
     "institution_keywords": ["PAMANTASAN", "UNIVERSITY", "COLLEGE"],
@@ -54,7 +88,7 @@ DEFAULT_CONFIG = {
         # Medical (most specific first — order matters!)
         {"name": "Doctor",        "id_type": "Employee ID", "keywords": ["DOCTOR", "PHYSICIAN", "MEDICAL DOCTOR", "MD"]},
         {"name": "Dentist",       "id_type": "Employee ID", "keywords": ["DENTIST", "DENTAL"]},
-        {"name": "Nurse",         "id_type": "Employee ID", "keywords": ["NURSE", "NURSING"]},
+        {"name": "Nurse",         "id_type": "Employee ID", "keywords": ["NURSE"]},
         # Academic
         {"name": "Lecturer",      "id_type": "Employee ID", "keywords": ["LECTURER"]},
         {"name": "Professor",     "id_type": "Employee ID", "keywords": ["PROFESSOR", "PROF"]},
@@ -72,13 +106,66 @@ DEFAULT_CONFIG = {
 
 
 def load_config() -> dict:
-    """Load config from file, creating it with defaults if it doesn't exist."""
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'w') as f:
+    """Load config from Supabase, creating default if it doesn't exist."""
+    # Use fallback if Supabase is not configured
+    if supabase_client is None:
+        return load_config_fallback()
+
+    try:
+        response = supabase_client.table('ocr_settings').select('config').eq('id', 'default').execute()
+        if response.data and len(response.data) > 0:
+            return response.data[0]['config']
+        else:
+            # Create default config in Supabase
+            supabase_client.table('ocr_settings').insert({
+                'id': 'default',
+                'config': DEFAULT_CONFIG
+            }).execute()
+            return DEFAULT_CONFIG
+    except Exception as e:
+        print(f"[ERROR] Failed to load config from Supabase: {e}", flush=True)
+        # Fallback to local file
+        return load_config_fallback()
+
+
+def load_config_fallback() -> dict:
+    """Fallback to local file if Supabase fails."""
+    config_file = os.path.join(temp_dir, "ocr_config.json")
+    if not os.path.exists(config_file):
+        with open(config_file, 'w') as f:
             json.dump(DEFAULT_CONFIG, f, indent=2)
         return DEFAULT_CONFIG
-    with open(CONFIG_FILE, 'r') as f:
+    with open(config_file, 'r') as f:
         return json.load(f)
+
+
+def save_config(config: dict) -> bool:
+    """Save config to Supabase."""
+    # Use fallback if Supabase is not configured
+    if supabase_client is None:
+        return save_config_fallback(config)
+
+    try:
+        supabase_client.table('ocr_settings').update({
+            'config': config,
+            'updated_at': 'now()'
+        }).eq('id', 'default').execute()
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to save config to Supabase: {e}", flush=True)
+        return save_config_fallback(config)
+
+
+def save_config_fallback(config: dict) -> bool:
+    """Fallback to local file if Supabase fails."""
+    try:
+        config_file = os.path.join(temp_dir, "ocr_config.json")
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to save config locally: {e}", flush=True)
+        return False
 
 
 # --- 3. CONFIG API ENDPOINTS ---
@@ -89,13 +176,16 @@ def get_config():
 
 
 @app.route("/config", methods=["POST"])
+@limiter.limit("5 per minute")  # Stricter limit for config changes
 def update_config():
     new_config = request.json
     if not new_config:
         return jsonify({"success": False, "error": "No config data received"}), 400
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(new_config, f, indent=2)
-    return jsonify({"success": True, "message": "Configuration updated successfully"})
+
+    if save_config(new_config):
+        return jsonify({"success": True, "message": "Configuration updated successfully"})
+    else:
+        return jsonify({"success": False, "error": "Failed to save configuration"}), 500
 
 
 # --- 4. PARSING LOGIC ---
@@ -167,6 +257,7 @@ def parse_id_fields(text_lines: list) -> dict:
 # --- 5. OCR ENDPOINT ---
 
 @app.route("/ocr", methods=["POST"])
+@limiter.limit(OCR_RATE_LIMIT)
 def perform_ocr():
     global ocr_engine
     print(">>> Request Received", flush=True)

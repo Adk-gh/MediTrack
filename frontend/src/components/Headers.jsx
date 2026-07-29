@@ -935,7 +935,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 Sign Out
               </button>
             </div>
-          
+
         </div>
       </div>
 

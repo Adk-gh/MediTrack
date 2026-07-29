@@ -27,6 +27,12 @@ const MONTHS_FULL = ['January','February','March','April','May','June','July','A
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Helper to check if a role is clinic staff
+const isClinicStaff = (role) => {
+  const r = (role || '').toLowerCase();
+  return ['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k));
+};
+
 // Brand palette used across charts + the Excel export
 const BRAND = '466460';
 const BRAND_DARK = '3A524F';
@@ -341,6 +347,7 @@ export const Reports = () => {
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [dentalRecords, setDentalRecords] = useState([]);
   const [users, setUsers] = useState([]);
+  const [clinicStaffCount, setClinicStaffCount] = useState(0);
   const [error, setError] = useState(null);
 
   // Filters
@@ -374,7 +381,14 @@ export const Reports = () => {
       let usersData = [];
       if (usersRes && usersRes.ok) {
         const json = await usersRes.json();
-        usersData = filterArchived(json.data || json || []);
+        const rawData = filterArchived(json.data || json || []);
+        // Exclude archived and sysadmin (but keep clinic staff for separate count)
+        const filtered = rawData.filter(u => u.role?.toLowerCase() !== 'sysadmin');
+        // Separate patients (students + faculty) from clinic staff
+        const patients = filtered.filter(u => !isClinicStaff(u.role));
+        const clinicStaff = filtered.filter(u => isClinicStaff(u.role));
+        usersData = patients;
+        setClinicStaffCount(clinicStaff.length);
       }
       setUsers(usersData);
 
@@ -625,6 +639,7 @@ export const Reports = () => {
       totalMed: allMedRecords.length,  // ALL records
       totalDen: allDenRecords.length,  // ALL records
       totalUsers: users.length,
+      clinicStaffCount: clinicStaffCount,
       completedAppts: filteredAppts.filter(a => a.status === 'done').length,
       pendingAppts: filteredAppts.filter(a => a.status === 'pending').length,
       approvedAppts: filteredAppts.filter(a => a.status === 'approved').length,
@@ -647,7 +662,7 @@ export const Reports = () => {
       dentalFindingsList,
       mostCommonDentalCondition: Object.entries(dentalConditionCounts).sort((a, b) => b[1] - a[1])[0],
     };
-  }, [appointments, medicalRecords, dentalRecords, users, dateRange]);
+  }, [appointments, medicalRecords, dentalRecords, users, clinicStaffCount, dateRange]);
 
   // ── Chart Data: Appointment Trends (Line Chart) ────────────────────────
   const appointmentTrendsData = useMemo(() => {
@@ -775,21 +790,19 @@ export const Reports = () => {
     const typeCounts = {
       student: 0,
       faculty: 0,
-      staff: 0,
     };
 
     processedData.users.forEach(u => {
       const role = (u.role || '').toLowerCase();
       if (role.includes('student')) typeCounts.student++;
       else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-      else typeCounts.staff++;
     });
 
     return {
-      labels: ['Students', 'Faculty', 'Staff'],
+      labels: ['Students', 'Faculty'],
       datasets: [{
-        data: [typeCounts.student, typeCounts.faculty, typeCounts.staff],
-        backgroundColor: ['#466460', '#e07a5f', '#81b29a'],
+        data: [typeCounts.student, typeCounts.faculty],
+        backgroundColor: ['#466460', '#e07a5f'],
         borderWidth: 0,
       }],
     };
@@ -856,7 +869,8 @@ export const Reports = () => {
           ['Overview', 'Total Medical Exams', processedData.totalMed],
           ['Overview', 'Total Dental Exams', processedData.totalDen],
           ['Overview', 'Total Appointments', processedData.totalAppts],
-          ['Overview', 'Total Users', processedData.totalUsers],
+          ['Overview', 'Total Patients (Students + Faculty)', processedData.totalUsers],
+          ['Overview', 'Total Clinic Staff', processedData.clinicStaffCount],
         ];
         overviewRows.forEach((row, i) => { r = addDataRow(ws, r, [...row, ''], { zebra: i % 2 === 1 }); });
 
@@ -1025,18 +1039,16 @@ export const Reports = () => {
         r = addSectionHeader(ws, r, 'By Role', 4);
         r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
 
-        const typeCounts = { student: 0, faculty: 0, staff: 0 };
+        const typeCounts = { student: 0, faculty: 0 };
         processedData.users.forEach(u => {
           const role = (u.role || '').toLowerCase();
           if (role.includes('student')) typeCounts.student++;
           else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-          else typeCounts.staff++;
         });
 
         const demoRows = [
           ['Students', typeCounts.student],
           ['Faculty', typeCounts.faculty],
-          ['Staff', typeCounts.staff],
         ];
         demoRows.forEach((row, i) => {
           r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], totalUsers), ''], { zebra: i % 2 === 1 });
@@ -1210,18 +1222,17 @@ export const Reports = () => {
         case 'demographics': {
           r = addSectionHeader(ws, r, 'By Role', 4);
           r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
-          const typeCounts = { student: 0, faculty: 0, staff: 0 };
+          const typeCounts = { student: 0, faculty: 0 };
           processedData.users.forEach(u => {
             const role = (u.role || '').toLowerCase();
             if (role.includes('student')) typeCounts.student++;
             else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-            else typeCounts.staff++;
           });
-          r = addDataRow(ws, r, ['Total Users', processedData.totalUsers, '', ''], { zebra: false });
+          r = addDataRow(ws, r, ['Total Patients (Students + Faculty)', processedData.totalUsers, '', ''], { zebra: false });
           const rows = [
             ['Students', typeCounts.student],
             ['Faculty', typeCounts.faculty],
-            ['Staff', typeCounts.staff],
+            ['Clinic Staff', processedData.clinicStaffCount],
           ];
           rows.forEach((row, i) => {
             r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], totalUsers), ''], { zebra: i % 2 === 1 });
@@ -1419,13 +1430,20 @@ export const Reports = () => {
         </GlassCard>
 
         {/* ── Stat Cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-5 mb-6">
           <StatCard
             title="Total Patients"
             value={processedData.totalUsers}
-            subtitle={`Active in system`}
+            subtitle={`Students + Faculty`}
             icon={IconUsers}
             color="#466460"
+          />
+          <StatCard
+            title="Clinic Staff"
+            value={processedData.clinicStaffCount}
+            subtitle={`Doctor + Nurse + Dentist`}
+            icon={IconUsers}
+            color="#81b29a"
           />
           <StatCard
             title="Medical Exams"
