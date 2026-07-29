@@ -8,8 +8,6 @@ import {
   RadialLinearScale
 } from 'chart.js';
 import { Bar, Doughnut, Line, PolarArea } from 'react-chartjs-2';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import authService from '../../services/auth.service.js';
@@ -808,30 +806,6 @@ export const Reports = () => {
     };
   }, [processedData.users]);
 
-  // ── Export to PDF ────────────────────────────────────────────────────────
-  const exportToPDF = async () => {
-    const element = document.getElementById('reports-content');
-    if (!element) return;
-
-    try {
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`MediTrack_Reports_${new Date().toISOString().split('T')[0]}.pdf`);
-    } catch (err) {
-      console.error('Error exporting PDF:', err);
-    }
-  };
-
   // ── Export to Excel (.xlsx) - PROFESSIONAL, STYLED, MULTI-SHEET ───────────
   const exportToCSV = async () => {
     try {
@@ -1365,17 +1339,10 @@ export const Reports = () => {
             </select>
           </div>
 
-          {/* Export Buttons */}
-          <button
-            onClick={exportToPDF}
-            className="flex items-center gap-2 px-3 py-2 bg-[#466460] text-white text-xs font-semibold rounded-lg hover:bg-[#3a524f] transition-colors"
-          >
-            <IconDownload size={14} />
-            PDF
-          </button>
+          {/* Export Button */}
           <button
             onClick={exportToCSV}
-            className="flex items-center gap-2 px-3 py-2 bg-white border border-[#e2e8f0] text-slate-600 text-xs font-semibold rounded-lg hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-[#466460] text-white text-xs font-semibold rounded-lg hover:bg-[#3a524f] transition-colors"
           >
             <IconFileText size={14} />
             Excel
@@ -1391,7 +1358,7 @@ export const Reports = () => {
         </div>
       )}
 
-      {/* ── Report Content for PDF Export ── */}
+      {/* ── Report Content ── */}
       <div id="reports-content">
         {/* ── Key Insights ── */}
         <GlassCard className="p-4 md:p-5 mb-6">
@@ -2043,4 +2010,4 @@ export const Reports = () => {
   );
 };
 
-export default Reports;
+export default Reports; 

@@ -12,4 +12,7 @@ router.post("/", authorized, validateData(createRecordSchema), recordsController
 router.put("/:id", validateData(updateRecordSchema), recordsController.updateRecord);
 router.delete("/:id", authorized, recordsController.deleteRecord);
 
+// Auto-archive old records (admin only)
+router.post("/auto-archive", authorized, recordsController.autoArchiveRecords);
+
 module.exports = router;

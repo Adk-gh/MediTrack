@@ -473,11 +473,15 @@ exports.getProfile = async (userId) => {
   };
 };
 
-exports.deleteUser = async (userId, deletedBy) => {
+exports.deleteUser = async (userId, deletedByName) => {
   // Instead of deleting, set is_archived to true
   const { error } = await supabase
     .from('users')
-    .update({ is_archived: true, updated_at: new Date().toISOString() })
+    .update({
+      is_archived: true,
+      deleted_by: deletedByName || 'system',
+      updated_at: new Date().toISOString()
+    })
     .eq('uid', userId);
 
   if (error) {

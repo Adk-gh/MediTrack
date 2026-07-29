@@ -172,25 +172,27 @@ COMPLETED ITEMS ✅============
 PENDING ITEMS 📋=============as of (07/28/26)
 =============================================
 
-* [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
-* [ ] make sure to check if the edit function is working for the admin page
 * [x] dont count if role is sysadmin. for the users count, etc etc in dashboard.jsx user management, and reports.jsx
 * [x] i need to make sure that the ocr settings is actually being saved into the database. or the changes in the ocr settings is being absorb by the ocr? since it will be the one identifying the parameter of the ocr
-* [ ] for the user management add button to add confirmation email to send email to vefiy the login
-* [ ] the name of the doctor and dentist to be added in certificate for the medical and dental certificate should be set in the admin side.
-* [ ] the uploading of health documents is not working
-* [ ] This will store all the previous records of students and employees and it should be deleted 4-5 years (for student) (for employee) it should be marked as is\_archived == True
-* [ ] add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
-* [ ] add a notification for new messages arriving(use notifier.js)
-* [ ] user notifications
-* [ ] make the settings functional
-* [ ] make sure to trigger the auditlogs in the admin pages as well.
+* [x] for the user management add button to add confirmation email to send email to vefiy the login
+* [x] This will store all the previous records of students and employees and it should be deleted 4-5 years (for student) (for employee) it should be marked as is\_archived == True
 * [x] modify the  banner text in the hompage-users.jsx which show if theres an incompletes items in the profile-users. while telling them that theres a incomplete items it should also tell users to complete their profile before going to the clinic for f2f consultation
 * [x] i need to make the profile-users.jsx to scroll smoother in mobile view. i think the pulltorefresh is casuing some issue
 * [x] there should be a mobile version of the forget password also for typing the new password there should also be a mobile version
 * [x] the middle name input box for the mobile view of SignupForm.jsx exceeds the maximum width of the container.
 * [x] the forget password is not working when i deployed it,&#x20;
 * [x] use the same resend for the email verification instead of the supabase email verification
+* [x] the deleted\_ by for the users is not working its only saving as 'system'
+* [ ] add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
+* [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
+* [ ] make the settings functional
+* [ ] the uploading of health documents is not working
+* [ ] make sure to check if the edit function is working for the admin page
+* [ ] add a notification for new messages arriving(use notifier.js)
+* [ ] user notifications
+* [ ] make sure to trigger the auditlogs in the admin pages as well.
+* [ ] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic
+* [ ] update the header.jsx covid history, and add past surgical history.
 
 # ===============testing(07/18)==================
 

@@ -50,4 +50,31 @@ const deleteRecord = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllRecords, getRecordById, createRecord, updateRecord, deleteRecord };
+// Auto-archive old records based on retention policy
+const autoArchiveRecords = async (req, res, next) => {
+  try {
+    const { dryRun } = req.query; // Optional: pass ?dryRun=true to see what would be archived
+
+    const archivedByName = `${req.user?.first_name || ''} ${req.user?.last_name || ''}`.trim() || req.user?.email || 'system';
+
+    const result = await recordsService.autoArchiveOldRecords(dryRun === 'true', archivedByName);
+
+    if (dryRun === 'true') {
+      res.status(200).json({
+        success: true,
+        message: 'Dry run complete - these records would be archived',
+        data: result
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        message: `Archived ${result.archived} records`,
+        data: result
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { getAllRecords, getRecordById, createRecord, updateRecord, deleteRecord, autoArchiveRecords };

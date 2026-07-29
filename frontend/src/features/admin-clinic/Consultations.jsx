@@ -1417,8 +1417,8 @@ export const Consultations = () => {
   });
   // Accumulate unread counts from conversations (using visibleConversations after it's defined)
   conversations.forEach(conv => {
-    if (conv.consultation_type && conv.unread_count > 0) {
-      unreadByTab[conv.consultation_type] = (unreadByTab[conv.consultation_type] || 0) + conv.unread_count;
+    if (conv.consultation_type && conv.unread_count > 0 && conv.status !== 'ended') {
+    unreadByTab[conv.consultation_type] = (unreadByTab[conv.consultation_type] || 0) + conv.unread_count;
     }
   });
 
@@ -1526,7 +1526,7 @@ export const Consultations = () => {
                   <path d="M9 15V3M9 3L4 8M9 3L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
-              
+
             </button>
           </div>
           <div className="flex gap-2 items-center">

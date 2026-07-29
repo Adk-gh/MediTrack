@@ -147,11 +147,8 @@ const updateProfile = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const deletedBy = {
-      id: req.user?.uid,
-      email: req.user?.email
-    };
-    await userService.deleteUser(userId, deletedBy);
+    const deletedByName = `${req.user?.first_name || ''} ${req.user?.last_name || ''}`.trim() || req.user?.email || 'system';
+    await userService.deleteUser(userId, deletedByName);
     res.status(200).json({ success: true, message: 'User moved to archives' });
   } catch (error) {
     next(error);

@@ -327,7 +327,7 @@ function DashboardContent() {
       labels = MONTHS.map(m => `${m} ${y}`);
     }
 
-    const types = filter === 'all' ? ['student', 'faculty', 'staff'] : [filter];
+    const types = filter === 'all' ? ['student', 'faculty'] : [filter];
     const borderDashes = { student: [], faculty: [6, 3], staff: [2, 3] };
 
     const recordsWithTypes = filteredRecords.map(r => {
@@ -475,7 +475,7 @@ function DashboardContent() {
             {loading && <span className="ml-2 text-[10px] font-normal text-slate-400 animate-pulse">loading…</span>}
           </h3>
           <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 [&::-webkit-scrollbar]:hidden">
-            {['all', 'student', 'faculty', 'staff'].map(f => (
+            {['all', 'student', 'faculty'].map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -485,7 +485,7 @@ function DashboardContent() {
                     : 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0] hover:border-[#466460]'
                   }`}
               >
-                {f === 'all' ? 'All' : f === 'student' ? 'Students' : f === 'faculty' ? 'Faculty' : 'Staff'}
+                {f === 'all' ? 'All' : f === 'student' ? 'Students' : 'Faculty'}
               </button>
             ))}
           </div>
@@ -534,11 +534,7 @@ function DashboardContent() {
                 <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#e07a5f 0,#e07a5f 6px,transparent 6px,transparent 10px)' }}></span>Faculty
               </div>
             )}
-            {(filter === 'all' || filter === 'staff') && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
-                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#81b29a 0,#81b29a 3px,transparent 3px,transparent 6px)' }}></span>Staff
-              </div>
-            )}
+            
           </div>
 
           <div className="w-full h-[30vh] min-h-[220px] relative">
