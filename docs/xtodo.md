@@ -189,7 +189,7 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [x] i need to make the profile-users.jsx to scroll smoother in mobile view. i think the pulltorefresh is casuing some issue
 * [x] there should be a mobile version of the forget password also for typing the new password there should also be a mobile version
 * [x] the middle name input box for the mobile view of SignupForm.jsx exceeds the maximum width of the container.
-* [ ] the forget password is not working when i deployed it, re\_XY5yDiNH\_PAFFCyY3hbLRPZeGa1XViZUA
+* [ ] the forget password is not working when i deployed it,&#x20;
 * [ ] use the same resend for the email verification instead of the supabase email verification
 
 # ===============testing(07/18)==================

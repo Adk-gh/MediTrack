@@ -53,8 +53,9 @@ const sendEmail = async ({ to, subject, html }) => {
         subject: subject,
         html: html,
       });
-      console.log('>>> [Email] Sent via Resend:', data.data?.id);
-      return { success: true, messageId: data.data?.id };
+      console.log('>>> [Email] Sent via Resend:', data);
+      const messageId = data?.data?.id || data?.id;
+      return { success: true, messageId: messageId };
     } catch (error) {
       console.error('>>> [Email] Resend error:', error.message);
       return { success: false, error: error.message };
