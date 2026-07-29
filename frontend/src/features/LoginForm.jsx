@@ -152,6 +152,31 @@ const LoginForm = () => {
           box-shadow: 0 4px 12px rgba(70,100,96,0.15);
           transform: translateY(-1px);
         }
+        .lf-input-wrap-desktop {
+          position: relative;
+        }
+        .lf-input-wrap-desktop .lf-input-desktop {
+          padding-right: 48px;
+        }
+        .lf-eye-btn-desktop {
+          position: absolute;
+          right: 6px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #94a3b8;
+          transition: color 0.2s;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .lf-eye-btn-desktop:hover {
+          color: #466460;
+        }
         .lf-forgot-desktop {
           display: block; text-align: right; font-size: 13px;
           font-weight: 600; color: #466460; text-decoration: none;
@@ -352,9 +377,35 @@ const LoginForm = () => {
             </div>
             <div className="lf-field">
               <label htmlFor="password-d" className="lf-label-desktop">Password</label>
-              <input id="password-d" type="password" required className="lf-input-desktop"
-                placeholder="Enter your password" value={password}
-                onChange={(e) => setPassword(e.target.value)} onBlur={() => handleBlur('password')} />
+              <div className="lf-input-wrap-desktop">
+                <input
+                  id="password-d"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  className="lf-input-desktop"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => handleBlur('password')}
+                />
+                <button
+                  type="button"
+                  className="lf-eye-btn-desktop"
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+                      <path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+                      <path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/>
+                      <circle cx="10" cy="10" r="2.5"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
             <Link to="/forgot-password" className="lf-forgot-desktop">Forgot password?</Link>
             <div className="lf-desktop-actions lf-btn-group">

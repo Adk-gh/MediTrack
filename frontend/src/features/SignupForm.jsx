@@ -48,6 +48,14 @@ const SignupForm = () => {
     if (['firstName', 'middleName', 'lastName'].includes(id)) {
       // Remove any digits (0-9) from name fields
       formattedValue = value.replace(/[0-9]/g, '');
+      // Force Title Case as they type: first letter of each word
+      // capitalized, everything else lowercased — prevents ALL CAPS
+      // or all-lowercase entries, and handles multi-word names
+      // (e.g. "dela cruz" -> "Dela Cruz", "o'brien" -> "O'Brien").
+      formattedValue = formattedValue.replace(
+        /\p{L}+/gu,
+        (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      );
     } else if (id === 'universityId') {
       // Keep only digits and hyphens for the University ID
       formattedValue = value.replace(/[^0-9-]/g, '');
@@ -116,11 +124,13 @@ const SignupForm = () => {
       if (isIdUsed) { setLoading(false); return setError('This University ID is already registered.'); }
       setIsScanning(true);
       const data = new FormData();
-      // Normalize names: first letter capitalized, rest lowercase
+      // Normalize names: Title Case each word, in sync with the
+      // live formatting already applied in handleChange
       const normalizeName = (name) => {
         if (!name) return '';
-        let trimmed = name.trim();
-        return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+        return name
+          .trim()
+          .replace(/\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
       };
 
       data.append('firstName', normalizeName(formData.firstName));
@@ -176,6 +186,13 @@ const SignupForm = () => {
           .lf-mobile-wrapper  { display: flex !important; }
         }
 
+        /* ── Required indicator ── */
+        .lf-req, .m-req {
+          color: #dc2626;
+          font-weight: 700;
+          margin-left: 2px;
+        }
+
         /* ── Desktop ── */
         .lf-error {
           margin-bottom: 16px; padding: 10px 14px;
@@ -208,8 +225,36 @@ const SignupForm = () => {
           box-shadow: 0 0 0 3px rgba(74,99,93,0.1);
         }
         .lf-desktop-input::placeholder { color: #aabdb8; }
-        .lf-desktop-row { display: flex; gap: 10px; margin-bottom: 0; }
-        .lf-desktop-row .lf-field { flex: 1; margin-bottom: 14px; }
+        .lf-desktop-row { display: flex; gap: 10px; margin-bottom: 0; min-width: 0; }
+        .lf-desktop-row .lf-field { flex: 1; margin-bottom: 14px; min-width: 0; }
+
+        /* ── Desktop password eye toggle ── */
+        .lf-input-wrap-desktop {
+          position: relative;
+        }
+        .lf-input-wrap-desktop .lf-desktop-input {
+          padding-right: 42px;
+        }
+        .lf-eye-btn-desktop {
+          position: absolute;
+          right: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 7px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #a0b8b4;
+          transition: color 0.2s;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .lf-eye-btn-desktop:hover {
+          color: #4a635d;
+        }
+
         .lf-desktop-actions {
           display: flex; flex-direction: column;
           align-items: center; gap: 12px; margin-top: 22px;
@@ -348,13 +393,14 @@ const SignupForm = () => {
             border: 1.5px solid transparent;
             transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
             overflow: hidden;
+            min-width: 0;
           }
           .m-input-pill:focus-within {
             border-color: #3D7A6F; background: #fff;
             box-shadow: 0 0 0 4px rgba(61,122,111,0.1);
           }
           .m-pill-input {
-            flex: 1; border: none; background: transparent; outline: none;
+            flex: 1; min-width: 0;  border: none; background: transparent; outline: none;
             font-size: 15px; font-family: inherit; color: #1A2E2B;
             padding: 13px 14px;
           }
@@ -367,8 +413,8 @@ const SignupForm = () => {
           .m-pill-btn:hover { color: #3D7A6F; }
 
           /* ── Row layout ── */
-          .m-row { display: flex; gap: 10px; }
-          .m-row .m-field { flex: 1; }
+          .m-row { display: flex; gap: 10px; min-width: 0; }
+          .m-row .m-field { flex: 1; min-width: 0; }
 
           /* ── Dropzone ── */
           .m-dropzone {
@@ -417,7 +463,7 @@ const SignupForm = () => {
             {/* Row 1: First · Middle · Last */}
             <div className="lf-desktop-row">
               <div className="lf-field" style={{ flex: 5 }}>
-                <label htmlFor="firstName" className="lf-desktop-label">First Name</label>
+                <label htmlFor="firstName" className="lf-desktop-label">First Name<span className="lf-req">*</span></label>
                 <input id="firstName" type="text" required disabled={loading}
                   className="lf-desktop-input" placeholder="First name"
                   value={formData.firstName} onChange={handleChange} />
@@ -432,7 +478,7 @@ const SignupForm = () => {
                   value={formData.middleName} onChange={handleChange} />
               </div>
               <div className="lf-field" style={{ flex: 5 }}>
-                <label htmlFor="lastName" className="lf-desktop-label">Last Name</label>
+                <label htmlFor="lastName" className="lf-desktop-label">Last Name<span className="lf-req">*</span></label>
                 <input id="lastName" type="text" required disabled={loading}
                   className="lf-desktop-input" placeholder="Last name"
                   value={formData.lastName} onChange={handleChange} />
@@ -460,7 +506,7 @@ const SignupForm = () => {
                 </select>
               </div>
               <div className="lf-field" style={{ flex: 5 }}>
-                <label htmlFor="universityId" className="lf-desktop-label">University ID</label>
+                <label htmlFor="universityId" className="lf-desktop-label">University ID<span className="lf-req">*</span></label>
                 <input id="universityId" type="text" required disabled={loading}
                   className="lf-desktop-input" placeholder="e.g. 2021-00123"
                   value={formData.universityId} onChange={handleChange} />
@@ -469,7 +515,7 @@ const SignupForm = () => {
 
             {/* Email */}
             <div className="lf-field">
-              <label htmlFor="email" className="lf-desktop-label">Email Address</label>
+              <label htmlFor="email" className="lf-desktop-label">Email Address<span className="lf-req">*</span></label>
               <input id="email" type="email" required disabled={loading}
                 className="lf-desktop-input" placeholder="you@plsp.edu.ph"
                 value={formData.email} onChange={handleChange} />
@@ -477,7 +523,7 @@ const SignupForm = () => {
 
             {/* ID Upload */}
             <div className="lf-field">
-              <label className="lf-desktop-label">University ID Photo</label>
+              <label className="lf-desktop-label">University ID Photo<span className="lf-req">*</span></label>
               <div
                 onClick={triggerFileInput}
                 onDragOver={handleDragOver}
@@ -499,16 +545,50 @@ const SignupForm = () => {
             {/* Row 3: Password · Confirm */}
             <div className="lf-desktop-row">
               <div className="lf-field" style={{ flex: 1 }}>
-                <label htmlFor="password" className="lf-desktop-label">Password</label>
-                <input id="password" type="password" placeholder="Create a password"
-                  required disabled={loading} className="lf-desktop-input"
-                  value={formData.password} onChange={handleChange} />
+                <label htmlFor="password" className="lf-desktop-label">Password<span className="lf-req">*</span></label>
+                <div className="lf-input-wrap-desktop">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Create a password"
+                    required disabled={loading} className="lf-desktop-input"
+                    value={formData.password} onChange={handleChange}
+                  />
+                  <button
+                    type="button"
+                    className="lf-eye-btn-desktop"
+                    onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword
+                      ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
+                      : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>
+                    }
+                  </button>
+                </div>
               </div>
               <div className="lf-field" style={{ flex: 1 }}>
-                <label htmlFor="confirmPassword" className="lf-desktop-label">Confirm Password</label>
-                <input id="confirmPassword" type="password" placeholder="Repeat password"
-                  required disabled={loading} className="lf-desktop-input"
-                  value={formData.confirmPassword} onChange={handleChange} />
+                <label htmlFor="confirmPassword" className="lf-desktop-label">Confirm Password<span className="lf-req">*</span></label>
+                <div className="lf-input-wrap-desktop">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Repeat password"
+                    required disabled={loading} className="lf-desktop-input"
+                    value={formData.confirmPassword} onChange={handleChange}
+                  />
+                  <button
+                    type="button"
+                    className="lf-eye-btn-desktop"
+                    onClick={() => setShowConfirmPassword(v => !v)}
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPassword
+                      ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
+                      : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>
+                    }
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -573,7 +653,7 @@ const SignupForm = () => {
             {/* First name + Middle Name */}
             <div className="m-row">
               <div className="m-field" style={{ flex: 3 }}>
-                <label className="m-field-label">First name</label>
+                <label className="m-field-label">First name<span className="m-req">*</span></label>
                 <div className="m-input-pill">
                   <input id="firstName" type="text" className="m-pill-input" placeholder="First name"
                     value={formData.firstName} onChange={handleChange} required autoComplete="given-name" />
@@ -581,7 +661,7 @@ const SignupForm = () => {
               </div>
               <div className="m-field" style={{ flex: 2 }}>
                 <label className="m-field-label">
-                  Middle{' '}
+                  Middle Name{' '}
                   <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>(opt.)</span>
                 </label>
                 <div className="m-input-pill">
@@ -593,7 +673,7 @@ const SignupForm = () => {
 
             {/* Last name */}
             <div className="m-field">
-              <label className="m-field-label">Last name</label>
+              <label className="m-field-label">Last name<span className="m-req">*</span></label>
               <div className="m-input-pill">
                 <input id="lastName" type="text" className="m-pill-input" placeholder="Last name"
                   value={formData.lastName} onChange={handleChange} required autoComplete="family-name" />
@@ -622,7 +702,7 @@ const SignupForm = () => {
                 </div>
               </div>
               <div className="m-field" style={{ flex: 2 }}>
-                <label className="m-field-label">University ID</label>
+                <label className="m-field-label">University ID<span className="m-req">*</span></label>
                 <div className="m-input-pill">
                   <input id="universityId" type="text" className="m-pill-input" placeholder="2021-XXXXX"
                     value={formData.universityId} onChange={handleChange} required autoComplete="off" />
@@ -635,7 +715,7 @@ const SignupForm = () => {
 
             {/* Email */}
             <div className="m-field">
-              <label className="m-field-label">Email</label>
+              <label className="m-field-label">Email<span className="m-req">*</span></label>
               <div className="m-input-pill">
                 <input id="email" type="email" className="m-pill-input" placeholder="you@plsp.edu.ph"
                   value={formData.email} onChange={handleChange} required
@@ -645,7 +725,7 @@ const SignupForm = () => {
 
             {/* Password */}
             <div className="m-field">
-              <label className="m-field-label">Password</label>
+              <label className="m-field-label">Password<span className="m-req">*</span></label>
               <div className="m-input-pill">
                 <input id="password" type={showPassword ? 'text' : 'password'}
                   className="m-pill-input" placeholder="Create a password"
@@ -661,7 +741,7 @@ const SignupForm = () => {
 
             {/* Confirm password */}
             <div className="m-field">
-              <label className="m-field-label">Confirm password</label>
+              <label className="m-field-label">Confirm password<span className="m-req">*</span></label>
               <div className="m-input-pill">
                 <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'}
                   className="m-pill-input" placeholder="Repeat your password"
@@ -676,7 +756,7 @@ const SignupForm = () => {
             </div>
 
             {/* Verification section */}
-            <p className="m-section-title">ID verification</p>
+            <p className="m-section-title">ID verification<span className="m-req">*</span></p>
 
             {/* Dropzone */}
             <div className="m-field">

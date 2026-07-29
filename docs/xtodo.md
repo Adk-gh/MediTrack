@@ -134,10 +134,7 @@ COMPLETED ITEMS ✅============
 * [x] in the Medical.jsx, the of exam\_date and exam\_time. currently theres no exam time in the database medical\_records column and examdate is based on created\_at. make sure that the exam date and exam time is being saved properly.
 * [x] can you remove the Add operation button and just display the past surgical history as is. i still can see
   the past surgical history that i've added in the profile-user and yes it did saved into the database
-*
-
-&#x20;  \* \[x] update the certificate for both medical and dental make sure its displaying in the system as if its on pdf already especailly the approved certificate on the user side\\
-
+* [x] update the certificate for both medical and dental make sure its displaying in the system as if its on pdf already especailly the approved certificate on the user side\\
 * [x] make sure that the user side Records-users.jsx only displays certificate if the database issue\_cert is set to true but the record still show just without the certificate or report.
 * [x] also make the process of approving dental to have an option just like the medical to either only approve and not issue certificate or both.
 * [x] make sure to redirect link that are sent in the threads like a google meet link. (just like messenger by meta)
@@ -177,7 +174,7 @@ PENDING ITEMS 📋=============as of (07/28/26)
 
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
 * [ ] make sure to check if the edit function is working for the admin page
-* [ ] dont count if role is sysadmin. for the users count, etc etc in dashboard.jsx user management, and reports,jsx
+* [ ] dont count if role is sysadmin. for the users count, etc etc in dashboard.jsx user management, and reports.jsx
 * [ ] i need to make sure that the ocr settings saves into the database.
 * [ ] for the user management add button to add confirmation email to send email to vefiy the login
 * [ ] the name of the doctor and dentist to be added in certificate for the medical and dental certificate should be set in the admin side.
@@ -188,8 +185,15 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [ ] user notifications
 * [ ] make the settings functional
 * [ ] make sure to trigger the auditlogs in the admin pages as well.
+* [ ] modify the  banner text in the hompage-users.jsx which show if theres an incompletes items in the profile-users. while telling them that theres a incomplete items it should also tell users to complete their profile before going to the clinic for f2f consultation
+* [ ] i need to make the profile-users.jsx to scroll smoother in mobile view. i think the pulltorefresh is casuing some issue
+* [x] there should be a mobile version of the forget password also for typing the new password there should also be a mobile version
+* [x] the middle name input box for the mobile view of SignupForm.jsx exceeds the maximum width of the container.
+* [ ] the forget password is not working when i deployed it
 
-# ===============testing(07/18)==============================ROLE MATRIX===============
+# ===============testing(07/18)==================
+
+# ============ROLE MATRIX===============
 
 | Page                    | admin          | doctor                 | dentist                | nurse                  | student/staff |
 | :---------------------- | :------------- | :--------------------- | :--------------------- | :--------------------- | :------------ |

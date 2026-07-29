@@ -1,9 +1,10 @@
+// C:\Users\HP\MediTrack\frontend\src\hooks\usePullToRefresh.js
 import { useRef, useEffect } from 'react';
 
-const THRESHOLD   = 72;   // px dragged before release triggers refresh
-const RESIST      = 0.4;  // rubber-band feel (lower = more resistance)
-const SPINNER_H   = 56;   // px of reserved space for the spinner
-const DEAD_ZONE   = 12;   // px of initial movement ignored (absorbs jitter)
+const THRESHOLD   = 72;
+const RESIST      = 0.4;
+const SPINNER_H   = 56;
+const DEAD_ZONE   = 12;
 
 export function usePullToRefresh(onRefresh) {
   const isRefreshing  = useRef(false);
@@ -17,7 +18,8 @@ export function usePullToRefresh(onRefresh) {
     let startX = 0;
     let startY = 0;
     let pullDist = 0;
-    let armed = false; // true only once we've confirmed a genuine vertical pull
+    let tracking = false;   // touch began at scrollTop 0, still watching
+    let committed = false;  // confirmed real pull past dead zone — safe to preventDefault
 
     const setIndicator = (dist, refreshing = false) => {
       const el = indicatorRef.current;
@@ -45,25 +47,26 @@ export function usePullToRefresh(onRefresh) {
       startX = 0;
       startY = 0;
       pullDist = 0;
-      armed = false;
+      tracking = false;
+      committed = false;
       setIndicator(0);
     };
 
     const handleTouchStart = (e) => {
       if (isRefreshing.current) return;
-      if (scrollEl.scrollTop > 0) return; // only fire when already at the top
+      if (scrollEl.scrollTop > 0) return; // only watch when already at the top
 
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       pullDist = 0;
-      armed = false;
+      tracking = true;
+      committed = false;
     };
 
     const handleTouchMove = (e) => {
-      if (isRefreshing.current || startY === 0) return;
+      if (isRefreshing.current || !tracking) return;
 
-      // Bail immediately if content has scrolled — never intercept
-      // a normal scroll gesture, up or down.
+      // Bail immediately if content has scrolled (never touched preventDefault, so nothing to undo)
       if (scrollEl.scrollTop > 0) {
         reset();
         return;
@@ -72,25 +75,29 @@ export function usePullToRefresh(onRefresh) {
       const deltaY = e.touches[0].clientY - startY;
       const deltaX = e.touches[0].clientX - startX;
 
-      // Direction reversed (or never was a pull) — treat as normal
-      // scroll and clear any leftover indicator/reserved height
-      // immediately, so nothing shifts layout mid-gesture.
+      // Any upward or neutral movement — let the browser fully own it, no preventDefault ever
       if (deltaY <= 0) {
         if (pullDist > 0) reset();
         return;
       }
 
-      // Not armed yet: require enough clean vertical movement before
-      // we mutate any DOM or call preventDefault. This absorbs the
-      // small jitter that a normal upward-scroll swipe often starts with.
-      if (!armed) {
-        if (deltaY < DEAD_ZONE) return;
-        if (Math.abs(deltaX) > deltaY) return; // mostly horizontal, ignore
-        armed = true;
+      if (!committed) {
+        // Still deciding. Don't touch preventDefault yet — a stray few px of
+        // downward jitter shouldn't lock the browser out of native scrolling
+        // for the rest of the gesture.
+        if (Math.abs(deltaX) > deltaY) {
+          reset(); // clearly horizontal, let browser handle it
+          return;
+        }
+        if (deltaY <= DEAD_ZONE) {
+          return; // inside dead zone — do nothing, no DOM writes, no preventDefault
+        }
+        committed = true; // only now do we treat this as a genuine pull
       }
 
-      pullDist = deltaY;
-      setIndicator(deltaY);
+      const visualDist = deltaY - DEAD_ZONE;
+      pullDist = visualDist;
+      setIndicator(visualDist);
 
       if (e.cancelable) {
         e.preventDefault();
@@ -98,7 +105,7 @@ export function usePullToRefresh(onRefresh) {
     };
 
     const handleTouchEnd = async () => {
-      if (startY === 0 || isRefreshing.current) {
+      if (!tracking || isRefreshing.current) {
         reset();
         return;
       }
@@ -106,7 +113,7 @@ export function usePullToRefresh(onRefresh) {
       const finalPull = pullDist;
       reset();
 
-      if (finalPull < THRESHOLD) return; // snap back, already reset
+      if (finalPull < THRESHOLD) return;
 
       isRefreshing.current = true;
       setIndicator(0, true);

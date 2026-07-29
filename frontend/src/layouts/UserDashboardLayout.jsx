@@ -534,6 +534,11 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
 }
 
 // ─── Mobile shell ─────────────────────────────────────────────────────────────
+// FIX: this wrapper no longer scrolls itself. It's now a fixed-size flex column
+// (overflow: hidden) so it can never grow taller than its content and become a
+// second competing scroll container. Each page's own root (e.g. Profile-users.jsx,
+// Appointment-users.jsx) fills this space exactly and owns its own scrolling —
+// so there is only ever ONE scrollable element for touch/PTR handlers to control.
 function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout, consultUnreadCount }) {
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
@@ -564,11 +569,11 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: "auto",
+          overflow: "hidden",       // was: overflowY: "auto" — no longer a scroll container
+          display: "flex",          // ADDED — real flex column so children can fill it
+          flexDirection: "column",  // ADDED
           position: "relative",
           paddingBottom: "88px",
-          WebkitOverflowScrolling: 'touch',
-          touchAction: 'pan-y',
         }}
       >
         {children}

@@ -276,7 +276,7 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
   universityId:          profileData.university_id           || '',
   role:                  profileData.role                    || '',
   studentId:             profileData.student_id              || '',
-  department:            profileData.department              || '',
+  department:            profileData.department               || '',
   program:               profileData.program                 || '',
   yearLevel:             profileData.year_level              || '',
   section:               profileData.section                 || '',
@@ -682,7 +682,20 @@ export default function ProfileUsers({ onLogout }) {
     <>
       <div
         ref={scrollElRef}
-        style={{ flex: 1, overflowY: 'auto', padding: '18px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none', touchAction: 'pan-y' }}
+        style={{
+          flex: 1,
+          minHeight: 0,          // FIX: lets this div shrink to fill the parent flex column
+                                 // instead of growing to its content's natural height, which
+                                 // is what made the MobileShell wrapper above ALSO scrollable
+                                 // (two nested scroll containers fighting for the same touch gesture).
+          overflowY: 'auto',
+          padding: '18px 16px 32px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          scrollbarWidth: 'none',
+          touchAction: 'pan-y',
+        }}
       >
         <style>{ptrStyles}</style>
         <PullIndicator indicatorRef={indicatorRef} />

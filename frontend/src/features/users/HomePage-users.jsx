@@ -475,51 +475,65 @@ const HomePageUsers = () => {
     isFieldEmpty(profileData.dental_history?.physician)
   );
 
+  // Surgical is incomplete if NOT declined AND operations array is missing or empty
+  const hasEmptySurgical = profileData && (
+    !profileData.surgical_history?.declined &&
+    (!profileData.surgical_history?.operations || profileData.surgical_history.operations.length === 0)
+  );
+
   const hasIncompleteProfile = !loadingProfile && profileData && (
-    hasEmptyAcademic || hasEmptyContact || hasEmptyEmergency || hasEmptyVaccinations || hasEmptyDental
+    hasEmptyAcademic || hasEmptyContact || hasEmptyEmergency || hasEmptyVaccinations || hasEmptyDental || hasEmptySurgical
   );
 
   // Determine what action to show (prioritize the most important missing info)
   let pendingAction = null;
   if (hasEmptyVaccinations) {
     pendingAction = {
-      title:     "Action Required",
-      desc:      "Please update your vaccination history in your profile for campus safety compliance.",
+      title:     "Incomplete Profile",
+      desc:      "You have incomplete items (Vaccination History). Please complete your profile before going to the clinic for an f2f consultation.",
       btnText:   "Update Profile",
       targetTab: "profile",
       scrollTo:  "vaccinations",
     };
   } else if (hasEmptyEmergency) {
     pendingAction = {
-      title:     "Action Required",
-      desc:      "Please add an emergency contact to your profile.",
+      title:     "Incomplete Profile",
+      desc:      "You have incomplete items (Emergency Contact). Please complete your profile before going to the clinic for an f2f consultation.",
       btnText:   "Add Contact",
       targetTab: "profile",
       scrollTo:  "emergency",
     };
   } else if (hasEmptyAcademic) {
     pendingAction = {
-      title:     "Action Required",
-      desc:      "Please complete your academic information in your profile.",
+      title:     "Incomplete Profile",
+      desc:      "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for an f2f consultation.",
       btnText:   "Update Profile",
       targetTab: "profile",
       scrollTo:  "academic",
     };
   } else if (hasEmptyContact) {
     pendingAction = {
-      title:     "Action Required",
-      desc:      "Please add your contact information in your profile.",
+      title:     "Incomplete Profile",
+      desc:      "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for an f2f consultation.",
       btnText:   "Update Profile",
       targetTab: "profile",
       scrollTo:  "contact",
     };
   } else if (hasEmptyDental) {
     pendingAction = {
-      title:     "Action Required",
-      desc:      "Please add your dental history in your profile.",
+      title:     "Incomplete Profile",
+      desc:      "You have incomplete items (Dental History). Please complete your profile before going to the clinic for an f2f consultation.",
       btnText:   "Add Dental History",
       targetTab: "profile",
       scrollTo:  "dental",
+    };
+  } else if (hasEmptySurgical) {
+    pendingAction = {
+      title:     "Incomplete Profile",
+      desc:      "You have incomplete items (Surgical History). Please complete your profile before going to the clinic for an f2f consultation.",
+      btnText:   "Add Surgical History",
+      targetTab: "profile",
+      scrollTo:  "surgical",
     };
   }
 
