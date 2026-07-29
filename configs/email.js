@@ -1,15 +1,31 @@
 // C:\Users\HP\MediTrack\configs\email.js
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
-// Initialize Resend with API key from environment
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+// Check for SendGrid API key first
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 
-// Fallback to nodemailer if no Resend key (for local development)
+// Initialize SendGrid mail service
 let transporter = null;
-if (!resend) {
-  const nodemailer = require('nodemailer');
+
+if (SENDGRID_API_KEY) {
+  // Use SendGrid
+  const sgMail = require('@sendgrid/mail');
+  sgMail.setApiKey(SENDGRID_API_KEY);
+
+  transporter = {
+    sendMail: async (mailOptions) => {
+      const msg = {
+        to: mailOptions.to,
+        from: process.env.MAIL_FROM_ADDRESS || 'MediTrack <meditrack93@gmail.com>',
+        subject: mailOptions.subject,
+        html: mailOptions.html,
+      };
+      await sgMail.send(msg);
+      return { messageId: 'sent' };
+    }
+  };
+} else {
+  // Fallback to regular SMTP
   transporter = nodemailer.createTransport({
     host: process.env.MAIL_HOST || 'smtp.gmail.com',
     port: process.env.MAIL_PORT || 587,
@@ -28,48 +44,22 @@ if (!resend) {
 
 // Verify connection on startup
 const verifyConnection = async () => {
-  if (resend) {
-    console.log('>>> [Email] Using Resend for emails');
-    return;
-  }
-  if (transporter) {
-    try {
+  try {
+    if (SENDGRID_API_KEY) {
+      console.log('>>> [Email] Using SendGrid for emails');
+    } else {
       await transporter.verify();
       console.log('>>> [Email] SMTP connection verified');
-    } catch (error) {
-      console.error('>>> [Email] SMTP connection error:', error.message);
     }
+  } catch (error) {
+    console.error('>>> [Email] Connection error:', error.message);
   }
 };
 
 // Send email function
 const sendEmail = async ({ to, subject, html }) => {
-  // Use Resend if available
-  if (resend) {
-    try {
-      const data = await resend.emails.send({
-        from: process.env.MAIL_FROM_ADDRESS || 'MediTrack <onboarding@resend.dev>',
-        to: [to],
-        subject: subject,
-        html: html,
-      });
-      console.log('>>> [Email] Sent via Resend:', data);
-      const messageId = data?.data?.id || data?.id;
-      return { success: true, messageId: messageId };
-    } catch (error) {
-      console.error('>>> [Email] Resend error:', error.message);
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Fallback to nodemailer
-  if (!transporter) {
-    console.error('>>> [Email] No email service configured');
-    return { success: false, error: 'No email service configured' };
-  }
-
   const mailOptions = {
-    from: `"${process.env.MAIL_FROM_NAME || 'MediTrack'}" <${process.env.MAIL_FROM_ADDRESS}>`,
+    from: `"${process.env.MAIL_FROM_NAME || 'MediTrack'}" <${process.env.MAIL_FROM_ADDRESS || 'meditrack93@gmail.com'}>`,
     to,
     subject,
     html,
@@ -93,7 +83,7 @@ const sendEmail = async ({ to, subject, html }) => {
 };
 
 module.exports = {
-  transporter: resend, // For compatibility
+  transporter,
   sendEmail,
   verifyConnection,
 };
