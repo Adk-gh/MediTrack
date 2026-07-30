@@ -36,7 +36,7 @@ const getInitials = (name = '') => {
 const StatusPill = ({ status }) => {
   const s = getStatusStyle(status);
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize ${s.bg} ${s.text}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold capitalize ${s.bg} ${s.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}></span>
       {status || 'unknown'}
     </span>
@@ -86,7 +86,7 @@ const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) =
     >
       {/* Status picker */}
       <div className="px-3 pt-3 pb-2 border-b border-slate-100">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
           Change status
         </p>
         <div className="flex flex-col gap-1">
@@ -97,7 +97,7 @@ const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) =
               <button
                 key={s}
                 onClick={() => setEditStatus(s)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-all text-left ${
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all text-left ${
                   isSelected
                     ? `${style.bg} ${style.text} ring-1 ring-inset`
                     : 'hover:bg-slate-50 text-slate-500'
@@ -121,7 +121,7 @@ const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) =
         <button
           onClick={handleSave}
           disabled={saving || editStatus === record.status}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#466460] text-white text-[11px] font-bold hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#466460] text-white text-xs font-bold hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? (
             <>
@@ -143,7 +143,7 @@ const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) =
 
         <button
           onClick={() => onDelete(record)}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-500 text-[11px] font-semibold hover:bg-red-50 transition"
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-500 text-xs font-semibold hover:bg-red-50 transition"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -170,10 +170,10 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
     <tr className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group">
       {/* Type */}
       <td className="p-3 pl-4">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
           isMedical ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
         }`}>
-          <i className={`fa-solid ${isMedical ? 'fa-stethoscope' : 'fa-tooth'} text-[8px]`}></i>
+          <i className={`fa-solid ${isMedical ? 'fa-stethoscope' : 'fa-tooth'} text-[9px]`}></i>
           {isMedical ? 'Medical' : 'Dental'}
         </span>
       </td>
@@ -187,8 +187,8 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
             {initials}
           </div>
           <div>
-            <p className="font-semibold text-xs text-slate-800">{name}</p>
-            <p className="text-[10px] text-slate-400">
+            <p className="font-semibold text-sm text-slate-800">{name}</p>
+            <p className="text-xs text-slate-400">
               {record._user?.role || '—'} · {record._user?.department || '—'}
             </p>
           </div>
@@ -197,14 +197,14 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
 
       {/* ID */}
       <td className="p-3 hidden sm:table-cell">
-        <span className="text-[11px] font-mono text-slate-500">
+        <span className="text-xs font-mono text-slate-500">
           {record.university_id || record._user?.university_id || '—'}
         </span>
       </td>
 
       {/* Exam date */}
       <td className="p-3 hidden md:table-cell">
-        <span className="text-[11px] text-slate-500">
+        <span className="text-xs text-slate-500">
           {formatDate(record.exam_date || record.created_at)}
         </span>
       </td>
@@ -213,19 +213,19 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
       <td className="p-3 hidden lg:table-cell">
         {isMedical ? (
           <div className="flex flex-wrap gap-1">
-            {vitals.bp   && <span className="text-[9px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">BP: <strong className="text-[#466460]">{vitals.bp}</strong></span>}
-            {vitals.temp && <span className="text-[9px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">Temp: <strong className="text-[#466460]">{vitals.temp}</strong></span>}
-            {record.bmi  && <span className="text-[9px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">BMI: <strong className="text-[#466460]">{record.bmi}</strong></span>}
+            {vitals.bp   && <span className="text-[10px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">BP: <strong className="text-[#466460]">{vitals.bp}</strong></span>}
+            {vitals.temp && <span className="text-[10px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">Temp: <strong className="text-[#466460]">{vitals.temp}</strong></span>}
+            {record.bmi  && <span className="text-[10px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">BMI: <strong className="text-[#466460]">{record.bmi}</strong></span>}
             {record.is_fit !== null && (
-              <span className={`text-[9px] rounded px-1.5 py-0.5 font-semibold ${record.is_fit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+              <span className={`text-[10px] rounded px-1.5 py-0.5 font-semibold ${record.is_fit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                 {record.is_fit ? 'Fit' : 'Not Fit'}
               </span>
             )}
           </div>
         ) : (
           <div className="flex flex-wrap gap-1">
-            {record.finding1 && <span className="text-[9px] bg-white border border-purple-100 rounded px-1.5 py-0.5 text-slate-600">{record.finding1}</span>}
-            <span className="text-[9px] text-slate-400">{record.examined_by ? `Dr. ${record.examined_by}` : '—'}</span>
+            {record.finding1 && <span className="text-[10px] bg-white border border-purple-100 rounded px-1.5 py-0.5 text-slate-600">{record.finding1}</span>}
+            <span className="text-[10px] text-slate-400">{record.examined_by ? `Dr. ${record.examined_by}` : '—'}</span>
           </div>
         )}
       </td>
@@ -245,7 +245,7 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
             }
             setShowMenu(v => !v);
           }}
-          className={`inline-flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg border font-semibold transition-all ${
+          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-semibold transition-all ${
             showMenu
               ? 'bg-[#466460] text-white border-[#466460] shadow-sm'
               : 'bg-white text-slate-500 border-slate-200 hover:border-[#466460] hover:text-[#466460]'
@@ -407,7 +407,7 @@ export const RecordManagement = () => {
     }
   };
 
-  const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
   const COL_COUNT = 7;
 
   return (
@@ -418,11 +418,11 @@ export const RecordManagement = () => {
         <div className="flex justify-between items-center mb-3">
           <div>
             <h2 className="text-xl md:text-2xl font-bold text-[#466460]">Record Management</h2>
-            <p className="text-xs text-slate-400 mt-0.5">All medical and dental records</p>
+            <p className="text-sm text-slate-400 mt-0.5">All medical and dental records</p>
           </div>
           <button
             onClick={fetchAllRecords}
-            className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm"
+            className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
@@ -440,8 +440,8 @@ export const RecordManagement = () => {
             { label: 'Pending', count: totalPending,   color: 'text-amber-700'   },
           ].map(s => (
             <div key={s.label} className="bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm flex items-center gap-2">
-              <span className={`text-base font-bold ${s.color}`}>{s.count}</span>
-              <span className="text-[10px] text-slate-400 font-medium">{s.label}</span>
+              <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+              <span className="text-xs text-slate-400 font-medium">{s.label}</span>
             </div>
           ))}
         </div>
@@ -461,7 +461,7 @@ export const RecordManagement = () => {
               placeholder="Search name, ID, email…"
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-xs outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+              className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
             />
           </div>
 
@@ -490,7 +490,7 @@ export const RecordManagement = () => {
 
             <button
               onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
-              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-xs font-medium text-slate-600 hover:border-[#466460] hover:text-[#466460] transition shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:border-[#466460] hover:text-[#466460] transition shadow-sm"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
@@ -498,7 +498,7 @@ export const RecordManagement = () => {
               <span className="hidden sm:inline">{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
             </button>
 
-            <span className="ml-auto text-[10px] text-slate-400 font-medium whitespace-nowrap">
+            <span className="ml-auto text-xs text-slate-400 font-medium whitespace-nowrap">
               {filtered.length} record{filtered.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -509,13 +509,13 @@ export const RecordManagement = () => {
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left p-3 pl-4 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
-                <th className="text-left p-3 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
-                <th className="text-left p-3 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden sm:table-cell">ID</th>
-                <th className="text-left p-3 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Exam Date</th>
-                <th className="text-left p-3 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden lg:table-cell">Details</th>
-                <th className="text-left p-3 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
-                <th className="text-left p-3 pr-4 text-[10px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
+                <th className="text-left p-3 pl-4 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden sm:table-cell">ID</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Exam Date</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden lg:table-cell">Details</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
+                <th className="text-left p-3 pr-4 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>

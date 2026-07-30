@@ -193,6 +193,10 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [ ] make sure to trigger the auditlogs in the admin pages as well.
 * [ ] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic
 * [ ] update the header.jsx covid history, and add past surgical history.
+* [ ] dont show the system message in the messages section
+
+> > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
+> > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 
 # ===============testing(07/18)==================
 

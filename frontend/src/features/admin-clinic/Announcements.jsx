@@ -601,41 +601,61 @@ export const Announcements = () => {
       `}</style>
 
       {/* ── Header Bar ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-5 pt-4 pb-3 border-b-2 border-[#e0eceb]">
-        <h3 className="font-bold text-base text-[#466460]">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-6 pt-6 pb-5 border-b-2 border-[#e0eceb]">
+        <h3 className="font-extrabold text-xl sm:text-2xl text-[#466460]">
           {canManage ? 'Announcement Management' : 'Announcements'}
         </h3>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 w-full sm:w-auto">
           {/* Search Bar */}
-          <div className="relative flex-1 sm:flex-none sm:w-48">
-            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <div className="relative flex-1 sm:flex-none sm:w-72">
+            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search announcements..."
-              className="w-full text-xs border border-[#e2e8f0] rounded-full pl-9 pr-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600"
+              className="w-full text-sm border border-[#e2e8f0] rounded-full pl-11 pr-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
             />
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="flex-1 sm:flex-none text-[11px] border border-[#e2e8f0] rounded-full px-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600">
+
+          <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full sm:w-auto">
+            <select
+              value={filterCategory}
+              onChange={e => setFilterCategory(e.target.value)}
+              className="flex-1 sm:flex-none text-sm font-medium border border-[#e2e8f0] rounded-full px-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+            >
               <option value="All">All Categories</option>
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
-            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className="flex-1 sm:flex-none text-[11px] border border-[#e2e8f0] rounded-full px-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600">
+
+            <select
+              value={filterPriority}
+              onChange={e => setFilterPriority(e.target.value)}
+              className="flex-1 sm:flex-none text-sm font-medium border border-[#e2e8f0] rounded-full px-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+            >
               <option value="All">All Priorities</option>
               <option value="urgent">Urgent</option>
               <option value="high">High</option>
               <option value="normal">Normal</option>
             </select>
-            <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className="flex-1 sm:flex-none text-[11px] border border-[#e2e8f0] rounded-full px-3 py-2 sm:py-1.5 outline-none focus:border-[#466460] bg-white text-slate-600">
+
+            <select
+              value={filterDept}
+              onChange={e => setFilterDept(e.target.value)}
+              className="flex-1 sm:flex-none text-sm font-medium border border-[#e2e8f0] rounded-full px-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+            >
               <option value="All">All Depts</option>
               {DEPT_OPTIONS.map(d => <option key={d}>{d}</option>)}
             </select>
           </div>
+
           {canManage && (
-            <button onClick={() => handleOpenForm()} className="w-full sm:w-auto bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-4 py-2 sm:py-1.5 rounded-full font-semibold text-[11px] cursor-pointer hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5">
-              <i className="fa-solid fa-plus text-[10px]"></i> New Post
+            <button
+              onClick={() => handleOpenForm()}
+              className="w-full sm:w-auto bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-6 py-2.5 rounded-full font-bold text-sm cursor-pointer hover:shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 mt-2 xl:mt-0"
+            >
+              <i className="fa-solid fa-plus text-sm"></i> New Post
             </button>
           )}
         </div>
