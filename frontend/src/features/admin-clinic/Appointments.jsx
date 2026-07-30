@@ -1,8 +1,11 @@
 // frontend/src/features/admin-clinic/Appointments.jsx
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { useAppointments } from '../../context/AppointmentContext';
 import { supabase } from '../../supabase';
+import { Medical } from './Examination/Medical';
+import { Dental } from './Examination/Dental';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTHS = [
@@ -32,6 +35,57 @@ const fmtTime = (t) => {
   const period = h >= 12 ? 'PM' : 'AM';
   const hr     = h % 12 || 12;
   return `${hr}:${String(m).padStart(2,'0')} ${period}`;
+};
+
+// ── Normalize Patient Data for Examination Modal ──────────────────────────────
+const normalizePatientData = (uid, d) => {
+  const firstName     = d.firstName    || d.first_name    || '';
+  const lastName      = d.lastName     || d.last_name     || '';
+  const middleName   = d.middleName   || d.middle_name   || '';
+  const suffix       = d.suffix       || '';
+  const universityId = d.universityId || d.university_id || d.studentId || d.student_id || '';
+
+  const name = lastName
+    ? `${lastName}, ${firstName} ${middleName} ${suffix}`.trim()
+    : firstName || '—';
+
+  return {
+    uid, name, firstName, lastName, middleName, suffix,
+    id:             universityId || uid,
+    universityId,
+    studentId:      d.studentId  || d.student_id  || universityId || '',
+    role:           d.role       || '',
+    prog:           d.program    || d.course       || '',
+    program:        d.program    || d.course       || '',
+    year:           d.yearLevel  || d.year_level   || '',
+    yearLevel:      d.yearLevel  || d.year_level   || '',
+    section:        d.section    || '',
+    age:            d.age        || '',
+    gender:         d.gender     || d.sex          || '',
+    sex:            d.gender     || d.sex          || '',
+    birthdate:      d.birthday   || d.birthdate    || '',
+    birthday:       d.birthday   || d.birthdate    || '',
+    email:          d.email      || '',
+    phoneNumber:    d.phoneNumber || d.phone_number || d.contact_no || '',
+    department:     d.department || '',
+    jobTitle:       d.jobTitle   || d.job_title    || '',
+    classification: d.classification || '',
+    homeAddress:    d.homeAddress || d.home_address || d.address || '',
+    religion:       d.religion   || '',
+    nationality:    d.nationality || '',
+    civilStatus:    d.civilStatus || d.civil_status || '',
+    bloodType:      d.bloodType  || d.blood_type   || '',
+    emergencyContact: d.emergencyContact || d.emergency_contact || {
+      name: '', relationship: '', phone: '', address: ''
+    },
+    vaccinations: d.vaccinations || {
+      dose1:    { vaccineName: '', date: '' },
+      dose2:    { vaccineName: '', date: '' },
+      booster1: { vaccineName: '', date: '' },
+      booster2: { vaccineName: '', date: '' },
+    },
+    dentalHistory: d.dentalHistory || d.dental_history || {},
+  };
 };
 
 // ── Inline SVG Icons ──────────────────────────────────────────────────────────
@@ -238,7 +292,6 @@ const IconUserClock = ({ size = 16, ...props }) => (
   </svg>
 );
 
-// ── Missed icon ────────────────────────────────────────────────────────────
 const IconBanCircle = ({ size = 14, color = "currentColor", ...props }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
     strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -247,7 +300,6 @@ const IconBanCircle = ({ size = 14, color = "currentColor", ...props }) => (
   </svg>
 );
 
-// ── NEW: Rejected icon ────────────────────────────────────────────────────
 const IconCircleXmark = ({ size = 14, color = "currentColor", ...props }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color}
     strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -476,6 +528,199 @@ const ModalOverlay = ({ children, onClose }) => (
   </div>
 );
 
+// ── Examination Modal Component ───────────────────────────────────────────────
+const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onExamSubmitted, resetKey, currentUserRole }) => {
+  const [loading, setLoading] = useState(true);
+  const [normalizedPatient, setNormalizedPatient] = useState(null);
+  const [schoolYear, setSchoolYear] = useState(() => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    // Academic year: Aug-Jan = current Year, Feb-Jul = current Year-1 to current Year
+    if (currentMonth >= 7) return `${currentYear}-${currentYear + 1}`;
+    return `${currentYear - 1}-${currentYear}`;
+  });
+  const [semester, setSemester] = useState(() => {
+    const currentMonth = new Date().getMonth();
+    // Aug-Dec = 1st semester, Jan-May = 2nd semester, Jun-Jul = Mid Year
+    if (currentMonth >= 7 && currentMonth <= 11) return '1st Semester';
+    if (currentMonth >= 0 && currentMonth <= 4) return '2nd Semester';
+    return 'Mid Year';
+  });
+
+  // School year options
+  const schoolYearOptions = Array.from({ length: 10 }, (_, i) => {
+    const y = new Date().getFullYear() - 5 + i;
+    return `${y}-${y + 1}`;
+  });
+
+  // Filter tabs based on user role
+  const userRole = String(currentUserRole || '').toLowerCase().trim();
+  const canDoMedical = ['nurse', 'doctor', 'sysadmin', 'administrator'].includes(userRole);
+  const canDoDental = ['dentist', 'sysadmin', 'administrator'].includes(userRole);
+
+  // Determine available tabs
+  const availableTabs = [
+    { key: 'medical', icon: 'fa-stethoscope', label: 'Medical Examination' },
+    { key: 'dental', icon: 'fa-tooth', label: 'Dental Examination' },
+  ].filter(tab => {
+    if (tab.key === 'medical') return canDoMedical;
+    if (tab.key === 'dental') return canDoDental;
+    return true;
+  });
+
+  useEffect(() => {
+    if (!isOpen || !patient) {
+      setNormalizedPatient(null);
+      return;
+    }
+
+    const fetchPatientData = async () => {
+      setLoading(true);
+
+      // Get the uid - use patient.uid or patient.id (university id)
+      const userId = patient.uid || patient.id;
+      const matchCol = patient.uid ? 'id' : 'university_id';
+
+      try {
+        // Try to fetch from Supabase
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq(matchCol, userId)
+          .maybeSingle();
+
+        if (data && !error) {
+          // Use the fetched data, properly normalized
+          setNormalizedPatient(normalizePatientData(userId, data));
+        } else {
+          // Fallback to the patient prop if fetch fails
+          setNormalizedPatient(normalizePatientData(userId, patient));
+        }
+      } catch (err) {
+        console.error('Error fetching patient data:', err);
+        // Fallback to the patient prop
+        setNormalizedPatient(normalizePatientData(userId, patient));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPatientData();
+  }, [isOpen, patient, resetKey]);
+
+  if (!isOpen || !patient) return null;
+
+  const displayPatient = normalizedPatient || patient;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
+
+      {/* Modal Content */}
+      <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+        {/* Header */}
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
+              <i className="fa-solid fa-user text-white text-lg"></i>
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-slate-800">{displayPatient.name}</h3>
+              <p className="text-sm text-slate-500 mt-0.5">
+                {displayPatient.id} • {displayPatient.department || ''} {displayPatient.prog ? `• ${displayPatient.prog}` : ''}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+              <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs and School Year */}
+        <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
+          <div className="flex gap-2">
+            {availableTabs.map(({ key, icon, label }) => (
+              <button
+                key={key}
+                onClick={() => setExamType(key)}
+                className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                  examType === key
+                    ? 'bg-[#466460] text-white shadow-md'
+                    : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <i className={`fa-solid ${icon}`}></i>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-500">School Year:</span>
+            <select
+              value={schoolYear}
+              onChange={(e) => setSchoolYear(e.target.value)}
+              className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+            >
+              {schoolYearOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <select
+              value={semester}
+              onChange={(e) => setSemester(e.target.value)}
+              className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+            >
+              <option value="1st Semester">1st Semester</option>
+              <option value="2nd Semester">2nd Semester</option>
+              <option value="Mid Year">Mid Year</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Form Content */}
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center text-slate-400">
+                <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 block text-[#466460]"></i>
+                <p className="text-sm font-semibold">Loading patient data…</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {examType === 'medical' && (
+                <Medical
+                  key={`medical-${resetKey}`}
+                  selectedPatient={displayPatient}
+                  showMessage={onExamSubmitted}
+                  defaultSchoolYear={schoolYear}
+                  defaultSemester={semester}
+                />
+              )}
+              {examType === 'dental' && (
+                <Dental
+                  key={`dental-${resetKey}`}
+                  selectedPatient={displayPatient}
+                  showMessage={onExamSubmitted}
+                  defaultSchoolYear={schoolYear}
+                  defaultSemester={semester}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export const Appointments = () => {
   const navigate = useNavigate();
@@ -523,6 +768,21 @@ export const Appointments = () => {
 
   // ── User data cache (fetched from users table) ──
   const [userDataMap, setUserDataMap] = useState({});
+
+  // ── Examination Modal State ──
+  const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examType, setExamType] = useState('medical');
+  const [examResetKey, setExamResetKey] = useState(0);
+  const [selectedPatientForExam, setSelectedPatientForExam] = useState(null);
+
+  const [currentUserRole, setCurrentUserRole] = useState(() => {
+    try {
+      const rawUser = localStorage.getItem('user');
+      return rawUser ? JSON.parse(rawUser)?.role || 'student' : 'student';
+    } catch {
+      return 'student';
+    }
+  });
 
   // Fetch user data from users table when appointments load
   useEffect(() => {
@@ -636,7 +896,7 @@ export const Appointments = () => {
     return !searchTerm ||
       r.name.toLowerCase().includes(searchTerm)         ||
       (r.idno || '').toLowerCase().includes(searchTerm) ||
-      (userData.universityId || '').toLowerCase().includes(searchTerm) ||
+      (userData.university_id || '').toLowerCase().includes(searchTerm) ||
       (userData.department || '').toLowerCase().includes(searchTerm) ||
       (userData.program || '').toLowerCase().includes(searchTerm) ||
       (userData.section || '').toLowerCase().includes(searchTerm) ||
@@ -702,7 +962,7 @@ export const Appointments = () => {
     const matchSearch = !searchTerm ||
       a.name.toLowerCase().includes(searchTerm) ||
       (a.idno || '').toLowerCase().includes(searchTerm) ||
-      (userData.universityId || '').toLowerCase().includes(searchTerm) ||
+      (userData.university_id || '').toLowerCase().includes(searchTerm) ||
       (userData.department || '').toLowerCase().includes(searchTerm) ||
       (userData.program || '').toLowerCase().includes(searchTerm) ||
       (a.reason || '').toLowerCase().includes(searchTerm);
@@ -812,6 +1072,51 @@ export const Appointments = () => {
         month: 'long', day: 'numeric', year: 'numeric',
       })
     : null;
+
+  // ── Examination Flow Handlers ──
+  const handleExaminePatient = (appt) => {
+    // Generate patient profile from appointment data
+    const nameParts = (appt.name || '').trim().split(' ');
+    const patientProfile = {
+      uid: appt.user_id || `temp-${Date.now()}`,
+      name: appt.name,
+      firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
+      lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
+      id: appt.idno,
+      universityId: appt.idno,
+      department: appt.dept,
+      prog: appt.prog,
+      section: appt.section,
+      type: appt.type || 'student',
+      role: appt.type || 'student'
+    };
+
+    // Determine default exam type
+    const reasonLower = (appt.reason || '').toLowerCase();
+    const defaultExamType = reasonLower.includes('dental') ? 'dental' : 'medical';
+
+    setSelectedPatientForExam(patientProfile);
+    setExamType(defaultExamType);
+    setExamResetKey(k => k + 1);
+
+    // Close Detail Modal if open, open Exam Modal
+    setDetailModal(null);
+    setExamModalOpen(true);
+  };
+
+  const handleExamModalClose = () => {
+    setExamModalOpen(false);
+    setSelectedPatientForExam(null);
+    setExamResetKey(k => k + 1);
+  };
+
+  const handleExamSubmitted = (msg) => {
+    showSnackbar(msg, 'success');
+    setExamModalOpen(false);
+    setSelectedPatientForExam(null);
+    setExamResetKey(k => k + 1);
+  };
+
 
   // ── Pending List ──────────────────────────────────────────────────────────
   const PendingList = () => (
@@ -1184,55 +1489,6 @@ export const Appointments = () => {
     </div>
   );
 
-  const handleExaminePatient = async (appt) => {
-    showSnackbar('Locating patient record...');
-    try {
-      let { data: users, error } = await supabase
-        .from('users')
-        .select('id')
-        .eq('universityId', appt.idno)
-        .limit(1);
-
-      if (error) throw error;
-
-      if (!users || users.length === 0) {
-        ({ data: users, error } = await supabase
-          .from('users')
-          .select('id')
-          .eq('studentId', appt.idno)
-          .limit(1));
-
-        if (error) throw error;
-      }
-
-      if (users && users.length > 0) {
-        const actualUid = users[0].id;
-        setDetailModal(null);
-        showSnackbar('Patient found! Redirecting...');
-        setTimeout(() => navigate(`/examinations?patientId=${actualUid}`), 1000);
-      } else {
-        const nameParts = (appt.name || '').trim().split(' ');
-        const patientProfile = {
-          uid: `temp-${Date.now()}`,
-          name: appt.name,
-          firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : appt.name,
-          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : '',
-          id: appt.idno,
-          universityId: appt.idno,
-          department: appt.dept,
-          prog: appt.prog,
-          section: appt.section,
-        };
-        localStorage.setItem('selectedPatient', JSON.stringify(patientProfile));
-        setDetailModal(null);
-        showSnackbar('Patient not in DB. Using appointment data...');
-        setTimeout(() => navigate(`/examinations?patientId=${patientProfile.uid}`), 1000);
-      }
-    } catch (error) {
-      console.error('Error looking up patient:', error);
-      showSnackbar('Database error occurred.', 'error');
-    }
-  };
 
   // ── Calendar Panel ────────────────────────────────────────────────────────
   const CalendarPanel = () => (
@@ -1727,7 +1983,7 @@ export const Appointments = () => {
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-[#1e293b] truncate text-[14px]">{item.name}</div>
-                          <div className="text-[12px] text-[#64748b] truncate mt-[2px]">{getUserData(item).universityId} &middot; {item.reason} &middot; {getUserData(item).program}</div>
+                          <div className="text-[12px] text-[#64748b] truncate mt-[2px]">{getUserData(item).university_id} &middot; {item.reason} &middot; {getUserData(item).program}</div>
                         </div>
                       </div>
                     ))}
@@ -1848,7 +2104,7 @@ export const Appointments = () => {
             <div className="divide-y divide-[#f1f5f9]">
               {[
                 { Icon: IconUser,          label: 'Full Name',  value: detailModal.name },
-                { Icon: IconIdCard,        label: 'ID Number',  value: getUserData(detailModal).universityId },
+                { Icon: IconIdCard,        label: 'ID Number',  value: getUserData(detailModal).university_id },
                 { Icon: IconTag,           label: 'Type',       value: detailModal.type?.charAt(0).toUpperCase() + detailModal.type?.slice(1) },
                 { Icon: IconBuilding,      label: 'Department', value: getUserData(detailModal).department },
                 { Icon: IconGraduationCap, label: 'Program',    value: getUserData(detailModal).program },
@@ -1895,6 +2151,21 @@ export const Appointments = () => {
             </div>
           </div>
         </ModalOverlay>
+      )}
+
+      {/* ── Examination Modal rendered via Portal ── */}
+      {examModalOpen && createPortal(
+        <ExaminationModal
+          isOpen={examModalOpen}
+          onClose={handleExamModalClose}
+          patient={selectedPatientForExam}
+          examType={examType}
+          setExamType={setExamType}
+          onExamSubmitted={handleExamSubmitted}
+          resetKey={examResetKey}
+          currentUserRole={currentUserRole}
+        />,
+        document.body
       )}
 
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />

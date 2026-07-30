@@ -21,6 +21,23 @@ const formatDate = (ts) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// ── Last-visible-message helper ───────────────────────────────────────────
+// Sidebar previews (and last_timestamp sorting) should never surface a
+// system/bot/triage message (e.g. "Consultation marked as complete by
+// clinic staff."). Conversations that have been ended/reopened multiple
+// times can have several of these rows, and the newest row in the table
+// is very often one of them — so naively taking msgs[msgs.length - 1]
+// picks the system message instead of the last real chat message.
+const HIDDEN_PREVIEW_ROLES = ['system', 'bot', 'triage'];
+const lastVisibleMessage = (msgs) => {
+  if (!msgs || msgs.length === 0) return null;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const role = (msgs[i].sender_role || '').toLowerCase();
+    if (!HIDDEN_PREVIEW_ROLES.includes(role)) return msgs[i];
+  }
+  return null;
+};
+
 // ── Linkify: Converts URLs in text to clickable links ────────────────────────
 const LinkifiedText = ({ text, isPatient = false }) => {
   // Regex to match URLs (including Google Meet links)
@@ -873,7 +890,11 @@ export const Consultations = () => {
             try {
               // 🟢 FIX: Force refresh to get fresh messages
               const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
-              const lastMsg = msgs?.slice(-1)[0];
+              // 🟢 FIX: skip system/bot/triage rows when picking the preview —
+              // otherwise "Consultation marked as complete by clinic staff."
+              // shows up as the sidebar preview any time that's the newest row
+              // (very common on conversations that have been ended/reopened).
+              const lastMsg = lastVisibleMessage(msgs);
               // Count unread messages (from patients, not from staff)
               // Only count if internalStaffId is available and sender_id exists
               const unreadCount = internalStaffId
@@ -929,8 +950,9 @@ export const Consultations = () => {
 
         // Immediately fetch the last message and update
         consultationsService.getMessagesByConsultationId(payload.new.id, true).then(msgs => {
-          if (msgs && msgs.length > 0) {
-            const lastMsg = msgs[msgs.length - 1];
+          // 🟢 FIX: use lastVisibleMessage so a system row can't become the preview
+          const lastMsg = lastVisibleMessage(msgs);
+          if (lastMsg) {
             setConversations(prev => {
               const idx = prev.findIndex(c => c.id === payload.new.id);
               if (idx !== -1) {
@@ -989,8 +1011,9 @@ export const Consultations = () => {
           if (statusChanged && updatedConv.status === 'active') {
             // Fetch fresh data for this conversation
             consultationsService.getMessagesByConsultationId(updatedConv.id, true).then(msgs => {
-              if (msgs && msgs.length > 0) {
-                const lastMsg = msgs[msgs.length - 1];
+              // 🟢 FIX: use lastVisibleMessage so a system row can't become the preview
+              const lastMsg = lastVisibleMessage(msgs);
+              if (lastMsg) {
                 setConversations(prev => prev.map(c =>
                   c.id === updatedConv.id
                     ? { ...c, ...updatedConv, last_message: lastMsg.message, last_timestamp: new Date(lastMsg.created_at).getTime() }
@@ -1042,7 +1065,8 @@ export const Consultations = () => {
             try {
               // 🟢 FIX: Force refresh to get fresh messages
               const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
-              const lastMsg = msgs?.slice(-1)[0];
+              // 🟢 FIX: use lastVisibleMessage so a system row can't become the preview
+              const lastMsg = lastVisibleMessage(msgs);
               const unreadCount = internalStaffId
                 ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
                 : 0;
@@ -1095,8 +1119,13 @@ export const Consultations = () => {
           if (idx === -1) return prev; // brand-new conv row hasn't landed yet — the consultations channel/poll will add it
           const updated = [...prev];
           const conv = { ...updated[idx] };
-          conv.last_message = newMsg.message;
-          conv.last_timestamp = new Date(newMsg.created_at).getTime();
+          // 🟢 FIX: don't let a system/bot/triage message overwrite the preview —
+          // only clinic/patient messages should update last_message/last_timestamp.
+          const incomingRole = (newMsg.sender_role || '').toLowerCase();
+          if (!HIDDEN_PREVIEW_ROLES.includes(incomingRole)) {
+            conv.last_message = newMsg.message;
+            conv.last_timestamp = new Date(newMsg.created_at).getTime();
+          }
           if (isFromPatient && convId !== selectedConvIdRef.current) {
             conv.unread_count = (conv.unread_count || 0) + 1;
           }

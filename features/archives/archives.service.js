@@ -1,5 +1,6 @@
 // features/archives/archives.service.js
 const supabase = require('../../configs/database');
+const supabaseAuth = require('../../configs/supabase');
 
 const ARCHIVE_TABLE = 'archives';
 
@@ -104,24 +105,70 @@ exports.restoreFromArchives = async (id, tableName) => {
 };
 
 // Permanently delete an archive entry
+// Permanently delete an archive entry
 exports.permanentDelete = async (id, tableName) => {
-  // Delete directly from the original table based on tableName
   if (!tableName) {
     throw new Error('Table name is required');
   }
 
-  // Determine the ID column
+  // Determine the correct ID column for the main table deletion
   const idColumn = tableName === 'users' ? 'uid' : 'id';
 
-  // Delete from the original table
-  const { error } = await supabase
+  // 1. Find the archive record (check both the archive 'id' and 'original_id')
+  // We use maybeSingle() so it doesn't throw an error if the archive record is missing
+  const { data: archiveRecord } = await supabase
+    .from(ARCHIVE_TABLE)
+    .select('*')
+    .or(`id.eq.${id},original_id.eq.${id}`)
+    .maybeSingle();
+
+  // 2. Identify the target Auth UID
+  // If we found an archive record, use its original_id. Otherwise, assume the 'id' passed IS the original UID.
+  let targetAuthUid = id;
+  if (archiveRecord && archiveRecord.original_id) {
+    targetAuthUid = archiveRecord.original_id;
+  }
+
+  // 3. For users, delete from Supabase Auth FIRST
+  if (tableName === 'users') {
+    console.log(`>>> [Archives] Attempting Auth deletion for UID: ${targetAuthUid}`);
+    const { error: authError } = await supabase.auth.admin.deleteUser(targetAuthUid);
+
+    if (authError) {
+      const isNotFoundError = authError.message.toLowerCase().includes('not found') || authError.status === 404;
+
+      if (isNotFoundError) {
+        console.warn(`>>> [Archives] User ${targetAuthUid} already missing from Auth. Proceeding with DB cleanup.`);
+      } else {
+        console.error('>>> [Archives] Failed to delete user from Supabase Auth:', authError.message);
+        throw new Error(`Cannot permanently delete user: Auth deletion failed - ${authError.message}`);
+      }
+    } else {
+      console.log('>>> [Archives] Successfully deleted user from Supabase Auth');
+    }
+  }
+
+  // 4. Delete from the original table (e.g., public.users)
+  const { error: dbError } = await supabase
     .from(tableName)
     .delete()
-    .eq(idColumn, id);
+    .eq(idColumn, targetAuthUid);
 
-  if (error) throw error;
+  if (dbError) throw dbError;
 
-  return { id, tableName };
+  // 5. Clean up the row in the ARCHIVE_TABLE (if it exists)
+  if (archiveRecord) {
+    const { error: archiveCleanupError } = await supabase
+      .from(ARCHIVE_TABLE)
+      .delete()
+      .eq('id', archiveRecord.id);
+
+    if (archiveCleanupError) {
+      console.warn(`>>> [Archives] Warning: Failed to clean up archives table`, archiveCleanupError.message);
+    }
+  }
+
+  return { id: targetAuthUid, tableName, success: true };
 };
 
 // Clean up old archives (older than 2 years)

@@ -357,6 +357,7 @@ export const Approvals = () => {
   const [filterRole, setFilterRole] = useState('All');
   const [filterDept, setFilterDept] = useState('All');
   const [filterProgram, setFilterProgram] = useState('All');
+  const [filterIssueCert, setFilterIssueCert] = useState('All');
 
   const [snackbar, setSnackbar] = useState({ message: '', type: 'success', visible: false });
   const [loading, setLoading] = useState(true);
@@ -424,6 +425,7 @@ export const Approvals = () => {
         const { data, error } = await supabase
           .from('medical_records')
           .select('*, users(*)')
+          .eq('is_archived', false)
           .ilike('status', activeTab)
           .order('created_at', { ascending: false });
 
@@ -469,7 +471,12 @@ export const Approvals = () => {
   const sec = userData.section || record.section || '';
   const yearSection = [yLevel, sec].filter(Boolean).join(' - ') || '';
 
-  const certificateIssued = !!(record.finding1?.trim() || record.remarks?.trim());
+  // FIX: certificate-issued badge was derived from finding1/remarks text
+  // presence, which is a different signal than issue_cert. A record could
+  // have blank findings but issue_cert = true (or vice versa), causing the
+  // "CERT SENT" badge and the "Issue Certificate" button to disagree.
+  // issue_cert is the single source of truth for whether a cert was sent.
+  const certificateIssued = !!record.issue_cert;
 
   return {
     id: record.id,
@@ -573,6 +580,7 @@ export const Approvals = () => {
         const { data, error } = await supabase
           .from('dental_records')
           .select('*, users(*)')
+          .eq('is_archived', false)
           .ilike('status', activeTab)
           .order('created_at', { ascending: false });
 
@@ -610,10 +618,12 @@ export const Approvals = () => {
             ? JSON.parse(toothDataRaw || '{}')
             : (toothDataRaw || {});
 
-          const hasDentalData = Object.values(dentalHistory).some(v => v === 'Yes') ||
-                                Object.values(intraoral).some(v => v && v !== '' && v !== 'false');
-
-          const reportForwarded = hasDentalData && record.status === 'approved';
+          // FIX: reportForwarded was derived from hasDentalData && status === 'approved',
+          // which is unrelated to whether the report was actually generated/sent. That
+          // caused the "REPORT SENT" badge to show while "Generate Report" was still
+          // visible (issue_cert still false), or vice versa. issue_cert is the single
+          // source of truth here, matching what the detail-panel buttons check.
+          const reportForwarded = !!record.issue_cert;
 
           return {
             id: record.id,
@@ -671,6 +681,7 @@ export const Approvals = () => {
     setFilterRole('All');
     setFilterDept('All');
     setFilterProgram('All');
+    setFilterIssueCert('All');
   }, [activeTab, examType]);
 
   // Fetch Past Medical/Dental Records when a patient is selected
@@ -705,7 +716,8 @@ export const Approvals = () => {
           let query = supabase
             .from('dental_records')
             .select('*')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('is_archived', false);
 
           // Exclude current record if we have a valid ID
           if (currentRecordId) {
@@ -721,7 +733,8 @@ export const Approvals = () => {
           let query = supabase
             .from('medical_records')
             .select('*')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('is_archived', false);
 
           // Exclude current record if we have a valid ID
           if (currentRecordId) {
@@ -772,8 +785,10 @@ export const Approvals = () => {
     const matchRole = filterRole === 'All' || exam.type === filterRole;
     const matchDept = filterDept === 'All' || exam.department === filterDept;
     const matchProgram = filterProgram === 'All' || exam.program === filterProgram;
+    const matchIssueCert = filterIssueCert === 'All' ||
+      (filterIssueCert === 'Issued' ? !!exam.issue_cert : !exam.issue_cert);
 
-    return matchSearch && matchRole && matchDept && matchProgram;
+    return matchSearch && matchRole && matchDept && matchProgram && matchIssueCert;
   });
 
   // Apply Filters for Dental
@@ -784,8 +799,10 @@ export const Approvals = () => {
     const matchRole = filterRole === 'All' || exam.type === filterRole;
     const matchDept = filterDept === 'All' || exam.department === filterDept;
     const matchProgram = filterProgram === 'All' || exam.program === filterProgram;
+    const matchIssueCert = filterIssueCert === 'All' ||
+      (filterIssueCert === 'Issued' ? !!exam.issue_cert : !exam.issue_cert);
 
-    return matchSearch && matchRole && matchDept && matchProgram;
+    return matchSearch && matchRole && matchDept && matchProgram && matchIssueCert;
   });
 
   const showSnackbar = (message, type = 'success') => {
@@ -1068,6 +1085,12 @@ export const Approvals = () => {
         status: 'approved',
         is_approved: true,
         approved_at: new Date().toISOString(),
+        // FIX: the DB update above always sets issue_cert: true when a report is
+        // saved, but the local state previously never set issue_cert, only the
+        // display-only reportForwarded flag. That left issue_cert stale (false)
+        // in memory until the next refetch, so the "Generate Report" button
+        // stayed visible next to the "Report Forwarded" pill in the same session.
+        issue_cert: true,
         reportForwarded: true,
       };
 
@@ -1113,8 +1136,14 @@ export const Approvals = () => {
           remarks: data.remarks ?? '',
           isFit: data.isFit ?? true,
           isNormalFindings: data.isNormalFindings ?? true,
-          // Update cert status based on if they typed anything
-          certificateIssued: !!(data.finding1?.trim() || data.remarks?.trim())
+          // FIX: certificateIssued was recomputed from finding1/remarks text
+          // presence instead of following issue_cert, which the DB update
+          // above always sets to true when a certificate is submitted. Now
+          // both issue_cert and certificateIssued are kept in sync so the
+          // "Issue Certificate" button and "Cert Forwarded" pill agree
+          // immediately, without waiting for a refetch.
+          issue_cert: true,
+          certificateIssued: true,
         };
         setExaminations(examinations.map(e => e.id === selectedExam.id ? updatedExam : e));
         setSelectedExam(updatedExam);
@@ -1187,6 +1216,10 @@ export const Approvals = () => {
 
           // Dental-specific fields from record - as existingRecord
           existingRecord: {
+            // Row primary key — required so Dental.jsx can UPDATE this row
+            // instead of INSERTing a duplicate on submit.
+            id: record.id,
+
             // Patient info
             patient_info: parseJson(record.patient_info, {}),
 
@@ -1271,6 +1304,7 @@ export const Approvals = () => {
           civilStatus: record.civil_status || userData.civil_status,
 
           // Store the existing record for buildInitialForm to use
+          // (record already includes record.id, the medical_records PK)
           existingRecord: record,
 
           // Medical-specific fields from record (direct access)
@@ -1345,6 +1379,15 @@ export const Approvals = () => {
     } finally {
       setModalLoading(false);
     }
+  };
+
+  // Called by Medical.jsx / Dental.jsx right after a successful submit
+  // (insert or update). Closes the Full Examination Modal automatically
+  // so the person isn't left staring at the form after saving.
+  const handleExamSaved = () => {
+    setShowFullExamModal(false);
+    setExamRecordData(null);
+    setNormalizedPatient(null);
   };
 
   const renderExamItem = (exam) => (
@@ -2253,6 +2296,17 @@ export const Approvals = () => {
                 ))}
               </select>
             </div>
+            <div className="flex w-full gap-1.5 mt-1.5">
+              <select
+                value={filterIssueCert}
+                onChange={e => setFilterIssueCert(e.target.value)}
+                className="w-full min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
+              >
+                <option value="All">{examType === 'dental' ? 'All Reports' : 'All Certificates'}</option>
+                <option value="Issued">{examType === 'dental' ? 'Report Sent' : 'Cert Issued'}</option>
+                <option value="Not Issued">{examType === 'dental' ? 'Report Not Sent' : 'Cert Not Issued'}</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -2316,6 +2370,9 @@ export const Approvals = () => {
                     )}
 
                     {/* Approved Tab: Generate Report OR View Report Forwarded status */}
+                    {/* FIX: gated strictly on selectedExam.issue_cert (boolean) so this
+                        button and the "Report Forwarded" pill below are always mutually
+                        exclusive and reflect the same field the list badge now uses. */}
                     {activeTab === 'approved' && !selectedExam.issue_cert && (
                       <button
                         onClick={() => setShowReportForm(true)}
@@ -2362,6 +2419,9 @@ export const Approvals = () => {
                   )}
 
                   {/* Approved Tab: Issue Certificate OR View Certificate */}
+                  {/* FIX: gated strictly on selectedExam.issue_cert (boolean) so this
+                      button and the "Cert Forwarded" pill below are always mutually
+                      exclusive and reflect the same field the list badge now uses. */}
                   {activeTab === 'approved' && !selectedExam.issue_cert && (
                     <button
                       onClick={() => setShowCertForm(true)}
@@ -2762,6 +2822,7 @@ export const Approvals = () => {
                       defaultSchoolYear={examRecordData.schoolYear || examRecordData.school_year || ''}
                       defaultSemester={examRecordData.semester || '1st Semester'}
                       readOnly={activeTab === 'approved'}
+                      onSaved={handleExamSaved}
                     />
                   )}
                   {examType === 'dental' && (
@@ -2772,6 +2833,7 @@ export const Approvals = () => {
                       defaultSchoolYear={examRecordData.schoolYear || examRecordData.school_year || ''}
                       defaultSemester={examRecordData.semester || '1st Semester'}
                       readOnly={activeTab === 'approved'}
+                      onSaved={handleExamSaved}
                     />
                   )}
                 </>

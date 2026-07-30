@@ -4,6 +4,8 @@ import ReactDOM from 'react-dom';
 import { supabase } from '../../supabase';
 
 const STATUS_OPTIONS = ['pending', 'approved', 'done', 'rejected'];
+// 'done' is an appointment-only status — records only ever cycle through these
+const EDIT_STATUS_OPTIONS = ['pending', 'approved', 'rejected'];
 const STATUS_STYLES = {
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   pending:  { bg: 'bg-amber-100',   text: 'text-amber-700',   dot: 'bg-amber-400'   },
@@ -90,7 +92,7 @@ const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) =
           Change status
         </p>
         <div className="flex flex-col gap-1">
-          {STATUS_OPTIONS.map(s => {
+          {EDIT_STATUS_OPTIONS.map(s => {
             const style = getStatusStyle(s);
             const isSelected = editStatus === s;
             return (

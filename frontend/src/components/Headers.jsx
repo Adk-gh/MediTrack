@@ -570,16 +570,19 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     setEditData(prev => ({ ...prev, dentalHistory: newDh }));
   };
 
-  const handleVaxDeclineChange = (key, checked) => {
-    setVaccinationsDeclined(prev => ({ ...prev, [key]: checked }));
-    setEditData(prev => ({
-      ...prev,
+const handleVaxDeclineChange = (key, checked) => {
+  setVaccinationsDeclined(prev => {
+    const updated = { ...prev, [key]: checked };
+    setEditData(prevData => ({
+      ...prevData,
       vaccinations: {
-        ...(prev.vaccinations || {}),
-        declined: { ...vaccinationsDeclined, [key]: checked },
+        ...(prevData.vaccinations || {}),
+        declined: updated,
       },
     }));
-  };
+    return updated;
+  });
+};
 
   const saveProfileEdits = async () => {
     setIsSaving(true);
@@ -1257,7 +1260,16 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
               {editingSection === 'dental' && (
                 <>
                   <label className="flex items-center gap-3 p-4 rounded-xl mb-4 cursor-pointer bg-slate-50 border border-slate-200">
-                    <input type="checkbox" checked={dentalDeclined} onChange={e => setDentalDeclined(e.target.checked)} className="accent-[#466460]" />
+                    <input
+  type="checkbox"
+  checked={dentalDeclined}
+  onChange={e => {
+    const val = e.target.checked;
+    setDentalDeclined(val);
+    handleDentalHistoryUpdate({ ...editData.dentalHistory, declined: val });
+  }}
+  className="accent-[#466460]"
+/>
                     <span className={`text-[12px] font-semibold ${dentalDeclined ? 'text-amber-700' : 'text-[#466460]'}`}>I don't have dental history / Not applicable</span>
                   </label>
                   {!dentalDeclined && (
@@ -1530,6 +1542,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         onClose={() => setShowProfileDrawer(false)}
         onLogout={handleLogoutClick}
         userProfile={fullProfile}
+        onProfileUpdate={(updatedProfile) => setFullProfile(updatedProfile)}
       />
 
       <LogoutConfirmModal

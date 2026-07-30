@@ -236,15 +236,6 @@ export default function RecordsUsers() {
       const userYearLevel = userRow.year_level;
       const userSection   = userRow.section;
 
-      // The `users` table has no pre-combined "course_year" column — only
-      // separate `program` / `year_level` / `section` fields. Build the
-      // combined "Program YearLevel - Section" string ourselves so there's
-      // still something sensible to fall back to when a dental record
-      // itself doesn't have `course_year` saved. This can still contain the
-      // FULL program name at this point — DentalExaminationReport's
-      // shortenCourse() finds and abbreviates the program name wherever it
-      // sits inside the combined string, so it doesn't need to already be
-      // abbreviated here.
       const buildCombinedCourseYear = (program, yearLevel, section) => {
         const yearSectionPart = [yearLevel, section].filter(Boolean).join(' - ');
         return [program, yearSectionPart].filter(Boolean).join(' ');
@@ -318,8 +309,6 @@ export default function RecordsUsers() {
         dLastName:     d.last_name || userRow.last_name,
         dAge:          d.age || userRow.age,
         dSex:          d.sex || userRow.sex,
-        // Use program from users table (not empty per user)
-        // Use course_year from dental_records and abbreviate it
         dCourseYear:   shortenCourse(d.course_year) || '',
         dAddress:      d.address || userRow.home_address,
         dLastVisit:    d.last_visit,
@@ -331,7 +320,6 @@ export default function RecordsUsers() {
         toothData:     d.tooth_data     || {},
         intraoral:     d.intraoral      || {},
         issue_cert:    d.issue_cert || false,
-        // year_level and section are not in dental_records, use users table
         dYearLevel:    userYearLevel || '',
         dSection:      userSection || '',
       }));
@@ -369,7 +357,6 @@ export default function RecordsUsers() {
   const openRecord = (rec) => { setSelectedRecord(rec); setView('summary'); };
   const close      = ()    => { setSelectedRecord(null); setView('list'); };
 
-  // Helper to format date for search comparison
   // Helper to parse and format date for flexible search
   const getDateSearchString = (dateStr) => {
     if (!dateStr) return '';
@@ -483,23 +470,14 @@ export default function RecordsUsers() {
     sex:          rec.dSex,
     address:      rec.dAddress || '',
     course:       rec.dCourseYear || '',
-    // Mirror `course` exactly (same as Approvals.jsx) so
-    // DentalExaminationReport's own abbreviation/dedupe logic
-    // (`yearSection.includes(shortProgram)`) works correctly instead of
-    // concatenating a full program name with a separately-built year/section
-    // string.
     yearSection:  rec.dCourseYear || '',
-    // Feeds the "Grade Level" field in DentalExaminationReport
-    // (examination.gradeLevel || examination.year).
     year:         rec.dYearLevel || '',
     gradeLevel:   rec.dYearLevel || '',
     examDate:     formatDateClean(rec.dExamDate || rec.dSigDate),
-    // Pass JSONB fields directly
     dentalHistory: rec.dentalHistory || {},
     toothData:     rec.toothData || {},
     intraoral:     rec.intraoral || {},
-    // Map to DentalExaminationReport expected fields
-    parentName:   '', // Parent name would need to be collected during exam
+    parentName:   '',
     restoration:  extractToothConditions(rec.toothData || {}, ['caries', 'filled', 'improved']),
     extraction:   extractToothConditions(rec.toothData || {}, ['extracted', 'root-fragment']),
     treatments:  mapDentalProcedures(rec.dentalHistory || {}),
@@ -517,16 +495,13 @@ export default function RecordsUsers() {
     ...rec,
   });
 
-  // Helper to format date cleanly (Year Month Day)
   const formatDateClean = (dateStr) => {
     if (!dateStr) return '';
-    // Handle ISO date string
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return dateStr;
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
-  // Helper to extract tooth conditions for restoration/extraction display
   const extractToothConditions = (toothData, conditions) => {
     if (!toothData || typeof toothData !== 'object') return '';
     const conditionLabels = {
@@ -543,7 +518,6 @@ export default function RecordsUsers() {
     return filtered.length > 0 ? filtered.join('\n') : 'None';
   };
 
-  // Helper to map dental history JSON to treatments object
   const mapDentalProcedures = (dentalHistory) => {
     if (!dentalHistory || typeof dentalHistory !== 'object') return {};
     return {
@@ -553,7 +527,7 @@ export default function RecordsUsers() {
       prosthodontic: dentalHistory['Prosthodontic Therapy'] === 'Yes',
       endodontic: dentalHistory['Endodontic Treatment'] === 'Yes',
       tmj: dentalHistory['TMJ Treatment'] === 'Yes',
-      xray: false, // Not in the current form
+      xray: false,
       fluoride: dentalHistory['Fluoride Treatment'] === 'Yes' || dentalHistory['Fluoride'] === 'Yes',
       sealant: dentalHistory['Sealant'] === 'Yes',
     };
@@ -720,6 +694,17 @@ export default function RecordsUsers() {
     .filter(([, data]) => data.condition)
     .map(([num, data]) => `Tooth ${num}: ${data.condition.toUpperCase()}${data.operation ? ` (${data.operation})` : ''}`);
 
+  // Safely parse covid history if present
+  let covidData = {};
+  if (isMedical && rec.covidHistory) {
+    if (typeof rec.covidHistory === 'string') {
+      try { covidData = JSON.parse(rec.covidHistory); } catch (e) { /* ignore */ }
+    } else if (typeof rec.covidHistory === 'object') {
+      covidData = rec.covidHistory;
+    }
+  }
+  const hasCovidData = Object.keys(covidData).length > 0;
+
   const tabs = [{ key: 'summary', label: 'Summary' }];
   if (rec.issue_cert) tabs.push({ key: 'certificate', label: isMedical ? 'Certificate' : 'Report' });
 
@@ -850,17 +835,56 @@ export default function RecordsUsers() {
                   <TagList items={rec.checkedHealth} color="blue" />
                 </div>
 
-                <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
+                <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 16 }}>
                   <SectionHead label="Lifestyle & Habits" />
                   <InfoRow label="Smoking" value={rec.smoking ? `${rec.smoking}${rec.smokingDetails ? ` — ${rec.smokingDetails}` : ''}` : null} />
                   <InfoRow label="Alcohol"  value={rec.alcohol  ? `${rec.alcohol}${rec.alcoholDetails   ? ` — ${rec.alcoholDetails}`   : ''}` : null} />
                   <InfoRow label="Drugs"    value={rec.drugs    ? `${rec.drugs}${rec.drugsDetails       ? ` — ${rec.drugsDetails}`     : ''}` : null} />
                 </div>
 
-                {(rec.covidHistory || rec.otherMedHistory || rec.otherFamilyHistory) && (
+                {hasCovidData && (
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderLeft: '4px solid #84cc16', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="fa-solid fa-syringe" style={{ color: '#84cc16' }}></i> COVID-19 VACCINATION HISTORY
+                    </div>
+
+                    <div style={{ overflowX: 'auto', border: '1px solid #f1f5f9', borderRadius: 6 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding: '10px 14px', background: '#f8fafc', color: '#94a3b8', fontWeight: 700, fontSize: 10, borderBottom: '1px solid #f1f5f9' }}>DOSE</th>
+                            <th style={{ padding: '10px 14px', background: '#f8fafc', color: '#94a3b8', fontWeight: 700, fontSize: 10, borderBottom: '1px solid #f1f5f9' }}>VACCINE</th>
+                            <th style={{ padding: '10px 14px', background: '#f8fafc', color: '#94a3b8', fontWeight: 700, fontSize: 10, borderBottom: '1px solid #f1f5f9' }}>DATE</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { label: '1st Dose', data: covidData.dose1 },
+                            { label: '2nd Dose', data: covidData.dose2 },
+                            { label: 'Booster (1)', data: covidData.booster1 },
+                            { label: 'Booster (2)', data: covidData.booster2 }
+                          ].map((row, i, arr) => (
+                            <tr key={i}>
+                              <td style={{ padding: '12px 14px', borderBottom: i === arr.length - 1 ? 'none' : '1px solid #f1f5f9', fontWeight: 600, color: '#475569' }}>{row.label}</td>
+                              <td style={{ padding: '12px 14px', borderBottom: i === arr.length - 1 ? 'none' : '1px solid #f1f5f9', color: '#64748b' }}>{row.data?.vaccineName || '—'}</td>
+                              <td style={{ padding: '12px 14px', borderBottom: i === arr.length - 1 ? 'none' : '1px solid #f1f5f9', color: '#64748b' }}>{row.data?.date || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {covidData.history && (
+                      <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 12 }}>
+                        COVID-19 History: {covidData.history}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(rec.otherMedHistory || rec.otherFamilyHistory) && (
                   <div style={{ background: '#fff', border: '1px solid #ddeee5', borderRadius: 16, padding: 14, marginBottom: 10 }}>
                     <SectionHead label="Additional History" />
-                    {rec.covidHistory       && <InfoRow label="COVID History" value={rec.covidHistory} />}
                     {rec.otherMedHistory    && <InfoRow label="Other Medical" value={rec.otherMedHistory} />}
                     {rec.otherFamilyHistory && <InfoRow label="Other Family"  value={rec.otherFamilyHistory} />}
                   </div>

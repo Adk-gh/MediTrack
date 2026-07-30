@@ -41,13 +41,18 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const normaliseRole = (raw = '') => {
   const r = String(raw).toLowerCase();
 
-  // 1. Clinic Staff
-  if (['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k))) return 'staff';
+  // 1. Clinic Staff (handled separately via isClinicStaff before this ever runs,
+  //    kept here only as a safety net so these roles never fall through to 'student')
+  if (['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k))) return 'clinic_staff';
 
   // 2. Faculty Staff
   if (['instructor', 'faculty', 'lecturer', 'professor', 'dean'].some(k => r.includes(k))) return 'faculty';
 
-  // 3. Students (and default fallback)
+  // 3. General / Support Staff — maintenance, security, admin, guards, etc.
+  //    These are patients too (they can book consultations), just tracked as their own group.
+  if (['maintenance', 'security', 'admin', 'guard', 'janitor', 'utility', 'staff'].some(k => r.includes(k))) return 'staff';
+
+  // 4. Students (and default fallback)
   return 'student';
 };
 
@@ -137,7 +142,7 @@ function DashboardContent() {
           return u.is_archived !== true && role !== 'sysadmin';
         });
 
-        // Separate patients (students + faculty) from clinic staff
+        // Separate patients (students + faculty + general/support staff) from clinic staff
         const patients = activeRaw.filter(u => !isClinicStaff(u.role));
         const clinicStaff = activeRaw.filter(u => isClinicStaff(u.role));
 
@@ -327,7 +332,7 @@ function DashboardContent() {
       labels = MONTHS.map(m => `${m} ${y}`);
     }
 
-    const types = filter === 'all' ? ['student', 'faculty'] : [filter];
+    const types = filter === 'all' ? ['student', 'faculty', 'staff'] : [filter];
     const borderDashes = { student: [], faculty: [6, 3], staff: [2, 3] };
 
     const recordsWithTypes = filteredRecords.map(r => {
@@ -435,7 +440,7 @@ function DashboardContent() {
             <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Patients</p>
               <h4 className="text-3xl font-bold text-slate-800">{users.length}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Students + Faculty</p>
+              <p className="text-xs text-emerald-500 mt-1">Students + Faculty + Staff</p>
             </GlassCard>
 
             <GlassCard className="p-5">
@@ -475,7 +480,7 @@ function DashboardContent() {
             {loading && <span className="ml-2 text-[10px] font-normal text-slate-400 animate-pulse">loading…</span>}
           </h3>
           <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 [&::-webkit-scrollbar]:hidden">
-            {['all', 'student', 'faculty'].map(f => (
+            {['all', 'student', 'faculty', 'staff'].map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -485,7 +490,7 @@ function DashboardContent() {
                     : 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0] hover:border-[#466460]'
                   }`}
               >
-                {f === 'all' ? 'All' : f === 'student' ? 'Students' : 'Faculty'}
+                {f === 'all' ? 'All' : f === 'student' ? 'Students' : f === 'faculty' ? 'Faculty' : 'Staff'}
               </button>
             ))}
           </div>
@@ -534,7 +539,12 @@ function DashboardContent() {
                 <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#e07a5f 0,#e07a5f 6px,transparent 6px,transparent 10px)' }}></span>Faculty
               </div>
             )}
-            
+            {(filter === 'all' || filter === 'staff') && (
+              <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
+                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#81b29a 0,#81b29a 2px,transparent 2px,transparent 5px)' }}></span>Staff
+              </div>
+            )}
+
           </div>
 
           <div className="w-full h-[30vh] min-h-[220px] relative">

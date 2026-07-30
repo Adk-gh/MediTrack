@@ -298,7 +298,8 @@ export const Announcements = () => {
     fetchUserRole();
   }, []);
 
-  const canManage = ['sysadmin', 'administrator', 'nurse'].includes(userRole);
+  // ONLY Admin/Sysadmin/Administrator can manage. Nurse, Doctor, Dentist view only.
+  const canManage = ['sysadmin', 'administrator', 'admin'].includes(userRole);
 
   // ── CUSTOM HOOK FOR DRAGGING MOBILE DRAWERS ──
   const useDrawerDrag = (onCloseCallback) => {
@@ -406,15 +407,15 @@ export const Announcements = () => {
         }
       }
       setFormData({
-        title:         target.title         || '',
-        content:       target.content       || '',
+        title:         target.title        || '',
+        content:       target.content      || '',
         dept:          deptArray,
-        category:      target.category      || 'General',
-        priority:      target.priority      || 'normal',
-        location:      target.location      || '',
+        category:      target.category     || 'General',
+        priority:      target.priority     || 'normal',
+        location:      target.location     || '',
         contactPerson: target.contact_person|| '',
         contactEmail:  target.contact_email || '',
-        image_url:     target.image_url     || null,
+        image_url:     target.image_url    || null,
         imageFile:     null,
       });
       setCurrentEditId(editId);

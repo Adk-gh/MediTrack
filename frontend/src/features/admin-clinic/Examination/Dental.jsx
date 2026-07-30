@@ -65,27 +65,13 @@ const getConditionFullName = (abbr) => {
 };
 
 // Helper to convert full name back to abbreviation (for display in visit history)
-// FIX: previously this returned the raw letter captured out of the trailing
-// "(X)" in the label (e.g. "Caries (C)" -> "c", "Missing (M)" -> "m",
-// "Indicated for Extraction (X)" -> "x", "Root Fragment (RF)" -> "rf"),
-// but every consumer of this function keys its counts/colors off the
-// toothConditions VALUE ("caries", "missing", "extracted", "root-fragment"),
-// not the raw letter. So caries/missing/extracted/root-fragment counts were
-// always 0 in the Tooth Conditions Chart summary, even though the badge
-// itself displayed the raw condition text. "Filled (●)" happened to work
-// only because "●" isn't A-Za-z, so the regex failed to match and it fell
-// through to the exact label lookup below, which does return the right value.
-// Now we always resolve through the toothConditions list itself so every
-// condition maps to its real value consistently.
 const getConditionAbbr = (fullName) => {
   if (!fullName) return '';
-  // 1) Exact match against value or label (handles values already stored as
-  //    the short value, e.g. "caries", and full labels, e.g. "Filled (●)")
+  // 1) Exact match against value or label
   const exact = toothConditions.find(c => c.value === fullName || c.label === fullName);
   if (exact) return exact.value;
 
-  // 2) Fallback: extract the abbreviation in trailing parentheses and match
-  //    it against each known condition's own abbreviation (not just return it)
+  // 2) Fallback: extract the abbreviation in trailing parentheses
   const match = fullName.match(/\(([A-Za-z-]+)\)$/);
   if (match) {
     const abbr = match[1].toLowerCase();
@@ -205,8 +191,6 @@ const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
   // Parse dental history if it's a string
   const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
 
-  console.log('dh for', p?.uid, ':', parsedDH);
-
   return {
     dId:         p?.id || existingRecord?.university_id || existingRecord?.student_id || '', // University ID
     dLastName:   lastName,
@@ -239,17 +223,12 @@ const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
 };
 
 // ── Helper: build initial dental-history procedures table from patient ─────────
-// Reads users.dental_history.procedures (jsonb) and maps each known procedure
-// to 'Yes'/'No'. Anything not present in the record (or not explicitly 'Yes')
-// defaults to 'No'. Also supports existingRecord for editing.
 const buildDentalHistoryProcedures = (p) => {
   const existingRecord = p?.existingRecord || null;
   const dh = p?.dentalHistory || existingRecord?.dental_history || {};
   // Parse if string
   const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
 
-  // Handle both nested procedures format and direct format
-  // The data can be stored as { procedures: { "Oral Prophylaxis": "Yes" } } or directly as { "Oral Prophylaxis": "Yes" }
   const procedures = parsedDH?.procedures || parsedDH || {};
 
   return Object.fromEntries(
@@ -268,7 +247,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
 
     const fetchRecords = async () => {
       try {
-        // Only fetch dental records (not medical)
         const { data: denData, error: denError } = await supabase
           .from('dental_records')
           .select('*')
@@ -312,7 +290,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
     );
   };
 
-  // Helper to parse JSON fields safely
   const parseJson = (str, fallback = {}) => {
     if (!str) return fallback;
     if (typeof str === 'object') return str;
@@ -348,7 +325,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
     );
   }
 
-  // Now records only contains dental records
   const dentalRecords = records;
 
   return (
@@ -369,7 +345,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
           <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
           <div className="space-y-6">
             {dentalRecords.map((r) => {
-              // Parse JSON fields
               const intraoral = parseJson(r.intraoral, {});
               const toothData = parseJson(r.tooth_data, {});
               const dentalHistory = parseJson(r.dental_history, {});
@@ -423,7 +398,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
                             <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
                           </h5>
 
-                          {/* Summary counts - convert full names to abbreviations for counting */}
                           <div className="flex gap-2 mb-3 text-xs">
                             {(() => {
                               const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
@@ -443,7 +417,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
                             })()}
                           </div>
 
-                          {/* Individual teeth - display full names but use abbreviations for colors */}
                           <div className="grid grid-cols-4 gap-2">
                             {Object.entries(toothData).map(([tooth, data]) => {
                               const condAbbr = getConditionAbbr(data.condition);
@@ -505,6 +478,9 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
   const [validationErrors, setValidationErrors] = useState({});
   const [dentists, setDentists]             = useState([]);
 
+  // Custom Validation Alert Modal State
+  const [alertModal, setAlertModal] = useState({ open: false, title: '', message: '' });
+
   // Fetch dentists on mount
   useEffect(() => {
     const loadDentists = async () => {
@@ -547,18 +523,13 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
 
   // Re-populate when selectedPatient changes
   useEffect(() => {
-    // 1. Populate top-level form fields
     setDentalFormData(buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester));
-
-    // 2. Load dental history procedures table
     setDentalHistory(buildDentalHistoryProcedures(selectedPatient));
 
-    // 3. Load existing tooth data if available
     const existingToothData = selectedPatient?.toothData || selectedPatient?.tooth_data || selectedPatient?.existingRecord?.tooth_data || {};
     const parsedToothData = typeof existingToothData === 'string' ? JSON.parse(existingToothData || '{}') : existingToothData;
     setToothData(parsedToothData || {});
 
-    // 4. Load existing intraoral findings if available
     const existingIntraoral = selectedPatient?.intraoral || selectedPatient?.existingRecord?.intraoral || {};
     const parsedIntraoral = typeof existingIntraoral === 'string' ? JSON.parse(existingIntraoral || '{}') : existingIntraoral;
     setIntraoral(parsedIntraoral || { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
@@ -572,7 +543,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     setDentalFormData(prev => ({ ...prev, [id || name]: value }));
   };
 
-  // Date picker handler for dental form
   const handleDentalDateChange = (field, value) => {
     setDentalFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -620,37 +590,47 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     // Validate required fields
     const errors = {};
 
-    // Validate exam date
     if (!dentalFormData.dExamDate?.trim()) errors.dExamDate = 'Examination Date is required';
-
-    // Validate examined by
     if (!dentalFormData.dExaminedBy?.trim()) errors.dExaminedBy = 'Examined By is required';
 
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
-      alert('Please fill in all required fields:\n\n• Examination Date\n• Examined By');
+      setAlertModal({
+        open: true,
+        title: 'Missing Required Fields',
+        message: 'Please fill in all required fields:\n\n• Examination Date\n• Examined By'
+      });
       return;
     }
 
     setValidationErrors({});
-    if (!dentalFormData.dLastName) { alert("Please fill in patient's last name."); return; }
+    if (!dentalFormData.dLastName) {
+      setAlertModal({
+        open: true,
+        title: 'Missing Patient Information',
+        message: "Please fill in the patient's last name."
+      });
+      return;
+    }
     setShowSummary(true);
   };
 
   // ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
     if (!selectedPatient?.uid) {
-      alert("Error: No patient selected. Cannot save record.");
+      setAlertModal({
+        open: true,
+        title: 'Error',
+        message: 'No patient selected. Cannot save record.'
+      });
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // Combine exam date and time by ensuring we append :00 for timestamp formatting
       const examDateTime = dentalFormData.dExamDate ? `${dentalFormData.dExamDate}:00` : null;
 
-      // Convert tooth data abbreviations to full names before saving
       const transformedToothData = {};
       Object.entries(toothData).forEach(([toothNum, data]) => {
         transformedToothData[toothNum] = {
@@ -669,15 +649,12 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         examDateTime,
       };
 
-      // Use selectedPatient.uid directly as user_id (it's the internal UUID from users table)
       const userId = selectedPatient.uid;
 
       if (!userId) {
         throw new Error("Could not find user ID. Please ensure the patient is registered in the system.");
       }
 
-      // Convert camelCase to snake_case matching dental_records table schema
-      // Note: dentalFormData uses d-prefixed fields (dLastName, dFirstName, etc.)
       const supabasePayload = {
         user_id: userId,
         university_id: payload.dId || payload.studentId || null,
@@ -713,15 +690,27 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         approved_at: null,
       };
 
-      const { error } = await supabase.from('dental_records').insert(supabasePayload);
+      const recordId = selectedPatient?.existingRecord?.id || dentalFormData.dRecordId || null;
+
+      let error;
+      if (recordId) {
+        const { status, is_approved, created_at, approved_at, ...updatePayload } = supabasePayload;
+        ({ error } = await supabase.from('dental_records').update(updatePayload).eq('id', recordId));
+      } else {
+        ({ error } = await supabase.from('dental_records').insert(supabasePayload));
+      }
       if (error) throw error;
 
       setShowSummary(false);
-      showMessage('Dental record saved successfully! Waiting for approval.');
+      showMessage(recordId ? 'Dental record updated successfully!' : 'Dental record saved successfully! Waiting for approval.');
 
     } catch (error) {
       console.error("Error saving dental record: ", error);
-      alert("Failed to save the record to the database. Check console for details.");
+      setAlertModal({
+        open: true,
+        title: 'Database Error',
+        message: 'Failed to save the record to the database. Check console for details.'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1186,6 +1175,31 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             <div className="flex gap-3">
               <button type="button" onClick={saveToothStatus} className="flex-1 bg-[#466460] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#3a524f] transition">Save</button>
               <button type="button" onClick={() => setToothModal({ open: false, toothNum: null })} className="flex-1 bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-300 transition">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ ALERT MODAL ══════════════════════════════════════════════════════ */}
+      {alertModal.open && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-[#e0eceb] rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fa-solid fa-clipboard-list text-2xl text-[#466460]"></i>
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">{alertModal.title}</h3>
+              <p className="text-sm text-slate-500 whitespace-pre-line leading-relaxed">
+                {alertModal.message}
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-center">
+              <button
+                onClick={() => setAlertModal({ open: false, title: '', message: '' })}
+                className="w-full bg-[#466460] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#3a524f] transition-colors"
+              >
+                Got it
+              </button>
             </div>
           </div>
         </div>

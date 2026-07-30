@@ -183,22 +183,74 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [x] the forget password is not working when i deployed it,&#x20;
 * [x] use the same resend for the email verification instead of the supabase email verification
 * [x] the deleted\_ by for the users is not working its only saving as 'system'
-* [ ] add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
+* [x] signupform : userid dont matched the auth uid
+* [x] its duplicating in submiting the view . when submit and approved it should just update that same record not create a new one.
+* [x] remove add new since i already have that in the admin
+* [x] only show is\_archived == False in records
+* [x] issue cert filters.
+* [x] records management: remove the 'done' in edit action since only appointments gets done not records.
+* [x] only admin can edit and manage, doctor, dentist, and nurse view only
+* [x] signupform : userid dont matched the auth uid
+* [x] make the alert when submiting a incomplete examination be a modal instead of alert
+* [x] Dashboard: include the staffs for the patients which should be the maintenance, security etc etc.
+* [x] covid history needs fixing
+* [x] the edit function is not working properly, its not saving into the database
+* [x] in the Approved tab Appointment details the "examine patients" button is showing error
+* [x] Auditlogs time should be searchable in the search bar
+* [x] consultaions.jsx seen indicator is not working again for doctor(medical only its working for dental.
+* [x] make sure to check if the edit function is working for the admin page
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
 * [ ] make the settings functional
 * [ ] the uploading of health documents is not working
-* [ ] make sure to check if the edit function is working for the admin page
 * [ ] add a notification for new messages arriving(use notifier.js)
-* [ ] user notifications
 * [ ] make sure to trigger the auditlogs in the admin pages as well.
 * [ ] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic
 * [ ] update the header.jsx covid history, and add past surgical history.
-* [ ] dont show the system message in the messages section
+* [ ] dont show the system message in the messages section in Consultations.jsx&#x20;
+* [ ] Examination (medical) in the questions part in examination tab if answer is no, disbale the input boxes and send the first question to no by default. basically all questions should be no in default. do the same thing for the Personal / Social History the input box should only show up when yes is chosen.
+* [ ] Examination (medical) medical Certificate digital singature should be png
+* [ ] Examination (medical) if nurse is the one conducting the examination it should automatically be selected in the dropdown.
+* [ ] make the download pdf work for the mobile app in records-users.jsx its currently working for browser level but the app its not.
 
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 
-# ===============testing(07/18)==================
+# ===============testing(07/18)============
+
+
+
+* admin
+
+  * Appointment Management,
+
+    * reasons filter should be no duplicate - check-up, Consultation and check-up
+    * edit failed at first but goes through the 2nd time
+    * all dates filter rthe x button needs fixing
+    * make sure to check if how many appointments is on that day for the Approved appointments. and for the reschedule modal display the approved appointments to be moved
+  * Approval management
+
+    * make sure to emphasis the for archiving the approvals, it should says to check in archive medical or dental in the snackbar.
+    * add a hyperlink to the snackbar to redirect into the specific page (archive) when you archive a record.
+    * also make the duration of the snackbar to be longer and have a way to close the snakcbar
+  * reports
+
+    * include the duration and analyrics on how fast the appointments gets approved
+
+
+
+something to ask:
+
+should the chat history be seen by nurse and doctor or should ie be hidden
+
+Announcement should only be manage by the whole clinic or only admin?
+
+
+
+add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
+
+
+
+in the itsmeaderik.gamil.com the dental.jsx needs to be done
 
 # ============ROLE MATRIX===============
 

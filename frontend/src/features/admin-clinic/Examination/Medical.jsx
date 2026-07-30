@@ -174,23 +174,11 @@ const parseHistoryItemDisplay = (item) => {
 };
 
 // ── UUID validation ───────────────────────────────────────────────────────────
-// Postgres `uid` / `user_id` columns are real uuid columns. Various parts of
-// the app pass around "id-shaped" values that are NOT uuids (e.g. university
-// student numbers like "23-10029"). Never trust an `.id` field as the DB
-// primary key unless it actually matches the uuid shape — otherwise a stray
-// student number ends up being inserted straight into a uuid column and
-// Postgres throws 22P02 ("invalid input syntax for type uuid").
 const isUUID = (v) =>
   typeof v === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
 // ── Safe JSON field parser ───────────────────────────────────────────────────
-// Some jsonb columns (e.g. surgical_history, emergency_contact, vaccinations)
-// come back from Supabase as a raw JSON string rather than an already-parsed
-// object, depending on how the column/value was written. Reading `.operations`
-// straight off a string silently returns undefined, which is why surgical
-// history could be saved successfully but still show "No surgical history
-// recorded." here. Always run values through this before use.
 const parseJsonField = (value, fallback = {}) => {
   if (!value) return fallback;
   if (typeof value === 'string') {
@@ -201,10 +189,6 @@ const parseJsonField = (value, fallback = {}) => {
 };
 
 // ── Helper: normalize selectedPatient into the flat "users" row shape ───────
-// selectedPatient can arrive either as the raw users row, or as a joined
-// record with the users row nested under `.users` (array or object).
-// This mirrors the same unwrapping logic used in buildInitialForm so that
-// every consumer of selectedPatient agrees on where uid/id actually live.
 const normalizePatient = (p) => {
   let u = p || {};
   if (p?.users) u = Array.isArray(p.users) ? (p.users[0] || {}) : p.users;
@@ -213,10 +197,6 @@ const normalizePatient = (p) => {
 
   return {
     uid: u.uid || p?.uid || null,
-    // FIX: only accept `id` as the internal primary key if it's actually a
-    // uuid. Some patient objects surface a non-uuid value (e.g. the
-    // university_id / student number) under `.id`, which previously got
-    // used directly as user_id and blew up the insert with 22P02.
     id: isUUID(rawId) ? rawId : null,
   };
 };
@@ -458,13 +438,11 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
   let u = p || {};
   if (p?.users) u = Array.isArray(p.users) ? (p.users || {}) : p.users;
 
-  // Support passing existingRecord in the patient object (for editing from Approvals)
   const record = p?.existingRecord || existingRecord || null;
 
   const patientInfo = record?.patient_info || {};
   const labResults = record?.laboratory_results || {};
 
-  // Safely grab existing vitals whether saved as array or object previously
   const rawVitals = record?.vital_records;
   const vitalRec = Array.isArray(rawVitals) ? (rawVitals[0] || {}) : (rawVitals || {});
 
@@ -496,6 +474,7 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     lastName:      u.last_name || u.lastName || '',
     firstName:     u.first_name || u.firstName || '',
     middleName:    u.middle_name || u.middleName || '',
+    recordId:      record?.id || null,
     schoolYear:    record?.school_year || defaultSchoolYear,
     semester:      record?.semester || defaultSemester || '1st Semester',
     studentId:     u.university_id || u.universityId || u.student_id || '',
@@ -541,10 +520,8 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     drugs:   record?.drugs || 'No',
     drugsDetails:   record?.drugs_details || '',
 
-    // Load surgical history from user profile or from existing record
     surgicalHistoryFromProfile: record?.surgical_history || parseJsonField(u.surgical_history, { operations: [], declined: false }),
 
-    // Read questionnaire from patient object (from Approvals) or existingRecord
     q1: p?.questionnaire?.q1 || record?.questionnaire?.q1 || 'Yes',
     q2: p?.questionnaire?.q2 || record?.questionnaire?.q2 || 'No',
     q2Details: p?.questionnaire?.q2Details || record?.questionnaire?.q2Details || '',
@@ -579,17 +556,19 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
   };
 };
 
-// Initialized as a flat object, not an array
 const createDefaultVital = () => ({ bp: '', pr: '', rr: '', temp: '', nurse: '', remarks: '' });
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false }) => {
+export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false, onSaved }) => {
   const [showSummary, setShowSummary]   = useState(false);
   const [activeTab, setActiveTab]       = useState('patientProfile');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [physicians, setPhysicians]     = useState([]);
   const [nurses, setNurses]             = useState([]);
+
+  // Custom Validation Alert Modal State
+  const [alertModal, setAlertModal] = useState({ open: false, title: '', message: '' });
 
   // Fetch physicians and nurses on mount
   useEffect(() => {
@@ -601,7 +580,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     loadData();
   }, []);
 
-  // Initialize surgical history from selectedPatient if available
   const getInitialSurgicalHistory = () => {
     const sh = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
     if (sh && sh.operations && sh.operations.length > 0) {
@@ -611,7 +589,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
   };
   const [surgicalHistory, setSurgicalHistory] = useState(getInitialSurgicalHistory);
 
-  // FIX: vitalRecords is now a flat object, binding perfectly to the inputs and DB
   const [vitalRecords, setVitalRecords] = useState(createDefaultVital());
 
   const [checkedMedical, setCheckedMedical] = useState([]);
@@ -630,21 +607,16 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     const { uid, id } = normalizePatient(selectedPatient);
     const userId = uid || id;
 
-    // Helper to normalize stored values for matching with condition arrays
     const normalizeCondition = (value) => {
-      // Remove any details after colon (e.g., "Allergy: dust" -> "Allergy")
       const baseName = value.split(':')[0].trim();
-      // Remove ", specify" suffix for matching
       return baseName.replace(', specify', '').replace(' (If PTB, category)', '').toLowerCase();
     };
 
-    // Helper to extract details from stored value (e.g., "Allergy: dust" -> "dust")
     const extractDetails = (value) => {
       const parts = value.split(':');
       return parts.length > 1 ? parts.slice(1).join(':').trim() : '';
     };
 
-    // Helper to match stored values with condition arrays
     const matchConditions = (storedValues, conditionArray) => {
       const matched = [];
       const specs = {};
@@ -653,7 +625,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
         const normalized = normalizeCondition(val);
         const details = extractDetails(val);
 
-        // Find matching condition in the array
         const found = conditionArray.find(c => normalizeCondition(c) === normalized);
         if (found) {
           matched.push(found);
@@ -669,25 +640,15 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     const fetchFullProfile = async () => {
       setActiveTab('patientProfile');
 
-      // Load medical history from selectedPatient (from Approvals) or default to empty
       const passedMedicalHistory = selectedPatient?.medicalHistory || selectedPatient?.checked_medical || [];
       const passedFamilyHistory = selectedPatient?.familyHistory || selectedPatient?.checked_family || [];
       const passedHealthConditions = selectedPatient?.healthConditions || selectedPatient?.checked_health || [];
       const passedSurgicalHistory = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
 
-      console.log('[Medical] Loading from selectedPatient:', {
-        medicalHistory: passedMedicalHistory,
-        familyHistory: passedFamilyHistory,
-        healthConditions: passedHealthConditions,
-        surgicalHistory: passedSurgicalHistory
-      });
-
-      // Match stored values with condition arrays and extract specs
       const { matched: matchedMedical, specs: medicalSpecsData } = matchConditions(passedMedicalHistory, medicalConditions);
       const { matched: matchedFamily, specs: familySpecsData } = matchConditions(passedFamilyHistory, familyConditions);
       const { matched: matchedHealth, specs: healthSpecsData } = matchConditions(passedHealthConditions, healthConditions);
 
-      // Set checked values from passed data (from Approvals)
       setCheckedMedical(matchedMedical);
       setMedicalSpecs(medicalSpecsData);
       setCheckedFamily(matchedFamily);
@@ -696,7 +657,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
       setHealthSpecs(healthSpecsData);
       setSurgicalHistory(passedSurgicalHistory?.operations || []);
 
-      // Load vital records from selectedPatient (from Approvals)
       const passedVitalRecords = selectedPatient?.vitalRecords || selectedPatient?.vital_records || null;
       if (passedVitalRecords && typeof passedVitalRecords === 'object') {
         setVitalRecords({
@@ -714,34 +674,24 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
       setFormData(buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
 
       if (userId) {
-        console.log('[Medical] Fetching user profile with', { userId });
         const { data, error } = await supabase
           .from('users')
           .select('*')
           .or(`uid.eq.${userId},id.eq.${userId}`)
           .maybeSingle();
 
-        console.log('[Medical] users table fetch result:', { data, error });
-
         if (isMounted && data && !error) {
-          // Only update form with user profile data if not already set from selectedPatient
-          // (for Records.jsx flow where we fetch fresh data)
           if (!selectedPatient?.existingRecord) {
             setFormData(buildInitialForm(data, null, defaultSchoolYear, defaultSemester));
           }
 
-          // Load surgical history from user's profile if not already set from selectedPatient
           if (!passedSurgicalHistory || !passedSurgicalHistory.operations || passedSurgicalHistory.operations.length === 0) {
             const userSurgicalHistory = parseJsonField(data.surgical_history, { operations: [], declined: false });
-            console.log('[Medical] parsed userSurgicalHistory from users table:', userSurgicalHistory);
             if (userSurgicalHistory.operations && userSurgicalHistory.operations.length > 0) {
-              console.log('[Medical] Setting surgicalHistory from users table:', userSurgicalHistory.operations);
               setSurgicalHistory(userSurgicalHistory.operations);
             }
           }
         }
-      } else {
-        console.log('[Medical] No userId resolved from selectedPatient — skipping users table fetch.', { selectedPatient });
       }
     };
 
@@ -782,7 +732,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     setList(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
   };
 
-  // FIX: Updates a flat object instead of an array
   const updateVital = (field, value) => {
     if (readOnly) return;
     setVitalRecords(prev => ({ ...prev, [field]: value }));
@@ -805,16 +754,26 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
-      alert('Please fill in all required fields:\n\n• Blood Pressure (BP)\n• Pulse Rate (PR)\n• Temperature\n• Examining Physician\n• Examination Date');
+      setAlertModal({
+        open: true,
+        title: 'Missing Required Fields',
+        message: 'Please fill in all required fields:\n\n• Blood Pressure (BP)\n• Pulse Rate (PR)\n• Temperature\n• Examining Physician\n• Examination Date'
+      });
       return;
     }
 
     setValidationErrors({});
-    if (!formData.lastName) { alert("Please fill in patient's last name."); return; }
+    if (!formData.lastName) {
+      setAlertModal({
+        open: true,
+        title: 'Missing Patient Information',
+        message: "Please fill in the patient's last name."
+      });
+      return;
+    }
     setShowSummary(true);
   };
 
-  // ── DB Submission Helper: Format checks as clean strings ─────────────────────
   const formatCheckedForDb = (checks, specsMap) => {
     return checks.map(item => {
       const cleanName = item.replace(', specify', '').replace(' (If PTB, category)', '');
@@ -823,34 +782,28 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     });
   };
 
-// ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
     if (readOnly) return;
-    // normalizePatient now guarantees `id` is either null or a real uuid,
-    // so patientInternalId can never be a stray university/student number.
     const { uid: patientUid, id: patientInternalId } = normalizePatient(selectedPatient);
 
     if (!patientUid && !patientInternalId) {
-      alert("Error: No patient selected. Cannot save record.");
+      setAlertModal({
+        open: true,
+        title: 'Error',
+        message: "No patient selected. Cannot save record."
+      });
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // If we already have the internal users.id (e.g. selectedPatient came
-      // from a query against `users` directly), skip the extra round trip.
       let userId = patientInternalId || null;
 
-      // patientUid from normalizePatient is actually the internal uuid (doc.id)
-      // because normalizeUser in Records.jsx sets uid: doc.id. Since patientUid
-      // is already the internal uuid (users.id), we can use it directly.
       if (!userId && patientUid && isUUID(patientUid)) {
         userId = patientUid;
       }
 
-      // Belt-and-braces: never let a non-uuid value reach the uuid column,
-      // regardless of where it came from.
       if (userId && !isUUID(userId)) {
         console.warn('Resolved userId is not a valid uuid, discarding it:', userId);
         userId = null;
@@ -954,15 +907,28 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
         created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from('medical_records').insert(supabasePayload);
+      const recordId = selectedPatient?.existingRecord?.id || formData.recordId || null;
+
+      let error;
+      if (recordId) {
+        const { status, is_approved, created_at, ...updatePayload } = supabasePayload;
+        ({ error } = await supabase.from('medical_records').update(updatePayload).eq('id', recordId));
+      } else {
+        ({ error } = await supabase.from('medical_records').insert(supabasePayload));
+      }
       if (error) throw error;
 
       setShowSummary(false);
-      showMessage('Medical record saved to database successfully!');
+      showMessage(recordId ? 'Medical record updated successfully!' : 'Medical record saved to database successfully!');
+      onSaved?.();
 
     } catch (error) {
       console.error("Error saving medical record: ", error);
-      alert("Failed to save the record to the database. Check console for details.");
+      setAlertModal({
+        open: true,
+        title: 'Database Error',
+        message: "Failed to save the record to the database. Check console for details."
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1190,7 +1156,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
             {[
               { label: 'Smoking',       name: 'smoking', detailId: 'smokingDetails', placeholder: 'If yes: Quit? No. of years / days & type'   },
               { label: 'Alcohol',       name: 'alcohol', detailId: 'alcoholDetails', placeholder: 'If yes: Quit? No. of bottles / days & type' },
-              { label: 'Illicit Drugs', name: 'drugs',   detailId: 'drugsDetails',   placeholder: 'If yes: Quit? Specify type / frequency'     },
+              { label: 'Illicit Drugs', name: 'drugs',   detailId: 'drugsDetails',   placeholder: 'If yes: Quit? Specify type / frequency'      },
             ].map(({ label, name, detailId, placeholder }) => (
               <div key={name} className="col-span-4">
                 <label className={labelClass}>{label}</label>
@@ -1216,12 +1182,12 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
               </thead>
               <tbody>
                 {[
-                  { q: '1. Are you in good health?',                                                                           name: 'q1',  detail: null       },
-                  { q: '2. Are you under medical treatment now?',                                                              name: 'q2',  detail: 'q2Details' },
+                  { q: '1. Are you in good health?',                                                              name: 'q1',  detail: null       },
+                  { q: '2. Are you under medical treatment now?',                                                 name: 'q2',  detail: 'q2Details' },
                   { q: '3. Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?',  name: 'q3',  detail: 'q3Details' },
-                  { q: '4. Are you taking any medication?',                                                                    name: 'q4',  detail: 'q4Details' },
-                  { q: '5. For women only: Are you pregnant?',                                                                 name: 'q5',  detail: null       },
-                  { q: 'Are you nursing?',                                                                                     name: 'q5b', detail: null       },
+                  { q: '4. Are you taking any medication?',                                                       name: 'q4',  detail: 'q4Details' },
+                  { q: '5. For women only: Are you pregnant?',                                                    name: 'q5',  detail: null       },
+                  { q: 'Are you nursing?',                                                                        name: 'q5b', detail: null       },
                 ].map(({ q, name, detail }) => (
                   <tr key={name}>
                     <td className="border border-slate-300 p-2">{q}</td>
@@ -1297,7 +1263,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
           </div>
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4">
             <div className="grid grid-cols-12 gap-3 items-end">
-              {/* FIX: Bind values to the new flat object */}
               <div className="col-span-2 col-start-1">
                 <label className={requiredLabelClass}>BP (mmHg) <span className="text-red-500">*</span></label>
                 <input type="text" className={`${inputClass} ${validationErrors.bp ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`} placeholder="120/80" value={vitalRecords.bp} disabled={readOnly} onChange={e => { updateVital('bp', filterNumbersAndSlash(e.target.value)); setValidationErrors(prev => ({ ...prev, bp: '' })); }} />
@@ -1326,7 +1291,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
             <div className="col-span-3"><label className={labelClass}>Weight (kg)</label><input type="text" id="weight" className={inputClass} placeholder="kg" value={formData.weight} disabled={readOnly} onChange={e => handleChange({ target: { id: 'weight', value: filterNumbersOnly(e.target.value) } })} onBlur={calculateBMI} /></div>
             <div className="col-span-3"><label className={labelClass}>BMI (auto-calc)</label><input type="text" id="bmi" className={`${inputClass} bg-slate-50`} placeholder="kg/m²" value={formData.bmi} readOnly /></div>
             <div className="col-span-3"><label className={labelClass}>Waist Circumference (cm)</label><input type="text" id="waist" className={inputClass} placeholder="cm" value={formData.waist} disabled={readOnly} onChange={e => handleChange({ target: { id: 'waist', value: filterNumbersOnly(e.target.value) } })} /></div>
-            {/* Add conditional check here */}
+
           {formData.sex === 'Female' && (
             <div className="col-span-6">
               <label className={labelClass}>Last Menstrual Period (LMP) — Females only</label>
@@ -1420,7 +1385,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <SumItem label="Course"         value={formData.course} />
                   <SumItem label="Year / Section" value={formData.yearSection} />
                   <SumItem label="School Year"    value={formData.schoolYear} />
-                  <SumItem label="Semester"      value={formData.semester} />
+                  <SumItem label="Semester"       value={formData.semester} />
                   <SumItem label="Sex"            value={formData.sex} />
                   <SumItem label="Age"            value={String(formData.age)} />
                   <SumItem label="Birthday"       value={formData.birthday} />
@@ -1585,6 +1550,31 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <i className="fa-solid fa-lock mr-2"></i>View Only - This record has already been submitted
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ ALERT MODAL ══════════════════════════════════════════════════════ */}
+      {alertModal.open && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-[#e0eceb] rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fa-solid fa-clipboard-list text-2xl text-[#466460]"></i>
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">{alertModal.title}</h3>
+              <p className="text-sm text-slate-500 whitespace-pre-line leading-relaxed">
+                {alertModal.message}
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-center">
+              <button
+                onClick={() => setAlertModal({ open: false, title: '', message: '' })}
+                className="w-full bg-[#466460] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#3a524f] transition-colors"
+              >
+                Got it
+              </button>
             </div>
           </div>
         </div>

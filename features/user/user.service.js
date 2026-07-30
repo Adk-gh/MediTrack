@@ -153,13 +153,26 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   const user = userResponse.user;
   console.log('>>> [Auth] userResponse:', JSON.stringify(userResponse));
+  console.log('>>> [Auth] user:', user);
   console.log('>>> [Auth] user.id:', user?.id);
+
+  if (!user) {
+    console.error('>>> [Auth] FATAL: userResponse.user is null/undefined!');
+    console.error('>>> [Auth] Full response:', userResponse);
+    throw new Error('Failed to create user account: No user returned from Supabase Auth');
+  }
+
+  if (!user.id) {
+    console.error('>>> [Auth] FATAL: user.id is undefined!');
+    throw new Error('Failed to create user account: No user ID returned from Supabase Auth');
+  }
 
   if (!user) {
     throw new Error('Failed to create user account');
   }
 
   // 6. Save user to Supabase 'users' table - normalize names to Title Case
+  console.log('>>> [DB] Creating newUser with uid:', user.id);
   const newUser = {
     uid:                    user.id,
     first_name:             normalizeName(firstName),
@@ -176,17 +189,28 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
   };
 
   // Check if user already exists by email (might have been created via different method)
+  console.log('>>> [DB] Checking for existing user with email:', email.toLowerCase());
   const { data: existingByEmail } = await supabase
     .from('users')
     .select('*')
     .eq('email', email.toLowerCase())
     .maybeSingle();
 
+  console.log('>>> [DB] Existing user by email:', existingByEmail ? `Found (id: ${existingByEmail.id}, uid: ${existingByEmail.uid})` : 'None');
+
   if (existingByEmail) {
-    // If user exists but has different UID, update to match Auth UID
-    if (existingByEmail.uid !== user.id) {
-      console.log('>>> [DB] User exists with different UID, updating to match Auth UID');
-      await supabase
+    // Check if UID needs updating - handle null/undefined cases properly
+    const existingUid = existingByEmail.uid || null;
+    const newUid = user.id;
+    const uidNeedsUpdate = existingUid !== newUid;
+
+    console.log('>>> [DB] Comparing UIDs - existing:', existingUid, 'vs auth:', newUid, '| Needs update:', uidNeedsUpdate);
+
+    if (uidNeedsUpdate) {
+      console.log('>>> [DB] User exists with different/null UID, updating to match Auth UID');
+      console.log('>>> [DB] Old UID:', existingByEmail.uid, '| New Auth UID:', user.id);
+
+      const { data: updateData, error: updateError } = await supabase
         .from('users')
         .update({
           uid: user.id,
@@ -197,7 +221,15 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
           role,
           updated_at: new Date().toISOString()
         })
-        .eq('id', existingByEmail.id);
+        .eq('id', existingByEmail.id)
+        .select();
+
+      if (updateError) {
+        console.error('>>> [DB] Update failed:', updateError);
+        throw new Error('Failed to update user UID: ' + updateError.message);
+      }
+
+      console.log('>>> [DB] Update result:', updateData);
 
       return {
         uid: user.id,
@@ -240,6 +272,8 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
     throw new Error('Failed to save user profile: ' + insertError.message);
   }
 
+  console.log('>>> [DB] Insert result:', JSON.stringify(insertData));
+  console.log('>>> [DB] Inserted UID:', insertData?.[0]?.uid);
   console.log(`>>> [DB] User saved with role: "${role}"`);
 
   return {
@@ -490,6 +524,8 @@ exports.deleteUser = async (userId, deletedByName) => {
 
   return { uid: userId };
 };
+
+
 
 exports.checkUniversityId = async (universityId) => {
   const { data } = await supabase
