@@ -1,4 +1,4 @@
-// C:\Users\HP\MediTrack\features/notifications/notifications.service.js
+// C:\Users\HP\MediTrack\features\notifications\notifications.service.js
 const supabase = require('../../configs/database');
 
 const notificationsService = {
@@ -97,30 +97,49 @@ const notificationsService = {
     if (error) throw error;
   },
 
-  async deleteNotification(notificationId) {
-    const { error } = await supabase
+  // Ownership-scoped delete: only removes the row if it belongs to userId.
+  // Throws a NOT_FOUND-style error if the notification doesn't exist or
+  // isn't owned by this user, so the controller can respond appropriately.
+  async deleteNotification(notificationId, userId) {
+    const { data, error } = await supabase
       .from('notifications')
       .delete()
-      .eq('id', notificationId);
+      .eq('id', notificationId)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
 
     if (error) throw error;
+
+    if (!data) {
+      const notFoundError = new Error('Notification not found or not owned by this user');
+      notFoundError.status = 404;
+      throw notFoundError;
+    }
+
+    return data;
   },
 
   async notifyAdmins(notificationData) {
-    // Get admin users - use uid (UUID) not id (internal)
+    // Get admin users — select both id (internal, used as notifications.user_id
+    // per the FK constraint) and uid (kept here only in case other callers
+    // start needing it for logging).
     const { data: adminUsers, error } = await supabase
       .from('users')
-      .select('uid')
+      .select('id, uid')
       .eq('role', 'admin');
 
     if (error || !adminUsers) return;
 
-    // Create notifications for each admin
+    // Create notifications for each admin. FIX: notifications.user_id
+    // references users.id (internal), not users.uid (auth id) — the
+    // previous version sent admin.uid here, which either violated the FK
+    // or pointed at the wrong row.
     const notifications = adminUsers.map(admin => ({
       type: notificationData.type,
       title: notificationData.title,
       message: notificationData.message,
-      user_id: admin.uid,
+      user_id: admin.id,
       reference_id: notificationData.referenceId,
       reference_type: notificationData.referenceType,
       is_read: false,

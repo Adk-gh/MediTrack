@@ -131,15 +131,11 @@ const logout = async () => {
   }
 
   // 3. Have Supabase securely destroy the session tokens locally and on the server
-  // This invalidates the refresh token server-side, making it unusable
+  // This invalidates the refresh token server-side, making it unusable, and clears Supabase's local storage.
   const { error } = await supabase.auth.signOut();
   if (error) {
     console.error("Error signing out of Supabase:", error.message);
   }
-
-  // 4. Force clear any remaining session data
-  // This ensures complete logout even if Supabase signOut fails
-  await supabase.auth.clearSession();
 };
 
 const checkIdExists = async (universityId) => {

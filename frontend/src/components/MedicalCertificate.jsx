@@ -1,7 +1,7 @@
 // frontend/src/components/MedicalCertificate.jsx
-import React, { useState, useCallback, memo, useEffect } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import jsPDF from 'jspdf';
-import { supabase } from '../supabase';
+import { savePdf } from '../utils/pdfDownload';
 
 // ── Stable input components (memoized so they never re-mount on parent re-render)
 const DoctorTextarea = memo(({ value, onChange, placeholder, readOnly }) => (
@@ -61,25 +61,10 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
   const [isFit,            setIsFit]           = useState(examination?.isFit           ?? true);
   const [isNormalFindings, setIsNormalFindings] = useState(examination?.isNormalFindings ?? true);
   const [downloading, setDownloading] = useState(false);
+  // Direct public Supabase Storage URL — no fetch needed, so there's no
+  // corresponding setter/effect here (previously an effect tried to call a
+  // setLogoUrl() that didn't exist, which would throw on every mount).
   const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
-
-  // ── Fetch Logo from Supabase Storage ──────────────────────────────────────
-  // Using direct URL from Supabase
-  /* eslint-disable no-unused-vars */
-  useEffect(() => {
-    const fetchLogo = async () => {
-      try {
-        const { data, error } = await supabase.storage
-          .from('images')
-          .getPublicUrl('plsp-logo.jpg');
-        if (error) throw error;
-        setLogoUrl(data.publicUrl);
-      } catch (error) {
-        console.error('[MedicalCertificate] Error fetching logo:', error);
-      }
-    };
-    fetchLogo();
-  }, []);
 
   const handleFinding1 = useCallback((v) => setFinding1(v), []);
   const handleRemarks  = useCallback((v) => setRemarks(v),  []);
@@ -366,7 +351,7 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       });
 
       const safeName = (examination.patientName || 'MedicalCertificate').replace(/[^a-z0-9_\-]/gi, '_');
-      doc.save(`${safeName}_MedicalCertificate.pdf`);
+      await savePdf(doc, `${safeName}_MedicalCertificate.pdf`);
     } catch (err) {
       console.error('[MedicalCertificate] PDF error:', err);
       alert('PDF generation failed. Please try again.');

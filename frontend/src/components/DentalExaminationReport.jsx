@@ -1,7 +1,7 @@
 // C:\Users\HP\MediTrack\frontend\src\components\DentalExaminationReport.jsx
 import React, { useState, useCallback, memo, useEffect } from 'react';
 import jsPDF from 'jspdf';
-import { supabase } from '../supabase';
+import { savePdf } from '../utils/pdfDownload';
 
 // ── Stable input components (memoized so they never re-mount on parent re-render)
 const DentalNotesTextarea = memo(({ value, onChange, placeholder, readOnly, rows = 3 }) => (
@@ -169,15 +169,11 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   const handleRestoration = useCallback((v) => setRestoration(v), []);
   const handleExtraction = useCallback((v) => setExtraction(v), []);
   const toggleTreatment = (key) => {
-    console.log('[toggleTreatment] key:', key, 'current value:', treatments?.[key]);
     if (readOnly) {
-      console.log('[toggleTreatment] readOnly is true, returning');
       return;
     }
     setTreatments(prev => {
-      console.log('[toggleTreatment] prev:', prev);
       const newValue = !prev[key];
-      console.log('[toggleTreatment] new value:', newValue);
       return { ...prev, [key]: newValue };
     });
   };
@@ -768,7 +764,7 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       });
 
       const safeName = (examination.patientName || 'DentalExam').replace(/[^a-z0-9_\-]/gi, '_');
-      doc.save(`${safeName}_DentalExamination.pdf`);
+      await savePdf(doc, `${safeName}_DentalExamination.pdf`);
     } catch (err) {
       console.error('[DentalExaminationReport] PDF error:', err);
       alert('PDF generation failed. Please try again.');
@@ -798,7 +794,6 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   };
 
   const checkRow = (checked, key, label, hasInput = false, inputKey = null, hasRemark = false, remarkKey = null) => {
-    console.log('[checkRow] rendering:', key, 'checked:', checked, 'treatments:', treatments);
     return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 180 }}>

@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
+import { logAdminAction } from '../../services/audit.service';
 
-const ITEMS_PER_PAGE = 20;
+const ITEMS_PER_PAGE = 100;
 
 const TYPE_OPTIONS = [
   { value: 'all', label: 'All Types' },
@@ -34,15 +35,24 @@ export const ConsultationManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = (currentUser.role || '').toLowerCase();
 
-  const [consultations, setConsultations] = useState([]);
+  // Admin identity used for audit logging. Falls back through id -> uid ->
+  // 'system' so a log entry is still written even if the stored user object
+  // is incomplete. Kept consistent with the other admin-clinic screens.
+  const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
+
+  const [allFiltered, setAllFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Search & Filters
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
-  const [lastDoc, setLastDoc] = useState(null);
-  const [hasMore, setHasMore] = useState(true);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+
   const [stats, setStats] = useState({ total: 0, active: 0, medical: 0, dental: 0 });
   const [message, setMessage] = useState(null);
 
@@ -54,8 +64,13 @@ export const ConsultationManagement = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
+  // Reset pagination to page 1 whenever filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchInput, typeFilter, statusFilter, sortBy]);
+
   // Build query for fetching consultations
-  const buildQuery = useCallback((baseQuery, isFirstPage = true) => {
+  const buildQuery = useCallback((baseQuery) => {
     let q = baseQuery;
 
     // Filter by archived status - only show non-archived
@@ -71,8 +86,6 @@ export const ConsultationManagement = () => {
       q = q.eq('status', statusFilter);
     }
 
-    // Search filter is applied client-side after joining with users table
-
     return q;
   }, [typeFilter, statusFilter]);
 
@@ -82,7 +95,7 @@ export const ConsultationManagement = () => {
 
       // First get all consultations to calculate stats and apply filters
       let query = supabase.from('consultations').select('*');
-      query = buildQuery(query, true);
+      query = buildQuery(query);
       query = query.order('created_at', { ascending: false });
 
       const { data: allData, error } = await query;
@@ -104,7 +117,7 @@ export const ConsultationManagement = () => {
         return {
           ...conv,
           patientName: profile.first_name
-            ? `${profile.last_name || ''}, ${profile.first_name}`.trim()
+            ? `${profile.last_name || ''}, ${profile.first_name}${profile.middle_name ? ' ' + profile.middle_name  : ''}${profile.suffix ? ' ' + profile.suffix : ''}`.trim()
             : conv.patient_name || 'Unknown',
           patientUniversityId: profile.university_id || profile.student_id || '—',
           patientProgram: profile.program || profile.course || '—',
@@ -138,7 +151,7 @@ export const ConsultationManagement = () => {
         }
       });
 
-      // Calculate stats
+      // Calculate stats (based on non-searched, but type/status filtered data)
       const total = allData?.length || 0;
       const active = allData?.filter(c => c.status !== 'ended').length || 0;
       const medical = allData?.filter(c => c.consultation_type === 'medical').length || 0;
@@ -146,11 +159,10 @@ export const ConsultationManagement = () => {
 
       setStats({ total, active, medical, dental });
 
-      // Paginate results
-      const paginated = enriched.slice(0, ITEMS_PER_PAGE);
-      setConsultations(paginated);
-      setLastDoc(paginated[paginated.length - 1] || null);
-      setHasMore(enriched.length > ITEMS_PER_PAGE);
+      setAllFiltered(enriched);
+      setTotalRecords(enriched.length);
+
+      if (isRefresh) setCurrentPage(1);
 
     } catch (err) {
       console.error('Failed to load consultations:', err);
@@ -160,89 +172,10 @@ export const ConsultationManagement = () => {
     }
   }, [buildQuery, searchInput, sortBy]);
 
-  const loadMore = async () => {
-    if (!lastDoc || loadingMore || !hasMore) return;
+  // Derived paginated state
+  const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
+  const paginatedConsultations = allFiltered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-    try {
-      setLoadingMore(true);
-
-      // Fetch all and paginate client-side for simplicity
-      let query = supabase.from('consultations').select('*');
-      query = buildQuery(query, false);
-      query = query.order('created_at', { ascending: false });
-
-      const { data: allData, error } = await query;
-      if (error) throw error;
-
-      // Get patient profiles
-      const { data: profiles } = await supabase.from('users').select('*');
-      const profileMap = {};
-      profiles?.forEach(p => { profileMap[p.id] = p; });
-
-      // Enrich
-      let enriched = await Promise.all((allData || []).map(async (conv) => {
-        const profile = profileMap[conv.patient_id] || {};
-        let lastMsg = '';
-        try {
-          const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
-          lastMsg = msgs?.slice(-1)[0]?.message || '';
-        } catch {}
-        return {
-          ...conv,
-          patientName: profile.first_name
-            ? `${profile.last_name || ''}, ${profile.first_name}`.trim()
-            : conv.patient_name || 'Unknown',
-          patientUniversityId: profile.university_id || profile.student_id || '—',
-          patientProgram: profile.program || profile.course || '—',
-          lastMessage: lastMsg,
-        };
-      }));
-
-      // Apply search filter
-      const term = searchInput.trim().toLowerCase();
-      if (term) {
-        enriched = enriched.filter(c =>
-          c.patientName?.toLowerCase().includes(term) ||
-          c.patientUniversityId?.toLowerCase().includes(term) ||
-          c.patientProgram?.toLowerCase().includes(term) ||
-          c.lastMessage?.toLowerCase().includes(term)
-        );
-      }
-
-      // Sort
-      enriched.sort((a, b) => {
-        switch (sortBy) {
-          case 'oldest':
-            return new Date(a.created_at) - new Date(b.created_at);
-          case 'name_asc':
-            return (a.patientName || '').localeCompare(b.patientName || '');
-          case 'name_desc':
-            return (b.patientName || '').localeCompare(a.patientName || '');
-          case 'newest':
-          default:
-            return new Date(b.created_at) - new Date(a.created_at);
-        }
-      });
-
-      // Find the starting index based on lastDoc
-      const startIdx = enriched.findIndex(c => c.id === lastDoc.id);
-      const paginated = enriched.slice(startIdx + 1, startIdx + 1 + ITEMS_PER_PAGE);
-
-      setConsultations(prev => [...prev, ...paginated]);
-      setLastDoc(paginated[paginated.length - 1] || null);
-      setHasMore(paginated.length === ITEMS_PER_PAGE);
-
-    } catch (err) {
-      console.error('Failed to load more consultations:', err);
-      showSnackbar('Failed to load more consultations', 'error');
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  // Search input — just track the raw value here. The actual fetch is
-  // triggered by the debounced useEffect below, so it always reads the
-  // freshest searchInput (including when the field is cleared to "").
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
   };
@@ -253,10 +186,7 @@ export const ConsultationManagement = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeFilter, statusFilter, sortBy]);
 
-  // Debounce the search box specifically. Keying this effect directly off
-  // searchInput guarantees the closure sees the latest value (including
-  // empty string), instead of the stale value a manual setTimeout inside
-  // the onChange handler would have captured.
+  // Debounce the search box
   useEffect(() => {
     const handler = setTimeout(() => {
       fetchConsultations(true);
@@ -280,6 +210,18 @@ export const ConsultationManagement = () => {
     try {
       // Use the consultations service which sets is_archived flag
       await consultationsService.deleteConsultation(consultationToDelete.id);
+
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'consultation_archived',
+        details: {
+          consultationId: consultationToDelete.id,
+          consultationType: consultationToDelete.consultation_type,
+          patientId: consultationToDelete.patient_id,
+        },
+        adminUid,
+      });
+
       showSnackbar('Consultation archived successfully. You can restore it from the Archives page.');
       setShowDeleteModal(false);
       setConsultationToDelete(null);
@@ -315,6 +257,18 @@ export const ConsultationManagement = () => {
 
       if (error) throw error;
 
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'consultation_status_updated',
+        details: {
+          consultationId: consultationToEdit.id,
+          consultationType: consultationToEdit.consultation_type,
+          previousStatus: consultationToEdit.status || 'active',
+          newStatus: editStatus,
+        },
+        adminUid,
+      });
+
       showSnackbar('Consultation status updated successfully');
       setShowEditModal(false);
       setConsultationToEdit(null);
@@ -327,7 +281,15 @@ export const ConsultationManagement = () => {
     }
   };
 
-  const filterSelectCls = "px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const COL_COUNT = 7;
+
+  const summaryStats = [
+    { label: 'Total',   count: stats.total,   color: 'text-slate-700'   },
+    { label: 'Active',  count: stats.active,  color: 'text-emerald-700' },
+    { label: 'Medical', count: stats.medical, color: 'text-blue-700'    },
+    { label: 'Dental',  count: stats.dental,  color: 'text-purple-700'  },
+  ];
 
   if (userRole !== 'sysadmin') {
     return (
@@ -343,71 +305,62 @@ export const ConsultationManagement = () => {
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-      {/* Header */}
-      <div className="flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h2 className="text-xl md:text-2xl font-bold text-[#466460] flex items-center gap-2">
-            <i className="fa-solid fa-comments"></i>
-            Consultation Management
-          </h2>
-          <button
-            onClick={() => fetchConsultations(true)}
-            className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm self-end sm:self-auto"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Total</div>
-            <div className="text-xl md:text-2xl font-extrabold text-[#466460]">{stats.total}</div>
+      {/* Summary stats — its own row, separate from the toolbar, stretched full width */}
+      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {summaryStats.map(s => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
+            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+            <span className="text-xs text-slate-400 font-medium">{s.label}</span>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Active</div>
-            <div className="text-xl md:text-2xl font-extrabold text-emerald-600">{stats.active}</div>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Medical</div>
-            <div className="text-xl md:text-2xl font-extrabold text-blue-600">{stats.medical}</div>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Dental</div>
-            <div className="text-xl md:text-2xl font-extrabold text-purple-600">{stats.dental}</div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex-shrink-0 bg-white rounded-xl border border-slate-200 p-3 mb-4">
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
+
+        {/* Unified Inline Toolbar */}
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+
+          {/* Left side: Search & Filters */}
+          <div className="flex flex-wrap gap-3 items-center flex-1 w-full xl:w-auto">
+
+            <div className="relative w-full sm:w-60">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search patient, ID, message..."
+                value={searchInput}
+                onChange={handleSearchChange}
+                className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+              />
+            </div>
+
             <select
               value={typeFilter}
               onChange={e => setTypeFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-36`}
+              className={`${selectCls} w-full sm:w-32`}
             >
               {TYPE_OPTIONS.map(t => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-36`}
+              className={`${selectCls} w-full sm:w-32`}
             >
               {STATUS_OPTIONS.map(s => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
+
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-40`}
+              className={`${selectCls} w-full sm:w-36`}
             >
               {SORT_OPTIONS.map(s => (
                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -415,27 +368,24 @@ export const ConsultationManagement = () => {
             </select>
           </div>
 
-          <div className="relative w-full sm:w-64">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search patient, ID, message..."
-              value={searchInput}
-              onChange={handleSearchChange}
-              className="pl-9 pr-4 py-2 w-full border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
-            />
-          </div>
+          {/* Right side: Refresh */}
+          <button
+              onClick={() => fetchConsultations(true)}
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-slate-200">
-        <div className="h-full overflow-auto">
+        {/* Table */}
+        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
@@ -447,7 +397,7 @@ export const ConsultationManagement = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400">
+                  <td colSpan={COL_COUNT} className="text-center py-12 text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -457,9 +407,9 @@ export const ConsultationManagement = () => {
                     </div>
                   </td>
                 </tr>
-              ) : consultations.length === 0 ? (
+              ) : paginatedConsultations.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400 text-sm">
+                  <td colSpan={COL_COUNT} className="text-center py-12 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <i className="fa-regular fa-comments text-3xl text-slate-300"></i>
                       <p>No consultations found</p>
@@ -468,14 +418,16 @@ export const ConsultationManagement = () => {
                   </td>
                 </tr>
               ) : (
-                consultations.map((conv, idx) => {
+                paginatedConsultations.map((conv, idx) => {
                   const tab = conv.consultation_type === 'medical'
                     ? { accent: '#1a5c3a', light: '#e8f5ee' }
                     : { accent: '#1a4a7a', light: '#e8f0fa' };
                   const isEnded = conv.status === 'ended';
                   return (
                     <tr key={conv.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
-                      {/* Patient */}
+                      <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
+                        {(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}
+                      </td>
                       <td className="p-3">
                         <div className="flex items-center gap-3">
                           <div
@@ -490,8 +442,6 @@ export const ConsultationManagement = () => {
                           </div>
                         </div>
                       </td>
-
-                      {/* Type */}
                       <td className="p-3 whitespace-nowrap">
                         <span
                           className="text-xs px-2 py-1 rounded-full font-semibold"
@@ -500,8 +450,6 @@ export const ConsultationManagement = () => {
                           {conv.consultation_type === 'medical' ? 'Medical' : 'Dental'}
                         </span>
                       </td>
-
-                      {/* Status */}
                       <td className="p-3 whitespace-nowrap">
                         <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
                           isEnded
@@ -511,18 +459,12 @@ export const ConsultationManagement = () => {
                           {isEnded ? 'Ended' : 'Active'}
                         </span>
                       </td>
-
-                      {/* Last Message */}
                       <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[200px]">
                         <span className="truncate block" title={conv.lastMessage}>{conv.lastMessage || 'No messages'}</span>
                       </td>
-
-                      {/* Created */}
                       <td className="p-3 whitespace-nowrap">
                         <div className="text-xs text-slate-500">{formatDate(conv.created_at)}</div>
                       </td>
-
-                      {/* Actions */}
                       <td className="p-3 text-right">
                         <div className="flex justify-end gap-2">
                           <button
@@ -551,27 +493,36 @@ export const ConsultationManagement = () => {
               )}
             </tbody>
           </table>
+        </div>
 
-          {/* Load More */}
-          {hasMore && !loading && (
-            <div className="p-4 text-center border-t border-slate-200">
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+            <div>
+              Showing <span className="font-semibold">{totalRecords === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> records
+            </div>
+            <div className="flex items-center gap-2">
               <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                {loadingMore ? (
-                  <>
-                    <i className="fa-solid fa-spinner fa-spin mr-2"></i>
-                    Loading...
-                  </>
-                ) : (
-                  'Load More'
-                )}
+                Previous
+              </button>
+              <div className="text-xs font-semibold px-2">
+                Page {currentPage} of {Math.max(1, totalPages)}
+              </div>
+              <button
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Next
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
       </div>
 
       {/* Delete Confirmation Modal */}

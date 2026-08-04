@@ -35,6 +35,7 @@ const Examination = lazy(() => import('./features/admin-clinic/Examinations.jsx'
 const Approvals = lazy(() => import('./features/admin-clinic/Approvals.jsx'));
 const UserManagement = lazy(() => import('./features/admin-clinic/User-Management.jsx'));
 const RecordManagement = lazy(() => import('./features/admin-clinic/Record-Management.jsx'));
+const NotificationsManagement = lazy(() => import('./features/admin-clinic/NotificationsManagement.jsx'));
 const AuditLogs = lazy(() => import('./features/admin-clinic/AuditLogs.jsx'));
 const OcrSettings = lazy(() => import('./features/admin-clinic/OcrSettings.jsx'));
 const Reports = lazy(() => import('./features/admin-clinic/Reports.jsx'));
@@ -112,6 +113,7 @@ const ROUTE_TO_TAB = {
   '/dashboard':        'dashboard',
   '/records':          'records',
   '/record-management':'recordManagement',
+   '/notifications-management': 'notificationsManagement',
   '/audit-logs':       'auditLogs',
   '/appointments':    'appointments',
   '/examinations':     'examinations',
@@ -131,6 +133,7 @@ const TAB_TO_ROUTE = {
   'dashboard':        '/dashboard',
   'records':          '/records',
   'recordManagement': '/record-management',
+  'notificationsManagement': '/notifications-management',
   'auditLogs':        '/audit-logs',
   'appointments':     '/appointments',
   'examinations':     '/examinations',
@@ -305,6 +308,11 @@ function App() {
             <Route path="/record-management" element={
               <ProtectedRoute adminOnly={true}>
                 <AdminLayoutWrapper><RecordManagement /></AdminLayoutWrapper>
+              </ProtectedRoute>
+            } />
+            <Route path="/notifications-management" element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminLayoutWrapper><NotificationsManagement /></AdminLayoutWrapper>
               </ProtectedRoute>
             } />
             <Route path="/audit-logs" element={

@@ -365,13 +365,17 @@ exports.loginUser = async ({ email, password }) => {
       program: createdUser.program || '',
       isVerified: createdUser.is_verified,
       isProfileSetup: createdUser.is_profile_setup || false,
+      emergencyContact: createdUser.emergency_contact || {},
+      vaccinations: createdUser.vaccinations || {},
+      dentalHistory: createdUser.dental_history || {},
+      surgicalHistory: createdUser.surgical_history || { operations: [], declined: false },
     };
   }
 
   // 3. Return camelCase shape — now includes refreshToken ✅
   return {
     token:          session.access_token,
-    refreshToken:   session.refresh_token,   // ✅ added — needed to restore Supabase session on frontend
+    refreshToken:   session.refresh_token,
     uid:            userData.uid,
     firstName:      userData.first_name,
     lastName:       userData.last_name,
@@ -384,6 +388,10 @@ exports.loginUser = async ({ email, password }) => {
     program:        userData.program || '',
     isVerified:     userData.is_verified,
     isProfileSetup: userData.is_profile_setup || false,
+    emergencyContact: userData.emergency_contact || {},
+    vaccinations:   userData.vaccinations || {},
+    dentalHistory:  userData.dental_history || {},
+    surgicalHistory: userData.surgical_history || { operations: [], declined: false },
   };
 };
 
@@ -504,6 +512,8 @@ exports.getProfile = async (userId) => {
     phoneNumber:          data.phone_number || '',
     emergencyContact:     data.emergency_contact || {},
     vaccinations:         data.vaccinations || {},
+    dentalHistory:        data.dental_history || {},
+    surgicalHistory:      data.surgical_history || { operations: [], declined: false },
   };
 };
 
@@ -893,5 +903,9 @@ exports.adminUpdateUser = async (targetUid, updates) => {
     jobTitle:             data.job_title || '',
     licenseNumber:        data.license_number || '',
     phoneNumber:          data.phone_number || '',
+    emergencyContact:     data.emergency_contact || {},
+    vaccinations:         data.vaccinations || {},
+    dentalHistory:        data.dental_history || {},
+    surgicalHistory:      data.surgical_history || { operations: [], declined: false },
   };
 };

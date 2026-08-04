@@ -63,7 +63,7 @@ validation/      # Validation schemas
 ### API Endpoints
 
 | Method | Route                       | Description                           |
-| ------ | --------------------------- | ------------------------------------- |
+| :----- | :-------------------------- | :------------------------------------ |
 | POST   | /api/auth/signup            | Register with OCR-verified student ID |
 | POST   | /api/auth/login             | Login with email/password             |
 | POST   | /api/users/register         | Register with email/password          |

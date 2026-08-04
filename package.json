@@ -4,7 +4,7 @@
   "description": "A comprehensive cross-platform student health record management system for educational institutions. MediTrack enables efficient management of student health records, appointments, medical examinations, and announcements through a modern, responsive web interface.",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -18,17 +18,22 @@
   },
   "homepage": "https://github.com/Adk-gh/MediTrack#readme",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.0",
     "@supabase/supabase-js": "^2.106.2",
     "axios": "^1.16.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "form-data": "^4.0.6",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "nodemailer": "^9.0.3",
     "resend": "^4.0.0",
-    "@sendgrid/mail": "^8.1.0",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1"
   }
 }

@@ -915,7 +915,7 @@ export const Appointments = () => {
 
   // ── Rejected Appointments ──
   const rejectedAppts = appointments
-    .filter(a => a.status === 'declined')
+    .filter(a => a.status === 'rejected')
     .sort((a, b) => new Date(b.bookedAt || b.created_at) - new Date(a.bookedAt || a.created_at));
 
   const filteredRejected = rejectedAppts.filter(r => {
@@ -1042,10 +1042,10 @@ export const Appointments = () => {
   const handleDeclineConfirm = async () => {
     try {
       await Promise.all(declineModal.ids.map(id => declineAppointment(id)));
-      showSnackbar(`${declineModal.ids.length} request${declineModal.ids.length > 1 ? 's' : ''} declined`, 'error');
+      showSnackbar(`${declineModal.ids.length} request${declineModal.ids.length > 1 ? 's' : ''} rejected`, 'error');
       setSelectedIds(new Set());
     } catch {
-      showSnackbar('Failed to decline some requests', 'error');
+      showSnackbar('Failed to reject some requests', 'error');
     }
     setDeclineModal({ open: false, ids: [] });
   };
@@ -1422,8 +1422,8 @@ export const Appointments = () => {
     <div className="flex flex-col h-full overflow-hidden w-full">
       <div className="px-4 py-3 border-b border-[#eef2f6] flex items-center justify-between shrink-0 bg-white">
         <div>
-          <div className="text-[16px] font-semibold text-[#1e293b]">Declined Requests</div>
-          <div className="text-[12px] text-[#64748b] mt-[1px]">Requests that were declined</div>
+          <div className="text-[16px] font-semibold text-[#1e293b]">Rejected Requests</div>
+          <div className="text-[12px] text-[#64748b] mt-[1px]">Requests that were rejected</div>
         </div>
         <span className="text-[12px] font-semibold text-[#991b1b] bg-[#fef2f2] px-[9px] py-[2px] rounded-[20px]">
           {rejectedAppts.length} rejected
@@ -2119,14 +2119,14 @@ export const Appointments = () => {
                 <div key={label} className="flex items-center gap-[12px] py-[8px] text-[14px]">
                   <Icon size={16} style={{ color: '#0F6E56', flexShrink: 0 }} />
                   <span className="text-[#64748b] min-w-[110px]">{label}</span>
-                  <span className={`font-bold ${label === 'Status' && (detailModal.status === 'missed' || detailModal.status === 'declined') ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
+                  <span className={`font-bold ${label === 'Status' && (detailModal.status === 'missed' || detailModal.status === 'rejected') ? 'text-[#b45309]' : 'text-[#1e293b]'}`}>
                     {value}
                   </span>
                 </div>
               ))}
             </div>
             <div className="flex gap-3 mt-6">
-              {detailModal.status !== 'declined' && (
+              {detailModal.status !== 'rejected' && (
                 <button
                   onClick={() => handleExaminePatient(detailModal)}
                   disabled={detailModal.status === 'done' || detailModal.status === 'missed'}

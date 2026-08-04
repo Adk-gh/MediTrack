@@ -1,7 +1,7 @@
 // frontend/src/features/admin-clinic/Record-Management.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
 import { supabase } from '../../supabase';
+import { logAdminAction } from '../../services/audit.service';
 
 const STATUS_OPTIONS = ['pending', 'approved', 'done', 'rejected'];
 // 'done' is an appointment-only status — records only ever cycle through these
@@ -45,124 +45,8 @@ const StatusPill = ({ status }) => {
   );
 };
 
-// ── Action dropdown menu (portal – escapes overflow clipping) ─────────────
-const ActionMenu = ({ record, onStatusChange, onDelete, onClose, anchorRect }) => {
-  const [editStatus, setEditStatus] = useState(record.status || 'pending');
-  const [saving, setSaving]         = useState(false);
-  const ref = useRef(null);
-
-  // Flip upward when not enough room below the button
-  const menuHeight = 285;
-  const spaceBelow = window.innerHeight - anchorRect.bottom;
-  const openUpward = spaceBelow < menuHeight + 8;
-  // When opening downward: top of menu = bottom of button + gap
-  // When opening upward:   bottom of menu = top of button - gap (use CSS bottom)
-  const posStyle = openUpward
-    ? { bottom: window.innerHeight - anchorRect.top + 4 }
-    : { top: anchorRect.bottom + 4 };
-  const right = window.innerWidth - anchorRect.right;
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await onStatusChange(record, editStatus);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return ReactDOM.createPortal(
-    <div
-      ref={ref}
-      style={{ position: 'fixed', ...posStyle, right, zIndex: 9999, width: '13rem' }}
-      className="bg-white rounded-xl border border-slate-200 shadow-xl shadow-slate-200/60 overflow-hidden"
-    >
-      {/* Status picker */}
-      <div className="px-3 pt-3 pb-2 border-b border-slate-100">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
-          Change status
-        </p>
-        <div className="flex flex-col gap-1">
-          {EDIT_STATUS_OPTIONS.map(s => {
-            const style = getStatusStyle(s);
-            const isSelected = editStatus === s;
-            return (
-              <button
-                key={s}
-                onClick={() => setEditStatus(s)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all text-left ${
-                  isSelected
-                    ? `${style.bg} ${style.text} ring-1 ring-inset`
-                    : 'hover:bg-slate-50 text-slate-500'
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSelected ? style.dot : 'bg-slate-300'}`}></span>
-                {s}
-                {isSelected && (
-                  <svg className="ml-auto w-3 h-3 opacity-70 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Action buttons */}
-      <div className="px-3 py-2.5 flex flex-col gap-1.5">
-        <button
-          onClick={handleSave}
-          disabled={saving || editStatus === record.status}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#466460] text-white text-xs font-bold hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {saving ? (
-            <>
-              <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              Saving…
-            </>
-          ) : (
-            <>
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              Save changes
-            </>
-          )}
-        </button>
-
-        <button
-          onClick={() => onDelete(record)}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-500 text-xs font-semibold hover:bg-red-50 transition"
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-          Delete record
-        </button>
-      </div>
-    </div>,
-    document.body
-  );
-};
-
 // ── Record row ─────────────────────────────────────────────────────────────
-const RecordRow = ({ record, onStatusChange, onDelete }) => {
-  const [showMenu, setShowMenu]   = useState(false);
-  const [anchorRect, setAnchorRect] = useState(null);
-  const btnRef = useRef(null);
+const RecordRow = ({ index, record, onEdit, onDelete }) => {
   const isMedical = record._kind === 'medical';
   const vitals    = record.vital_records?.[0] || {};
   const name      = getFullName(record._user || record);
@@ -170,8 +54,13 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
 
   return (
     <tr className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group">
+      {/* Number Index */}
+      <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
+        {index}
+      </td>
+
       {/* Type */}
-      <td className="p-3 pl-4">
+      <td className="p-3">
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
           isMedical ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
         }`}>
@@ -239,41 +128,26 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
 
       {/* Actions */}
       <td className="p-3 pr-4">
-        <button
-          ref={btnRef}
-          onClick={() => {
-            if (!showMenu && btnRef.current) {
-              setAnchorRect(btnRef.current.getBoundingClientRect());
-            }
-            setShowMenu(v => !v);
-          }}
-          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-semibold transition-all ${
-            showMenu
-              ? 'bg-[#466460] text-white border-[#466460] shadow-sm'
-              : 'bg-white text-slate-500 border-slate-200 hover:border-[#466460] hover:text-[#466460]'
-          }`}
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-          Edit
-          <svg
-            className={`w-2.5 h-2.5 transition-transform duration-150 ${showMenu ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => onEdit(record)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
+            title="Edit Record"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {showMenu && anchorRect && (
-          <ActionMenu
-            record={record}
-            onStatusChange={onStatusChange}
-            onDelete={onDelete}
-            onClose={() => setShowMenu(false)}
-            anchorRect={anchorRect}
-          />
-        )}
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => onDelete(record)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all"
+            title="Archive Record"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+            </svg>
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -281,6 +155,13 @@ const RecordRow = ({ record, onStatusChange, onDelete }) => {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export const RecordManagement = () => {
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // Admin identity used for audit logging. Falls back through id -> uid ->
+  // 'system' so a log entry is still written even if the stored user object
+  // is incomplete. Kept consistent with the other admin-clinic screens.
+  const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
+
   const [records, setRecords]           = useState([]);
   const [loading, setLoading]           = useState(true);
   const [searchInput, setSearchInput]   = useState('');
@@ -289,12 +170,23 @@ export const RecordManagement = () => {
   const [filterDept, setFilterDept]     = useState('all');
   const [sortOrder, setSortOrder]       = useState('desc');
   const [message, setMessage]           = useState(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage]   = useState(1);
+  const ITEMS_PER_PAGE = 100;
+
   const snackbarTimer = useRef(null);
 
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Edit (status change) modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editRecord, setEditRecord]       = useState(null);
+  const [editStatus, setEditStatus]       = useState('pending');
+  const [savingEdit, setSavingEdit]       = useState(false);
 
   const showSnackbar = (msg, type = 'success') => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -338,14 +230,19 @@ export const RecordManagement = () => {
 
   useEffect(() => { fetchAllRecords(); }, []);
 
+  // Reset pagination to page 1 whenever filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchInput, filterType, filterStatus, filterDept, sortOrder]);
+
   const deptOptions = ['all', ...new Set(
     records.map(r => r._user?.department).filter(Boolean)
   )].sort((a, b) => a === 'all' ? -1 : b === 'all' ? 1 : a.localeCompare(b));
 
   const filtered = records
     .filter(r => {
-      if (filterType   !== 'all' && r._kind             !== filterType)   return false;
-      if (filterStatus !== 'all' && r.status            !== filterStatus) return false;
+      if (filterType   !== 'all' && r._kind            !== filterType)   return false;
+      if (filterStatus !== 'all' && r.status           !== filterStatus) return false;
       if (filterDept   !== 'all' && r._user?.department !== filterDept)   return false;
       if (searchInput) {
         const s    = searchInput.toLowerCase();
@@ -366,12 +263,55 @@ export const RecordManagement = () => {
   const totalDen     = records.filter(r => r._kind === 'dental').length;
   const totalPending = records.filter(r => r.status === 'pending').length;
 
+  // Pagination Logic
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginatedRecords = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   const handleStatusChange = async (record, newStatus) => {
     const table = record._kind === 'medical' ? 'medical_records' : 'dental_records';
     const { error } = await supabase.from(table).update({ status: newStatus }).eq('id', record._id);
     if (error) { showSnackbar('Failed to update status', 'error'); throw error; }
+
+    // ---- AUDIT LOG ----
+    logAdminAction({
+      action: 'record_status_updated',
+      details: {
+        recordId: record._id,
+        recordType: record._kind,
+        previousStatus: record.status || 'pending',
+        newStatus,
+        table,
+      },
+      adminUid,
+    });
+
     setRecords(prev => prev.map(r => r._id === record._id ? { ...r, status: newStatus } : r));
     showSnackbar('Status updated');
+  };
+
+  // Edit modal handlers
+  const openEditModal = (record) => {
+    setEditRecord(record);
+    setEditStatus(record.status || 'pending');
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setEditRecord(null);
+  };
+
+  const handleEditSave = async () => {
+    if (!editRecord) return;
+    setSavingEdit(true);
+    try {
+      await handleStatusChange(editRecord, editStatus);
+      closeEditModal();
+    } catch {
+      // handleStatusChange already showed an error snackbar
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   // Delete modal handlers
@@ -397,6 +337,18 @@ export const RecordManagement = () => {
         updated_at: new Date().toISOString()
       }).eq('id', recordToDelete._id);
       if (error) { showSnackbar('Failed to delete record', 'error'); throw error; }
+
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'record_archived',
+        details: {
+          recordId: recordToDelete._id,
+          recordType: recordToDelete._kind,
+          table,
+        },
+        adminUid,
+      });
+
       setRecords(prev => prev.filter(r => r._id !== recordToDelete._id));
       showSnackbar('Record archived successfully. You can restore it from the Archives page.');
     } catch (err) {
@@ -410,64 +362,50 @@ export const RecordManagement = () => {
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 7;
+  const COL_COUNT = 8; // Increased for the new "#" column
+
+  const summaryStats = [
+    { label: 'Total',   count: records.length, color: 'text-slate-700'  },
+    { label: 'Medical', count: totalMed,       color: 'text-blue-700'    },
+    { label: 'Dental',  count: totalDen,       color: 'text-purple-700'  },
+    { label: 'Pending', count: totalPending,   color: 'text-amber-700'   },
+  ];
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-      {/* Header */}
-      <div className="flex-shrink-0 mb-4">
-        <div className="flex justify-between items-center mb-3">
-          <div>
-            <h2 className="text-xl md:text-2xl font-bold text-[#466460]">Record Management</h2>
-            <p className="text-sm text-slate-400 mt-0.5">All medical and dental records</p>
+      {/* Summary stats — its own row, separate from the toolbar/header, stretched full width */}
+      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {summaryStats.map(s => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
+            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+            <span className="text-xs text-slate-400 font-medium">{s.label}</span>
           </div>
-          <button
-            onClick={fetchAllRecords}
-            className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-        </div>
-
-        {/* Summary stats */}
-        <div className="flex gap-3 flex-wrap">
-          {[
-            { label: 'Total',   count: records.length, color: 'text-slate-700'   },
-            { label: 'Medical', count: totalMed,       color: 'text-blue-700'    },
-            { label: 'Dental',  count: totalDen,       color: 'text-purple-700'  },
-            { label: 'Pending', count: totalPending,   color: 'text-amber-700'   },
-          ].map(s => (
-            <div key={s.label} className="bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm flex items-center gap-2">
-              <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
-              <span className="text-xs text-slate-400 font-medium">{s.label}</span>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
 
       {/* Table container */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
-        {/* Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <div className="relative w-full sm:w-60">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search name, ID, email…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
-            />
-          </div>
+        {/* Combined Inline Toolbar */}
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
 
-          <div className="flex flex-wrap gap-2 items-center flex-1">
+          <div className="flex flex-wrap gap-3 items-center flex-1">
+
+
+            <div className="relative w-full sm:w-60">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search name, ID, email…"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+              />
+            </div>
+
             <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} w-28`}>
               <option value="all">All types</option>
               <option value="medical">Medical</option>
@@ -499,11 +437,17 @@ export const RecordManagement = () => {
               </svg>
               <span className="hidden sm:inline">{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
             </button>
-
-            <span className="ml-auto text-xs text-slate-400 font-medium whitespace-nowrap">
-              {filtered.length} record{filtered.length !== 1 ? 's' : ''}
-            </span>
           </div>
+
+          <button
+              onClick={fetchAllRecords}
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
         </div>
 
         {/* Table */}
@@ -511,7 +455,8 @@ export const RecordManagement = () => {
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left p-3 pl-4 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
+                <th className="text-center p-3 pl-4 w-12 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden sm:table-cell">ID</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Exam Date</th>
@@ -533,25 +478,126 @@ export const RecordManagement = () => {
                     </div>
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : paginatedRecords.length === 0 ? (
                 <tr>
                   <td colSpan={COL_COUNT} className="text-center py-16">
                     <i className="fa-regular fa-folder-open text-slate-200 text-4xl block mb-2"></i>
                     <p className="text-slate-400 text-sm">No records found</p>
                   </td>
                 </tr>
-              ) : filtered.map(record => (
+              ) : paginatedRecords.map((record, index) => (
                 <RecordRow
                   key={`${record._kind}-${record._id}`}
+                  index={(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
                   record={record}
-                  onStatusChange={handleStatusChange}
+                  onEdit={openEditModal}
                   onDelete={openDeleteModal}
                 />
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+            <div>
+              Showing <span className="font-semibold">{((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</span> of <span className="font-semibold">{filtered.length}</span> records
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Previous
+              </button>
+              <div className="text-xs font-semibold px-2">
+                Page {currentPage} of {totalPages}
+              </div>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
+
+      {/* Edit (Change Status) Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Edit Record</h3>
+                <p className="text-sm text-slate-500">
+                  {editRecord ? getFullName(editRecord._user || editRecord) : ''}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
+              <div className="flex gap-2">
+                {EDIT_STATUS_OPTIONS.map(s => {
+                  const style = getStatusStyle(s);
+                  const isSelected = editStatus === s;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => setEditStatus(s)}
+                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold capitalize transition ${
+                        isSelected
+                          ? `${style.bg} ${style.text} border-2 border-current`
+                          : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={closeEditModal}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                disabled={savingEdit}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={savingEdit || !editRecord || editStatus === editRecord?.status}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {savingEdit ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-check"></i>
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (

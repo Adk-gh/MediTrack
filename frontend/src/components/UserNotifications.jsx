@@ -1,7 +1,7 @@
 //C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import notificationsService, { createTestNotification } from '../services/notifications.service.js';
+import notificationsService from '../services/notifications.service.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -72,15 +72,22 @@ const formatTimeAgo = (dateString) => {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now - date;
+  const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+  const diffYears = Math.floor(diffDays / 365);
 
-  if (diffMins < 1) return 'Just now';
+  if (diffSecs < 10) return 'Just now';
+  if (diffSecs < 60) return `${diffSecs}s ago`;
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
+  if (diffWeeks < 4) return `${diffWeeks}w ago`;
+  if (diffMonths < 12) return `${diffMonths}mo ago`;
+  return `${diffYears}y ago`;
 };
 
 // ─── Notification Bell Button (for header) ─────────────────────────────────────
@@ -104,9 +111,13 @@ export function UserNotificationBell({ onClick, count }) {
 }
 
 // ─── Notification Dropdown Panel ────────────────────────────────────────────────
+const PAGE_SIZE = 20;
+
 export function UserNotificationPanel({ isOpen, onClose }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   const userIdRef = useRef(null);
 
@@ -152,7 +163,7 @@ export function UserNotificationPanel({ isOpen, onClose }) {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userIdRef.current}` },
         (payload) => {
-          setNotifications(prev => [payload.new, ...prev]);
+          setNotifications(prev => [normalizeNotification(payload.new), ...prev]);
           setUnreadCount(prev => prev + 1);
           sessionStorage.removeItem('meditrack_notifications');
           sessionStorage.removeItem('meditrack_notif_count');
@@ -162,7 +173,7 @@ export function UserNotificationPanel({ isOpen, onClose }) {
         { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userIdRef.current}` },
         (payload) => {
           setNotifications(prev => prev.map(n =>
-            n.id === payload.new.id ? { ...n, is_read: payload.new.is_read } : n
+            n.id === payload.new.id ? { ...n, isRead: payload.new.is_read } : n
           ));
         }
       )
@@ -179,19 +190,49 @@ export function UserNotificationPanel({ isOpen, onClose }) {
     };
   }, [isOpen]);
 
+  // Normalize snake_case from Supabase to camelCase for frontend
+  const normalizeNotification = (n) => ({
+    ...n,
+    isRead: n.is_read ?? n.isRead ?? false,
+    userId: n.user_id ?? n.userId,
+    referenceId: n.reference_id ?? n.referenceId,
+    referenceType: n.reference_type ?? n.referenceType,
+    createdAt: n.created_at ?? n.createdAt ?? new Date().toISOString(),
+  });
+
   const fetchNotifications = async () => {
     setLoading(true);
     try {
       const [notifs, count] = await Promise.all([
-        notificationsService.getNotifications(20),
+        notificationsService.getNotifications(PAGE_SIZE),
         notificationsService.getUnreadCount(),
       ]);
-      setNotifications(notifs);
-      setUnreadCount(count);
+      const normalized = (notifs || []).map(normalizeNotification);
+      setNotifications(normalized);
+      setUnreadCount(count || 0);
+      // If we got back fewer than a full page, there's nothing more to load
+      setHasMore(normalized.length >= PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextLimit = notifications.length + PAGE_SIZE;
+      const notifs = await notificationsService.getNotifications(nextLimit);
+      const normalized = (notifs || []).map(normalizeNotification);
+      setNotifications(normalized);
+      // If the server couldn't return a full new page, we've reached the end
+      setHasMore(normalized.length >= nextLimit);
+    } catch (error) {
+      console.error('Error loading more notifications:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -254,21 +295,6 @@ export function UserNotificationPanel({ isOpen, onClose }) {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {/* Test button - remove in production */}
-            <button
-              onClick={async () => {
-                // Clear cache first
-                sessionStorage.removeItem('meditrack_notifications');
-                sessionStorage.removeItem('meditrack_notif_count');
-                await createTestNotification();
-                // Small delay then fetch fresh
-                setTimeout(() => fetchNotifications(), 500);
-              }}
-              className="text-yellow-300 hover:text-yellow-100 text-xs font-medium px-2 py-1 transition-colors"
-              title="Create test notification"
-            >
-              +Test
-            </button>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
@@ -360,10 +386,21 @@ export function UserNotificationPanel({ isOpen, onClose }) {
         </div>
 
         {/* Footer */}
-        {notifications.length > 0 && (
+        {notifications.length > 0 && hasMore && (
           <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
-            <button className="w-full py-2 text-center text-sm font-semibold text-[#466460] hover:bg-slate-100 rounded-lg transition-colors">
-              View All Notifications
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="w-full py-2 text-center text-sm font-semibold text-[#466460] hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loadingMore ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-[#466460] border-t-transparent rounded-full animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                'Load More Notifications'
+              )}
             </button>
           </div>
         )}

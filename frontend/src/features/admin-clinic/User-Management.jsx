@@ -4,6 +4,37 @@ import { supabase } from '../../supabase';
 import { createPortal } from 'react-dom';
 import DatePicker from '../../components/Datepicker';
 import AddressModal from '../../components/AddressModal';
+import { logAdminAction } from '../../services/audit.service';
+
+// ── Frontend Email Validation Helper ──────────────────────────────────────────
+const validateEmailWithEasyEmail = async (email) => {
+  // Uses VITE_ prefix so the React frontend can read the environment variable
+  const API_KEY = import.meta.env.VITE_EASY_EMAIL_API;
+
+  if (!API_KEY) {
+    console.warn("VITE_EASY_EMAIL_API missing in frontend .env. Skipping email validation.");
+    return { isDeliverable: true };
+  }
+
+  const API_URL = `https://api.easyemailapi.com/v1/verify?email=${encodeURIComponent(email)}&apikey=${API_KEY}`;
+
+  try {
+    const response = await fetch(API_URL);
+    const data = await response.json();
+
+    if (data.valid === false || data.inbox_exists === false || data.deliverable === false) {
+       return {
+           isDeliverable: false,
+           message: "This email address does not exist or cannot receive emails. Please provide a valid email."
+       };
+    }
+
+    return { isDeliverable: true };
+  } catch (error) {
+    console.error("Frontend Email validation API error:", error);
+    return { isDeliverable: true };
+  }
+};
 
 // ── Department data (mirrors ProfileSetup) ────────────────────────────────────
 const departmentsData = [
@@ -16,7 +47,7 @@ const departmentsData = [
   { abbr: 'CHK',  full: 'College of Human Kinetics', programs: ['Bachelor of Science in Physical Education','Bachelor of Science in Sports Science'] },
   { abbr: 'CNAHS',full: 'College of Nursing and Allied Health Sciences', programs: ['Bachelor of Science in Nursing'] },
 ];
-const deptAbbrToFull     = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
+const deptAbbrToFull      = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
 const programsByDeptAbbr = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
 
 const NON_ACADEMIC_OFFICES = ['Accounting Office','University Clinic','Human Resources','Library','Maintenance','Registrar Office','Security Services'];
@@ -55,16 +86,12 @@ const classificationColors = {
   Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
 };
 
-const TOTAL_CREATE_STEPS = 4;
-const CREATE_STEP_LABELS = ['Account', 'Personal', 'Role & Work', 'Settings'];
+const ITEMS_PER_PAGE = 100;
 
 // ── Name Normalization ────────────────────────────────────────────────────────
-// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
 const normalizeName = (name) => {
   if (!name) return '';
-  // Trim whitespace
   let trimmed = name.trim();
-  // Convert to lowercase first, then capitalize first letter
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 };
 
@@ -72,20 +99,46 @@ const normalizeName = (name) => {
 const inputCls  = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] bg-white";
 const selectCls = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]";
 const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tracking-wide";
-const errInputCls = "border-red-400 focus:border-red-400 bg-red-50";
+const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
 
-const EMPTY_CREATE = {
-  first_name:'', middle_name:'', last_name:'', suffix:'',
-  university_id:'', email:'', phone_number:'',
-  password:'', confirm_password:'',
-  role:'student',
-  department:'', departmentAbbr:'', program:'',
-  job_title:'', classification:'Student',
-  birthday:'', age:'', sex:'', blood_type:'', civil_status:'Single',
-  religion:'', nationality:'Filipino', home_address:'',
-  year_level:'1st Year', section:'', student_classification:'Regular',
-  is_verified:true, profile_complete:false,
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// Toggle — fixed-size switch used by Account Flags / Account Status sections.
+// ─────────────────────────────────────────────────────────────────────────────
+const Toggle = ({ checked, onChange }) => (
+  <button
+    type="button"
+    onClick={onChange}
+    aria-pressed={checked}
+    style={{
+      position: 'relative',
+      width: 40,
+      height: 20,
+      minWidth: 40,
+      maxWidth: 40,
+      padding: 0,
+      border: 'none',
+      borderRadius: 9999,
+      cursor: 'pointer',
+      flexShrink: 0,
+      background: checked ? '#466460' : '#cbd5e1',
+      transition: 'background-color 0.15s ease',
+    }}
+  >
+    <span
+      style={{
+        position: 'absolute',
+        top: 2,
+        left: checked ? 22 : 2,
+        width: 16,
+        height: 16,
+        borderRadius: 9999,
+        background: '#fff',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
+        transition: 'left 0.15s ease',
+      }}
+    />
+  </button>
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EyeIcon
@@ -94,21 +147,20 @@ const EyeIcon = ({ open }) => open
   ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
   : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>;
 
-// Get current user from localStorage
 const getCurrentUser = () => {
-  try {
-    return JSON.parse(localStorage.getItem('user') || '{}');
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
 };
 
 const currentUser = getCurrentUser();
 const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(currentUser?.role?.toLowerCase());
 
+// Admin identity used for audit logging. Falls back through id -> uid ->
+// 'system' so a log entry is still written even if the stored user object
+// is incomplete. Kept consistent with the other admin-clinic screens.
+const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
+
 // ─────────────────────────────────────────────────────────────────────────────
-// RoleOptions (shared between Create wizard and Edit modal)
-// Only sysadmin can see/select System Administrator role
+// RoleOptions
 // ─────────────────────────────────────────────────────────────────────────────
 const RoleOptions = () => (
   <>
@@ -142,7 +194,7 @@ const RoleOptions = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CreateUserModal (flat form, mirrors Records.jsx Add New Record style)
+// CreateUserModal
 // ─────────────────────────────────────────────────────────────────────────────
 const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
   const [loading, setLoading] = useState(false);
@@ -163,22 +215,14 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
 
   const handleRoleChange = (val) => {
     setForm(f => ({
-      ...f,
-      role: val,
-      classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
-      job_title: JOB_TITLE_MAP[val?.toLowerCase()] || '',
-      department: '', departmentAbbr: '', program: '',
+      ...f, role: val, classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
+      job_title: JOB_TITLE_MAP[val?.toLowerCase()] || '', department: '', departmentAbbr: '', program: '',
       year_level: '1st Year', section: '', student_classification: 'Regular',
     }));
   };
 
   const handleDeptChange = (val) => {
-    setForm(f => ({
-      ...f,
-      departmentAbbr: val,
-      department: deptAbbrToFull[val] || val,
-      program: '',
-    }));
+    setForm(f => ({ ...f, departmentAbbr: val, department: deptAbbrToFull[val] || val, program: '' }));
   };
 
   const handleBirthdayChange = (val) => {
@@ -195,15 +239,21 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.first_name || !form.last_name || !form.email || !form.password || !form.university_id) {
-      showSnackbar('Please fill all required fields', 'error');
-      return;
+      showSnackbar('Please fill all required fields', 'error'); return;
     }
-    if (form.password.length < 6) {
-      showSnackbar('Password must be at least 6 characters', 'error');
-      return;
-    }
+    if (form.password.length < 6) { showSnackbar('Password must be at least 6 characters', 'error'); return; }
+
     setLoading(true);
+
     try {
+      // ── NEW: Validate email exists via Easy Email API before proceeding ──
+      const validationResult = await validateEmailWithEasyEmail(form.email);
+      if (!validationResult.isDeliverable) {
+        showSnackbar(validationResult.message, 'error');
+        setLoading(false);
+        return;
+      }
+
       const { data: existing } = await supabase.from('users').select('id').eq('university_id', form.university_id).maybeSingle();
       if (existing) { showSnackbar('This University ID is already registered', 'error'); setLoading(false); return; }
 
@@ -238,6 +288,19 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
       const { data: inserted, error: insertError } = await supabase.from('users').insert(newUser).select().single();
       if (insertError) throw insertError;
 
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'user_created',
+        details: {
+          userId: inserted.id,
+          uid: inserted.uid,
+          email: inserted.email,
+          role: inserted.role,
+          universityId: inserted.university_id,
+        },
+        adminUid,
+      });
+
       onCreated(inserted);
       showSnackbar('User created successfully', 'success');
       onClose();
@@ -252,17 +315,11 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
   const isFacultyRole = isFaculty(form.role);
   const isClinicRole  = isClinicStaff(form.role);
   const isAdminRole   = isAdmin(form.role);
-
   const secHead = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
 
   return createPortal(
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10"
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
-
-        {/* Header */}
         <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -274,230 +331,87 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
             <p className="text-xs text-white/70 mt-0.5">Fill in the details below</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
-        {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto p-6">
           <form onSubmit={handleSubmit} id="create-form">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-
-              {/* Account */}
               <div className={secHead}>Account</div>
-              <div>
-                <label className={labelCls}>Email <span className="text-red-400">*</span></label>
-                <input className={inputCls} type="email" value={form.email} autoComplete="off"
-                  onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required />
-              </div>
+              <div><label className={labelCls}>Email <span className="text-red-400">*</span></label><input className={inputCls} type="email" value={form.email} autoComplete="off" onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required /></div>
               <div>
                 <label className={labelCls}>Password <span className="text-red-400">*</span></label>
                 <div className="relative">
-                  <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password"
-                    value={form.password} onChange={e => cf('password', e.target.value)}
-                    placeholder="Min. 6 characters" required />
-                  <button type="button" onClick={() => setShowPwd(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]">
-                    <EyeIcon open={showPwd} />
-                  </button>
+                  <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={e => cf('password', e.target.value)} placeholder="Min. 6 characters" required />
+                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"><EyeIcon open={showPwd} /></button>
                 </div>
               </div>
 
-              {/* Identity */}
               <div className={secHead}>Identity</div>
-              <div>
-                <label className={labelCls}>First Name <span className="text-red-400">*</span></label>
-                <input className={inputCls} value={form.first_name}
-                  onChange={e => cf('first_name', e.target.value)} placeholder="First name" required />
-              </div>
-              <div>
-                <label className={labelCls}>Last Name <span className="text-red-400">*</span></label>
-                <input className={inputCls} value={form.last_name}
-                  onChange={e => cf('last_name', e.target.value)} placeholder="Last name" required />
-              </div>
-              <div>
-                <label className={labelCls}>Middle Name</label>
-                <input className={inputCls} value={form.middle_name}
-                  onChange={e => cf('middle_name', e.target.value)} placeholder="Middle name" />
-              </div>
-              <div>
-                <label className={labelCls}>Suffix</label>
-                <select className={selectCls} value={form.suffix} onChange={e => cf('suffix', e.target.value)}>
-                  <option value="">None</option>
-                  {['Jr.','Sr.','II','III','IV','V'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Birthday</label>
-                <DatePicker
-                  value={form.birthday}
-                  onChange={(val) => handleBirthdayChange(val)}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Age</label>
-                <input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" />
-              </div>
-              <div>
-                <label className={labelCls}>Sex</label>
-                <select className={selectCls} value={form.sex} onChange={e => cf('sex', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Civil Status</label>
-                <select className={selectCls} value={form.civil_status} onChange={e => cf('civil_status', e.target.value)}>
-                  {['Single','Married','Widowed','Divorced','Separated'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Religion</label>
-                <select className={selectCls} value={form.religion} onChange={e => cf('religion', e.target.value)}>
-                  <option value="">— Select —</option>
-                  {['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other'].map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Nationality</label>
-                <select className={selectCls} value={form.nationality} onChange={e => cf('nationality', e.target.value)}>
-                  {['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other'].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Phone Number</label>
-                <input className={inputCls} value={form.phone_number}
-                  onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" />
-              </div>
+              <div><label className={labelCls}>First Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.first_name} onChange={e => cf('first_name', e.target.value)} placeholder="First name" required /></div>
+              <div><label className={labelCls}>Last Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.last_name} onChange={e => cf('last_name', e.target.value)} placeholder="Last name" required /></div>
+              <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={form.middle_name} onChange={e => cf('middle_name', e.target.value)} placeholder="Middle name" /></div>
+              <div><label className={labelCls}>Suffix</label><select className={selectCls} value={form.suffix} onChange={e => cf('suffix', e.target.value)}><option value="">None</option>{['Jr.','Sr.','II','III','IV','V'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div><label className={labelCls}>Birthday</label><DatePicker value={form.birthday} onChange={(val) => handleBirthdayChange(val)} /></div>
+              <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" /></div>
+              <div><label className={labelCls}>Sex</label><select className={selectCls} value={form.sex} onChange={e => cf('sex', e.target.value)}><option value="">— Select —</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
+              <div><label className={labelCls}>Civil Status</label><select className={selectCls} value={form.civil_status} onChange={e => cf('civil_status', e.target.value)}>{['Single','Married','Widowed','Divorced','Separated'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div><label className={labelCls}>Religion</label><select className={selectCls} value={form.religion} onChange={e => cf('religion', e.target.value)}><option value="">— Select —</option>{['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other'].map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+              <div><label className={labelCls}>Nationality</label><select className={selectCls} value={form.nationality} onChange={e => cf('nationality', e.target.value)}>{['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other'].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+              <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
 
-              {/* Role & Work */}
               <div className={secHead}>Role &amp; Work</div>
-              <div>
-                <label className={labelCls}>Role <span className="text-red-400">*</span></label>
-                <select className={selectCls} value={form.role} onChange={e => handleRoleChange(e.target.value)}>
-                  <RoleOptions />
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>University ID <span className="text-red-400">*</span></label>
-                <input className={inputCls} value={form.university_id}
-                  onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required />
-              </div>
+              <div><label className={labelCls}>Role <span className="text-red-400">*</span></label><select className={selectCls} value={form.role} onChange={e => handleRoleChange(e.target.value)}><RoleOptions /></select></div>
+              <div><label className={labelCls}>University ID <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
 
-              {/* Student fields */}
               {isStudentRole && (
                 <>
-                  <div>
-                    <label className={labelCls}>Department <span className="text-red-400">*</span></label>
-                    <select className={selectCls} value={form.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}>
-                      <option value="">— Select —</option>
-                      {departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}
-                    </select>
-                    {form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}
-                  </div>
-                  <div>
-                    <label className={labelCls}>Program <span className="text-red-400">*</span></label>
-                    <select className={`${selectCls} disabled:opacity-50`} value={form.program}
-                      disabled={!form.departmentAbbr} onChange={e => cf('program', e.target.value)}>
-                      <option value="">— Select —</option>
-                      {availablePrograms.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Year Level</label>
-                    <select className={selectCls} value={form.year_level} onChange={e => cf('year_level', e.target.value)}>
-                      {['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Section</label>
-                    <select className={selectCls} value={form.section} onChange={e => cf('section', e.target.value)}>
-                      <option value="">— Select —</option>
-                      {['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Student Classification</label>
-                    <select className={selectCls} value={form.student_classification} onChange={e => cf('student_classification', e.target.value)}>
-                      {['Regular','Irregular','Returning'].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
+                  <div><label className={labelCls}>Department <span className="text-red-400">*</span></label><select className={selectCls} value={form.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}><option value="">— Select —</option>{departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}</select>{form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}</div>
+                  <div><label className={labelCls}>Program <span className="text-red-400">*</span></label><select className={`${selectCls} disabled:opacity-50`} value={form.program} disabled={!form.departmentAbbr} onChange={e => cf('program', e.target.value)}><option value="">— Select —</option>{availablePrograms.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                  <div><label className={labelCls}>Year Level</label><select className={selectCls} value={form.year_level} onChange={e => cf('year_level', e.target.value)}>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
+                  <div><label className={labelCls}>Section</label><select className={selectCls} value={form.section} onChange={e => cf('section', e.target.value)}><option value="">— Select —</option>{['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                  <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={form.student_classification} onChange={e => cf('student_classification', e.target.value)}>{['Regular','Irregular','Returning'].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 </>
               )}
 
-              {/* Faculty / Clinic / Admin fields */}
               {(isFacultyRole || isClinicRole || isAdminRole) && (
                 <>
-                  <div>
-                    <label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label>
-                    <select className={selectCls} value={form.department} onChange={e => cf('department', e.target.value)}>
-                      <option value="">— Select Office —</option>
-                      {PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
-                    <input className={inputCls} value={form.job_title}
-                      onChange={e => cf('job_title', e.target.value)} placeholder="e.g. Nurse, Professor" />
-                  </div>
+                  <div><label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label><select className={selectCls} value={form.department} onChange={e => cf('department', e.target.value)}><option value="">— Select Office —</option>{PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                  <div><label className={labelCls}>Job Title <span className="text-red-400">*</span></label><input className={inputCls} value={form.job_title} onChange={e => cf('job_title', e.target.value)} placeholder="e.g. Nurse, Professor" /></div>
                   {!isAdminRole && (
-                    <div>
-                      <label className={labelCls}>Classification</label>
-                      <select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>
-                        {['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Dentist','Physician / Doctor'].map(c => <option key={c} value={c}>{c}</option>)}
-                        {isCurrentUserSysAdmin && <option value="System Administrator">System Administrator</option>}
-                      </select>
-                    </div>
+                    <div><label className={labelCls}>Classification</label><select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>{['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Dentist','Physician / Doctor'].map(c => <option key={c} value={c}>{c}</option>)}{isCurrentUserSysAdmin && <option value="System Administrator">System Administrator</option>}</select></div>
                   )}
                 </>
               )}
 
-              {/* Account Flags */}
               <div className={secHead}>Account Flags</div>
               {[
                 { key: 'is_verified',      label: 'Mark as Email Verified',   desc: 'User can log in without verifying email.' },
                 { key: 'profile_complete', label: 'Mark Profile as Complete', desc: 'Skips profile setup on first login.' },
               ].map(({ key, label, desc }) => (
-                <div key={key} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <button type="button" onClick={() => cf(key, !form[key])}
-                    className={`relative w-10 h-5 rounded-full transition-colors shrink-0 mt-0.5 ${form[key] ? 'bg-[#466460]' : 'bg-slate-300'}`}>
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${form[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </button>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">{label}</p>
-                    <p className="text-[11px] text-slate-400">{desc}</p>
+                <div key={key} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <Toggle checked={form[key]} onChange={() => cf(key, !form[key])} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-700 truncate">{label}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{desc}</p>
                   </div>
                 </div>
               ))}
-
             </div>
           </form>
         </div>
 
-        {/* Footer */}
         <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-          <button type="button" onClick={onClose}
-            className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">
-            Cancel
-          </button>
-          <button type="submit" form="create-form" disabled={loading}
-            className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
-            {loading && (
-              <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-            )}
+          <button type="button" onClick={onClose} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
+          <button type="submit" form="create-form" disabled={loading} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+            {loading && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
             {loading ? 'Creating…' : '✓ Create User'}
           </button>
         </div>
-
       </div>
     </div>,
-  document.body
+    document.body
   );
 };
 
@@ -507,9 +421,17 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
 export const UserManagement = () => {
   const [users, setUsers]               = useState([]);
   const [loading, setLoading]           = useState(true);
+  const [resendingId, setResendingId]   = useState(null); // Track which user email is being resent
+
+  // Search & Filters
   const [currentFilter, setCurrentFilter] = useState('all');
   const [searchInput, setSearchInput]   = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage]   = useState(1);
+
   const [message, setMessage]           = useState(null);
+  const [editSaving, setEditSaving]     = useState(false); // Track save edit state
 
   const [showEditModal, setShowEditModal]     = useState(false);
   const [editTarget, setEditTarget]           = useState(null);
@@ -532,6 +454,11 @@ export const UserManagement = () => {
   const [editForm, setEditForm] = useState(EMPTY_FORM);
 
   useEffect(() => { fetchUsers(); }, []);
+
+  // Reset pagination when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchInput, currentFilter]);
 
   const fetchUsers = async () => {
     try {
@@ -587,15 +514,15 @@ export const UserManagement = () => {
     return true;
   });
 
+  // Derived paginated state
+  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   // ── Edit ──────────────────────────────────────────────────────────────────
   const openEditModal = (user) => {
-    // Find department abbreviation from full name
     let foundDeptAbbr = '';
     for (const d of departmentsData) {
-      if (d.full === user.department) {
-        foundDeptAbbr = d.abbr;
-        break;
-      }
+      if (d.full === user.department) { foundDeptAbbr = d.abbr; break; }
     }
     setEditTarget(user);
     setEditForm({
@@ -618,7 +545,6 @@ export const UserManagement = () => {
     setShowEditModal(true);
   };
 
-  // Calculate age from birthday
   const calculateAge = (birthday) => {
     if (!birthday) return '';
     const birth = new Date(birthday);
@@ -629,9 +555,7 @@ export const UserManagement = () => {
     return String(age);
   };
 
-  // Handle phone number validation
   const handlePhoneChange = (value) => {
-    // Allow only digits
     const cleaned = value.replace(/\D/g, '');
     setEditForm(f => ({ ...f, phone_number: cleaned }));
     if (cleaned.length > 0 && cleaned.length !== 11) {
@@ -641,35 +565,22 @@ export const UserManagement = () => {
     }
   };
 
-  // Handle department change
   const handleDeptChange = (val) => {
-    setEditForm(f => ({
-      ...f,
-      departmentAbbr: val,
-      department: deptAbbrToFull[val] || val,
-      program: '',
-    }));
+    setEditForm(f => ({ ...f, departmentAbbr: val, department: deptAbbrToFull[val] || val, program: '' }));
   };
 
-  // Handle address modal confirm
   const handleAddressConfirm = (addressData) => {
     const fullAddress = [
-      addressData.addressStreet,
-      addressData.addressBarangay,
-      addressData.addressCity,
-      addressData.addressProvince,
-      addressData.addressRegion,
+      addressData.addressStreet, addressData.addressBarangay, addressData.addressCity,
+      addressData.addressProvince, addressData.addressRegion,
     ].filter(Boolean).join(', ');
     setEditForm(f => ({ ...f, home_address: fullAddress }));
     setShowAddressModal(false);
   };
 
-  // Handle role change in edit modal
   const handleRoleEditChange = (val) => {
     setEditForm(f => ({
-      ...f,
-      role: val,
-      classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
+      ...f, role: val, classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
       job_title: JOB_TITLE_MAP[val?.toLowerCase()] || '',
     }));
   };
@@ -678,76 +589,70 @@ export const UserManagement = () => {
 
   const saveEdit = async (e) => {
     e.preventDefault();
-
-    // Validate phone number if provided
     if (editForm.phone_number && editForm.phone_number.length !== 11) {
       showSnackbar('Phone number must be exactly 11 digits', 'error');
       setPhoneError('Phone number must be exactly 11 digits');
       return;
     }
 
-    try {
-      // Prepare payload - remove empty password to keep existing
-      const { password, first_name, middle_name, last_name, ...payloadWithoutPassword } = editForm;
+    setEditSaving(true);
 
-      // Create clean payload with normalized values
+    try {
+      // ── NEW: Validate email if they changed it ──
+      if (editForm.email !== editTarget?.email) {
+        const validationResult = await validateEmailWithEasyEmail(editForm.email);
+        if (!validationResult.isDeliverable) {
+          showSnackbar(validationResult.message, 'error');
+          setEditSaving(false);
+          return;
+        }
+      }
+
+      const { password, first_name, middle_name, last_name, ...payloadWithoutPassword } = editForm;
       const payload = {
         ...payloadWithoutPassword,
-        // Normalize names: first letter capitalized, rest lowercase
-        first_name: normalizeName(first_name),
-        middle_name: normalizeName(middle_name),
-        last_name: normalizeName(last_name),
-        age: editForm.age === '' ? null : Number(editForm.age),
+        first_name: normalizeName(first_name), middle_name: normalizeName(middle_name),
+        last_name: normalizeName(last_name), age: editForm.age === '' ? null : Number(editForm.age),
         updated_at: new Date().toISOString(),
-        // Only include password if it's not empty
         ...(editForm.password ? { newPassword: editForm.password } : {})
       };
 
-      // Use the correct identifier - use uid from editTarget
       const targetUid = editTarget?.uid || editTarget?.id;
-      console.log('Saving payload - targetUid:', targetUid, 'payload:', payload);
-
       const token = localStorage.getItem('token');
 
-      // Use backend API to update user (bypasses RLS)
       const response = await fetch(`${import.meta.env.VITE_API_URL}/user/admin-update`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          targetUid: targetUid,
-          ...payload
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUid: targetUid, ...payload })
       });
       const result = await response.json();
-      console.log('API Response:', result);
 
-      if (!response.ok) {
-        throw new Error(result.message || result.error || 'Failed to update user');
-      }
+      if (!response.ok) throw new Error(result.message || result.error || 'Failed to update user');
 
-      // Update local state with the result - convert camelCase to snake_case
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'user_updated',
+        details: {
+          userId: targetUid,
+          email: editForm.email,
+          previousRole: editTarget?.role,
+          newRole: editForm.role,
+          passwordChanged: !!editForm.password,
+        },
+        adminUid,
+      });
+
       if (result.data) {
         const updatedUser = {
           ...result.data,
-          // Convert camelCase to snake_case for frontend display
-          first_name: result.data.firstName,
-          middle_name: result.data.middleName,
-          last_name: result.data.lastName,
-          university_id: result.data.universityId,
-          phone_number: result.data.phoneNumber,
-          job_title: result.data.jobTitle,
-          blood_type: result.data.bloodType,
-          civil_status: result.data.civilStatus,
-          home_address: result.data.homeAddress,
-          year_level: result.data.yearLevel,
+          first_name: result.data.firstName, middle_name: result.data.middleName,
+          last_name: result.data.lastName, university_id: result.data.universityId,
+          phone_number: result.data.phoneNumber, job_title: result.data.jobTitle,
+          blood_type: result.data.bloodType, civil_status: result.data.civilStatus,
+          home_address: result.data.homeAddress, year_level: result.data.yearLevel,
           student_classification: result.data.studentClassification,
-          is_verified: result.data.isVerified,
-          profile_complete: result.data.profileComplete,
+          is_verified: result.data.isVerified, profile_complete: result.data.profileComplete,
         };
-        // Update the correct user by uid
         setUsers(users.map(u => {
           const userId = u.uid || u.id;
           const targetId = editTarget?.uid || editTarget?.id;
@@ -756,39 +661,47 @@ export const UserManagement = () => {
       }
       showSnackbar('User updated successfully', 'success');
       setShowEditModal(false);
-      // Refresh user list to ensure data consistency
       fetchUsers();
     } catch (err) {
-      console.error('Error updating user:', err);
       showSnackbar('Error updating user: ' + (err.message || ''), 'error');
+    } finally {
+      setEditSaving(false);
     }
   };
 
-  // Resend verification email
   const resendVerificationEmail = async (user) => {
+    const targetId = user.uid || user.id;
+    setResendingId(targetId);
     try {
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       const token = localStorage.getItem('token');
 
+      // We rely on the backend check we added to auth.controller.js for this!
       const response = await fetch(`${API_URL}/auth/admin-resend-verification`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ userId: user.uid })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ userId: targetId })
       });
-
       const data = await response.json();
 
       if (data.success) {
-        showSnackbar('Verification email sent to ' + user.email, 'success');
+        // ---- AUDIT LOG ----
+        logAdminAction({
+          action: 'verification_email_resent',
+          details: { userId: targetId, email: user.email },
+          adminUid,
+        });
+
+        showSnackbar(`Verification email sent successfully to ${user.email}`, 'success');
       } else {
-        showSnackbar(data.message || 'Failed to send verification email', 'error');
+        // Provide contextual error so admin can verify if email is wrong/missing
+        const errorMsg = data.message || 'Failed to send verification email.';
+        showSnackbar(errorMsg, 'error');
       }
     } catch (err) {
-      console.error('Error sending verification email:', err);
-      showSnackbar('Error sending verification email', 'error');
+      showSnackbar('Error sending verification email. Please verify if the user\'s email is correct.', 'error');
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -798,38 +711,38 @@ export const UserManagement = () => {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      // Use backend API for archiving (enables audit logging)
       const token = localStorage.getItem('token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
       const response = await fetch(`${API_URL}/user/users/${deleteTarget.uid}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
       });
-
       const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Failed to archive user');
 
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to archive user');
-      }
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'user_archived',
+        details: {
+          userId: deleteTarget.uid,
+          email: deleteTarget.email,
+          role: deleteTarget.role,
+        },
+        adminUid,
+      });
 
       setUsers(users.filter(u => u.uid !== deleteTarget.uid));
       showSnackbar('User archived successfully. You can restore them from the Archives page.', 'success');
     } catch (err) {
-      console.error('Error archiving user:', err);
       showSnackbar('Error archiving user', 'error');
     }
     setShowDeleteModal(false);
     setDeleteTarget(null);
   };
 
-  // ── Snackbar ──────────────────────────────────────────────────────────────
   const showSnackbar = (msg, type = 'success') => {
     setMessage({ text: msg, type });
-    setTimeout(() => setMessage(null), 3000);
+    setTimeout(() => setMessage(null), 4000); // 4 seconds so they can read the full error
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
@@ -840,94 +753,109 @@ export const UserManagement = () => {
   const statFaculty     = users.filter(u => isFaculty(u.role)).length;
 
   const sectionHeadCls = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
+  const COL_COUNT = 9;
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-      {/* Top Section */}
-      <div className="flex-shrink-0">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl md:text-2xl font-bold text-[#466460]">User Management</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowCreateWizard(true)}
-              className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 md:px-5 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+<div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
+        {[
+          { label: 'Total', count: statTotal, color: 'text-slate-800' },
+          { label: 'Admins', count: statAdmin, color: 'text-amber-600' },
+          { label: 'Clinic', count: statClinicStaff, color: 'text-blue-600' },
+          { label: 'Students', count: statStudent, color: 'text-purple-600' },
+          { label: 'Faculty', count: statFaculty, color: 'text-emerald-600' },
+        ].map(s => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
+            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+            <span className="text-sm font-medium text-slate-500">{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
+
+        {/* Unified Inline Toolbar */}
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+
+          {/* Left side: Actions, Search & Filters */}
+          <div className="flex flex-wrap gap-2 items-center flex-1 w-full xl:w-auto">
+
+            <div className="relative w-full sm:w-60">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input type="text" placeholder="Search by name, email, or ID..." value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
+            </div>
+
+            <select value={currentFilter} onChange={e => setCurrentFilter(e.target.value)}
+              className={`${filterSelectCls} w-full sm:w-44`}>
+              <option value="all">All Roles</option>
+              <option value="sysadmin">System Administrators</option>
+              <option value="clinic_staff">Clinic Staff</option>
+              <option value="student">Students</option>
+              <option value="faculty">Faculty</option>
+            </select>
+          </div>
+
+          {/* Right side: Inline Stats */}
+          <div className="flex gap-2 flex-wrap items-center justify-end">
+
+          </div>
+           <button onClick={() => setShowCreateWizard(true)}
+              className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
               <span className="hidden sm:inline">Add User</span>
             </button>
+
             <button onClick={fetchUsers}
-              className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-4 md:px-5 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
               </svg>
               <span className="hidden sm:inline">Refresh</span>
             </button>
-          </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-          {[
-            { label: 'Total Users',    value: statTotal },
-            { label: 'System Administrators', value: statAdmin },
-            { label: 'Clinic Staff',   value: statClinicStaff },
-            { label: 'Students',       value: statStudent },
-            { label: 'Faculty',        value: statFaculty },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-              <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1 md:mb-2 truncate">{label}</div>
-              <div className="text-xl md:text-2xl font-extrabold text-[#466460]">{value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Table Area */}
-      <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
-        <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0">
-          <select value={currentFilter} onChange={e => setCurrentFilter(e.target.value)}
-            className="w-full sm:w-48 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm">
-            <option value="all">All Roles</option>
-            <option value="sysadmin">System Administrators</option>
-            <option value="clinic_staff">Clinic Staff</option>
-            <option value="student">Students</option>
-            <option value="faculty">Faculty</option>
-          </select>
-          <div className="relative w-full sm:w-64">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input type="text" placeholder="Search by name, email, or ID..." value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-auto bg-white">
+        {/* Table Area */}
+        <div className="flex-1 overflow-auto bg-white [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
-                {['Name','University ID','Role','Department','Sex','Email','Profile','Actions'].map(h => (
-                  <th key={h} className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{h}</th>
-                ))}
+                <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Name</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">University ID</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Role</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Department</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Sex</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Email</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Profile</th>
+                <th className="bg-slate-50 text-right p-3 pr-6 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-10 text-slate-400">
+                <tr><td colSpan={COL_COUNT} className="text-center py-10 text-slate-400">
                   <div className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
                     Loading users...
                   </div>
                 </td></tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-10 text-slate-400">No users found</td></tr>
-              ) : filteredUsers.map(user => (
-                <tr key={user.id} className="border-b border-slate-100 hover:bg-[#e0eceb]/40 transition-colors">
+              ) : paginatedUsers.length === 0 ? (
+                <tr><td colSpan={COL_COUNT} className="text-center py-10 text-slate-400">No users found</td></tr>
+              ) : paginatedUsers.map((user, idx) => (
+                <tr key={user.id} className={`border-b border-slate-100 hover:bg-[#e0eceb]/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                  <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
+                    {(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}
+                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-xs md:text-sm shrink-0">
@@ -954,12 +882,20 @@ export const UserManagement = () => {
                           <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-red-100 text-red-700">Unverified</span>
                           <button
                             onClick={() => resendVerificationEmail(user)}
+                            disabled={resendingId === (user.uid || user.id)}
                             title="Resend verification email"
-                            className="w-6 h-6 flex items-center justify-center rounded text-[#466460] hover:bg-[#e0eceb] transition"
+                            className="w-6 h-6 flex items-center justify-center rounded text-[#466460] hover:bg-[#e0eceb] transition disabled:opacity-50 disabled:cursor-wait"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                            </svg>
+                            {resendingId === (user.uid || user.id) ? (
+                              <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                              </svg>
+                            )}
                           </button>
                         </div>
                     }
@@ -971,7 +907,7 @@ export const UserManagement = () => {
                     }
                   </td>
                   <td className="p-3 pr-6 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-end items-center gap-2">
                       <button onClick={() => openEditModal(user)} title="Edit user"
                         className="w-8 h-8 flex items-center justify-center rounded-lg text-[#466460] bg-slate-50 hover:bg-[#e0eceb] transition">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
@@ -991,6 +927,35 @@ export const UserManagement = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+            <div>
+              Showing <span className="font-semibold">{filteredUsers.length === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)}</span> of <span className="font-semibold">{filteredUsers.length}</span> records
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Previous
+              </button>
+              <div className="text-xs font-semibold px-2">
+                Page {currentPage} of {Math.max(1, totalPages)}
+              </div>
+              <button
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Create Wizard */}
@@ -1002,10 +967,9 @@ export const UserManagement = () => {
         />
       )}
 
-      {/* ── Edit Modal (same structure as Create) ── */}
+      {/* ── Edit Modal ── */}
       {showEditModal && editTarget && createPortal(
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10"
-    onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
             <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
@@ -1087,10 +1051,7 @@ export const UserManagement = () => {
                     <label className={labelCls}>Birthday</label>
                     <DatePicker
                       value={editForm.birthday}
-                      onChange={(val) => {
-                        field('birthday', val);
-                        field('age', calculateAge(val));
-                      }}
+                      onChange={(val) => { field('birthday', val); field('age', calculateAge(val)); }}
                     />
                   </div>
                   <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
@@ -1121,32 +1082,35 @@ export const UserManagement = () => {
                     </>
                   )}
 
-                  {/* Account Flags */}
+                 {/* Account Flags */}
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Account Status</div>
-                  </div>
-                  <div className="flex items-center gap-3 py-1">
-                    <button type="button" onClick={() => field('is_verified', !editForm.is_verified)}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${editForm.is_verified ? 'bg-[#466460]' : 'bg-slate-300'}`}>
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${editForm.is_verified ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                    </button>
-                    <span className="text-sm text-slate-700 font-medium">Email Verified</span>
-                    {!editForm.is_verified && (
-                      <button
-                        type="button"
-                        onClick={() => resendVerificationEmail(editTarget)}
-                        className="ml-auto text-xs text-[#466460] hover:text-[#3a524f] underline font-medium"
-                      >
-                        Resend Email
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 py-1">
-                    <button type="button" onClick={() => field('profile_complete', !editForm.profile_complete)}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${editForm.profile_complete ? 'bg-[#466460]' : 'bg-slate-300'}`}>
-                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${editForm.profile_complete ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                    </button>
-                    <span className="text-sm text-slate-700 font-medium">Profile Complete</span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                      {/* Email Verified Toggle */}
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <Toggle checked={editForm.is_verified} onChange={() => field('is_verified', !editForm.is_verified)} />
+                        <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-slate-700 truncate">Email Verified</span>
+                          {!editForm.is_verified && (
+                            <button
+                              type="button"
+                              onClick={() => resendVerificationEmail(editTarget)}
+                              disabled={resendingId === (editTarget.uid || editTarget.id)}
+                              className="text-[11px] text-[#466460] hover:text-[#3a524f] underline font-bold shrink-0 disabled:opacity-50 disabled:no-underline"
+                            >
+                              {resendingId === (editTarget.uid || editTarget.id) ? 'Sending...' : 'Resend Email'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Profile Complete Toggle */}
+                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <Toggle checked={editForm.profile_complete} onChange={() => field('profile_complete', !editForm.profile_complete)} />
+                        <span className="text-sm font-semibold text-slate-700 truncate">Profile Complete</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </form>
@@ -1154,7 +1118,10 @@ export const UserManagement = () => {
 
             <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
               <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-              <button type="submit" form="edit-form" className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition">Save Changes</button>
+              <button type="submit" form="edit-form" disabled={editSaving} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+                 {editSaving && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                 {editSaving ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>,
@@ -1201,16 +1168,10 @@ export const UserManagement = () => {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
-              >
+              <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all">
                 Cancel
               </button>
-              <button
-                onClick={confirmDelete}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={confirmDelete} className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
                 </svg>

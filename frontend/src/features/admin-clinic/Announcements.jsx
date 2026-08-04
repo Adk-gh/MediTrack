@@ -594,37 +594,36 @@ export const Announcements = () => {
   const labelCls = 'block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wide mt-5 sm:mt-6';
 
   return (
-    <div className="bg-white min-h-[calc(100vh-120px)] animate-[fadeInSlide_0.4s_ease-out_forwards]">
+    <div className="bg-white h-[calc(100vh-120px)] flex flex-col animate-[fadeInSlide_0.4s_ease-out_forwards]">
 
       <style>{`
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
       `}</style>
 
-      {/* ── Header Bar ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-6 pt-6 pb-5 border-b-2 border-[#e0eceb]">
-        <h3 className="font-extrabold text-xl sm:text-2xl text-[#466460]">
-          {canManage ? 'Announcement Management' : 'Announcements'}
-        </h3>
+      {/* ── Header Bar (fixed — does not scroll) ── */}
+      <div className="shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-6 pt-6 pb-5 border-b-2 border-[#e0eceb] bg-white z-10">
 
+        {/* Search + Filters (left side of the bar) */}
         <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 w-full sm:w-auto">
           {/* Search Bar */}
-          <div className="relative flex-1 sm:flex-none sm:w-72">
+          <div className="relative flex-1 sm:flex-none sm:w-64">
             <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search announcements..."
-              className="w-full text-sm border border-[#e2e8f0] rounded-full pl-11 pr-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
+              className="w-full h-[42px] text-sm border border-[#e2e8f0] rounded-full pl-11 pr-4 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
             />
           </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full sm:w-auto">
+          {/* Filter group */}
+          <div className="flex gap-2 w-full xl:w-auto bg-slate-50 border border-[#e2e8f0] rounded-full p-1">
             <select
               value={filterCategory}
               onChange={e => setFilterCategory(e.target.value)}
-              className="flex-1 sm:flex-none text-sm font-medium border border-[#e2e8f0] rounded-full px-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+              className="flex-1 xl:flex-none xl:w-[130px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">All Categories</option>
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -633,7 +632,7 @@ export const Announcements = () => {
             <select
               value={filterPriority}
               onChange={e => setFilterPriority(e.target.value)}
-              className="flex-1 sm:flex-none text-sm font-medium border border-[#e2e8f0] rounded-full px-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+              className="flex-1 xl:flex-none xl:w-[110px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">All Priorities</option>
               <option value="urgent">Urgent</option>
@@ -644,26 +643,27 @@ export const Announcements = () => {
             <select
               value={filterDept}
               onChange={e => setFilterDept(e.target.value)}
-              className="flex-1 sm:flex-none text-sm font-medium border border-[#e2e8f0] rounded-full px-4 py-2.5 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+              className="flex-1 xl:flex-none xl:w-[130px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">All Depts</option>
               {DEPT_OPTIONS.map(d => <option key={d}>{d}</option>)}
             </select>
           </div>
-
-          {canManage && (
-            <button
-              onClick={() => handleOpenForm()}
-              className="w-full sm:w-auto bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-6 py-2.5 rounded-full font-bold text-sm cursor-pointer hover:shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 mt-2 xl:mt-0"
-            >
-              <i className="fa-solid fa-plus text-sm"></i> New Post
-            </button>
-          )}
         </div>
+
+        {/* New Post button (right side of the bar) */}
+        {canManage && (
+          <button
+            onClick={() => handleOpenForm()}
+            className="w-full sm:w-auto h-[42px] bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-6 rounded-full font-bold text-sm cursor-pointer hover:shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 shrink-0"
+          >
+            <i className="fa-solid fa-plus text-sm"></i> New Post
+          </button>
+        )}
       </div>
 
-      {/* ── Announcement List ── */}
-      <div className="px-4 sm:px-5 py-4 space-y-3">
+      {/* ── Announcement List (only this area scrolls) ── */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
         {loading ? (
           <div className="text-center py-12 text-slate-400 text-sm"><i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading…</div>
         ) : filtered.length === 0 ? (

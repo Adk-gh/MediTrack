@@ -166,14 +166,20 @@ exports.updateAppointment = async (id, data) => {
         notificationMessage = `Your appointment status has been updated to: ${status}`;
       }
 
-      await notificationsService.createNotification({
-        type:          'appointment_status',
-        title:         notificationTitle,
-        message:       notificationMessage,
-        userId:        userUUID,
-        referenceId:   id,
-        referenceType: 'appointment',
-      });
+      // Notification is a side effect — a failure here must never fail
+      // the appointment update itself, which has already succeeded above.
+      try {
+        await notificationsService.createNotification({
+          type:          'appointment_status',
+          title:         notificationTitle,
+          message:       notificationMessage,
+          userId:        userUUID,
+          referenceId:   id,
+          referenceType: 'appointment',
+        });
+      } catch (notifyErr) {
+        console.error('[updateAppointment] Notification insert failed (appointment update still succeeded):', notifyErr.message);
+      }
     }
   }
 

@@ -1,3 +1,4 @@
+// frontend/src/features/admin-clinic/AuditLogs.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabase';
 
@@ -13,8 +14,9 @@ const ACTIVITY_TYPES = [
   { value: 'system', label: 'System' },
 ];
 
-const RETENTION_DAYS = 14; // keep in sync with archive_old_audit_logs() default in SQL
-const PERMANENT_RETENTION_DAYS = 90; // keep in sync with archive_old_audit_logs() default in SQL
+const RETENTION_DAYS = 14;
+const PERMANENT_RETENTION_DAYS = 90;
+const ITEMS_PER_PAGE = 100;
 
 const ACTION_COLORS = {
   create:       { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'fa-plus' },
@@ -74,25 +76,29 @@ const TypePill = ({ type }) => (
 export const AuditLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [viewMode, setViewMode] = useState('live'); // 'live' | 'archived'
   const [typeFilter, setTypeFilter] = useState('all');
+
+  // Search & Pagination States
   const [searchInput, setSearchInput] = useState('');
-  const [lastDoc, setLastDoc] = useState(null);
-  const [hasMore, setHasMore] = useState(true);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+
   const [stats, setStats] = useState({ total: 0, today: 0, users: 0, actions: 0 });
   const [message, setMessage] = useState(null);
+
+  // Confirmation modal state: 'archive' | 'export' | null
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const snackbarTimer = useRef(null);
   const searchTimeout = useRef(null);
 
   const isArchived = viewMode === 'archived';
+  const cursorField = isArchived ? 'archived_at' : 'created_at';
+  const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
 
-  // Archived rows come back from public.archives as
-  // { id, type, original_id, data, archived_at, ... } — flatten `data`
-  // (the original audit_logs row) back into a log-shaped object so the
-  // rest of the component can render it the same way as a live row.
   const normalizeArchiveRow = (row) => ({
     ...row.data,
     id: row.original_id,
@@ -106,119 +112,84 @@ export const AuditLogs = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
-  const calculateStats = useCallback((logData) => {
-    const todayStr = new Date().toDateString();
-    const uniqueUsers = new Set(logData.map(l => l.userId || l.userEmail)).size;
-    const uniqueActions = new Set(logData.map(l => l.action)).size;
+  // Reset page to 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, viewMode, debouncedSearch]);
 
-    setStats({
-      total: logData.length,
-      today: logData.filter(l => new Date(l.created_at || l.timestamp).toDateString() === todayStr).length,
-      users: uniqueUsers,
-      actions: uniqueActions,
-    });
-  }, []);
-
-  // Build query constraints dynamically for server-side processing.
-  // Archived rows live inside a jsonb `data` column, so filters there
-  // need to reach into the JSON path instead of a plain column.
   const buildQuery = useCallback((baseQuery) => {
     let q = baseQuery;
     if (typeFilter !== 'all') {
       q = isArchived ? q.eq('data->>type', typeFilter) : q.eq('type', typeFilter);
     }
-    if (searchInput.trim()) {
-      const term = `%${searchInput.trim()}%`;
+    if (debouncedSearch.trim()) {
+      const term = `%${debouncedSearch.trim()}%`;
       q = isArchived
         ? q.or(`data->>userName.ilike.${term},data->>userEmail.ilike.${term},data->>description.ilike.${term},data->>action.ilike.${term}`)
         : q.or(`userName.ilike.${term},userEmail.ilike.${term},description.ilike.${term},action.ilike.${term}`);
     }
     return q;
-  }, [typeFilter, searchInput, isArchived]);
-
-  // Archived rows sort/paginate on archived_at (top-level column);
-  // live rows sort/paginate on created_at, same as before.
-  const cursorField = isArchived ? 'archived_at' : 'created_at';
+  }, [typeFilter, debouncedSearch, isArchived]);
 
   const fetchLogs = useCallback(async () => {
     try {
       setLoading(true);
       let query = isArchived
-        ? supabase.from('archives').select('*').eq('type', 'audit_log')
-        : supabase.from('audit_logs').select('*');
+        ? supabase.from('archives').select('*', { count: 'exact' }).eq('type', 'audit_log')
+        : supabase.from('audit_logs').select('*', { count: 'exact' });
 
       query = buildQuery(query);
-      query = query.order(cursorField, { ascending: false }).limit(50);
 
-      const { data, error } = await query;
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      query = query
+        .order(cursorField, { ascending: false })
+        .range(from, to);
+
+      const { data, count, error } = await query;
       if (error) throw error;
 
       const rawRows = data || [];
       const fetchedLogs = isArchived ? rawRows.map(normalizeArchiveRow) : rawRows;
+
       setLogs(fetchedLogs);
-      setLastDoc(rawRows[rawRows.length - 1] || null);
-      setHasMore(rawRows.length === 50);
-      calculateStats(fetchedLogs);
+      setTotalRecords(count || 0);
+
+      // Compute stats for current page visualization
+      const todayStr = new Date().toDateString();
+      const uniqueUsers = new Set(fetchedLogs.map(l => l.userId || l.userEmail)).size;
+      const uniqueActions = new Set(fetchedLogs.map(l => l.action)).size;
+
+      setStats({
+        total: count || 0,
+        today: fetchedLogs.filter(l => new Date(l.created_at || l.timestamp).toDateString() === todayStr).length,
+        users: uniqueUsers,
+        actions: uniqueActions,
+      });
+
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       showSnackbar('Failed to load audit logs', 'error');
     } finally {
       setLoading(false);
     }
-  }, [buildQuery, calculateStats, isArchived, cursorField]);
+  }, [buildQuery, isArchived, cursorField, currentPage]);
 
-  const loadMore = async () => {
-    if (!lastDoc || loadingMore || !hasMore) return;
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
-    try {
-      setLoadingMore(true);
-      let query = isArchived
-        ? supabase.from('archives').select('*').eq('type', 'audit_log')
-        : supabase.from('audit_logs').select('*');
-
-      query = buildQuery(query);
-      query = query
-        .lt(cursorField, lastDoc[cursorField])
-        .order(cursorField, { ascending: false })
-        .limit(50);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const rawRows = data || [];
-      const newLogs = isArchived ? rawRows.map(normalizeArchiveRow) : rawRows;
-      setLogs(prev => {
-        const combined = [...prev, ...newLogs];
-        calculateStats(combined);
-        return combined;
-      });
-      setLastDoc(rawRows[rawRows.length - 1] || null);
-      setHasMore(rawRows.length === 50);
-    } catch (err) {
-      console.error('Error loading more logs:', err);
-      showSnackbar('Failed to load more logs', 'error');
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  // Debounced search to prevent overwhelming Supabase on every keystroke
+  // Debounced search
   const handleSearchChange = (e) => {
     const value = e.target.value;
     setSearchInput(value);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => {
-      fetchLogs();
+      setDebouncedSearch(value);
     }, 400);
   };
 
-  // Trigger query refetch whenever filter/view adjustments occur
-  useEffect(() => {
-    fetchLogs();
-  }, [typeFilter, viewMode]);
-
-  // Manually invoke the retention sweep (mirrors the daily pg_cron job).
-  // Useful for testing, or as a fallback if pg_cron isn't enabled on your project.
   const runArchiveNow = async () => {
     try {
       setArchiving(true);
@@ -237,7 +208,6 @@ export const AuditLogs = () => {
     }
   };
 
-  // Clean layout array mapped directly to CSV strings for compliance reports
   const exportComplianceReport = () => {
     if (logs.length === 0) {
       showSnackbar('No data available to export', 'error');
@@ -247,16 +217,22 @@ export const AuditLogs = () => {
     const headers = ['Timestamp', 'User Name', 'User Email', 'User ID', 'Action', 'Type', 'Description', 'Details'];
     const csvRows = [
       headers.join(','),
-      ...logs.map(log => [
-        `"${formatDate(log.created_at || log.timestamp)}"`,
-        `"${log.userName || ''}"`,
-        `"${log.userEmail || ''}"`,
-        `"${log.userId || ''}"`,
-        `"${log.action || ''}"`,
-        `"${log.type || ''}"`,
-        `"${(log.description || '').replace(/"/g, '""')}"`,
-        `"${(log.details || '').replace(/"/g, '""')}"`
-      ].join(','))
+      ...logs.map(log => {
+        // Safely stringify objects to avoid [object Object] in CSV exports
+        const safeDesc = typeof log.description === 'object' ? JSON.stringify(log.description) : (log.description || '');
+        const safeDetails = typeof log.details === 'object' ? JSON.stringify(log.details) : (log.details || '');
+
+        return [
+          `"${formatDate(log.created_at || log.timestamp)}"`,
+          `"${log.userName || ''}"`,
+          `"${log.userEmail || ''}"`,
+          `"${log.userId || ''}"`,
+          `"${log.action || ''}"`,
+          `"${log.type || ''}"`,
+          `"${safeDesc.replace(/"/g, '""')}"`,
+          `"${safeDetails.replace(/"/g, '""')}"`
+        ].join(',');
+      })
     ];
 
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -270,36 +246,107 @@ export const AuditLogs = () => {
     showSnackbar('Compliance report exported successfully!');
   };
 
-  const filterSelectCls = "px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  // ── Confirmation modal handlers ──
+  const handleArchiveClick = () => setConfirmAction('archive');
+  const handleExportClick = () => setConfirmAction('export');
+
+  const handleConfirm = async () => {
+    const action = confirmAction;
+    setConfirmAction(null);
+    if (action === 'archive') {
+      await runArchiveNow();
+    } else if (action === 'export') {
+      exportComplianceReport();
+    }
+  };
+
+  const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+
+  const summaryStats = [
+    { label: 'Total',  count: stats.total,   color: 'text-slate-700'   },
+    { label: 'Today',  count: stats.today,   color: 'text-emerald-700' },
+    { label: 'Users',  count: stats.users,   color: 'text-blue-700'    },
+    { label: 'Types',  count: stats.actions, color: 'text-purple-700'  },
+  ];
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-      {/* Header */}
-      <div className="flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-1">
-          <h2 className="text-xl md:text-2xl font-bold text-[#466460]">Audit Logs</h2>
-          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap justify-end">
+      {/* Summary stats — its own row, separate from the toolbar, stretched full width */}
+      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {summaryStats.map(s => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
+            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+            <span className="text-xs text-slate-400 font-medium">{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
+
+        {/* Unified Inline Toolbar */}
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+
+          {/* Left side: Search & Filters */}
+          <div className="flex flex-wrap gap-3 items-center flex-1 w-full xl:w-auto">
+            <div className="relative w-full sm:w-60">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search user, action, details..."
+                value={searchInput}
+                onChange={handleSearchChange}
+                className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+              />
+            </div>
+
+            <select
+              value={viewMode}
+              onChange={e => setViewMode(e.target.value)}
+              className={`${selectCls} w-full sm:w-32`}
+            >
+              <option value="live">Live Logs</option>
+              <option value="archived">Archived</option>
+            </select>
+
+            <select
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+              className={`${selectCls} w-full sm:w-44`}
+            >
+              {ACTIVITY_TYPES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Right side: Actions */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={runArchiveNow}
+              onClick={handleArchiveClick}
               disabled={archiving || viewMode === 'archived'}
-              className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               title={`Move logs older than ${RETENTION_DAYS} days to the archive now`}
             >
-              <i className={`fa-solid ${archiving ? 'fa-spinner fa-spin' : 'fa-box-archive'} text-slate-500`}></i>
-              <span>{archiving ? 'Archiving…' : 'Archive Now'}</span>
+              <i className={`fa-solid ${archiving ? 'fa-spinner fa-spin' : 'fa-box-archive'} text-slate-400`}></i>
+              <span className="hidden sm:inline">{archiving ? 'Archiving…' : 'Archive'}</span>
             </button>
+
             <button
-              onClick={exportComplianceReport}
-              className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+              onClick={handleExportClick}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm"
               title="Export filtered records to CSV"
             >
-              <i className="fa-solid fa-file-export text-slate-500"></i>
-              <span>Export Report</span>
+              <i className="fa-solid fa-file-export text-slate-400"></i>
+              <span className="hidden sm:inline">Export</span>
             </button>
+
             <button
               onClick={() => fetchLogs()}
-              className="bg-[#466460] hover:bg-[#3a524f] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
@@ -309,87 +356,12 @@ export const AuditLogs = () => {
           </div>
         </div>
 
-        <p className="text-[11px] text-slate-400 mb-4">
-          Logs are kept for {RETENTION_DAYS} days, then archived automatically.
-        </p>
-
-        {/* View mode toggle */}
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 mb-4 shadow-sm">
-          <button
-            onClick={() => setViewMode('live')}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'live' ? 'bg-[#466460] text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Live
-          </button>
-          <button
-            onClick={() => setViewMode('archived')}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'archived' ? 'bg-[#466460] text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Archived
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Loaded Logs</div>
-            <div className="text-xl md:text-2xl font-extrabold text-[#466460]">{stats.total}</div>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Today</div>
-            <div className="text-xl md:text-2xl font-extrabold text-emerald-600">{stats.today}</div>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Active Users</div>
-            <div className="text-xl md:text-2xl font-extrabold text-blue-600">{stats.users}</div>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-3 hover:-translate-y-0.5 hover:shadow-md transition">
-            <div className="text-[9px] md:text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Action Types</div>
-            <div className="text-xl md:text-2xl font-extrabold text-purple-600">{stats.actions}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex-shrink-0 bg-white rounded-xl border border-slate-200 p-3 mb-4">
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
-            <select
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-44`}
-            >
-              {ACTIVITY_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="relative w-full sm:w-64">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search user, action, details..."
-              value={searchInput}
-              onChange={handleSearchChange}
-              className="pl-9 pr-4 py-2 w-full border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Logs Table */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-slate-200">
-        <div className="h-full overflow-auto">
+        {/* Logs Table */}
+        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Timestamp</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">User</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Action</th>
@@ -401,7 +373,7 @@ export const AuditLogs = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400">
+                  <td colSpan={7} className="text-center py-12 text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -413,7 +385,7 @@ export const AuditLogs = () => {
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400 text-sm">
+                  <td colSpan={7} className="text-center py-12 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <i className="fa-solid fa-clipboard-list text-3xl text-slate-300"></i>
                       <p>No {viewMode === 'archived' ? 'archived' : ''} audit logs found</p>
@@ -422,14 +394,14 @@ export const AuditLogs = () => {
                   </td>
                 </tr>
               ) : (
-                logs.map(log => (
+                logs.map((log, index) => (
                   <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                    {/* Timestamp */}
+                    <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
+                      {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                    </td>
                     <td className="p-3 whitespace-nowrap">
                       <div className="text-xs text-slate-600 font-medium">{formatDate(log.created_at || log.timestamp)}</div>
                     </td>
-
-                    {/* User */}
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-xs shrink-0">
@@ -441,53 +413,111 @@ export const AuditLogs = () => {
                         </div>
                       </div>
                     </td>
-
-                    {/* Action */}
                     <td className="p-3 whitespace-nowrap">
                       <ActionPill action={log.action} />
                     </td>
-
-                    {/* Type */}
                     <td className="p-3 whitespace-nowrap">
                       <TypePill type={log.type} />
                     </td>
-
-                    {/* Description */}
                     <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[200px]">
-                      <span className="truncate block" title={log.description}>{log.description || '—'}</span>
+                      <span
+                        className="truncate block"
+                        title={typeof log.description === 'object' ? JSON.stringify(log.description) : log.description}
+                      >
+                        {typeof log.description === 'object' ? JSON.stringify(log.description) : (log.description || '—')}
+                      </span>
                     </td>
-
-                    {/* Details */}
                     <td className="p-3 text-xs text-slate-500 hidden lg:table-cell max-w-[150px]">
-                      <span className="truncate block" title={log.details}>{log.details || '—'}</span>
+                      <span
+                        className="truncate block"
+                        title={typeof log.details === 'object' ? JSON.stringify(log.details) : log.details}
+                      >
+                        {typeof log.details === 'object' ? JSON.stringify(log.details) : (log.details || '—')}
+                      </span>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
 
-          {/* Load More */}
-          {hasMore && !loading && (
-            <div className="p-4 text-center border-t border-slate-200">
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+            <div>
+              Showing <span className="font-semibold">{totalRecords === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> records
+            </div>
+            <div className="flex items-center gap-2">
               <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                {loadingMore ? (
-                  <>
-                    <i className="fa-solid fa-spinner fa-spin mr-2"></i>
-                    Loading...
-                  </>
-                ) : (
-                  'Load More'
-                )}
+                Previous
+              </button>
+              <div className="text-xs font-semibold px-2">
+                Page {currentPage} of {Math.max(1, totalPages)}
+              </div>
+              <button
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Next
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
       </div>
+
+      {/* Confirmation Modal (Archive / Export) */}
+      {confirmAction && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
+                confirmAction === 'archive' ? 'bg-amber-100' : 'bg-blue-100'
+              }`}>
+                <i className={`fa-solid ${confirmAction === 'archive' ? 'fa-box-archive text-amber-600' : 'fa-file-export text-blue-600'} text-lg`}></i>
+              </div>
+              <h3 className="text-base font-bold text-slate-800">
+                {confirmAction === 'archive' ? 'Archive old logs?' : 'Export logs to CSV?'}
+              </h3>
+            </div>
+
+            <p className="text-sm text-slate-600 mb-2">
+              {confirmAction === 'archive'
+                ? `This will move all logs older than ${RETENTION_DAYS} days into the archive.`
+                : `This will download the ${logs.length} record${logs.length === 1 ? '' : 's'} currently shown in the table as a CSV file.`}
+            </p>
+
+            {confirmAction === 'archive' && (
+              <p className="text-xs text-slate-400 mb-4">
+                Logs are kept for {RETENTION_DAYS} days, then archived automatically — this just runs it now.
+              </p>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirm}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-white font-semibold text-sm transition-all ${
+                  confirmAction === 'archive' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-[#466460] hover:bg-[#3a524f]'
+                }`}
+              >
+                {confirmAction === 'archive' ? 'Archive Now' : 'Export CSV'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Snackbar */}
       {message && (
@@ -495,7 +525,7 @@ export const AuditLogs = () => {
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success' ? (
-            <svg xmlns="http://www.w3.org/2000/xl" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           ) : (

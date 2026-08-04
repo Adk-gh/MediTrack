@@ -6,6 +6,36 @@ import authService from '../services/auth.service.js';
 import { registerSchema, getFieldErrors } from '../validation/schemas.js';
 import LoadingAnimation from '../components/LoadingAnimation.jsx';
 
+// ── Frontend Email Validation Helper ──────────────────────────────────────────
+const validateEmailWithEasyEmail = async (email) => {
+  const API_KEY = import.meta.env.VITE_EASY_EMAIL_API;
+
+  if (!API_KEY) {
+    console.warn("VITE_EASY_EMAIL_API missing in frontend .env. Skipping email validation.");
+    return { isDeliverable: true };
+  }
+
+  const API_URL = `https://api.easyemailapi.com/v1/verify?email=${encodeURIComponent(email)}&apikey=${API_KEY}`;
+
+  try {
+    const response = await fetch(API_URL);
+    const data = await response.json();
+
+    if (data.valid === false || data.inbox_exists === false || data.deliverable === false) {
+       return {
+           isDeliverable: false,
+           message: "This email address does not exist or cannot receive emails. Please provide a valid email."
+       };
+    }
+
+    return { isDeliverable: true };
+  } catch (error) {
+    console.error("Frontend Email validation API error:", error);
+    return { isDeliverable: true };
+  }
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const IdCardIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
     strokeLinecap="round" strokeLinejoin="round" width="28" height="28">
@@ -75,7 +105,7 @@ const SignupForm = () => {
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
 
-  // New helper function to validate file size
+  // helper function to validate file size
   const validateAndSetFile = (file) => {
     if (file.size > MAX_FILE_SIZE) {
       setError('File is too large (max 5MB). Please take a screenshot of your ID or crop the photo to reduce the file size.');
@@ -118,12 +148,25 @@ const SignupForm = () => {
     }
     if (formData.password !== formData.confirmPassword) return setError('Passwords do not match!');
     if (!selectedFile) return setError('Please upload a photo of your University ID.');
+
     setLoading(true);
+
     try {
+      // ── NEW: Validate email exists before doing heavy ID uploads ──
+      const validationResult = await validateEmailWithEasyEmail(formData.email);
+      if (!validationResult.isDeliverable) {
+        setError(validationResult.message);
+        setLoading(false);
+        return;
+      }
+      // ──────────────────────────────────────────────────────────────
+
       const isIdUsed = await authService.checkIdExists(formData.universityId);
       if (isIdUsed) { setLoading(false); return setError('This University ID is already registered.'); }
+
       setIsScanning(true);
       const data = new FormData();
+
       // Normalize names: Title Case each word, in sync with the
       // live formatting already applied in handleChange
       const normalizeName = (name) => {
@@ -141,8 +184,10 @@ const SignupForm = () => {
       data.append('image', selectedFile);
       if (formData.middleName) data.append('middleName', normalizeName(formData.middleName));
       if (formData.suffix) data.append('suffix', formData.suffix);
+
       await authService.register(data);
       await new Promise(r => setTimeout(r, 1500));
+
       setIsScanning(false);
       setSuccess('Account created! Check your email and click the confirmation link before signing in.');
       setTimeout(() => navigate('/login'), 2000);
@@ -293,16 +338,17 @@ const SignupForm = () => {
         }
 
         /* ════════════════════════════════════
-           MOBILE — redesigned native shell
+            MOBILE — redesigned native shell
         ════════════════════════════════════ */
         @media (max-width: 640px) {
-          .lf-mobile-wrapper {
-            position: fixed; inset: 0;
-            flex-direction: column;
-            background: #F2F4F3;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-          }
+            .lf-mobile-wrapper {
+              position: relative;
+              min-height: 100vh;
+              min-height: 100dvh; /* accounts for mobile browser chrome resizing */
+              flex-direction: column;
+              background: #F2F4F3;
+              -webkit-overflow-scrolling: touch;
+            }
 
           /* ── Top bar ── */
           .m-topbar {
@@ -338,6 +384,7 @@ const SignupForm = () => {
           .m-card {
             background: #fff; border-radius: 28px 28px 0 0;
             padding: 32px 24px 56px; flex: 1;
+            padding-bottom: calc(56px + env(safe-area-inset-bottom));
             box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
             animation: m-fadeUp 0.5s ease 0.2s both;
           }

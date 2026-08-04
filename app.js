@@ -4,10 +4,11 @@ const express = require("express");
 const globalErr = require("./middleware/global-err");
 const routes = require("./routes/index");
 const cors = require("cors");
-
+const helmet = require("helmet");
 const app = express();
 
 // ✅ Middleware
+app.use(helmet());
 app.use(cors());
 
 // 🔴 FIX: Increase the payload limits to handle large Base64 image strings

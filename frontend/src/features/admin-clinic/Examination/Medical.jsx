@@ -111,7 +111,7 @@ const fetchNurses = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, first_name, last_name, role')
+      .select('id, uid, first_name, last_name, role')
       .eq('role', 'nurse')
       .order('last_name', { ascending: true });
 
@@ -123,9 +123,10 @@ const fetchNurses = async () => {
     // Format: "LastName, FirstName"
     return (data || []).map(doc => ({
       id: doc.id,
+      uid: doc.uid,
       display: `${doc.last_name || ''}, ${doc.first_name || ''}`.trim(),
       firstName: doc.first_name || '',
-      lastName: doc.last_name || '',
+      lastName: doc.last_name || ''
     }));
   } catch (err) {
     console.error('Error fetching nurses:', err);
@@ -522,7 +523,7 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
 
     surgicalHistoryFromProfile: record?.surgical_history || parseJsonField(u.surgical_history, { operations: [], declined: false }),
 
-    q1: p?.questionnaire?.q1 || record?.questionnaire?.q1 || 'Yes',
+    q1: p?.questionnaire?.q1 || record?.questionnaire?.q1 || 'No',
     q2: p?.questionnaire?.q2 || record?.questionnaire?.q2 || 'No',
     q2Details: p?.questionnaire?.q2Details || record?.questionnaire?.q2Details || '',
     q3: p?.questionnaire?.q3 || record?.questionnaire?.q3 || 'No',
@@ -569,6 +570,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
 
   // Custom Validation Alert Modal State
   const [alertModal, setAlertModal] = useState({ open: false, title: '', message: '' });
+const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
 
   // Fetch physicians and nurses on mount
   useEffect(() => {
@@ -580,6 +582,42 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
     loadData();
   }, []);
 
+// Set default selections once lists are available
+  useEffect(() => {
+    const setDefaults = async () => {
+      // Auto-select physician if only one available
+      if (physicians.length === 1 && !formData.physician) {
+        setFormData(prev => ({ ...prev, physician: physicians[0].display }));
+      }
+
+      // Auto-select nurse matching logged-in user
+      const { data, error } = await supabase.auth.getSession();
+      const session = data?.session;
+      const currentUserId = session?.user?.id;
+
+      if (currentUserId && nurses.length > 0 && !formData.nurseOnDuty) {
+        console.log('[Medical] Current session uid:', currentUserId);
+        console.log('[Medical] Nurse list:', nurses);
+
+        // 1. Try to find the exact match by UID
+        let targetNurse = nurses.find(n => n.uid === currentUserId);
+
+        // 2. Fallback: Check user_metadata or app_metadata for the role if direct role fails
+        const userRole = session?.user?.role || session?.user?.user_metadata?.role || session?.user?.app_metadata?.role;
+
+        if (!targetNurse && userRole === 'nurse') {
+          targetNurse = nurses[0]; // Default to the first nurse if they are a nurse but IDs don't match
+        }
+
+        // 3. Actually update the state if a nurse was found
+        if (targetNurse) {
+          setFormData(prev => ({ ...prev, nurseOnDuty: targetNurse.display }));
+        }
+      }
+    };
+
+    setDefaults();
+  }, [physicians, nurses, formData.physician, formData.nurseOnDuty]);
   const getInitialSurgicalHistory = () => {
     const sh = parseJsonField(selectedPatient?.surgicalHistory || selectedPatient?.surgical_history, null);
     if (sh && sh.operations && sh.operations.length > 0) {
@@ -600,7 +638,6 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
   const [checkedHealth,  setCheckedHealth]  = useState([]);
   const [healthSpecs, setHealthSpecs]       = useState({});
 
-  const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient, null, defaultSchoolYear, defaultSemester));
 
   useEffect(() => {
     let isMounted = true;
@@ -1164,7 +1201,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                   <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name={name} value="Yes" checked={formData[name] === 'Yes'} disabled={readOnly} onChange={handleChange} /> Yes</label>
                   <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name={name} value="No"  checked={formData[name] === 'No'}  disabled={readOnly} onChange={handleChange} /> No</label>
                 </div>
-                <input type="text" id={detailId} className={inputClass} placeholder={placeholder} value={formData[detailId]} disabled={readOnly} onChange={handleChange} />
+                {formData[name] === 'Yes' && <input type="text" id={detailId} className={inputClass} placeholder={placeholder} value={formData[detailId]} disabled={readOnly} onChange={handleChange} />}
               </div>
             ))}
           </div>
@@ -1194,7 +1231,7 @@ export const Medical = ({ selectedPatient, showMessage, defaultSchoolYear, defau
                     <td className="border border-slate-300 p-2 text-center"><input type="radio" name={name} value="Yes" checked={formData[name] === 'Yes'} disabled={readOnly} onChange={handleChange} /></td>
                     <td className="border border-slate-300 p-2 text-center"><input type="radio" name={name} value="No"  checked={formData[name] === 'No'}  disabled={readOnly} onChange={handleChange} /></td>
                     <td className="border border-slate-300 p-2">
-                      {detail && <input type="text" id={detail} className={inputClass} placeholder="If yes, specify" value={formData[detail]} disabled={readOnly} onChange={handleChange} />}
+                      {detail && formData[name] === 'Yes' && <input type="text" id={detail} className={inputClass} placeholder="If yes, specify" value={formData[detail]} disabled={readOnly} onChange={handleChange} />}
                     </td>
                   </tr>
                 ))}

@@ -397,6 +397,18 @@ const LoginForm = () => {
           .m-loaded .m-hero   { animation: m-fadeUp 0.5s ease 0.05s both; }
           .m-loaded .m-card   { animation: m-fadeUp 0.5s ease 0.15s both; }
           .m-loaded .m-topbar { animation: m-fadeIn 0.4s ease both; }
+
+          /* Hide Microsoft Edge native password reveal and clear icons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+/* Hide native WebKit password reveal icons (just in case future Safari/Chrome updates add them) */
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  display: none !important;
+}
         }
       `}</style>
 

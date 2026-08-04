@@ -13,7 +13,6 @@ import Settings from './Settings.jsx';
 import { supabase } from '../supabase';
 
 // ─── Synchronous Role Helper ─────────────────────────────────────────────────
-// This function extracts the user role synchronously from localStorage to prevent flash
 const getStoredUserRole = () => {
   try {
     const rawUser = localStorage.getItem('user');
@@ -21,7 +20,6 @@ const getStoredUserRole = () => {
       const user = JSON.parse(rawUser);
       let role = user.role?.toLowerCase() || '';
 
-      // If role is not set or is student, check classification/job_title
       if (!role || role === 'student') {
         const classification = user.classification?.toLowerCase() || '';
         const jobTitle = user.job_title?.toLowerCase() || '';
@@ -37,16 +35,15 @@ const getStoredUserRole = () => {
         }
       }
 
-      // Return if valid role found
       if (role && ['sysadmin', 'doctor', 'dentist', 'nurse'].includes(role)) {
         return role;
       }
     }
   } catch (e) {
-    console.error('Error reading user role:', e);
+    ('Error reading user role:', e);
   }
 
-  return null; // Return null to indicate "loading needed"
+  return null;
 };
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
@@ -134,13 +131,7 @@ const DENTAL_PROCEDURES = [
   'Orthodontic Therapy', 'TMJ Treatment', 'Prosthodontic Therapy',
 ];
 
-const emptyDentalHistory = () => ({
-  lastVisit: '', prevDentist: '', physician: '',
-  procedures: Object.fromEntries(DENTAL_PROCEDURES.map(p => [p, 'No'])),
-});
-
 // ── UI Components for Drawer ──────────────────────────────────────────────────
-// MOVED OUTSIDE of ProfileDrawer to prevent losing focus on re-render!
 const DrawerEditableInfoRow = ({ icon, label, field, nestedField, value, type = 'text', options, isEditing, onChange }) => {
   const displayValue = value || '';
   return (
@@ -179,119 +170,85 @@ const DrawerSectionHeader = ({ label, color = 'text-slate-400' }) => (
   <div className={`text-[9px] font-extrabold uppercase tracking-widest ${color} mb-3`}>{label}</div>
 );
 
-// ── Dental History section inside the ProfileDrawer ───────────────────────────
-function DentalHistoryDrawerSection({ dentalHistory, isEditing, onUpdate, onEditRequest }) {
-  const dh = { ...emptyDentalHistory(), ...dentalHistory };
-  const [expanded, setExpanded] = React.useState(false);
+// ── Safely parses values that might come back as stringified JSON from Postgres
+// We use a while loop because sometimes data gets double-stringified (e.g. '"{\\"key\\": \\"value\\"}"')
+const parseJsonIfNeeded = (val, fieldName = 'unknown') => {
+  (`[parseJsonIfNeeded - ${fieldName}] Raw Input:`, val, '| Type:', typeof val);
 
-  const update      = (partial) => onUpdate({ ...dh, ...partial });
-  const updateProc  = (proc, val) => onUpdate({ ...dh, procedures: { ...dh.procedures, [proc]: val } });
+  if (!val) return val;
 
-  const inputCls = "flex-1 min-w-0 text-right bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:border-[#466460] focus:ring-1 focus:ring-[#466460] text-slate-800 text-xs transition-all";
-  const rowCls   = "flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0 gap-3 min-h-[38px]";
-  const lCls     = "flex items-center gap-2 text-slate-500 shrink-0 min-w-[118px]";
+  let currentVal = val;
+  // Keep parsing as long as it's a string that looks like JSON
+  while (typeof currentVal === 'string') {
+    try {
+      const parsed = JSON.parse(currentVal);
+      if (typeof parsed === 'object' || Array.isArray(parsed)) {
+        currentVal = parsed;
+      } else if (typeof parsed === 'string') {
+        currentVal = parsed; // Might be double-stringified
+      } else {
+        break;
+      }
+    } catch (e) {
+      // It's just a regular string, stop parsing
+      break;
+    }
+  }
 
-  const yesCount = Object.values(dh.procedures || {}).filter(v => v === 'Yes').length;
-  const isEmpty  = !dh.lastVisit && !dh.prevDentist && !dh.physician && yesCount === 0;
+  (`[parseJsonIfNeeded - ${fieldName}] Final Output:`, currentVal);
+  return currentVal;
+};
 
-  return (
-    <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
-      <button type="button" onClick={() => setExpanded(p => !p)} className="w-full flex items-center justify-between mb-2 group">
-        <div className="text-[9px] font-extrabold uppercase tracking-widest text-[#466460]">
-          <i className="fa-solid fa-tooth mr-1.5 opacity-70"></i>Dental History
-        </div>
-        <div className="flex items-center gap-2">
-          {!expanded && yesCount > 0 && (
-            <span className="text-[8px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">{yesCount} procedure{yesCount > 1 ? 's' : ''}</span>
-          )}
-          <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'} text-[10px] text-slate-400 group-hover:text-[#466460] transition-colors`}></i>
-        </div>
-      </button>
+// ── Ensures formData always has fully-shaped nested objects
+const withProfileDefaults = (p = {}) => {
+  ('[withProfileDefaults] Initial Profile DB Object:', p);
 
-      {!expanded && (
-        isEmpty && !isEditing ? (
-          <div className="flex flex-col items-center justify-center py-3 mt-1 bg-white rounded-lg border border-slate-200 border-dashed">
-            <p className="text-[10px] text-slate-400 italic mb-2">No dental history recorded.</p>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onEditRequest) onEditRequest();
-                setExpanded(true);
-              }}
-              className="px-3 py-1.5 bg-[#e8f5ee] text-[#1a5c3a] rounded-full text-[10px] font-bold hover:bg-[#d1e7dd] transition-colors shadow-sm"
-            >
-              <i className="fa-solid fa-plus mr-1"></i> Add Dental History
-            </button>
-          </div>
-        ) : (
-          <p className="text-[10px] text-slate-400 italic">
-            {dh.lastVisit ? `Last visit: ${dh.lastVisit}` : 'No dental history recorded.'}
-          </p>
-        )
-      )}
+  // Grab values prioritizing snake_case (direct from DB)
+  const rawVac = p.vaccinations_history || p.vaccinations;
+  const rawDent = p.dental_history || p.dentalHistory;
+  const rawSurg = p.surgical_history || p.surgicalHistory;
+  const rawEmerg = p.emergency_contact || p.emergencyContact;
 
-      {expanded && (
-        <div className="animate-fadeIn">
-          <div className={rowCls}>
-            <div className={lCls}><i className="fa-solid fa-calendar-day text-[#466460] w-4 opacity-70"></i><span>Last Visit</span></div>
-            {isEditing
-              ? <input type="date" className={inputCls} value={dh.lastVisit} onChange={e => update({ lastVisit: e.target.value })} />
-              : <span className="font-semibold text-slate-800 text-xs text-right">{dh.lastVisit || '—'}</span>}
-          </div>
+  const vac = parseJsonIfNeeded(rawVac, 'vaccinations') || {};
+  const rawDental = parseJsonIfNeeded(rawDent, 'dentalHistory') || {};
+  const rawSurgical = parseJsonIfNeeded(rawSurg, 'surgicalHistory');
+  const emergencyContact = parseJsonIfNeeded(rawEmerg, 'emergencyContact') || {};
 
-          <div className={rowCls}>
-            <div className={lCls}><i className="fa-solid fa-user-doctor text-[#466460] w-4 opacity-70"></i><span>Previous Dentist</span></div>
-            {isEditing
-              ? <input type="text" className={inputCls} placeholder="Dr. Last name" value={dh.prevDentist} onChange={e => update({ prevDentist: e.target.value })} />
-              : <span className="font-semibold text-slate-800 text-xs text-right">{dh.prevDentist ? `Dr. ${dh.prevDentist}` : '—'}</span>}
-          </div>
+  // Structure Dental History safely
+  const dentalHistory = {
+    lastVisit: rawDental.lastVisit || '',
+    prevDentist: rawDental.prevDentist || '',
+    procedures: rawDental.procedures || {},
+    declined: rawDental.declined || false,
+  };
 
-          <div className={rowCls}>
-            <div className={lCls}><i className="fa-solid fa-stethoscope text-[#466460] w-4 opacity-70"></i><span>Physician</span></div>
-            {isEditing
-              ? <input type="text" className={inputCls} placeholder="Dr. Last name" value={dh.physician} onChange={e => update({ physician: e.target.value })} />
-              : <span className="font-semibold text-slate-800 text-xs text-right">{dh.physician ? `Dr. ${dh.physician}` : '—'}</span>}
-          </div>
+  // Structure Surgical History safely (Handle array default '[]' vs Object from form)
+  let surgicalHistory = { operations: [], declined: false };
+  if (Array.isArray(rawSurgical)) {
+    surgicalHistory.operations = rawSurgical;
+  } else if (rawSurgical && typeof rawSurgical === 'object') {
+    surgicalHistory.operations = rawSurgical.operations || [];
+    surgicalHistory.declined = rawSurgical.declined || false;
+  }
 
-          <div className="mt-3 mb-1">
-            <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Procedures History</p>
-            <div className="flex flex-col gap-0.5">
-              {DENTAL_PROCEDURES.map(proc => {
-                const val = dh.procedures?.[proc] ?? 'No';
-                return (
-                  <div key={proc} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
-                    <span className="text-[11px] text-slate-600">{proc}</span>
-                    {isEditing ? (
-                      <div className="flex gap-3">
-                        {['Yes','No'].map(opt => (
-                          <label key={opt} className="flex items-center gap-1 text-[10px] cursor-pointer">
-                            <input type="radio"
-                              name={`dh_drawer_${proc.replace(/\W/g,'')}`}
-                              value={opt}
-                              checked={val === opt}
-                              onChange={() => updateProc(proc, opt)}
-                              className="accent-[#466460]"
-                            />
-                            {opt}
-                          </label>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${val === 'Yes' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                        {val}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+  ('[withProfileDefaults] Processed Dental:', dentalHistory);
+  ('[withProfileDefaults] Processed Surgical:', surgicalHistory);
+
+  return {
+    ...p,
+    emergencyContact,
+    vaccinations: {
+      dose1: vac.dose1 || { vaccineName: '', date: '' },
+      dose2: vac.dose2 || { vaccineName: '', date: '' },
+      booster1: vac.booster1 || { vaccineName: '', date: '' },
+      booster2: vac.booster2 || { vaccineName: '', date: '' },
+      history: vac.history || '',
+      declined: { dose1: false, dose2: false, booster1: false, booster2: false, history: false, ...(vac.declined || {}) },
+    },
+    dentalHistory,
+    surgicalHistory,
+  };
+};
 
 // ─── Profile Drawer ───────────────────────────────────────────────────────────
 export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBottomSheet = false, onProfileUpdate }) {
@@ -301,10 +258,11 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [isSaving, setIsSaving] = React.useState(false);
   const [formData, setFormData] = React.useState({});
   const [showSettings, setShowSettings] = React.useState(false);
-  const [vaccinationsDeclined, setVaccinationsDeclined] = React.useState({ dose1: false, dose2: false, booster1: false, booster2: false });
+  const [vaccinationsDeclined, setVaccinationsDeclined] = React.useState({ dose1: false, dose2: false, booster1: false, booster2: false, history: false });
   const [dentalDeclined, setDentalDeclined] = React.useState(false);
+  const [surgicalDeclined, setSurgicalDeclined] = React.useState(false);
   const [showAddressModal, setShowAddressModal] = React.useState(false);
-  const [addressType, setAddressType] = React.useState(null); // 'personal' or 'emergency'
+  const [addressType, setAddressType] = React.useState(null);
 
   // ── Drag state ──────────────────────────────────────────────────────────────
   const [dragY, setDragY] = React.useState(0);
@@ -317,12 +275,15 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
   React.useEffect(() => {
     if (isOpen) {
+      ('----- DRAWER OPENING: PROCESSING PROFILE DATA -----');
       setIsMounted(true);
-      setFormData(userProfile || {});
+      const normalizedProfile = withProfileDefaults(userProfile || {});
+      setFormData(normalizedProfile);
       setEditingSection(null);
       setDragY(0);
-      setVaccinationsDeclined(userProfile?.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false });
-      setDentalDeclined(userProfile?.dentalHistory?.declined || false);
+      setVaccinationsDeclined(normalizedProfile.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false, history: false });
+      setDentalDeclined(normalizedProfile.dentalHistory?.declined || false);
+      setSurgicalDeclined(normalizedProfile.surgicalHistory?.declined || false);
     }
   }, [isOpen, userProfile]);
 
@@ -391,7 +352,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     { key: 'booster2', label: 'Booster 2' },
   ];
 
-  // ── Constants for dropdowns ─────────────────────────────────────────────────
   const NON_ACADEMIC_OFFICES = [
     'Accounting Office',
     'University Clinic',
@@ -402,7 +362,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     'Security Services',
   ];
 
-  // Check if current user is sysadmin
   const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(userRole);
 
   const CLASSIFICATIONS = [
@@ -431,8 +390,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
   const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
-  // ── Validation helpers ──────────────────────────────────────────────────────
-  // Title Case: First letter capitalized, rest lowercase
   const toTitleCase = (str) => {
     if (!str) return '';
     return str.replace(/\w\S*/g, (txt) => {
@@ -440,53 +397,32 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     });
   };
 
-  // Validate phone number: exactly 11 digits
   const isValidPhoneNumber = (phone) => {
-    if (!phone) return true; // Empty is allowed (optional)
-    const phoneRegex = /^09\d{9}$/; // Philippine format: 09XXXXXXXXX
+    if (!phone) return true;
+    const phoneRegex = /^09\d{9}$/;
     return phoneRegex.test(phone);
   };
 
-  // Format phone number to Philippine standard
   const formatPhoneNumber = (phone) => {
     if (!phone) return '';
-    // Remove all non-digit characters
     const digits = phone.replace(/\D/g, '');
-    // If starts with 9 and has 10 digits, add 0 at front
-    if (digits.length === 10 && digits.startsWith('9')) {
-      return '0' + digits;
-    }
-    // If starts with 63, replace with 0
-    if (digits.startsWith('63')) {
-      return '0' + digits.substring(2);
-    }
-    // If already has 11 digits starting with 09, return as is
-    if (digits.length === 11 && digits.startsWith('09')) {
-      return digits;
-    }
+    if (digits.length === 10 && digits.startsWith('9')) return '0' + digits;
+    if (digits.startsWith('63')) return '0' + digits.substring(2);
+    if (digits.length === 11 && digits.startsWith('09')) return digits;
     return digits;
   };
 
-  // Calculate age from birthday
   const calculateAge = (birthday) => {
     if (!birthday) return '';
     const today = new Date();
     const birthDate = new Date(birthday);
-
     if (isNaN(birthDate.getTime())) return '';
-
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-
-    // If birthday hasn't occurred yet this year, subtract 1
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
     return age > 0 ? age.toString() : '';
   };
 
-  // ── Section-to-field mapper ─────────────────────────────────────────────────
   const getSectionFields = (section, isStudentUser) => {
     const sectionFields = {
       personal: [
@@ -501,39 +437,34 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       emergency: ['emergencyContact'],
       vaccinations: ['vaccinations'],
       dental: ['dentalHistory'],
+      surgical: ['surgicalHistory'],
     };
     return sectionFields[section] || [];
   };
 
-  // ── Extract only the fields for the section being edited ────────────────────
   const extractSectionData = (sectionData, section, isStudentUser) => {
     const fields = getSectionFields(section, isStudentUser);
     const result = {};
-
     fields.forEach(field => {
       const value = sectionData[field];
-      // Only include if defined and not an empty object
       if (value !== undefined) {
         if (typeof value === 'object' && value !== null) {
-          // Check if object has any values
           const hasValues = Object.values(value).some(v => v !== undefined && v !== null && v !== '');
-          if (hasValues) {
-            result[field] = value;
-          }
+          if (hasValues) result[field] = value;
         } else if (value !== '') {
           result[field] = value;
         }
       }
     });
-
     return result;
   };
 
   const openEdit = (section) => {
     setEditData(JSON.parse(JSON.stringify(formData)));
     setEditingSection(section);
-    setVaccinationsDeclined(formData.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false });
+    setVaccinationsDeclined(formData.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false, history: false });
     setDentalDeclined(formData.dentalHistory?.declined || false);
+    setSurgicalDeclined(formData.surgicalHistory?.declined || false);
   };
 
   const closeEdit = () => {
@@ -542,7 +473,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   };
 
   const handleChange = (field, value) => {
-    // Auto-calculate age when birthday changes
     if (field === 'birthday') {
       const calculatedAge = calculateAge(value);
       setEditData(prev => ({ ...prev, birthday: value, age: calculatedAge }));
@@ -570,37 +500,76 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     setEditData(prev => ({ ...prev, dentalHistory: newDh }));
   };
 
-const handleVaxDeclineChange = (key, checked) => {
-  setVaccinationsDeclined(prev => {
-    const updated = { ...prev, [key]: checked };
-    setEditData(prevData => ({
-      ...prevData,
-      vaccinations: {
-        ...(prevData.vaccinations || {}),
-        declined: updated,
-      },
+  const handleDentalProcChange = (proc, value) => {
+    setEditData(prev => ({
+      ...prev,
+      dentalHistory: { ...prev.dentalHistory, procedures: { ...(prev.dentalHistory?.procedures || {}), [proc]: value } },
     }));
-    return updated;
-  });
-};
+  };
+
+  const handleCovidHistoryChange = (value) => {
+    setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, history: value } }));
+  };
+
+  const handleAddOperation = () => setEditData(prev => ({
+    ...prev,
+    surgicalHistory: {
+      ...prev.surgicalHistory,
+      operations: [...(prev.surgicalHistory?.operations || []), { id: crypto.randomUUID(), operation: '', date: '', notes: '' }],
+    },
+  }));
+
+  const handleRemoveOperation = (id) => setEditData(prev => ({
+    ...prev,
+    surgicalHistory: {
+      ...prev.surgicalHistory,
+      operations: (prev.surgicalHistory?.operations || []).filter(op => op.id !== id),
+    },
+  }));
+
+  const handleOperationChange = (id, field, value) => setEditData(prev => ({
+    ...prev,
+    surgicalHistory: {
+      ...prev.surgicalHistory,
+      operations: (prev.surgicalHistory?.operations || []).map(op => op.id === id ? { ...op, [field]: value } : op),
+    },
+  }));
+
+  const handleVaxDeclineChange = (key, checked) => {
+    setVaccinationsDeclined(prev => {
+      const updated = { ...prev, [key]: checked };
+      setEditData(prevData => ({
+        ...prevData,
+        vaccinations: {
+          ...(prevData.vaccinations || {}),
+          declined: updated,
+        },
+      }));
+      return updated;
+    });
+  };
 
   const saveProfileEdits = async () => {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token');
-
-      // Only send the fields for the section being edited
       const sectionData = extractSectionData(editData, editingSection, isStudent);
-      console.log('[ProfileDrawer] Saving section:', editingSection, 'with data:', sectionData);
 
-      // If no data to update, return
+      if (sectionData.dentalHistory) {
+        sectionData.dental_history = sectionData.dentalHistory;
+      }
+      if (sectionData.surgicalHistory) {
+        sectionData.surgical_history = sectionData.surgicalHistory;
+      }
+
+      ('[ProfileDrawer] Saving section:', editingSection, 'with data:', sectionData);
+
       if (Object.keys(sectionData).length === 0) {
         alert('No changes to save');
         setIsSaving(false);
         return;
       }
 
-      // If updating email, handle it separately
       if (sectionData.email && sectionData.email !== formData.email) {
         try {
           const { error: emailErr } = await supabase.auth.updateUser({ email: sectionData.email });
@@ -625,18 +594,16 @@ const handleVaxDeclineChange = (key, checked) => {
         body: JSON.stringify(sectionData),
       });
       const data = await res.json();
-      console.log('[ProfileDrawer] Save response:', res.status, data);
       if (!res.ok) throw new Error(data.message || 'Failed to update profile');
 
-      // Merge the updated section data with existing profile
       const updatedProfile = { ...formData, ...data.data };
-      setFormData(updatedProfile);
+      setFormData(withProfileDefaults(updatedProfile));
 
       if (onProfileUpdate) onProfileUpdate(updatedProfile);
 
       closeEdit();
     } catch (err) {
-      console.error('Error updating profile:', err);
+      ('Error updating profile:', err);
       alert('Error updating profile.');
     }
     setIsSaving(false);
@@ -658,7 +625,6 @@ const handleVaxDeclineChange = (key, checked) => {
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-[2000]"
         style={{
@@ -668,7 +634,6 @@ const handleVaxDeclineChange = (key, checked) => {
         onClick={onClose}
       />
 
-      {/* Sheet / Drawer */}
       <div
         ref={sheetRef}
         className="fixed z-[2001] bg-white overflow-y-auto scrollbar-none shadow-[-4px_0_30px_rgba(0,0,0,0.15)] flex flex-col"
@@ -693,7 +658,6 @@ const handleVaxDeclineChange = (key, checked) => {
               }
         }
       >
-        {/* Drag handle — mobile only */}
         {isBottomSheet && (
           <div
             className="flex justify-center pt-3 pb-1 cursor-grab active:cursor-grabbing select-none"
@@ -729,7 +693,6 @@ const handleVaxDeclineChange = (key, checked) => {
           >
             <i className="fa-solid fa-xmark"></i>
           </button>
-
 
           <div className="flex items-center gap-4 mt-4 sm:mt-0">
             <div className="w-[60px] h-[60px] sm:w-[70px] sm:h-[70px] rounded-full border-2 border-white/40 overflow-hidden bg-white/10 flex-shrink-0">
@@ -900,15 +863,107 @@ const handleVaxDeclineChange = (key, checked) => {
                 </div>
               )}
             </div>
+
+            <div className="mt-3 pt-3 border-t border-blue-100">
+              <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-1">COVID-19 History</p>
+              {formData.vaccinations?.declined?.history ? (
+                <span className="text-[11px] font-semibold text-slate-500">N/A</span>
+              ) : (
+                <p className="text-[11px] text-slate-600 whitespace-pre-wrap">{formData.vaccinations?.history || '—'}</p>
+              )}
+            </div>
           </div>
 
           {/* ── Dental History ── */}
-          <DentalHistoryDrawerSection
-            dentalHistory={formData.dentalHistory || {}}
-            isEditing={false}
-            onUpdate={(newDh) => setFormData(prev => ({ ...prev, dentalHistory: newDh }))}
-            onEditRequest={() => openEdit('dental')}
-          />
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <DrawerSectionHeader label="Dental History" />
+              <button
+                onClick={() => openEdit('dental')}
+                className="bg-[#e8f5ee] border-none text-[#466460] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#d1e7dd] transition-colors"
+              >
+                <i className="fa-solid fa-pen text-[8px]"></i> Edit
+              </button>
+            </div>
+
+            {formData.dentalHistory?.declined ? (
+              <div className="flex items-center justify-center py-3 bg-slate-50 rounded-lg border border-slate-200">
+                <span className="text-[11px] font-semibold text-slate-500">No dental history / Not applicable</span>
+              </div>
+            ) : (!formData.dentalHistory?.lastVisit && !formData.dentalHistory?.prevDentist && Object.values(formData.dentalHistory?.procedures || {}).filter(v => v === 'Yes').length === 0) ? (
+              <div className="flex flex-col items-center justify-center py-3 bg-white rounded-lg border border-slate-200 border-dashed">
+                <p className="text-[10px] text-slate-400 italic mb-2">No dental history recorded.</p>
+                <button
+                  type="button"
+                  onClick={() => openEdit('dental')}
+                  className="px-3 py-1.5 bg-[#e8f5ee] text-[#1a5c3a] rounded-full text-[10px] font-bold hover:bg-[#d1e7dd] transition-colors shadow-sm"
+                >
+                  <i className="fa-solid fa-plus mr-1"></i> Add Dental History
+                </button>
+              </div>
+            ) : (
+              <>
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-calendar-day" label="Last Visit" field="lastVisit" value={formData.dentalHistory?.lastVisit} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-user-doctor" label="Previous Dentist" field="prevDentist" value={formData.dentalHistory?.prevDentist ? `Dr. ${formData.dentalHistory.prevDentist}` : ''} />
+
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Procedures History</p>
+                  <div className="flex flex-col gap-0.5">
+                    {DENTAL_PROCEDURES.map(proc => {
+                      const val = formData.dentalHistory?.procedures?.[proc] || 'No';
+                      return (
+                        <div key={proc} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
+                          <span className="text-[11px] text-slate-600">{proc}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${val === 'Yes' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                            {val}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── Past Surgical History ── */}
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <DrawerSectionHeader label="Past Surgical History" />
+              <button
+                onClick={() => openEdit('surgical')}
+                className="bg-[#e8f5ee] border-none text-[#466460] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#d1e7dd] transition-colors"
+              >
+                <i className="fa-solid fa-pen text-[8px]"></i> Edit
+              </button>
+            </div>
+
+            {formData.surgicalHistory?.declined ? (
+              <div className="flex items-center justify-center py-3 bg-slate-50 rounded-lg border border-slate-200">
+                <span className="text-[11px] font-semibold text-slate-500">No surgical history / Not applicable</span>
+              </div>
+            ) : (formData.surgicalHistory?.operations?.length > 0) ? (
+              <div className="flex flex-col gap-2">
+                {formData.surgicalHistory.operations.map((op, i) => (
+                  <div key={op.id || i} className="flex flex-col bg-white rounded-lg px-3 py-2 border border-slate-100 gap-1">
+                    <span className="text-[11px] font-bold text-slate-700">{op.operation || 'Operation'}</span>
+                    <span className="text-[10px] text-slate-400">{[op.date, op.notes].filter(Boolean).join(' · ') || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-3 bg-white rounded-lg border border-slate-200 border-dashed">
+                <p className="text-[10px] text-slate-400 italic mb-2">No surgical history recorded.</p>
+                <button
+                  type="button"
+                  onClick={() => openEdit('surgical')}
+                  className="px-3 py-1.5 bg-[#e8f5ee] text-[#1a5c3a] rounded-full text-[10px] font-bold hover:bg-[#d1e7dd] transition-colors shadow-sm"
+                >
+                  <i className="fa-solid fa-plus mr-1"></i> Add Surgical History
+                </button>
+              </div>
+            )}
+          </div>
 
         </div>
 
@@ -920,7 +975,6 @@ const handleVaxDeclineChange = (key, checked) => {
                 <span>Server: Online <span className="text-emerald-500 ml-1">✓</span></span>
               </div>
 
-              {/* ── Settings Button ── */}
               <button
                 onClick={() => setShowSettings(true)}
                 className="w-full py-3 mb-3 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
@@ -929,7 +983,6 @@ const handleVaxDeclineChange = (key, checked) => {
                 Settings
               </button>
 
-              {/* ── Sign Out Button ── */}
               <button
                 onClick={onLogout}
                 className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-red-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
@@ -938,7 +991,6 @@ const handleVaxDeclineChange = (key, checked) => {
                 Sign Out
               </button>
             </div>
-
         </div>
       </div>
 
@@ -957,44 +1009,19 @@ const handleVaxDeclineChange = (key, checked) => {
                 <>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">First Name</label>
-                    <input
-                      type="text"
-                      value={editData.firstName || ''}
-                      onChange={e => handleChange('firstName', toTitleCase(e.target.value))}
-                      onBlur={e => handleChange('firstName', toTitleCase(e.target.value))}
-                      placeholder="First Name"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    />
+                    <input type="text" value={editData.firstName || ''} onChange={e => handleChange('firstName', toTitleCase(e.target.value))} onBlur={e => handleChange('firstName', toTitleCase(e.target.value))} placeholder="First Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Middle Name</label>
-                    <input
-                      type="text"
-                      value={editData.middleName || ''}
-                      onChange={e => handleChange('middleName', toTitleCase(e.target.value))}
-                      onBlur={e => handleChange('middleName', toTitleCase(e.target.value))}
-                      placeholder="Middle Name"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    />
+                    <input type="text" value={editData.middleName || ''} onChange={e => handleChange('middleName', toTitleCase(e.target.value))} onBlur={e => handleChange('middleName', toTitleCase(e.target.value))} placeholder="Middle Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Name</label>
-                    <input
-                      type="text"
-                      value={editData.lastName || ''}
-                      onChange={e => handleChange('lastName', toTitleCase(e.target.value))}
-                      onBlur={e => handleChange('lastName', toTitleCase(e.target.value))}
-                      placeholder="Last Name"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    />
+                    <input type="text" value={editData.lastName || ''} onChange={e => handleChange('lastName', toTitleCase(e.target.value))} onBlur={e => handleChange('lastName', toTitleCase(e.target.value))} placeholder="Last Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Suffix</label>
-                    <select
-                      value={editData.suffix || ''}
-                      onChange={e => handleChange('suffix', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    >
+                    <select value={editData.suffix || ''} onChange={e => handleChange('suffix', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {SUFFIXES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
@@ -1005,12 +1032,7 @@ const handleVaxDeclineChange = (key, checked) => {
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Age (Auto-calculated)</label>
-                    <input
-                      type="text"
-                      value={editData.age || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-500 cursor-not-allowed"
-                    />
+                    <input type="text" value={editData.age || ''} readOnly className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-500 cursor-not-allowed" />
                     <span className="text-[10px] text-slate-400">Age is automatically calculated from birthday</span>
                   </div>
                   <div className="mb-4">
@@ -1051,16 +1073,8 @@ const handleVaxDeclineChange = (key, checked) => {
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Home Address</label>
-                    <button
-                      type="button"
-                      onClick={() => { setAddressType('personal'); setShowAddressModal(true); }}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50"
-                    >
-                      {editData.homeAddress ? (
-                        <span className="text-slate-700">{editData.homeAddress}</span>
-                      ) : (
-                        <span className="text-slate-400">Click to set address</span>
-                      )}
+                    <button type="button" onClick={() => { setAddressType('personal'); setShowAddressModal(true); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50">
+                      {editData.homeAddress ? <span className="text-slate-700">{editData.homeAddress}</span> : <span className="text-slate-400">Click to set address</span>}
                     </button>
                   </div>
                 </>
@@ -1142,22 +1156,7 @@ const handleVaxDeclineChange = (key, checked) => {
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
-                    <input
-                      type="tel"
-                      value={editData.phoneNumber || ''}
-                      onChange={e => {
-                        const formatted = formatPhoneNumber(e.target.value);
-                        handleChange('phoneNumber', formatted);
-                      }}
-                      onBlur={e => {
-                        if (e.target.value && !isValidPhoneNumber(e.target.value)) {
-                          alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
-                        }
-                      }}
-                      placeholder="09123456789"
-                      maxLength={11}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    />
+                    <input type="tel" value={editData.phoneNumber || ''} onChange={e => { const formatted = formatPhoneNumber(e.target.value); handleChange('phoneNumber', formatted); }} onBlur={e => { if (e.target.value && !isValidPhoneNumber(e.target.value)) { alert('Phone number must be exactly 11 digits (e.g., 09123456789)'); } }} placeholder="09123456789" maxLength={11} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                     <span className="text-[10px] text-slate-400">Format: 09XXXXXXXXX (11 digits)</span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-2">Note: Changing your email may require you to verify your identity.</p>
@@ -1169,13 +1168,7 @@ const handleVaxDeclineChange = (key, checked) => {
                 <>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Contact Name</label>
-                    <input
-                      type="text"
-                      value={editData.emergencyContact?.name || ''}
-                      onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))}
-                      onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    />
+                    <input type="text" value={editData.emergencyContact?.name || ''} onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Relationship</label>
@@ -1186,35 +1179,12 @@ const handleVaxDeclineChange = (key, checked) => {
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
-                    <input
-                      type="tel"
-                      value={editData.emergencyContact?.phone || ''}
-                      onChange={e => {
-                        const formatted = formatPhoneNumber(e.target.value);
-                        handleNestedChange('emergencyContact', 'phone', formatted);
-                      }}
-                      onBlur={e => {
-                        if (e.target.value && !isValidPhoneNumber(e.target.value)) {
-                          alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
-                        }
-                      }}
-                      placeholder="09123456789"
-                      maxLength={11}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                    />
+                    <input type="tel" value={editData.emergencyContact?.phone || ''} onChange={e => { const formatted = formatPhoneNumber(e.target.value); handleNestedChange('emergencyContact', 'phone', formatted); }} onBlur={e => { if (e.target.value && !isValidPhoneNumber(e.target.value)) { alert('Phone number must be exactly 11 digits (e.g., 09123456789)'); } }} placeholder="09123456789" maxLength={11} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Address</label>
-                    <button
-                      type="button"
-                      onClick={() => { setAddressType('emergency'); setShowAddressModal(true); }}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50"
-                    >
-                      {editData.emergencyContact?.address ? (
-                        <span className="text-slate-700">{editData.emergencyContact.address}</span>
-                      ) : (
-                        <span className="text-slate-400">Click to set address</span>
-                      )}
+                    <button type="button" onClick={() => { setAddressType('emergency'); setShowAddressModal(true); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50">
+                      {editData.emergencyContact?.address ? <span className="text-slate-700">{editData.emergencyContact.address}</span> : <span className="text-slate-400">Click to set address</span>}
                     </button>
                   </div>
                 </>
@@ -1253,6 +1223,25 @@ const handleVaxDeclineChange = (key, checked) => {
                       </div>
                     );
                   })}
+                  <div className={`p-4 rounded-xl mb-4 border ${vaccinationsDeclined.history ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-[11px] font-extrabold text-[#466460] uppercase">COVID-19 History</span>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={vaccinationsDeclined.history || false} onChange={e => handleVaxDeclineChange('history', e.target.checked)} className="accent-[#466460]" />
+                        <span className={`text-[11px] font-semibold ${vaccinationsDeclined.history ? 'text-amber-700' : 'text-slate-500'}`}>N/A</span>
+                      </label>
+                    </div>
+                    {!vaccinationsDeclined.history ? (
+                      <textarea
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460] bg-white resize-y min-h-[80px]"
+                        placeholder="Date of infection, severity, treatment, recovery details..."
+                        value={editData.vaccinations?.history || ''}
+                        onChange={e => handleCovidHistoryChange(e.target.value)}
+                      />
+                    ) : (
+                      <span className="text-[11px] font-semibold text-amber-700">Skipped / Not applicable</span>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -1261,15 +1250,15 @@ const handleVaxDeclineChange = (key, checked) => {
                 <>
                   <label className="flex items-center gap-3 p-4 rounded-xl mb-4 cursor-pointer bg-slate-50 border border-slate-200">
                     <input
-  type="checkbox"
-  checked={dentalDeclined}
-  onChange={e => {
-    const val = e.target.checked;
-    setDentalDeclined(val);
-    handleDentalHistoryUpdate({ ...editData.dentalHistory, declined: val });
-  }}
-  className="accent-[#466460]"
-/>
+                      type="checkbox"
+                      checked={dentalDeclined}
+                      onChange={e => {
+                        const val = e.target.checked;
+                        setDentalDeclined(val);
+                        handleDentalHistoryUpdate({ ...editData.dentalHistory, declined: val });
+                      }}
+                      className="accent-[#466460]"
+                    />
                     <span className={`text-[12px] font-semibold ${dentalDeclined ? 'text-amber-700' : 'text-[#466460]'}`}>I don't have dental history / Not applicable</span>
                   </label>
                   {!dentalDeclined && (
@@ -1282,10 +1271,93 @@ const handleVaxDeclineChange = (key, checked) => {
                         <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Previous Dentist (Dr.)</label>
                         <input type="text" value={editData.dentalHistory?.prevDentist || ''} onChange={e => handleDentalHistoryUpdate({ ...editData.dentalHistory, prevDentist: e.target.value })} placeholder="e.g. Smith" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                       </div>
-                      <div className="mb-4">
-                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Physician (Dr.)</label>
-                        <input type="text" value={editData.dentalHistory?.physician || ''} onChange={e => handleDentalHistoryUpdate({ ...editData.dentalHistory, physician: e.target.value })} placeholder="e.g. Doe" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
-                      </div>
+
+                      <p className="text-[10px] font-extrabold text-[#466460] uppercase tracking-wide mt-6 mb-3 pt-5 border-t border-slate-100">Procedures History</p>
+                      {DENTAL_PROCEDURES.map(proc => {
+                        const isYes = editData.dentalHistory?.procedures?.[proc] === 'Yes';
+                        const isNo  = editData.dentalHistory?.procedures?.[proc] === 'No' || !editData.dentalHistory?.procedures?.[proc];
+                        return (
+                          <div key={proc} className="flex items-center justify-between mb-3 text-xs text-slate-800 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg">
+                            <span className="font-semibold">{proc}</span>
+                            <div className="flex gap-4">
+                              <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
+                                <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} className="accent-[#466460]" /> Yes
+                              </label>
+                              <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
+                                <input type="radio" name={`modal_dh_${proc}`} checked={isNo} onChange={() => handleDentalProcChange(proc, 'No')} className="accent-[#466460]" /> No
+                              </label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* ── Surgical History Section ── */}
+              {editingSection === 'surgical' && (
+                <>
+                  <label className="flex items-center gap-3 p-4 rounded-xl mb-4 cursor-pointer bg-slate-50 border border-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={surgicalDeclined}
+                      onChange={e => {
+                        const val = e.target.checked;
+                        setSurgicalDeclined(val);
+                        setEditData(prev => ({ ...prev, surgicalHistory: { ...prev.surgicalHistory, declined: val } }));
+                      }}
+                      className="accent-[#466460]"
+                    />
+                    <span className={`text-[12px] font-semibold ${surgicalDeclined ? 'text-amber-700' : 'text-[#466460]'}`}>I don't have surgical history / Not applicable</span>
+                  </label>
+
+                  {!surgicalDeclined && (
+                    <>
+                      {(editData.surgicalHistory?.operations || []).length === 0 ? (
+                        <p className="text-[11px] text-slate-400 italic text-center py-3">No operations added yet.</p>
+                      ) : (
+                        editData.surgicalHistory.operations.map(op => (
+                          <div key={op.id} className="relative bg-slate-50 border border-slate-200 rounded-lg p-4 mb-3">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOperation(op.id)}
+                              className="absolute top-2.5 right-2.5 bg-[#e07a5f] text-white w-5 h-5 rounded-md text-xs leading-none flex items-center justify-center"
+                            >×</button>
+                            <div className="mb-3">
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Operation Name</label>
+                              <input
+                                type="text"
+                                placeholder="Operation/Procedure Name"
+                                value={op.operation}
+                                onChange={e => handleOperationChange(op.id, 'operation', e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                              />
+                            </div>
+                            <div className="mb-3">
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Date</label>
+                              <DatePicker value={op.date || ''} onChange={val => handleOperationChange(op.id, 'date', val)} />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Notes</label>
+                              <input
+                                type="text"
+                                placeholder="Hospital / complications"
+                                value={op.notes}
+                                onChange={e => handleOperationChange(op.id, 'notes', e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleAddOperation}
+                        className="w-full bg-[#81b29a] text-white border-none py-2.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#6a9a83] transition-colors"
+                      >
+                        + Add Operation
+                      </button>
                     </>
                   )}
                 </>
@@ -1375,19 +1447,17 @@ export const DesktopHeader = ({ onOpenQR }) => {
   const authUser = authService.getCurrentUser();
   const [fullProfile, setFullProfile] = useState(authUser || {});
 
-  // Fetch unread notification count on mount
   useEffect(() => {
     const fetchUnreadCount = async () => {
       try {
         const count = await notificationsService.getUnreadCount();
         setUnreadCount(count || 0);
       } catch (err) {
-        console.error('Error fetching unread count:', err);
+        ('Error fetching unread count:', err);
       }
     };
     fetchUnreadCount();
 
-    // Poll for new notifications every 30 seconds
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -1415,7 +1485,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
           setFullProfile({ ...authUser, ...result.data });
         }
       } catch (err) {
-        console.error('Error fetching full profile for header:', err);
+        ('Error fetching full profile for header:', err);
       }
     };
 
@@ -1423,25 +1493,8 @@ export const DesktopHeader = ({ onOpenQR }) => {
   }, [navigate]);
 
   useEffect(() => {
-    const fetchUnreadCount = async () => {
-      try {
-        const count = await notificationsService.getUnreadCount();
-        setUnreadCount(count);
-      } catch (err) {
-        console.error('Error fetching unread count:', err);
-      }
-    };
-
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Real-time subscription for notification count updates
-  useEffect(() => {
     const getUserId = () => {
       try {
-        // Use auth UID for notifications
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         return user?.uid || null;
       } catch { return null; }
@@ -1456,7 +1509,6 @@ export const DesktopHeader = ({ onOpenQR }) => {
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
         () => {
           setUnreadCount(prev => prev + 1);
-          // Invalidate cache
           sessionStorage.removeItem('meditrack_notif_count');
         }
       )
@@ -1487,7 +1539,6 @@ export const DesktopHeader = ({ onOpenQR }) => {
 
   const handleConfirmLogout = () => {
     showLoading('Signing out', 'light');
-    // Note: stopTokenRefresh is now handled internally by authService.logout
     authService.logout();
     hideLoading();
     navigate('/login');
@@ -1504,7 +1555,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         lg:px-6
       ">
         <img
-          src="/logo1.jpg"
+          src="/logo1.png"
           alt="MediTrack Logo"
           className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
           onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
@@ -1563,15 +1614,16 @@ export const DesktopHeader = ({ onOpenQR }) => {
 const ROLE_NAV_CONFIG = {
   sysadmin: [
     { to: '/dashboard', label: 'Dashboard' },
-    { to: '/record-management', label: 'Record Management' },
-    { to: '/audit-logs', label: 'Audit Logs' },
-    { to: '/announcements', label: 'Announcement Management' },
-    { to: '/consultation-management', label: 'Consultations' },
+     { to: '/approval-management', label: 'Approvals' },
     { to: '/appointment-management', label: 'Appointments' },
-    { to: '/approval-management', label: 'Approvals' },
-    { to: '/users', label: 'User Management' },
+    { to: '/record-management', label: 'Records' },
+    { to: '/consultation-management', label: 'Consultations' },
+    { to: '/users', label: 'Users' },
+    { to: '/announcements', label: 'Announcements' },
     { to: '/reports', label: 'Reports' },
+    { to: '/notifications-management', label: 'Notifications' },
     { to: '/archives', label: 'Archives' },
+    { to: '/audit-logs', label: 'Audit Logs' },
   ],
   doctor: [
     { to: '/dashboard', label: 'Dashboard' },
@@ -1600,7 +1652,6 @@ const ROLE_NAV_CONFIG = {
 
 // ─── Desktop Navigation Bar ───────────────────────────────────────────────────
 export const DesktopNav = () => {
-  // Initialize with stored role synchronously to prevent flash
   const [userRole, setUserRole] = useState(() => getStoredUserRole() || 'unknown');
   const [isLoading, setIsLoading] = useState(userRole === 'unknown');
 
@@ -1620,7 +1671,6 @@ export const DesktopNav = () => {
         if (result.success && result.data?.role) {
           setUserRole(result.data.role.toLowerCase());
         } else if (result.success && result.data?.classification) {
-          // Use classification from profile as fallback
           const classification = result.data.classification.toLowerCase();
           const jobTitle = (result.data.job_title || '').toLowerCase();
 
@@ -1635,7 +1685,7 @@ export const DesktopNav = () => {
           }
         }
       } catch (err) {
-        console.error('Error fetching user role:', err);
+        ('Error fetching user role:', err);
       } finally {
         setIsLoading(false);
       }
@@ -1643,11 +1693,9 @@ export const DesktopNav = () => {
     fetchUserRole();
   }, []);
 
-  // Don't render anything until role is determined (prevents admin flash)
   if (isLoading || userRole === 'unknown') {
     return (
       <nav className="bg-white border-b border-slate-200 shadow-sm flex gap-4 sm:gap-6 lg:gap-12 px-3 sm:px-6 lg:px-8 py-3 sm:py-4 z-10">
-        {/* Skeleton placeholder - same height as real nav */}
         <div className="h-6 w-20 bg-slate-100 animate-pulse rounded" />
         <div className="h-6 w-20 bg-slate-100 animate-pulse rounded" />
         <div className="h-6 w-20 bg-slate-100 animate-pulse rounded" />
@@ -1718,10 +1766,11 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
       sm:px-6 sm:min-h-[70px]
     ">
       <img
-        src="/logo1.jpg"
+        src="/logo1.png"
         alt="MediTrack Logo"
-        className="w-[110px] h-[42px] sm:w-[140px] sm:h-[50px] object-contain"
-        onError={e => { e.target.src = 'https://placehold.co/140x50/466460/white?text=MediTrack'; }}
+        className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
+        style={{ mixBlendMode: 'multiply' }}
+        onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
       />
 
       <div className="flex items-center gap-2 sm:gap-3">
@@ -1824,7 +1873,7 @@ export const MobileNav = ({
           setUserRole(result.data.role.toLowerCase());
         }
       } catch (err) {
-        console.error('Error fetching user role:', err);
+        ('Error fetching user role:', err);
       }
     };
     fetchUserRole();
@@ -1839,16 +1888,13 @@ export const MobileNav = ({
   const items = getItems();
   return (
     <nav className="
-      absolute bottom-0 left-0 right-0
-      bg-white border-t border-slate-100
-      flex justify-between items-center
-      shadow-[0_-4px_10px_rgba(0,0,0,0.05)]
-      z-40
-      h-[70px] px-1
-      pb-[env(safe-area-inset-bottom,8px)]
-      overflow-y-auto scrollbar-none
-      sm:h-[76px] sm:px-4
-    ">
+  bg-white border-b border-slate-200 shadow-sm
+  flex gap-4 sm:gap-6 lg:gap-12
+  px-3 sm:px-6 lg:px-8
+  py-3 sm:py-4
+  z-10
+  overflow-y-auto scrollbar-none
+">
       {items.map((item) => {
         const IconComponent = item.icon || DefaultIcon;
         const isActive = active === item.id;

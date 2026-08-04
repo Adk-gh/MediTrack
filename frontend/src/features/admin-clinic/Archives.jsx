@@ -2,28 +2,43 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
+import { logAdminAction } from '../../services/audit.service';
+
+const ITEMS_PER_PAGE = 100;
 
 // Archive type labels - maps to actual table names
 const ARCHIVE_TYPE_LABELS = {
+  all: 'All Types',
   user: 'User',
   announcement: 'Announcement',
   appointment: 'Appointment',
   consultation: 'Consultation',
   medical_record: 'Medical Record',
   dental_record: 'Dental Record',
-  all: 'All Types'
+  notification: 'Notification',
 };
 
 export default function Archives() {
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // Admin identity used for audit logging. Falls back through id -> uid ->
+  // 'system' so a log entry is still written even if the stored user object
+  // is incomplete. Kept consistent with AppointmentManagement.jsx and
+  // ApprovalManagement.jsx.
+  const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
+
   const [archives, setArchives] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Search & Filters
   const [filterType, setFilterType] = useState('all');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState(''); // For instant search input
+
+  // Pagination
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const limit = 20;
 
   // Modal states
   const [selectedArchive, setSelectedArchive] = useState(null);
@@ -42,7 +57,7 @@ export default function Archives() {
   };
 
   // Fetch archives from all tables using is_archived flag
-  const fetchArchives = async () => {
+  const fetchArchives = async (isRefresh = false) => {
     setLoading(true);
     try {
       // Set Supabase session for authenticated fetch
@@ -58,7 +73,7 @@ export default function Archives() {
       // Fetch archived items from all tables
       const [
         usersData, announcementsData, appointmentsData, consultationsData,
-        medicalData, dentalData
+        medicalData, dentalData, notificationsData
       ] = await Promise.all([
         supabase.from('users').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
         supabase.from('announcements').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
@@ -66,25 +81,8 @@ export default function Archives() {
         supabase.from('consultations').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
         supabase.from('medical_records').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
         supabase.from('dental_records').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
+        supabase.from('notifications').select('*, _user:users!notifications_user_id_fkey(first_name, last_name, email)').eq('is_archived', true).order('created_at', { ascending: false }),
       ]);
-
-      // Log any errors
-      if (usersData.error) console.error('Users error:', usersData.error);
-      if (announcementsData.error) console.error('Announcements error:', announcementsData.error);
-      if (appointmentsData.error) console.error('Appointments error:', appointmentsData.error);
-      if (consultationsData.error) console.error('Consultations error:', consultationsData.error);
-      if (medicalData.error) console.error('Medical error:', medicalData.error);
-      if (dentalData.error) console.error('Dental error:', dentalData.error);
-
-      // Debug: Log counts from each table
-      console.log('Archived counts:', {
-        users: usersData.data?.length || 0,
-        announcements: announcementsData.data?.length || 0,
-        appointments: appointmentsData.data?.length || 0,
-        consultations: consultationsData.data?.length || 0,
-        medical: medicalData.data?.length || 0,
-        dental: dentalData.data?.length || 0,
-      });
 
       // Combine all archived items with type labels
       let allArchives = [
@@ -142,6 +140,20 @@ export default function Archives() {
           detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date ? new Date(r.exam_date).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}`,
           deletedBy: r.deleted_by || 'System'
         })),
+        ...(notificationsData.data || []).map(r => {
+          const u = r._user || {};
+          const recipientName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown User';
+          return {
+            ...r,
+            archiveType: 'notification',
+            table: 'notifications',
+            id: r.id,
+            displayName: r.title || 'Notification',
+            detail: `To: ${recipientName} | ${r.message || ''}`,
+            deletedBy: 'System',
+            updated_at: r.created_at // fallback for the date column
+          };
+        }),
       ];
 
       // Filter by type
@@ -158,8 +170,14 @@ export default function Archives() {
         });
       }
 
+      // Re-sort the combined array
+      allArchives.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+
       setArchives(allArchives);
       setTotalCount(allArchives.length);
+
+      if (isRefresh) setPage(1);
+
     } catch (error) {
       console.error('Error fetching archives:', error);
     } finally {
@@ -170,34 +188,31 @@ export default function Archives() {
   // Fetch stats
   const fetchStats = async () => {
     try {
-      // Set Supabase session for authenticated fetch
       const accessToken = localStorage.getItem('token');
       const refreshToken = localStorage.getItem('refresh_token') || '';
       if (accessToken) {
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
-        });
+        await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
       }
 
-      // Get count from each table
-      const [usersCount, announcementsCount, appointmentsCount, consultationsCount, medicalCount, dentalCount] = await Promise.all([
+      const [usersCount, announcementsCount, appointmentsCount, consultationsCount, medicalCount, dentalCount, notificationsCount] = await Promise.all([
         supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_archived', true),
         supabase.from('announcements').select('*', { count: 'exact', head: true }).eq('is_archived', true),
         supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('is_archived', true),
         supabase.from('consultations').select('*', { count: 'exact', head: true }).eq('is_archived', true),
         supabase.from('medical_records').select('*', { count: 'exact', head: true }).eq('is_archived', true),
         supabase.from('dental_records').select('*', { count: 'exact', head: true }).eq('is_archived', true),
+        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('is_archived', true),
       ]);
 
       setStats({
         total: (usersCount.count || 0) + (announcementsCount.count || 0) + (appointmentsCount.count || 0) +
-               (consultationsCount.count || 0) + (medicalCount.count || 0) + (dentalCount.count || 0),
+               (consultationsCount.count || 0) + (medicalCount.count || 0) + (dentalCount.count || 0) + (notificationsCount.count || 0),
         users: usersCount.count || 0,
         announcements: announcementsCount.count || 0,
         appointments: appointmentsCount.count || 0,
         consultations: consultationsCount.count || 0,
         records: (medicalCount.count || 0) + (dentalCount.count || 0),
+        notifications: notificationsCount.count || 0,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -206,9 +221,10 @@ export default function Archives() {
 
   useEffect(() => {
     fetchArchives();
-  }, [filterType, page, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterType, search]);
 
-  // Debounced search - fetches archives when search stabilizes
+  // Debounced search
   useEffect(() => {
     const handler = setTimeout(() => {
       setSearch(searchInput);
@@ -220,6 +236,11 @@ export default function Archives() {
   useEffect(() => {
     fetchStats();
   }, []);
+
+  const handleRefresh = () => {
+    fetchStats();
+    fetchArchives(true);
+  };
 
   // View archive details
   const handleView = (archive) => {
@@ -233,18 +254,15 @@ export default function Archives() {
     setShowRestoreModal(true);
   };
 
-  // Confirm restore - set is_archived to false
+  // Confirm restore
   const confirmRestore = async () => {
     if (!selectedArchive) return;
 
     setActionLoading(true);
     try {
-      // Use backend API for restore (enables audit logging)
       const token = localStorage.getItem('token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-      // Determine the correct ID to use based on table type
-      // Users table uses 'uid', others use 'id'
       const idToUse = selectedArchive.table === 'users' ? selectedArchive.uid : selectedArchive.id;
 
       const response = await fetch(`${API_URL}/archives/${idToUse}/restore?table=${selectedArchive.table}`, {
@@ -265,6 +283,18 @@ export default function Archives() {
       if (!response.ok) {
         throw new Error(result?.message || result?.error || 'Failed to restore');
       }
+
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'archive_restored',
+        details: {
+          archiveType: selectedArchive.archiveType,
+          table: selectedArchive.table,
+          itemId: idToUse,
+          displayName: selectedArchive.displayName,
+        },
+        adminUid,
+      });
 
       showSnackbar('Item restored successfully!', 'success');
       setShowRestoreModal(false);
@@ -290,11 +320,9 @@ export default function Archives() {
 
     setActionLoading(true);
     try {
-      // Use backend API for permanent delete (enables audit logging)
       const token = localStorage.getItem('token');
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-      // Use the original ID (uid for users, id for others) and pass table name
       const idToUse = selectedArchive.table === 'users' ? selectedArchive.uid : selectedArchive.id;
 
       const response = await fetch(`${API_URL}/archives/${idToUse}/delete?table=${selectedArchive.table}`, {
@@ -316,6 +344,18 @@ export default function Archives() {
         throw new Error(result?.message || result?.error || 'Failed to delete');
       }
 
+      // ---- AUDIT LOG ----
+      logAdminAction({
+        action: 'archive_permanently_deleted',
+        details: {
+          archiveType: selectedArchive.archiveType,
+          table: selectedArchive.table,
+          itemId: idToUse,
+          displayName: selectedArchive.displayName,
+        },
+        adminUid,
+      });
+
       showSnackbar('Item permanently deleted!', 'success');
       setShowDeleteModal(false);
       fetchArchives();
@@ -332,125 +372,139 @@ export default function Archives() {
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     });
   };
 
-  const totalPages = Math.ceil(totalCount / limit);
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
+  const paginatedArchives = archives.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+  const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const COL_COUNT = 6;
 
   return (
-    <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
-      {/* Snackbar Notification */}
-      {snackbar && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
-          snackbar.type === 'success' ? 'bg-green-600' : 'bg-red-600'
-        } text-white text-sm font-medium animate-fade-in`}>
-          {snackbar.message}
-        </div>
-      )}
+    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-[#1a2e22]">Archives</h1>
-        <p className="text-slate-500 mt-1">View and manage archived items. Restore or permanently delete them.</p>
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4 shrink-0">
+        {[
+          { label: 'Total', count: stats?.total || 0, color: 'text-slate-800' },
+          { label: 'Records', count: stats?.records || 0, color: 'text-blue-600' },
+          { label: 'Announcements', count: stats?.announcements || 0, color: 'text-green-600' },
+          { label: 'Appointments', count: stats?.appointments || 0, color: 'text-pink-600' },
+          { label: 'Consultations', count: stats?.consultations || 0, color: 'text-orange-600' },
+          { label: 'Users', count: stats?.users || 0, color: 'text-purple-600' },
+          { label: 'Notifications', count: stats?.notifications || 0, color: 'text-indigo-600' },
+        ].map(s => (
+          <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
+            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+            <span className="text-sm font-medium text-slate-500">{s.label}</span>
+          </div>
+        ))}
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="text-2xl font-bold text-[#466460]">{stats.total}</div>
-            <div className="text-xs text-slate-500 font-medium">Total Archived</div>
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
+
+        {/* Unified Inline Toolbar */}
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+
+          {/* Left side: Search & Filters */}
+          <div className="flex flex-wrap gap-2 items-center flex-1 w-full xl:w-auto">
+
+            <div className="relative w-full sm:w-60">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search archives..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9 pr-8 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <i className="fa-solid fa-times text-xs"></i>
+                </button>
+              )}
+            </div>
+
+            <select
+              value={filterType}
+              onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+              className={`${filterSelectCls} w-full sm:w-40`}
+            >
+              {Object.entries(ARCHIVE_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="text-2xl font-bold text-blue-600">{stats.records}</div>
-            <div className="text-xs text-slate-500 font-medium">Medical Records</div>
+
+          {/* Right side: Inline Stats */}
+          <div className="flex gap-2 flex-wrap items-center justify-end">
+
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="text-2xl font-bold text-green-600">{stats.announcements}</div>
-            <div className="text-xs text-slate-500 font-medium">Announcements</div>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="text-2xl font-bold text-purple-600">{stats.consultations}</div>
-            <div className="text-xs text-slate-500 font-medium">Consultations</div>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-            <div className="text-2xl font-bold text-orange-600">{stats.users}</div>
-            <div className="text-xs text-slate-500 font-medium">Users</div>
-          </div>
+          <button
+              onClick={handleRefresh}
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
         </div>
-      )}
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          {/* Type Filter */}
-          <select
-            value={filterType}
-            onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
-            className="px-4 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent"
-          >
-            {Object.entries(ARCHIVE_TYPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-
-          {/* Search */}
-          <div className="flex-1 flex gap-2">
-            <input
-              type="text"
-              placeholder="Search archives..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent"
-            />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => setSearchInput('')}
-                className="px-3 py-2.5 text-slate-400 hover:text-slate-600 transition"
-                title="Clear search"
-              >
-                <i className="fa-solid fa-times"></i>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Archives Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#466460] mx-auto"></div>
-            <p className="text-slate-500 mt-2">Loading archives...</p>
-          </div>
-        ) : archives.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-4xl mb-2">📦</div>
-            <p className="text-slate-500">No archived items found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-100">
+        {/* Archives Table */}
+        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 z-10 shadow-sm">
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Item Name</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Details</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Deleted By</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Date</th>
+                <th className="bg-slate-50 text-right p-3 pr-6 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Type</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Item Name</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Details</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Deleted By</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Date</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Actions</th>
+                  <td colSpan={COL_COUNT + 1} className="text-center py-12 text-slate-400">
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                      </svg>
+                      Loading archives...
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {archives.map((archive) => (
-                  <tr key={`${archive.table}-${archive.id}`} className="hover:bg-slate-50 transition">
-                    <td className="px-3 py-3">
+              ) : paginatedArchives.length === 0 ? (
+                <tr>
+                  <td colSpan={COL_COUNT + 1} className="text-center py-12 text-slate-400 text-sm">
+                    <div className="flex flex-col items-center gap-2">
+                      <i className="fa-solid fa-box-archive text-3xl text-slate-300"></i>
+                      <p>No archived items found</p>
+                      <p className="text-xs text-slate-400">Try adjusting your filters</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedArchives.map((archive, idx) => (
+                  <tr key={`${archive.table}-${archive.id}`} className={`hover:bg-slate-50 transition ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                    <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
+                      {(page - 1) * ITEMS_PER_PAGE + idx + 1}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
                       <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                         archive.archiveType === 'medical_record' ? 'bg-blue-100 text-blue-700' :
                         archive.archiveType === 'dental_record' ? 'bg-cyan-100 text-cyan-700' :
@@ -458,12 +512,13 @@ export default function Archives() {
                         archive.archiveType === 'user' ? 'bg-purple-100 text-purple-700' :
                         archive.archiveType === 'consultation' ? 'bg-orange-100 text-orange-700' :
                         archive.archiveType === 'appointment' ? 'bg-pink-100 text-pink-700' :
+                        archive.archiveType === 'notification' ? 'bg-indigo-100 text-indigo-700' :
                         'bg-slate-100 text-slate-700'
                       }`}>
                         {ARCHIVE_TYPE_LABELS[archive.archiveType] || archive.archiveType}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="p-3">
                       <div className="text-sm font-medium text-slate-700">
                         {archive.displayName}
                       </div>
@@ -471,75 +526,76 @@ export default function Archives() {
                         <div className="text-xs text-slate-400">ID: {String(archive.id).substring(0, 12)}...</div>
                       )}
                     </td>
-                    <td className="px-3 py-3">
-                      <div className="text-sm text-slate-600 max-w-xs truncate" title={archive.detail}>
+                    <td className="p-3">
+                      <div className="text-sm text-slate-600 max-w-[200px] truncate" title={archive.detail}>
                         {archive.detail}
                       </div>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="p-3 whitespace-nowrap">
                       <span className="text-sm text-slate-600">
                         {archive.deletedBy}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="p-3 whitespace-nowrap">
                       <div className="text-sm text-slate-600">{formatDate(archive.updated_at)}</div>
                     </td>
-                    <td className="px-3 py-3 text-right">
+                    <td className="p-3 pr-6 text-right">
                       <div className="flex justify-end gap-1">
                         <button
                           onClick={() => handleView(archive)}
-                          className="px-3 py-1.5 text-sm text-[#466460] hover:bg-[#466460]/10 rounded-lg transition"
+                          className="px-2 py-1.5 text-sm text-[#466460] hover:bg-[#466460]/10 rounded-lg transition font-medium"
                         >
                           View
                         </button>
                         <button
                           onClick={() => handleRestoreClick(archive)}
-                          className="px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition"
+                          className="px-2 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition font-medium"
                         >
                           Restore
                         </button>
                         <button
                           onClick={() => handlePermanentDelete(archive)}
-                          className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition"
+                          className="px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition font-medium"
                         >
                           Delete
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-        {/* Pagination */}
+        {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between">
-            <div className="text-sm text-slate-500">
-              Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalCount)} of {totalCount} items
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+            <div>
+              Showing <span className="font-semibold">{totalCount === 0 ? 0 : ((page - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(page * ITEMS_PER_PAGE, totalCount)}</span> of <span className="font-semibold">{totalCount}</span> items
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1.5 text-sm bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Previous
               </button>
-              <span className="px-3 py-1.5 text-sm text-slate-600">
-                Page {page} of {totalPages}
-              </span>
+              <div className="text-xs font-semibold px-2">
+                Page {page} of {Math.max(1, totalPages)}
+              </div>
               <button
+                disabled={page === totalPages || totalPages === 0}
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1.5 text-sm bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Next
               </button>
             </div>
           </div>
         )}
+
       </div>
 
       {/* View Modal */}
@@ -554,6 +610,8 @@ export default function Archives() {
                   selectedArchive.archiveType === 'announcement' ? 'bg-green-100 text-green-700' :
                   selectedArchive.archiveType === 'user' ? 'bg-purple-100 text-purple-700' :
                   selectedArchive.archiveType === 'consultation' ? 'bg-orange-100 text-orange-700' :
+                  selectedArchive.archiveType === 'appointment' ? 'bg-pink-100 text-pink-700' :
+                  selectedArchive.archiveType === 'notification' ? 'bg-indigo-100 text-indigo-700' :
                   'bg-slate-100 text-slate-700'
                 }`}>
                   {ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || selectedArchive.archiveType}
@@ -693,6 +751,24 @@ export default function Archives() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Snackbar Notification */}
+      {snackbar && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${
+          snackbar.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {snackbar.type === 'success' ? (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          )}
+          {snackbar.message}
+        </div>
       )}
     </div>
   );

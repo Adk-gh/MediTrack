@@ -199,44 +199,57 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [x] Auditlogs time should be searchable in the search bar
 * [x] consultaions.jsx seen indicator is not working again for doctor(medical only its working for dental.
 * [x] make sure to check if the edit function is working for the admin page
+* [x] reasons filter should be no duplicate - check-up, Consultation and check-up
+* [x] update the header.jsx covid history, and add past surgical history.
+* [x] dont show the system message in the messages section in Consultations.jsx&#x20;
+* [x] Examination (medical) in the questions part in examination tab if answer is no, disbale the input boxes and send the first question to no by default. basically all questions should be no in default. do the same thing for the Personal / Social History the input box should only show up when yes is chosen.
+* [x] Examination (medical) if nurse is the one conducting the examination it should automatically be selected in the dropdown.
+* [x] make the download pdf work for the mobile app in records-users.jsx its currently working for browser level but the app its not.(needs to be tested in the mobile)
+* [x] theres a double eye toggle for password in login and signup.
+* [x] all dates filter the x button needs fixing
+* [x] edit failed at first but goes through the 2nd time, it does goes through but the notification is failing thats why is displaying an error even though the update (edit) goes through successdully\\
+* [x] include the duration and analytics on how fast the appointments gets approved
+* [x] for the resend verification there should be a notif (snackbar for when the email didn't send) or when it sends succcessfully too maybe the email is wrong or non existence or it should prompt the user to change the email if email is not found in usermanagement
+* [x] bulk reshcedule should trigger a notification that the appointment gets move on to a new date for the users to see.
+* [x] add a notification for new messages arriving(use notifier.js)
+* [x] make sure to trigger the auditlogs in the admin pages as well.
+* [x] remove the logs for the headers.jsx
+* [x] Appointment Management, make sure to check if how many appointments is on that day for the Approved appointments. and for the reschedule modal display the approved appointments that's going to be moved if theres no conflict on the date. if theres a conflix appointments it should display the name
+* [x] Approval management make sure to emphasis the for archiving the approvals, it should says to check in archive medical or dental in the snackbar.
+* [x] add a hyperlink to the snackbar to redirect into the specific page (archive) when you archive a record.
+* [x] also make the duration of the snackbar to be longer and have a way to close the snakcbar
+* [ ] fix the appointment to set time accurately, then for the consultation-users.jsx it should only be accesible if theres an appointment.
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
 * [ ] make the settings functional
-* [ ] the uploading of health documents is not working
-* [ ] add a notification for new messages arriving(use notifier.js)
-* [ ] make sure to trigger the auditlogs in the admin pages as well.
-* [ ] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic
-* [ ] update the header.jsx covid history, and add past surgical history.
-* [ ] dont show the system message in the messages section in Consultations.jsx&#x20;
-* [ ] Examination (medical) in the questions part in examination tab if answer is no, disbale the input boxes and send the first question to no by default. basically all questions should be no in default. do the same thing for the Personal / Social History the input box should only show up when yes is chosen.
+* [ ] the uploading of health documents is not working(bukas to)
+* [ ] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic. i need to add a new page for that that should sit on the settings page for the admin under the ocr settings tab.
 * [ ] Examination (medical) medical Certificate digital singature should be png
-* [ ] Examination (medical) if nurse is the one conducting the examination it should automatically be selected in the dropdown.
-* [ ] make the download pdf work for the mobile app in records-users.jsx its currently working for browser level but the app its not.
 
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 
-# ===============testing(07/18)============
-
-
+# ===============testing(07/30)============
 
 * admin
 
-  * Appointment Management,
+  *  its currently saving into a made up email it says in the snackbar that the email has
+    been sent to the email even though i made up that email >>> \[Email] Sent:
+    <e8a1e029-54bd-8555-8089-adb6cc970d2f@gmail.com>
 
-    * reasons filter should be no duplicate - check-up, Consultation and check-up
-    * edit failed at first but goes through the 2nd time
-    * all dates filter rthe x button needs fixing
-    * make sure to check if how many appointments is on that day for the Approved appointments. and for the reschedule modal display the approved appointments to be moved
-  * Approval management
-
-    * make sure to emphasis the for archiving the approvals, it should says to check in archive medical or dental in the snackbar.
-    * add a hyperlink to the snackbar to redirect into the specific page (archive) when you archive a record.
-    * also make the duration of the snackbar to be longer and have a way to close the snakcbar
-  * reports
-
-    * include the duration and analyrics on how fast the appointments gets approved
-
-
+    > > > \[Admin Resend] Email send result: {
+    > > > success: true,
+    > > > messageId: '<e8a1e029-54bd-8555-8089-adb6cc970d2f@gmail.com>'
+    > > > }
+    > > > \[Email] Sent: <ea184033-33ca-a175-6bda-606350b1ef8b@gmail.com>
+    > > > \[Admin Resend] Email send result: {
+    > > > success: true,
+    > > > messageId: '<ea184033-33ca-a175-6bda-606350b1ef8b@gmail.com>'
+    > > > }
+    > > > \[Email] Sent: <6cbdd4c8-9c34-a1a9-bc0a-4e3b6ceb58ad@gmail.com>
+    > > > \[Admin Resend] Email send result: {
+    > > > success: true,
+    > > > messageId: '<6cbdd4c8-9c34-a1a9-bc0a-4e3b6ceb58ad@gmail.com>'
+    > > > }
 
 something to ask:
 
@@ -244,13 +257,7 @@ should the chat history be seen by nurse and doctor or should ie be hidden
 
 Announcement should only be manage by the whole clinic or only admin?
 
-
-
 add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
-
-
-
-in the itsmeaderik.gamil.com the dental.jsx needs to be done
 
 # ============ROLE MATRIX===============
 
@@ -293,9 +300,11 @@ TEST ACCOUNTS===============
 Accounts:
 
 <dekbermas@gmail.com> sysadmin
-[jamescantre@gmail.com](mailto:john.doe@example.com) doctor
+
+<jamescantre@gmail.com> doctor
 
 <smcrm521@gmail.com> nurse
+
 <catherine@gmail.com> dentist
 
 <ly.jxnny@gmail.com> student

@@ -1,7 +1,5 @@
 \[TODO]
 
-
-
 * [x] add a notification for the whole system in the header.put it next to the profil
 * [x] ~~fix the profile setup to upload all the content into the database some contents are not uploading properly~~
 * [x] ~~fix the dashboard.jsx to fill the whole screen.~~
@@ -184,8 +182,6 @@ admin
 
 general:
 
-
-
 * [ ] normalize the text for the name so it cant be capitalized or all lowercase.
 
 * [x] the university id didn't saved properly.
@@ -254,13 +250,9 @@ general:
 
 * [x] homepage-user it should only display the announcements that arent on archive (is\_archived == False) only.
 
-
-
 ***
 
 ###### 07/10/26
-
-
 
 * [ ] forgot password
 * [ ] make it so that whenever admin creates an announcment it creates a notification.
@@ -286,6 +278,4 @@ general:
 * [ ] add seen indicator for when the other party seened the message
 * [ ] make it so it also filter the appointment for dentist to only see appointments with dental related concerns
 * [ ] caching (redis/ sql lite)
-
-
 

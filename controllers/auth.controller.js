@@ -4,6 +4,65 @@ const supabase = require('../configs/supabase');
 const { sendEmail } = require('../configs/email');
 const crypto = require('crypto');
 
+// --- EMAIL VALIDATION HELPER ---
+const validateEmailWithEasyEmail = async (email) => {
+  const API_KEY = process.env.EASY_EMAIL_API; // Use import.meta.env.VITE_EASY_EMAIL_API on frontend
+
+  if (!API_KEY) {
+    console.warn("⚠️ API key not found, skipping email validation.");
+    return { isDeliverable: true };
+  }
+
+  const API_URL = `https://easyemailapi.com/api/verify/${encodeURIComponent(email)}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    const data = await response.json();
+
+    console.log(">>> [Email Validation] API Response:", data);
+
+    // 1. Basic formatting check
+    if (data.valid === false) {
+       return { isDeliverable: false, message: "Invalid email address format." };
+    }
+
+    // 2. MX Record check (does the domain actually host email?)
+    if (data.valid_mx === false) {
+       return { isDeliverable: false, message: "This email domain does not exist or cannot receive emails." };
+    }
+
+    // 3. Disposable email check
+    if (data.disposable === true) {
+       return { isDeliverable: false, message: "Please use a permanent email address, not a temporary one." };
+    }
+
+    // 4. Exact Inbox check (ONLY if the API actually performed it)
+    if (data.inbox_check_enabled === true && data.inbox_exists === false) {
+       return { isDeliverable: false, message: "This exact email inbox does not exist." };
+    }
+
+    return { isDeliverable: true };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    console.error(">>> [Email Validation] Fetch failed:", error.message);
+    // Fail-open: allow the user through so your app doesn't break if the API goes down
+    return { isDeliverable: true };
+  }
+};
+// -------------------------------
+
 // In-memory store for reset tokens (use Redis for production)
 const passwordResetTokens = new Map();
 
@@ -169,6 +228,13 @@ exports.register = async (req, res) => {
     if (!firstName || !lastName || !email || !password || !universityId) {
       return res.status(400).json({ success: false, message: "Missing required fields." });
     }
+
+    // --- EMAIL VALIDATION CHECK ---
+    const validationResult = await validateEmailWithEasyEmail(email);
+    if (!validationResult.isDeliverable) {
+      return res.status(400).json({ success: false, message: validationResult.message });
+    }
+    // ------------------------------
 
     console.log(`>>> Processing registration for: ${email}`);
 
@@ -379,6 +445,16 @@ exports.adminResendVerification = async (req, res) => {
     if (userData.is_verified) {
       return res.json({ success: true, message: 'This user is already verified' });
     }
+
+    // --- EMAIL VALIDATION CHECK ---
+    const validationResult = await validateEmailWithEasyEmail(userData.email);
+    if (!validationResult.isDeliverable) {
+      return res.status(400).json({
+        success: false,
+        message: `The email ${userData.email} appears to be invalid or non-existent.`
+      });
+    }
+    // ------------------------------
 
     // Generate new verification token
     const verifyToken = crypto.randomBytes(32).toString('hex');

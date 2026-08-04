@@ -49,7 +49,7 @@ const toothOperations = [
   { value: 'CA',  label: 'Cervical Abrasion (CA)'        },
   { value: 'R',   label: 'Restorable (R)'                },
   { value: 'RCT', label: 'Root Canal Treatment (RCT)'    },
-  { value: 'P',   label: 'Pontic (P)'                   },
+  { value: 'P',   label: 'Pontic (P)'                    },
 ];
 
 // Helper to convert operation abbreviation to full name
@@ -107,7 +107,7 @@ const fetchDentists = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, first_name, last_name, license_number, role')
+      .select('id, uid, first_name, last_name, license_number, role')
       .eq('role', 'dentist')
       .order('last_name', { ascending: true });
 
@@ -119,6 +119,7 @@ const fetchDentists = async () => {
     // Format: "LastName, FirstName D.M.D / License no. XXXXXX"
     return (data || []).map(doc => ({
       id: doc.id,
+      uid: doc.uid,
       display: `${doc.last_name || ''}, ${doc.first_name || ''} D.M.D / License no. ${doc.license_number || ''}`.trim(),
       licenseNumber: doc.license_number || '',
       firstName: doc.first_name || '',
@@ -192,6 +193,12 @@ const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
   const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
 
   return {
+    // Row primary key from dental_records (null for a brand-new exam).
+    // handleFinalSubmit uses this to decide UPDATE vs INSERT so that
+    // resubmitting from the Approvals "View" modal edits the same row
+    // instead of creating a duplicate.
+    dRecordId:   existingRecord?.id || '',
+
     dId:         p?.id || existingRecord?.university_id || existingRecord?.student_id || '', // University ID
     dLastName:   lastName,
     dFirstName:  firstName,
@@ -468,7 +475,7 @@ const DentalVisitHistory = ({ selectedPatient }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false }) => {
+export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false, onSaved }) => {
   const [toothModal, setToothModal]         = useState({ open: false, toothNum: null });
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
@@ -481,18 +488,9 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
   // Custom Validation Alert Modal State
   const [alertModal, setAlertModal] = useState({ open: false, title: '', message: '' });
 
-  // Fetch dentists on mount
-  useEffect(() => {
-    const loadDentists = async () => {
-      const docs = await fetchDentists();
-      setDentists(docs);
-    };
-    loadDentists();
-  }, []);
+  // 1. DECLARE ALL STATES FIRST
+  const [dentalHistory, setDentalHistory]   = useState(() => buildDentalHistoryProcedures(selectedPatient));
 
-  const [dentalHistory, setDentalHistory]   = useState(
-    () => buildDentalHistoryProcedures(selectedPatient)
-  );
   const [intraoral, setIntraoral] = useState(() => {
     // Load existing intraoral data from selectedPatient if available
     const existingIntraoral = selectedPatient?.intraoral || selectedPatient?.existingRecord?.intraoral || {};
@@ -520,6 +518,50 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
   });
 
   const [dentalFormData, setDentalFormData] = useState(() => buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester));
+
+  // 2. NOW RUN EFFECTS
+  // Fetch dentists on mount
+  useEffect(() => {
+    const loadDentists = async () => {
+      const docs = await fetchDentists();
+      setDentists(docs);
+    };
+    loadDentists();
+  }, []);
+
+  // Set default selections once lists are available
+  useEffect(() => {
+    const setDefaults = async () => {
+      // Auto-select dentist if only one available
+      if (dentists.length === 1 && !dentalFormData.dExaminedBy) {
+        setDentalFormData(prev => ({ ...prev, dExaminedBy: dentists[0].display }));
+      }
+
+      // Auto-select dentist matching logged-in user
+      const { data, error } = await supabase.auth.getSession();
+      const session = data?.session;
+      const currentUserId = session?.user?.id;
+
+      if (currentUserId && dentists.length > 0 && !dentalFormData.dExaminedBy) {
+        // 1. Try to find exact match by UID
+        let targetDentist = dentists.find(d => d.uid === currentUserId);
+
+        // 2. Fallback: check metadata role if direct UID match fails
+        const userRole = session?.user?.role || session?.user?.user_metadata?.role || session?.user?.app_metadata?.role;
+
+        if (!targetDentist && userRole === 'dentist') {
+          targetDentist = dentists[0]; // Default to the first dentist in the list
+        }
+
+        // 3. Actually update the state if a dentist was found
+        if (targetDentist) {
+          setDentalFormData(prev => ({ ...prev, dExaminedBy: targetDentist.display }));
+        }
+      }
+    };
+
+    setDefaults();
+  }, [dentists, dentalFormData.dExaminedBy]);
 
   // Re-populate when selectedPatient changes
   useEffect(() => {
@@ -690,10 +732,20 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         approved_at: null,
       };
 
+      // Decide UPDATE vs INSERT. selectedPatient.existingRecord.id is set
+      // whenever this component is opened from Approvals' "View" button on
+      // an already-saved record; dentalFormData.dRecordId mirrors the same
+      // value (set in buildDentalForm) as a fallback. If neither is present
+      // this is a brand-new exam and we insert a fresh row.
       const recordId = selectedPatient?.existingRecord?.id || dentalFormData.dRecordId || null;
 
       let error;
       if (recordId) {
+        // Editing an existing record: update it in place. Deliberately do
+        // NOT touch status / is_approved / created_at / approved_at here —
+        // those reflect the record's approval lifecycle and shouldn't be
+        // reset just because someone reopened and resaved exam details
+        // from the View modal.
         const { status, is_approved, created_at, approved_at, ...updatePayload } = supabasePayload;
         ({ error } = await supabase.from('dental_records').update(updatePayload).eq('id', recordId));
       } else {
@@ -703,6 +755,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
 
       setShowSummary(false);
       showMessage(recordId ? 'Dental record updated successfully!' : 'Dental record saved successfully! Waiting for approval.');
+      onSaved?.();
 
     } catch (error) {
       console.error("Error saving dental record: ", error);

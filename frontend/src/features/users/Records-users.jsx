@@ -543,142 +543,142 @@ export default function RecordsUsers() {
   }
 
   // ── List view ─────────────────────────────────────────────────────────────
-  if (view === 'list') {
-    return (
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <style>{ptrStyles}</style>
+ if (view === 'list') {
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <style>{ptrStyles}</style>
 
-        {/* This is the scrollable container.
-          The PTR hook tracks scroll events on this element.
-        */}
-        <div
-          ref={scrollElRef}
-          style={{ flex: 1, padding: '20px 16px 32px', overflowY: 'auto', scrollbarWidth: 'none' }}
-        >
-          <PullIndicator indicatorRef={indicatorRef} />
-
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a2e22', margin: 0 }}>Health Records</h2>
-              <p style={{ fontSize: 11, color: '#6b8577', margin: '2px 0 0' }}>Official records and health certifications issued by the clinic.</p>
-            </div>
+      {/* ── Fixed header: title, search, filters ── */}
+      <div style={{ flexShrink: 0, padding: '20px 16px 0' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a2e22', margin: 0 }}>Health Records</h2>
+            <p style={{ fontSize: 11, color: '#6b8577', margin: '2px 0 0' }}>Official records and health certifications issued by the clinic.</p>
           </div>
+        </div>
 
-          {/* Search Bar */}
-          <div style={{ position: 'relative', marginBottom: 16, marginTop: 16 }}>
-            <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9bb5a5', fontSize: 12 }}></i>
-            <input
-              type="text"
-              placeholder="Search by name, date (e.g. 2024, Jan 15, 01/15/2024)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+        {/* Search Bar */}
+        <div style={{ position: 'relative', marginBottom: 16, marginTop: 16 }}>
+          <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9bb5a5', fontSize: 12 }}></i>
+          <input
+            type="text"
+            placeholder="Search by name, date (e.g. 2024, Jan 15, 01/15/2024)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%', padding: '10px 14px 10px 38px', borderRadius: 14, fontSize: 12,
+              border: '1px solid #ddeee5', outline: 'none', background: '#fff',
+              color: '#1a2e22', boxSizing: 'border-box',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
               style={{
-                width: '100%', padding: '10px 14px 10px 38px', borderRadius: 14, fontSize: 12,
-                border: '1px solid #ddeee5', outline: 'none', background: '#fff',
-                color: '#1a2e22', boxSizing: 'border-box',
-              }}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                style={{
-                  position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', color: '#9bb5a5', cursor: 'pointer', fontSize: 14,
-                }}
-              >
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            )}
-          </div>
-
-          {/* Filter Tabs */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 16 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {['All', 'Medical', 'Dental'].map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  style={{
-                    padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                    cursor: 'pointer', transition: 'all 0.2s', border: 'none',
-                    background: filter === f ? '#1a5c3a' : '#e8f5ee',
-                    color:      filter === f ? '#fff'     : '#1a5c3a',
-                  }}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              style={{
-                padding: '6px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a',
-                cursor: 'pointer', outline: 'none',
+                position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', color: '#9bb5a5', cursor: 'pointer', fontSize: 14,
               }}
             >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-          </div>
-
-          {filteredRecords.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9bb5a5' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-              <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>No approved records found.</p>
-              <p style={{ fontSize: 11, marginTop: 4 }}>Records will appear here once examinations are finalized.</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {filteredRecords.map((rec) => (
-                <div
-                  key={rec.id}
-                  onClick={() => openRecord(rec)}
-                  style={{
-                    background: '#fff', border: '1px solid #ddeee5', borderRadius: 20,
-                    padding: '14px 16px', display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#34c472'; e.currentTarget.style.boxShadow = '0 4px 16px #34c47220'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#ddeee5'; e.currentTarget.style.boxShadow = 'none'; }}
-                >
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
-                      {formatDate(rec.approved_at || rec.created_at)}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {rec.recordType === 'dental'
-                        ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }}></i>
-                        : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }}></i>}
-                      {rec.recordType === 'dental' ? 'Dental Examination' : 'Medical Examination'}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
-                      {rec.recordType === 'dental'
-                        ? [rec.dCourseYear, rec.dYearLevel, rec.dSection].filter(Boolean).join(' - ')
-                        : fmt(rec.course || '')}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ background: '#e8f5ee', color: '#1a5c3a', fontSize: 9, fontWeight: 800, padding: '3px 10px', borderRadius: 30, textTransform: 'uppercase' }}>
-                      Approved
-                    </span>
-                    <div style={{ width: 32, height: 32, background: '#e8f5ee', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="2" width="15" height="15">
-                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+              <i className="fa-solid fa-xmark"></i>
+            </button>
           )}
         </div>
-      </div>
-    );
-  }
 
+        {/* Filter Tabs */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['All', 'Medical', 'Dental'].map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                style={{
+                  padding: '6px 16px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.2s', border: 'none',
+                  background: filter === f ? '#1a5c3a' : '#e8f5ee',
+                  color:      filter === f ? '#fff'     : '#1a5c3a',
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            style={{
+              padding: '6px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+              border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a',
+              cursor: 'pointer', outline: 'none',
+            }}
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ── Scrollable content only ── */}
+      <div
+        ref={scrollElRef}
+        style={{ flex: 1, padding: '0 16px 32px', overflowY: 'auto', scrollbarWidth: 'none' }}
+      >
+        <PullIndicator indicatorRef={indicatorRef} />
+
+        {filteredRecords.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9bb5a5' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+            <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>No approved records found.</p>
+            <p style={{ fontSize: 11, marginTop: 4 }}>Records will appear here once examinations are finalized.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filteredRecords.map((rec) => (
+              <div
+                key={rec.id}
+                onClick={() => openRecord(rec)}
+                style={{
+                  background: '#fff', border: '1px solid #ddeee5', borderRadius: 20,
+                  padding: '14px 16px', display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#34c472'; e.currentTarget.style.boxShadow = '0 4px 16px #34c47220'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#ddeee5'; e.currentTarget.style.boxShadow = 'none'; }}
+              >
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+                    {formatDate(rec.approved_at || rec.created_at)}
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {rec.recordType === 'dental'
+                      ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }}></i>
+                      : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }}></i>}
+                    {rec.recordType === 'dental' ? 'Dental Examination' : 'Medical Examination'}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
+                    {rec.recordType === 'dental'
+                      ? [rec.dCourseYear, rec.dYearLevel, rec.dSection].filter(Boolean).join(' - ')
+                      : fmt(rec.course || '')}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ background: '#e8f5ee', color: '#1a5c3a', fontSize: 9, fontWeight: 800, padding: '3px 10px', borderRadius: 30, textTransform: 'uppercase' }}>
+                    Approved
+                  </span>
+                  <div style={{ width: 32, height: 32, background: '#e8f5ee', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="2" width="15" height="15">
+                      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
   // ── Detail views ──────────────────────────────────────────────────────────
   const rec = selectedRecord;
   if (!rec) return null;

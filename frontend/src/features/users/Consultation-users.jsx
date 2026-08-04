@@ -293,6 +293,14 @@ export default function ConsultationUsers() {
   const [hasRecords,    setHasRecords]     = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(true);
 
+  // ── NEW: Gate access based on an approved ONLINE appointment (medical/dental) ──
+  // Access to the chat — and which consultation types are even offered as
+  // options — is driven entirely by whether the clinic has approved an
+  // "Online ..." appointment for this patient. No approved online medical
+  // appointment => no medical option (and likewise for dental).
+  const [onlineAppt,        setOnlineAppt]        = useState({ medical: false, dental: false });
+  const [loadingOnlineAppt, setLoadingOnlineAppt]  = useState(true);
+
   // 🟢 NEW: Tracks the most recent ENDED consultation id per type (medical/dental)
   // for this patient. Populated whenever we fetch consultation history, so that
   // handleOptionSelect can reactivate an existing thread instead of creating a
@@ -340,6 +348,61 @@ export default function ConsultationUsers() {
     };
     checkRecords();
   }, [profileCache?.internalUserId]);
+
+  // ── Check for an approved ONLINE appointment (medical and/or dental) ──────
+  // Interpreted as: appointments.service_type contains "Online", status is
+  // "approved", and the row isn't archived. Medical vs. dental is derived
+  // from whether service_type contains "Medical" or "Dental" respectively
+  // (matches the values Appointment-users.jsx actually writes: "Online
+  // Medical Consultation" / "Online Dental Consultation").
+  const checkOnlineAppointments = useCallback(async () => {
+    if (!internalUserId) {
+      setLoadingOnlineAppt(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('id, service_type, status')
+        .eq('user_id', internalUserId)
+        .eq('is_archived', false)
+        .eq('status', 'approved')
+        .ilike('service_type', '%online%');
+
+      if (error) throw error;
+
+      const hasMedical = (data || []).some(a => a.service_type?.toLowerCase().includes('medical'));
+      const hasDental  = (data || []).some(a => a.service_type?.toLowerCase().includes('dental'));
+
+      console.log('[Consultation] Online appointment gate:', { hasMedical, hasDental, rows: data });
+      setOnlineAppt({ medical: hasMedical, dental: hasDental });
+    } catch (err) {
+      console.error('[Consultation] Error checking online appointments:', err);
+      setOnlineAppt({ medical: false, dental: false });
+    } finally {
+      setLoadingOnlineAppt(false);
+    }
+  }, [internalUserId]);
+
+  useEffect(() => {
+    checkOnlineAppointments();
+  }, [checkOnlineAppointments]);
+
+  // Keep the gate live — the moment the clinic approves (or un-approves) an
+  // online appointment, this updates without the patient needing to refresh.
+  useEffect(() => {
+    if (!internalUserId) return;
+    const channel = supabase
+      .channel(`appointments-consult-gate-${internalUserId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' },
+        (payload) => {
+          const row = payload.new || payload.old;
+          if (String(row?.user_id) !== String(internalUserId)) return;
+          checkOnlineAppointments();
+        })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [internalUserId, checkOnlineAppointments]);
 
   // Update localStorage with clinic unread count for nav indicator
   useEffect(() => {
@@ -1508,6 +1571,15 @@ export default function ConsultationUsers() {
   }), []);
   const cfg = useMemo(() => (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic, [consultType, isEnded, typeConfig]);
 
+  // ── Options filtered by which online appointment type(s) are approved ────
+  // e.g. an approved "Online Medical Consultation" appointment unlocks only
+  // the medical-flavored options; an approved dental one unlocks only the
+  // dental options; having both unlocks both.
+  const availableOptions = useMemo(
+    () => INITIAL_OPTIONS.filter(opt => onlineAppt[opt.type]),
+    [onlineAppt]
+  );
+
   // ── Shared message renderer ────────────────────────────────────────────
   const renderMessage = (item, i, overrideCfg = null) => {
     if (item.type === 'date') {
@@ -1638,8 +1710,30 @@ export default function ConsultationUsers() {
             </p>
           </div>
         </div>
+      ) : !loadingRecords && !loadingOnlineAppt && !onlineAppt.medical && !onlineAppt.dental ? (
+        /* Has records, but no approved ONLINE appointment yet — prompt them to book one */
+        <div className="flex-1 flex items-center justify-center p-8 h-full">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
+              <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Book an Online Consultation First</h3>
+            <p className="text-[13px] text-[#64748b] mb-4">
+              Digital consultations open up once the clinic approves an online medical or dental appointment for you. Please request one from your Appointments page and wait for approval.
+            </p>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
+              className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
+            >
+              <i className="fa-solid fa-calendar-plus"></i>
+              Go to Appointments
+            </button>
+          </div>
+        </div>
       ) : (
-        /* If the user HAS records, render the Chat UI */
+        /* Has records AND at least one approved online appointment — render the Chat UI */
         <>
           {/* 1. STICKY HEADER */}
           <div
@@ -1834,9 +1928,9 @@ export default function ConsultationUsers() {
                   </div>
                 </div>
 
-                {/* OPTION BUTTONS WITH UI LOCK */}
+                {/* OPTION BUTTONS WITH UI LOCK — filtered to only the type(s) with an approved online appointment */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-9 max-w-[90%]">
-                  {INITIAL_OPTIONS.map((opt, idx) => {
+                  {availableOptions.map((opt, idx) => {
                     const isThisLoading = startingOption === opt.label;
                     const isDisabled = !sessionReady || startingOption !== null;
 

@@ -1,4 +1,4 @@
-//C:\Users\HP\MediTrack\features\notifications\notifications.controller.js
+// C:\Users\HP\MediTrack\features\notifications\notifications.controller.js
 const notificationsService = require("./notifications.service");
 
 const getNotifications = async (req, res, next) => {
@@ -43,9 +43,13 @@ const markAllAsRead = async (req, res, next) => {
 
 const deleteNotification = async (req, res, next) => {
   try {
-    await notificationsService.deleteNotification(req.params.id);
+    const userId = req.user.uid;
+    await notificationsService.deleteNotification(req.params.id, userId);
     res.status(200).json({ success: true, message: "Notification deleted" });
   } catch (error) {
+    if (error.status === 404) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
     next(error);
   }
 };

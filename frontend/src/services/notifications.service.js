@@ -40,6 +40,17 @@ const setCachedUnreadCount = (count) => {
   } catch {}
 };
 
+// ── Auth header helper (mirrors the pattern used in createTestNotification) ────
+const getAuthHeaders = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('No session token. Please log in again.');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+};
+
 // ── Get user ID for notifications ───────────────────────────────────────────
 // NOTE: Notifications use the internal users.id (UUID), not Supabase Auth uid
 // We need to query the internal ID from the Supabase Auth uid
@@ -190,21 +201,32 @@ export const markAllAsRead = async () => {
   return { success: true };
 };
 
+// Now routed through the backend so deletion is ownership-checked
+// server-side and audit-logged (see features/notifications/notifications.route.js).
 export const deleteNotification = async (notificationId) => {
-  const { error } = await supabase
-    .from('notifications')
-    .delete()
-    .eq('id', notificationId);
+  try {
+    const headers = await getAuthHeaders();
 
-  if (error) {
+    const res = await fetch(`${API_URL}/notifications/${notificationId}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error('Error deleting notification:', result);
+      throw new Error(result?.message || 'Failed to delete notification');
+    }
+
+    // Invalidate cache
+    sessionStorage.removeItem(NOTIF_CACHE_KEY);
+    sessionStorage.removeItem(NOTIF_COUNT_KEY);
+    return result;
+  } catch (error) {
     console.error('Error deleting notification:', error);
     throw error;
   }
-
-  // Invalidate cache
-  sessionStorage.removeItem(NOTIF_CACHE_KEY);
-  sessionStorage.removeItem(NOTIF_COUNT_KEY);
-  return { success: true };
 };
 
 // ── Create Notification (for backend/other services to use) ───────────────────
