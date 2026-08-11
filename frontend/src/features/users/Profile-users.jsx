@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
@@ -266,6 +267,271 @@ const getActiveUid = async () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   return user?.id || currentUser?.uid;
 };
+// ============================================================
+// DOCUMENT PREVIEW MODAL (PORTAL - MOBILE SCROLLABLE)
+// ============================================================
+const DocViewerModal = ({ isOpen, onClose, doc }) => {
+  const [signedUrl, setSignedUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  // Prevent background scrolling while modal is active
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !doc) {
+      setSignedUrl('');
+      setLoading(false);
+      setLoadError(false);
+      return;
+    }
+
+    const fetchSignedUrl = async () => {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        if (doc.url && !doc.path) {
+          setSignedUrl(doc.url);
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase.storage
+          .from(DOCUMENTS_BUCKET)
+          .createSignedUrl(doc.path, 300); // 5 minutes
+
+        if (error) throw error;
+        setSignedUrl(data.signedUrl);
+      } catch (err) {
+        console.error('[DocViewerModal] Error getting signed url:', err);
+        setLoadError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSignedUrl();
+  }, [isOpen, doc]);
+
+  if (!isOpen || !doc) return null;
+
+  const isPdf = doc.type === 'application/pdf' || doc.name?.toLowerCase().endsWith('.pdf');
+  const isImage = doc.type?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp'].some(ext => doc.name?.toLowerCase().endsWith(`.${ext}`));
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 99999,
+        backgroundColor: 'rgba(15, 23, 20, 0.75)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '8px',
+        overflowY: 'auto', // Allows outer scrolling on small screens if needed
+        WebkitOverflowScrolling: 'touch',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '860px',
+          height: '88vh',
+          maxHeight: '88vh',
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.35)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          margin: 'auto',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div
+          style={{
+            flexShrink: 0,
+            background: 'linear-gradient(to right, #e0eceb, #ffffff)',
+            borderBottom: '1px solid #d1e7e5',
+            padding: '12px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, paddingRight: '8px' }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                backgroundColor: '#466460',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                flexShrink: 0,
+              }}
+            >
+              <DocIcon />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3
+                style={{
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  margin: 0,
+                }}
+              >
+                {doc.name}
+              </h3>
+              {doc.uploadedAt && (
+                <p style={{ fontSize: '10.5px', color: '#64748b', margin: 0, marginTop: '2px' }}>
+                  Uploaded on {new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {signedUrl && (
+              <a
+                href={signedUrl}
+                download={doc.name}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #c8ddd8',
+                  color: '#466460',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                backgroundColor: '#f4f7f5',
+                border: 'none',
+                color: '#64748b',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+              aria-label="Close modal"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body / Viewer */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            backgroundColor: '#f1f5f9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '8px',
+            overflowY: 'auto', // Ensures content area is fully scrollable on touch devices
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {loading ? (
+            <div style={{ textAlign: 'center', color: '#64748b' }}>
+              <span className="lf-spinner" style={{ borderColor: '#466460', borderTopColor: 'transparent', width: '26px', height: '26px' }} />
+              <p style={{ fontSize: '13px', fontWeight: 600, marginTop: '8px', color: '#475569' }}>Generating document preview...</p>
+            </div>
+          ) : loadError ? (
+            <div style={{ textAlign: 'center', color: '#dc2626', padding: '24px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #fee2e2', maxWidth: '380px' }}>
+              <p style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>Failed to load document preview</p>
+              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', margin: 0 }}>Please verify storage permissions or try downloading directly.</p>
+            </div>
+          ) : isPdf ? (
+            <iframe
+              src={`${signedUrl}#view=FitH&toolbar=0&navpanes=0`}
+              title={doc.name}
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '8px',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
+              }}
+            />
+          ) : isImage ? (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
+              <img
+                src={signedUrl}
+                alt={doc.name}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                  border: '1px solid #e2e8f0',
+                }}
+              />
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', color: '#475569', backgroundColor: '#ffffff', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+              <p style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>Preview is not supported for this file format</p>
+              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', margin: 0 }}>Click the download button above to view the file locally.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
@@ -287,6 +553,11 @@ export default function ProfileUsers({ onLogout }) {
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [docToDelete, setDocToDelete] = useState(null);
   const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+
+  // Document Viewer Modal State (Matching Records.jsx)
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   const documentsInputRef = useRef(null);
 
   const [profile, setProfile] = useState({
@@ -523,18 +794,9 @@ export default function ProfileUsers({ onLogout }) {
     }
   };
 
-  const handleViewDocument = async (doc) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from(DOCUMENTS_BUCKET)
-        .createSignedUrl(doc.path, 300); // 5 minutes validity
-
-      if (error) throw error;
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      console.error('Error opening document:', err);
-      showToast('Failed to open document.');
-    }
+  const handleViewDocument = (doc) => {
+    setPreviewDoc(doc);
+    setPreviewOpen(true);
   };
 
   // ── Profile Editing Handlers ───────────────────────────────────────────────
@@ -1119,7 +1381,7 @@ export default function ProfileUsers({ onLogout }) {
                       {ALL_PROGRAMS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                   </FormGroup>
-                  <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ display: 'gap', gap: 12 }}>
                     <FormGroup label="Year Level">
                       <select style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)}>
                         <option value="">Select</option>
@@ -1432,6 +1694,16 @@ export default function ProfileUsers({ onLogout }) {
           </div>
         </div>
       )}
+
+      {/* ── In-App Document Preview Modal (Matches Records.jsx) ── */}
+      <DocViewerModal
+        isOpen={previewOpen}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewDoc(null);
+        }}
+        doc={previewDoc}
+      />
 
       {/* ── Toast ── */}
       {toast && (

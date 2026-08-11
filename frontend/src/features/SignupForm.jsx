@@ -76,18 +76,12 @@ const SignupForm = () => {
     let formattedValue = value;
 
     if (['firstName', 'middleName', 'lastName'].includes(id)) {
-      // Remove any digits (0-9) from name fields
       formattedValue = value.replace(/[0-9]/g, '');
-      // Force Title Case as they type: first letter of each word
-      // capitalized, everything else lowercased — prevents ALL CAPS
-      // or all-lowercase entries, and handles multi-word names
-      // (e.g. "dela cruz" -> "Dela Cruz", "o'brien" -> "O'Brien").
       formattedValue = formattedValue.replace(
         /\p{L}+/gu,
         (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
       );
     } else if (id === 'universityId') {
-      // Keep only digits and hyphens for the University ID
       formattedValue = value.replace(/[^0-9-]/g, '');
     }
 
@@ -105,12 +99,10 @@ const SignupForm = () => {
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
 
-  // helper function to validate file size
   const validateAndSetFile = (file) => {
     if (file.size > MAX_FILE_SIZE) {
       setError('File is too large (max 5MB). Please take a screenshot of your ID or crop the photo to reduce the file size.');
       setSelectedFile(null);
-      // Reset the input value so the same file can trigger the onChange again if they try
       if (fileInputRef.current) fileInputRef.current.value = '';
     } else {
       setError('');
@@ -152,14 +144,12 @@ const SignupForm = () => {
     setLoading(true);
 
     try {
-      // ── Validate email exists before doing heavy ID uploads ──
       const validationResult = await validateEmailWithEasyEmail(formData.email);
       if (!validationResult.isDeliverable) {
         setError(validationResult.message);
         setLoading(false);
         return;
       }
-      // ──────────────────────────────────────────────────────────
 
       const isIdUsed = await authService.checkIdExists(formData.universityId);
       if (isIdUsed) { setLoading(false); return setError('This University ID is already registered.'); }
@@ -167,8 +157,6 @@ const SignupForm = () => {
       setIsScanning(true);
       const data = new FormData();
 
-      // Normalize names: Title Case each word, in sync with the
-      // live formatting already applied in handleChange
       const normalizeName = (name) => {
         if (!name) return '';
         return name
@@ -228,7 +216,7 @@ const SignupForm = () => {
         .lf-mobile-wrapper  { display: none; }
         @media (max-width: 640px) {
           .lf-desktop-wrapper { display: none !important; }
-          .lf-mobile-wrapper  { display: flex !important; }
+          .lf-mobile-wrapper  { display: block !important; }
         }
 
         /* ── Required indicator ── */
@@ -338,18 +326,20 @@ const SignupForm = () => {
         }
 
         /* ════════════════════════════════════
-            MOBILE — redesigned native shell
+            MOBILE — scrollable native shell
         ════════════════════════════════════ */
         @media (max-width: 640px) {
           .lf-mobile-wrapper {
-            position: relative;
-            min-height: 100vh;
-            min-height: 100dvh;
-            flex-direction: column;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: #F2F4F3;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             width: 100%;
+            box-sizing: border-box;
           }
 
           /* ── Top bar ── */
@@ -359,7 +349,6 @@ const SignupForm = () => {
             animation: m-fadeIn 0.4s ease both;
           }
           .m-logo-wrap { display: flex; align-items: center; gap: 10px; }
-          .m-logo-img { height: 32px; border-radius: 8px; }
           .m-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
           .m-step-badge {
             background: #E4EFED; border-radius: 20px;
@@ -369,26 +358,26 @@ const SignupForm = () => {
 
           /* ── Hero ── */
           .m-hero {
-            padding: 32px 28px 24px; flex-shrink: 0;
+            padding: 24px 28px 16px; flex-shrink: 0;
             animation: m-fadeUp 0.5s ease 0.1s both;
           }
           .m-eyebrow {
             font-size: 12px; font-weight: 600; color: #4A8C82;
-            letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 10px;
+            letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 6px;
           }
           .m-title {
-            font-size: 30px; font-weight: 800; color: #1A2E2B;
-            line-height: 1.15; letter-spacing: -0.6px; margin-bottom: 8px;
+            font-size: 28px; font-weight: 800; color: #1A2E2B;
+            line-height: 1.15; letter-spacing: -0.6px; margin-bottom: 6px;
           }
-          .m-subtitle { font-size: 14px; color: #6B8580; line-height: 1.5; }
+          .m-subtitle { font-size: 13.5px; color: #6B8580; line-height: 1.4; }
 
           /* ── Card ── */
           .m-card {
             background: #fff; border-radius: 28px 28px 0 0;
-            padding: 32px 24px 56px; flex: 1 0 auto;
-            padding-bottom: calc(56px + env(safe-area-inset-bottom));
+            padding: 28px 24px calc(40px + env(safe-area-inset-bottom));
             box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
             animation: m-fadeUp 0.5s ease 0.2s both;
+            margin-top: 10px;
           }
 
           /* ── Section header inside card ── */
@@ -485,12 +474,12 @@ const SignupForm = () => {
 
           /* ── Primary CTA ── */
           .m-btn-primary {
-            width: 100%; padding: 17px; border-radius: 18px; border: none;
+            width: 100%; padding: 16px; border-radius: 18px; border: none;
             background: #2D5C52; color: #fff;
             font-size: 16px; font-weight: 700; font-family: inherit;
             cursor: pointer; letter-spacing: 0.1px;
             transition: transform 0.15s, background 0.2s;
-            margin-top: 8px; margin-bottom: 24px;
+            margin-top: 8px; margin-bottom: 20px;
             -webkit-tap-highlight-color: transparent;
           }
           .m-btn-primary:active:not(:disabled) { transform: scale(0.97); }
