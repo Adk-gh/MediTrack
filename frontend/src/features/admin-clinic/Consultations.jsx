@@ -5,6 +5,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
 
+const DOCUMENTS_BUCKET = 'health-documents';
+
 const formatTime = (ts) => {
   if (!ts) return '';
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -21,13 +23,6 @@ const formatDate = (ts) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-// ── Last-visible-message helper ───────────────────────────────────────────
-// Sidebar previews (and last_timestamp sorting) should never surface a
-// system/bot/triage message (e.g. "Consultation marked as complete by
-// clinic staff."). Conversations that have been ended/reopened multiple
-// times can have several of these rows, and the newest row in the table
-// is very often one of them — so naively taking msgs[msgs.length - 1]
-// picks the system message instead of the last real chat message.
 const HIDDEN_PREVIEW_ROLES = ['system', 'bot', 'triage'];
 const lastVisibleMessage = (msgs) => {
   if (!msgs || msgs.length === 0) return null;
@@ -38,21 +33,15 @@ const lastVisibleMessage = (msgs) => {
   return null;
 };
 
-// ── Linkify: Converts URLs in text to clickable links ────────────────────────
+// ── Linkify Helper ──────────────────────────────────────────────────────────
 const LinkifiedText = ({ text, isPatient = false }) => {
-  // Regex to match URLs (including Google Meet links)
   const urlRegex = /(https?:\/\/[^\s<]+)/g;
-
-  // Link color based on sender
   const linkColor = isPatient ? '#a8d5ba' : '#60a5fa';
-  const linkHoverColor = isPatient ? '#c8e6cf' : '#93c5fd';
 
   if (!text) return null;
-
   const parts = text.split(urlRegex);
 
   if (parts.length === 1) {
-    // No URLs found, just return text with preserved newlines
     const lines = text.split('\n');
     return (
       <span>
@@ -70,7 +59,6 @@ const LinkifiedText = ({ text, isPatient = false }) => {
     <span>
       {parts.map((part, i) => {
         if (i % 2 === 1) {
-          // This is a URL
           return (
             <a
               key={i}
@@ -85,7 +73,6 @@ const LinkifiedText = ({ text, isPatient = false }) => {
             </a>
           );
         }
-        // Regular text - preserve newlines
         const lines = part.split('\n');
         return (
           <React.Fragment key={i}>
@@ -110,20 +97,14 @@ const getRoleClass = (role) => {
   return 'bg-green-100 text-green-700';
 };
 
-// Gender icon helper
 const getGenderIcon = (sex) => {
   if (!sex) return null;
   const s = sex.toLowerCase();
-  if (s === 'male') {
-    return <span className="text-blue-500" title="Male">♂</span>;
-  }
-  if (s === 'female') {
-    return <span className="text-pink-500" title="Female">♀</span>;
-  }
+  if (s === 'male') return <span className="text-blue-500" title="Male">♂</span>;
+  if (s === 'female') return <span className="text-pink-500" title="Female">♀</span>;
   return null;
 };
 
-// Full name helper - builds full name from users table fields
 const getFullName = (profile) => {
   if (!profile) return 'Unknown';
   const parts = [];
@@ -134,7 +115,6 @@ const getFullName = (profile) => {
   return parts.length > 0 ? parts.join(' ') : 'Unknown';
 };
 
-// Format name for list display (Last, First Middle)
 const formatNameForList = (profile) => {
   if (!profile?.first_name && !profile?.last_name) return 'Unknown';
   const parts = [];
@@ -147,12 +127,12 @@ const formatNameForList = (profile) => {
 
 const TABS = [
   {
-    key:     'medical',
-    label:   'Medical',
-    sublabel:'Doctors & Nurses',
-    accent:  '#1a5c3a',
-    light:   '#e8f5ee',
-    border:  '#b2d9c2',
+    key: 'medical',
+    label: 'Medical',
+    sublabel: 'Doctors & Nurses',
+    accent: '#1a5c3a',
+    light: '#e8f5ee',
+    border: '#b2d9c2',
     icon: (color) => (
       <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" className="w-4 h-4">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m-8-8h16" />
@@ -161,30 +141,32 @@ const TABS = [
     ),
   },
   {
-    key:     'dental',
-    label:   'Dental',
-    sublabel:'Dentists',
-    accent:  '#1a4a7a',
-    light:   '#e8f0fa',
-    border:  '#b2c8e8',
+    key: 'dental',
+    label: 'Dental',
+    sublabel: 'Dentists',
+    accent: '#1a4a7a',
+    light: '#e8f0fa',
+    border: '#b2c8e8',
     icon: (color) => (
       <svg viewBox="0 0 64 64" fill="none" stroke={color} strokeWidth="3" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round"
-          d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M20 8c-6 0-12 4-12 13 0 5 2 9 4 13l4 16c1 4 3 6 5 6s3-2 5-6l2-8 2 8c2 4 3 6 5 6s4-2 5-6l4-16c2-4 4-8 4-13C48 12 42 8 36 8c-3 0-5.5 1-8 2.5C25.5 9 23 8 20 8z"
+        />
       </svg>
     ),
   },
 ];
 
-// ============================================================
-// PATIENT RECORDS MODAL — compact clinical profile + full visit history
-// ============================================================
-
-// Safely parse a jsonb field that may arrive as a string, object, or null.
 const pjson = (v, fallback = {}) => {
   if (!v) return fallback;
   if (typeof v === 'string') {
-    try { return JSON.parse(v) || fallback; } catch { return fallback; }
+    try {
+      return JSON.parse(v) || fallback;
+    } catch {
+      return fallback;
+    }
   }
   if (typeof v === 'object') return v;
   return fallback;
@@ -194,13 +176,20 @@ const fmtDateTime = (ts) => {
   if (!ts) return '—';
   const d = new Date(ts);
   if (isNaN(d.getTime())) return String(ts);
-  return d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  return d.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 };
 
 const StatusPill = ({ status }) => {
   const map = {
     approved: 'bg-emerald-100 text-emerald-700',
-    pending:  'bg-amber-100 text-amber-700',
+    pending: 'bg-amber-100 text-amber-700',
     rejected: 'bg-red-100 text-red-700',
   };
   return (
@@ -211,9 +200,9 @@ const StatusPill = ({ status }) => {
 };
 
 const tintMap = {
-  amber:  'bg-amber-50 text-amber-700 border-amber-100',
+  amber: 'bg-amber-50 text-amber-700 border-amber-100',
   purple: 'bg-purple-50 text-purple-700 border-purple-100',
-  cyan:   'bg-cyan-50 text-cyan-700 border-cyan-100',
+  cyan: 'bg-cyan-50 text-cyan-700 border-cyan-100',
 };
 
 const TagRow = ({ label, items, tint }) => {
@@ -223,7 +212,9 @@ const TagRow = ({ label, items, tint }) => {
       <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5">{label}</p>
       <div className="flex flex-wrap gap-1.5">
         {items.map((it, i) => (
-          <span key={i} className={`text-xs px-2 py-1 rounded-full border font-medium ${tintMap[tint]}`}>{it}</span>
+          <span key={i} className={`text-xs px-2 py-1 rounded-full border font-medium ${tintMap[tint]}`}>
+            {it}
+          </span>
         ))}
       </div>
     </div>
@@ -237,13 +228,141 @@ const MiniStat = ({ label, value }) => (
   </div>
 );
 
+// ── Document Viewer Modal (Portal) ──────────────────────────────────────────
+const DocViewerModal = ({ isOpen, onClose, doc }) => {
+  const [signedUrl, setSignedUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !doc) {
+      setSignedUrl('');
+      setLoading(false);
+      setLoadError(false);
+      return;
+    }
+
+    const fetchSignedUrl = async () => {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        if (doc.url && !doc.path) {
+          setSignedUrl(doc.url);
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase.storage
+          .from(DOCUMENTS_BUCKET)
+          .createSignedUrl(doc.path, 300);
+
+        if (error) throw error;
+        setSignedUrl(data.signedUrl);
+      } catch (err) {
+        console.error('[DocViewerModal] Error getting signed url:', err);
+        setLoadError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSignedUrl();
+  }, [isOpen, doc]);
+
+  if (!isOpen || !doc) return null;
+
+  const isPdf = doc.type === 'application/pdf' || doc.name?.toLowerCase().endsWith('.pdf');
+  const isImage = doc.type?.startsWith('image/') || ['jpg', 'jpeg', 'png'].some(ext => doc.name?.toLowerCase().endsWith(`.${ext}`));
+
+  return createPortal(
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+      <div
+        className="relative w-full max-w-4xl h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#466460] flex items-center justify-center text-white shrink-0">
+              <i className={isPdf ? 'fa-solid fa-file-pdf' : 'fa-solid fa-file-image'}></i>
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-bold text-base text-slate-800 truncate">{doc.name}</h3>
+              {doc.uploadedAt && (
+                <p className="text-xs text-slate-500">
+                  Uploaded on {new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {signedUrl && (
+              <a
+                href={signedUrl}
+                download={doc.name}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-white border border-[#c8ddd8] text-[#466460] hover:bg-[#e0eceb] text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <i className="fa-solid fa-download"></i> Download
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors flex items-center justify-center"
+            >
+              <i className="fa-solid fa-xmark text-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 bg-slate-100 flex items-center justify-center p-4 overflow-auto">
+          {loading ? (
+            <div className="text-center text-slate-500">
+              <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 text-[#466460]"></i>
+              <p className="text-sm font-semibold">Generating document preview...</p>
+            </div>
+          ) : loadError ? (
+            <div className="text-center text-red-600 p-6 bg-white rounded-xl shadow-sm border border-red-100">
+              <i className="fa-solid fa-triangle-exclamation text-3xl mb-2"></i>
+              <p className="text-sm font-bold">Failed to load document preview</p>
+              <p className="text-xs text-slate-500 mt-1">Please verify storage permissions or try downloading directly.</p>
+            </div>
+          ) : isPdf ? (
+            <iframe
+              src={`${signedUrl}#toolbar=0`}
+              title={doc.name}
+              className="w-full h-full rounded-lg bg-white border border-slate-200 shadow-inner"
+            />
+          ) : isImage ? (
+            <div className="max-w-full max-h-full flex items-center justify-center overflow-auto">
+              <img
+                src={signedUrl}
+                alt={doc.name}
+                className="max-h-[75vh] w-auto object-contain rounded-lg shadow-md border border-slate-200"
+              />
+            </div>
+          ) : (
+            <div className="text-center text-slate-600 bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+              <i className="fa-solid fa-file text-4xl text-slate-400 mb-3"></i>
+              <p className="text-sm font-bold">Preview is not supported for this file format</p>
+              <p className="text-xs text-slate-500 mt-1">Click the download button above to view the file locally.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 const MedicalRecordRow = ({ r, isOpen, onToggle }) => {
   const vitals = r.vital_records || {};
-  const meds   = r.checked_medical || [];
-  const fam    = r.checked_family || [];
+  const meds = r.checked_medical || [];
+  const fam = r.checked_family || [];
   const health = r.checked_health || [];
   const hasVitals = vitals.bp || vitals.pr || vitals.rr || vitals.temp;
-  const hasBody   = r.height || r.weight || r.bmi || r.waist;
+  const hasBody = r.height || r.weight || r.bmi || r.waist;
 
   return (
     <div className="relative pl-6">
@@ -321,11 +440,11 @@ const MedicalRecordRow = ({ r, isOpen, onToggle }) => {
 };
 
 const DentalRecordRow = ({ r, isOpen, onToggle }) => {
-  const toothData      = pjson(r.tooth_data, {});
-  const dentalHistory  = pjson(r.dental_history, {});
-  const intraoral      = pjson(r.intraoral, {});
+  const toothData = pjson(r.tooth_data, {});
+  const dentalHistory = pjson(r.dental_history, {});
+  const intraoral = pjson(r.intraoral, {});
   const proceduresDone = Object.entries(dentalHistory).filter(([, v]) => v === 'Yes').map(([k]) => k);
-  const teethNoted     = Object.entries(toothData).filter(([, d]) => d?.condition);
+  const teethNoted = Object.entries(toothData).filter(([, d]) => d?.condition);
   const intraoralNoted = Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam');
 
   return (
@@ -400,27 +519,29 @@ const DentalRecordRow = ({ r, isOpen, onToggle }) => {
 };
 
 const PR_TABS = [
-  { key: 'profile', label: 'Profile',       icon: 'fa-id-card' },
+  { key: 'profile', label: 'Profile', icon: 'fa-id-card' },
   { key: 'medical', label: 'Medical Visits', icon: 'fa-stethoscope' },
-  { key: 'dental',  label: 'Dental Visits',  icon: 'fa-tooth' },
+  { key: 'dental', label: 'Dental Visits', icon: 'fa-tooth' },
 ];
 
 const PatientRecordsModal = ({ patientId, patientName, patientRole, consultationType, onClose }) => {
-  const [activeTab, setActiveTab]           = useState('profile');
-  const [profile, setProfile]               = useState(null);
+  const [activeTab, setActiveTab] = useState('profile');
+  const [profile, setProfile] = useState(null);
   const [medicalRecords, setMedicalRecords] = useState([]);
-  const [dentalRecords, setDentalRecords]   = useState([]);
-  const [loading, setLoading]               = useState(true);
-  const [expandedId, setExpandedId]         = useState(null);
+  const [dentalRecords, setDentalRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
 
-  // Determine which tabs to show based on consultation type
+  // Preview state for documents
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   const visibleTabs = consultationType === 'dental'
     ? PR_TABS.filter(t => t.key === 'profile' || t.key === 'dental')
     : consultationType === 'medical'
       ? PR_TABS.filter(t => t.key === 'profile' || t.key === 'medical')
       : PR_TABS;
 
-  // Set default active tab based on consultation type
   useEffect(() => {
     if (consultationType === 'dental') {
       setActiveTab('dental');
@@ -459,214 +580,322 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
     return () => { isMounted = false; };
   }, [patientId]);
 
-  const p         = profile || {};
+  const p = profile || {};
   const emergency = pjson(p.emergency_contact);
-  const vax       = pjson(p.vaccinations);
-  const hasVax    = Object.values(vax || {}).some(v => v?.vaccineName);
+  const vaxData = pjson(p.vaccinations);
+  const userDocuments = Array.isArray(p.documents) ? p.documents : pjson(p.documents, []);
   const isStudent = (patientRole || p.role || '').toLowerCase() === 'student';
-  const initials  = (patientName || '?').charAt(0).toUpperCase();
+  const initials = (patientName || '?').charAt(0).toUpperCase();
+
+  const doseRows = [
+    { key: 'dose1', label: '1st Dose' },
+    { key: 'dose2', label: '2nd Dose' },
+    { key: 'booster1', label: 'Booster (1)' },
+    { key: 'booster2', label: 'Booster (2)' },
+  ];
+  const declined = vaxData.declined || {};
+  const history = vaxData.history || '';
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
+    <>
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[650px] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-5 py-4 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center text-white font-bold text-lg shrink-0">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-base text-slate-800 truncate">{patientName}</p>
-            <div className="flex items-center gap-2 mt-1">
-              {getGenderIcon(p.sex)}
-              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getRoleClass(patientRole || p.role)}`}>
-                {patientRole || p.role || 'patient'}
-              </span>
-              {p.university_id && <span className="text-xs text-slate-400">{p.university_id}</span>}
+        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[650px] flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-5 py-4 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center text-white font-bold text-lg shrink-0">
+              {initials}
             </div>
-          </div>
-          <button
-  onClick={onClose}
-  className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
->
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
-    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-  </svg>
-</button>
-        </div>
-
-        {/* Tabs */}
-        <div className="shrink-0 flex gap-2 px-5 py-3 border-b border-slate-200 bg-slate-50">
-          {visibleTabs.map(({ key, label, icon }) => (
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-base text-slate-800 truncate">{patientName}</p>
+              <div className="flex items-center gap-2 mt-1">
+                {getGenderIcon(p.sex)}
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${getRoleClass(patientRole || p.role)}`}>
+                  {patientRole || p.role || 'patient'}
+                </span>
+                {p.university_id && <span className="text-xs text-slate-400">{p.university_id}</span>}
+              </div>
+            </div>
             <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`px-3.5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
-                activeTab === key ? 'bg-[#466460] text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:shadow-sm'
-              }`}
+              onClick={onClose}
+              className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
             >
-              <i className={`fa-solid ${icon}`}></i>
-              {label}
-              {key === 'medical' && medicalRecords.length > 0 && (
-                <span className={`text-xs rounded-full px-1.5 ${activeTab === key ? 'bg-white/20' : 'bg-slate-200'}`}>{medicalRecords.length}</span>
-              )}
-              {key === 'dental' && dentalRecords.length > 0 && (
-                <span className={`text-xs rounded-full px-1.5 ${activeTab === key ? 'bg-white/20' : 'bg-slate-200'}`}>{dentalRecords.length}</span>
-              )}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
+                <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+              </svg>
             </button>
-          ))}
-        </div>
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5 bg-slate-50/40 min-h-0 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
-          {loading ? (
-            <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
-              <i className="fa-solid fa-circle-notch fa-spin text-xl mr-2"></i> Loading records…
-            </div>
-          ) : activeTab === 'profile' ? (
-            <div className="space-y-5">
-              <div>
-                <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-id-card"></i> Personal Information
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-                  <MiniStat label="Age" value={p.age} />
-                  <MiniStat label="Gender" value={p.sex || p.gender} />
-                  <MiniStat label="Birthdate" value={p.birthday} />
-                  <MiniStat label="Blood Type" value={p.blood_type} />
-                  <MiniStat label="Civil Status" value={p.civil_status} />
-                  <MiniStat label="Nationality" value={p.nationality} />
-                  <MiniStat label="Religion" value={p.religion} />
-                  <MiniStat label="Home Address" value={p.home_address} />
-                </div>
+          {/* Tabs */}
+          <div className="shrink-0 flex gap-2 px-5 py-3 border-b border-slate-200 bg-slate-50">
+            {visibleTabs.map(({ key, label, icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`px-3.5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                  activeTab === key ? 'bg-[#466460] text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:shadow-sm'
+                }`}
+              >
+                <i className={`fa-solid ${icon}`}></i>
+                {label}
+                {key === 'medical' && medicalRecords.length > 0 && (
+                  <span className={`text-xs rounded-full px-1.5 ${activeTab === key ? 'bg-white/20' : 'bg-slate-200'}`}>{medicalRecords.length}</span>
+                )}
+                {key === 'dental' && dentalRecords.length > 0 && (
+                  <span className={`text-xs rounded-full px-1.5 ${activeTab === key ? 'bg-white/20' : 'bg-slate-200'}`}>{dentalRecords.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-5 bg-slate-50/40 min-h-0 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+            {loading ? (
+              <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
+                <i className="fa-solid fa-circle-notch fa-spin text-xl mr-2"></i> Loading records…
               </div>
-
-              <div>
-                <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-graduation-cap"></i> {isStudent ? 'Academic' : 'Work'} Information
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-                  {isStudent ? (
-                    <>
-                      <MiniStat label="Program" value={p.program} />
-                      <MiniStat label="Year Level" value={p.year_level} />
-                      <MiniStat label="Section" value={p.section} />
-                      <MiniStat label="Classification" value={p.student_classification} />
-                    </>
-                  ) : (
-                    <>
-                      <MiniStat label="Department" value={p.department} />
-                      <MiniStat label="Job Title" value={p.job_title} />
-                      <MiniStat label="Classification" value={p.classification} />
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-phone"></i> Contact Information
-                </p>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <MiniStat label="Email" value={p.email} />
-                  <MiniStat label="Phone" value={p.phone_number} />
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-triangle-exclamation"></i> Emergency Contact
-                </p>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
-                    <p className="text-[10px] text-red-400 uppercase font-semibold">Name</p>
-                    <p className="text-sm font-semibold text-slate-700">
-                      {emergency?.name || '—'}{emergency?.relationship ? ` (${emergency.relationship})` : ''}
-                    </p>
-                  </div>
-                  <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
-                    <p className="text-[10px] text-red-400 uppercase font-semibold">Phone</p>
-                    <p className="text-sm font-semibold text-slate-700">{emergency?.phone || '—'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {hasVax && (
+            ) : activeTab === 'profile' ? (
+              <div className="space-y-5">
+                {/* Personal Information */}
                 <div>
-                  <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                    <i className="fa-solid fa-syringe"></i> Vaccinations
+                  <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-id-card"></i> Personal Information
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(vax).map(([key, v]) =>
-                      v?.vaccineName ? (
-                        <span key={key} className="text-xs px-2.5 py-1.5 rounded-full bg-green-100 text-green-700 font-medium capitalize">
-                          {key.replace('dose', 'Dose ').replace('booster', 'Booster ')}: {v.vaccineName}
-                        </span>
-                      ) : null
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                    <MiniStat label="Age" value={p.age} />
+                    <MiniStat label="Gender" value={p.sex || p.gender} />
+                    <MiniStat label="Birthdate" value={p.birthday} />
+                    <MiniStat label="Blood Type" value={p.blood_type} />
+                    <MiniStat label="Civil Status" value={p.civil_status} />
+                    <MiniStat label="Nationality" value={p.nationality} />
+                    <MiniStat label="Religion" value={p.religion} />
+                    <MiniStat label="Home Address" value={p.home_address} />
+                  </div>
+                </div>
+
+                {/* Academic or Work Information */}
+                <div>
+                  <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-graduation-cap"></i> {isStudent ? 'Academic' : 'Work'} Information
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {isStudent ? (
+                      <>
+                        <MiniStat label="Program" value={p.program} />
+                        <MiniStat label="Year Level" value={p.year_level} />
+                        <MiniStat label="Section" value={p.section} />
+                        <MiniStat label="Classification" value={p.student_classification} />
+                      </>
+                    ) : (
+                      <>
+                        <MiniStat label="Department" value={p.department} />
+                        <MiniStat label="Job Title" value={p.job_title} />
+                        <MiniStat label="Classification" value={p.classification} />
+                      </>
                     )}
                   </div>
                 </div>
-              )}
 
-              {!profile && (
-                <p className="text-sm text-slate-400 italic text-center py-6">No profile data found for this patient.</p>
-              )}
-            </div>
-          ) : activeTab === 'medical' ? (
-            medicalRecords.length === 0 ? (
-              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-white">
-                <i className="fa-solid fa-file-medical text-3xl text-slate-300 mb-2 block"></i>
-                <p className="text-base text-slate-400">No medical visit history found.</p>
-              </div>
-            ) : (
-              <div className="relative pl-2">
-                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
-                <div className="space-y-2.5">
-                  {medicalRecords.map(r => (
-                    <MedicalRecordRow
-                      key={r.id}
-                      r={r}
-                      isOpen={expandedId === r.id}
-                      onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
-                    />
-                  ))}
+                {/* Contact Information */}
+                <div>
+                  <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-phone"></i> Contact Information
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <MiniStat label="Email" value={p.email} />
+                    <MiniStat label="Phone" value={p.phone_number} />
+                  </div>
                 </div>
-              </div>
-            )
-          ) : (
-            dentalRecords.length === 0 ? (
-              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-white">
-                <i className="fa-solid fa-tooth text-3xl text-slate-300 mb-2 block"></i>
-                <p className="text-base text-slate-400">No dental visit history found.</p>
-              </div>
-            ) : (
-              <div className="relative pl-2">
-                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
-                <div className="space-y-2.5">
-                  {dentalRecords.map(r => (
-                    <DentalRecordRow
-                      key={r.id}
-                      r={r}
-                      isOpen={expandedId === r.id}
-                      onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
-                    />
-                  ))}
+
+                {/* Emergency Contact */}
+                <div>
+                  <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-triangle-exclamation"></i> Emergency Contact
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <p className="text-[10px] text-red-400 uppercase font-semibold">Name</p>
+                      <p className="text-sm font-semibold text-slate-700">
+                        {emergency?.name || '—'}{emergency?.relationship ? ` (${emergency.relationship})` : ''}
+                      </p>
+                    </div>
+                    <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <p className="text-[10px] text-red-400 uppercase font-semibold">Phone</p>
+                      <p className="text-sm font-semibold text-slate-700">{emergency?.phone || '—'}</p>
+                    </div>
+                  </div>
                 </div>
+
+                {/* ── COVID-19 Vaccination History Table ── */}
+                <div>
+                  <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-syringe"></i> COVID-19 Vaccination History
+                  </p>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-[#f8fafc] border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          <th className="py-2.5 px-4">Dose</th>
+                          <th className="py-2.5 px-4">Vaccine</th>
+                          <th className="py-2.5 px-4">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                        {doseRows.map(({ key, label }) => {
+                          const dose = vaxData[key] || {};
+                          const isDeclined = !!declined[key];
+                          const vaccine = dose.vaccineName || '';
+                          const date = dose.date || '';
+
+                          return (
+                            <tr key={key} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-2.5 px-4 font-semibold text-slate-800">{label}</td>
+                              <td className="py-2.5 px-4">
+                                {isDeclined ? (
+                                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                                    N/A (Skipped)
+                                  </span>
+                                ) : vaccine ? (
+                                  vaccine
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-4 text-slate-600">
+                                {isDeclined ? (
+                                  <span className="text-slate-400">—</span>
+                                ) : date ? (
+                                  date
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+
+                    <div className="px-4 py-2.5 bg-slate-50/60 border-t border-slate-100 text-[11px] text-slate-600 italic">
+                      <strong className="not-italic text-slate-700 font-semibold">COVID-19 History: </strong>
+                      {declined.history ? 'Not applicable / None' : history || 'None recorded'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Health Documents (Faculty & Non-Student Personnel) ── */}
+                {!isStudent && (
+                  <div>
+                    <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                      <i className="fa-solid fa-folder-open"></i> Health Documents
+                    </p>
+                    {userDocuments.length === 0 ? (
+                      <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-100 text-center">
+                        <p className="text-xs italic text-amber-800 m-0">No clinic documents uploaded yet.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {userDocuments.map((doc) => (
+                          <button
+                            key={doc.id || doc.path || doc.name}
+                            type="button"
+                            onClick={() => {
+                              setPreviewDoc(doc);
+                              setPreviewOpen(true);
+                            }}
+                            className="p-3 bg-slate-50 hover:bg-[#e0eceb] border border-slate-200 hover:border-[#8aacaa] rounded-xl text-left transition-all flex items-center justify-between group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-[#466460] text-white flex items-center justify-center flex-shrink-0 text-xs">
+                                <i className={doc.type === 'application/pdf' || doc.name?.endsWith('.pdf') ? 'fa-solid fa-file-pdf' : 'fa-solid fa-file-image'}></i>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-700 truncate group-hover:text-[#466460]">{doc.name}</p>
+                                <p className="text-[10px] text-slate-400">
+                                  {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Attached File'}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-[#466460] opacity-0 group-hover:opacity-100 transition-opacity ml-2 shrink-0 flex items-center gap-1">
+                              <i className="fa-solid fa-eye"></i> View
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!profile && (
+                  <p className="text-sm text-slate-400 italic text-center py-6">No profile data found for this patient.</p>
+                )}
               </div>
-            )
-          )}
+            ) : activeTab === 'medical' ? (
+              medicalRecords.length === 0 ? (
+                <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-white">
+                  <i className="fa-solid fa-file-medical text-3xl text-slate-300 mb-2 block"></i>
+                  <p className="text-base text-slate-400">No medical visit history found.</p>
+                </div>
+              ) : (
+                <div className="relative pl-2">
+                  <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+                  <div className="space-y-2.5">
+                    {medicalRecords.map(r => (
+                      <MedicalRecordRow
+                        key={r.id}
+                        r={r}
+                        isOpen={expandedId === r.id}
+                        onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            ) : (
+              dentalRecords.length === 0 ? (
+                <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-white">
+                  <i className="fa-solid fa-tooth text-3xl text-slate-300 mb-2 block"></i>
+                  <p className="text-base text-slate-400">No dental visit history found.</p>
+                </div>
+              ) : (
+                <div className="relative pl-2">
+                  <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+                  <div className="space-y-2.5">
+                    {dentalRecords.map(r => (
+                      <DentalRecordRow
+                        key={r.id}
+                        r={r}
+                        isOpen={expandedId === r.id}
+                        onToggle={() => setExpandedId(prev => prev === r.id ? null : r.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Embedded Document Preview Modal */}
+      <DocViewerModal
+        isOpen={previewOpen}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewDoc(null);
+        }}
+        doc={previewDoc}
+      />
+    </>
   );
 };
 
 export const Consultations = () => {
-  const navigate    = useNavigate();
-  const location    = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  const userRole    = (currentUser.role || '').toLowerCase();
+  const userRole = (currentUser.role || '').toLowerCase();
 
   const allowedTabs = React.useMemo(() => {
     if (['doctor', 'nurse'].includes(userRole)) return TABS.filter(t => t.key === 'medical');
@@ -674,77 +903,61 @@ export const Consultations = () => {
     return TABS;
   }, [userRole]);
 
-  const [activeTab, setActiveTab]               = useState(allowedTabs[0]?.key || 'medical');
-  const [searchTerm, setSearchTerm]             = useState('');
-  const [filterStatus, setFilterStatus]       = useState('all'); // 'all', 'active', 'ended'
-  const [sortOrder, setSortOrder]             = useState('desc'); // 'desc' = newest first, 'asc' = oldest first
-  const [conversations, setConversations]       = useState([]);
-  const [unreadCounts, setUnreadCounts]         = useState({}); // { convId: count }
-  const [selectedConvId, setSelectedConvId]     = useState(null);
-  const [messages, setMessages]                 = useState([]);
-  const [messageInput, setMessageInput]         = useState('');
-  const [onlinePresence, setOnlinePresence]     = useState({});
-  const [patientProfiles, setPatientProfiles]   = useState({});
-  const [loadingMsgs, setLoadingMsgs]           = useState(false);
-  const [toast, setToast]                       = useState(null);
+  const [activeTab, setActiveTab] = useState(allowedTabs[0]?.key || 'medical');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [conversations, setConversations] = useState([]);
+  const [unreadCounts, setUnreadCounts] = useState({});
+  const [selectedConvId, setSelectedConvId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messageInput, setMessageInput] = useState('');
+  const [onlinePresence, setOnlinePresence] = useState({});
+  const [patientProfiles, setPatientProfiles] = useState({});
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [toast, setToast] = useState(null);
   const [showPatientModal, setShowPatientModal] = useState(false);
-  const [newConsultationAlert, setNewConsultationAlert] = useState(null); // 🟢 NEW: Real-time alert for new consultations
+  const [newConsultationAlert, setNewConsultationAlert] = useState(null);
 
-  // 🔴 FIXED: Core internal tracking states for the staff member
-  const [internalStaffId, setInternalStaffId]   = useState(null);
-  // 🟢 NEW: Staff's real first+last name (from `users` table), used as sender_name
-  // when sending messages — previously we fell back to currentUser.name, which
-  // doesn't exist on the localStorage user object, so every message was saved as
-  // "Clinic Staff" no matter who actually replied.
+  const [internalStaffId, setInternalStaffId] = useState(null);
   const [internalStaffName, setInternalStaffName] = useState(null);
-  const [sessionReady, setSessionReady]         = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
-  const messagesEndRef  = useRef(null);
-  const msgChannelRef   = useRef(null);
-  const convChannelRef  = useRef(null);
+  const messagesEndRef = useRef(null);
+  const convChannelRef = useRef(null);
   const presenceChannelRef = useRef(null);
-  const globalMsgChannelRef = useRef(null); // 🟢 NEW: cross-conversation realtime channel
+  const globalMsgChannelRef = useRef(null);
   const selectedConvIdRef = useRef(null);
-  const isSendingRef    = useRef(false); // Track if sending to skip realtime dupes
+  const isSendingRef = useRef(false);
 
   const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
 
-  // ── Token Management Helper ─────────────────────────────────────────────
-  // Returns true when a raw JWT access token is expired (or unparseable).
   const isTokenExpired = (token) => {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
-      // exp is in seconds; subtract 30s so we refresh slightly early
       return Date.now() / 1000 > payload.exp - 30;
     } catch {
       return true;
     }
   };
 
-  // Ensures we have a valid session, proactively refreshing if needed.
-  // This keeps the user logged in seamlessly without manual intervention.
   const ensureValidSession = useCallback(async () => {
     try {
-      // First check if Supabase already has a valid session
       const { data: { session }, error } = await supabase.auth.getSession();
-
       if (error) {
         console.warn('[Clinic] Session error:', error.message);
         return null;
       }
 
       if (session) {
-        // Session is valid - update localStorage for other components that depend on it
         localStorage.setItem('token', session.access_token);
         if (session.refresh_token) {
           localStorage.setItem('refresh_token', session.refresh_token);
         }
-        // Update Supabase realtime auth
         try { supabase.realtime.setAuth(session.access_token); } catch {}
         return session.access_token;
       }
 
-      // No session - try to refresh using stored tokens
       const accessToken = localStorage.getItem('token');
       const refreshToken = localStorage.getItem('refresh_token') || '';
 
@@ -753,9 +966,7 @@ export const Consultations = () => {
         return null;
       }
 
-      // Check if token is expired
       if (!isTokenExpired(accessToken)) {
-        // Token valid, just set session
         await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -764,7 +975,6 @@ export const Consultations = () => {
         return accessToken;
       }
 
-      // Token expired - refresh it
       console.log('[Clinic] Token expired, refreshing...');
       const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
 
@@ -786,23 +996,21 @@ export const Consultations = () => {
     }
   }, []);
 
-  // ── 1. Secure Authentication & Fetch Internal Staff ID ───────────────
   useEffect(() => {
     const initAdminSession = async () => {
       if (!currentUser?.uid) return;
 
-      const accessToken  = localStorage.getItem('token');
+      const accessToken = localStorage.getItem('token');
       const refreshToken = localStorage.getItem('refresh_token') || '';
 
       if (accessToken) {
         await supabase.auth.setSession({
-          access_token:  accessToken,
+          access_token: accessToken,
           refresh_token: refreshToken,
         });
       }
 
-      // Resolve the internal users.id (and real name) for the logged-in staff member
-      const { data: profiles, error } = await supabase
+      const { data: profiles } = await supabase
         .from('users')
         .select('id, first_name, last_name, role')
         .eq('uid', currentUser.uid)
@@ -811,11 +1019,8 @@ export const Consultations = () => {
       const profile = profiles?.[0];
       if (profile) {
         setInternalStaffId(profile.id);
-        // 🟢 NEW: Build "First Last" from the users table row — this is what
-        // gets saved as sender_name on every outgoing message.
         const staffName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
         setInternalStaffName(staffName || null);
-        // Set presence using the valid internal ID
         consultationsService.setUserPresence(profile.id, 'online');
       }
       setSessionReady(true);
@@ -823,9 +1028,6 @@ export const Consultations = () => {
 
     initAdminSession();
 
-    // ── Proactive token refresh every 10 minutes ─────────────────────────
-    // This ensures the token is refreshed before it expires, preventing
-    // any interruption to the user's session
     const tokenRefreshInterval = setInterval(() => {
       ensureValidSession().catch(() => {});
     }, 10 * 60 * 1000);
@@ -843,7 +1045,6 @@ export const Consultations = () => {
     if (internalStaffId) localStorage.setItem('_internalStaffId', internalStaffId);
   }, [internalStaffId]);
 
-  // ── 2. Auto-select conversation from URL ──────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const convIdToOpen = params.get('convId');
@@ -857,7 +1058,6 @@ export const Consultations = () => {
     }
   }, [location.search, allowedTabs]);
 
-  // ── 3. Load patient profiles from Supabase ────────────────────────────
   useEffect(() => {
     if (!sessionReady) return;
     const loadProfiles = async () => {
@@ -872,35 +1072,21 @@ export const Consultations = () => {
     loadProfiles();
   }, [sessionReady]);
 
-  // ── 4. Subscribe to consultations ─────────────────────────────────────
   useEffect(() => {
     if (!sessionReady) return;
     const loadConsultations = async () => {
       try {
-        // Ensure valid session before making API calls
         await ensureValidSession();
+        const data = await consultationsService.getAllConsultations(null, true);
 
-        console.log('[Clinic] Loading consultations...');
-        const data = await consultationsService.getAllConsultations(null, true); // Force refresh
-        console.log('[Clinic] Raw data from API:', data?.map(c => ({ id: c.id, status: c.status, patient_id: c.patient_id, is_archived: c.is_archived, consultation_type: c.consultation_type })));
-
-        // Load conversations with last message and unread count
         const consultationsWithLastMessage = await Promise.all(
           (data || []).map(async (conv) => {
             try {
-              // 🟢 FIX: Force refresh to get fresh messages
               const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
-              // 🟢 FIX: skip system/bot/triage rows when picking the preview —
-              // otherwise "Consultation marked as complete by clinic staff."
-              // shows up as the sidebar preview any time that's the newest row
-              // (very common on conversations that have been ended/reopened).
               const lastMsg = lastVisibleMessage(msgs);
-              // Count unread messages (from patients, not from staff)
-              // Only count if internalStaffId is available and sender_id exists
               const unreadCount = internalStaffId
                 ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
                 : 0;
-              console.log('[Clinic] Conv', conv.id, '- total msgs:', msgs?.length || 0, 'unread:', unreadCount);
               return {
                 ...conv,
                 last_message: lastMsg?.message || '',
@@ -915,29 +1101,20 @@ export const Consultations = () => {
         consultationsWithLastMessage.sort((a, b) => b.last_timestamp - a.last_timestamp);
         setConversations(consultationsWithLastMessage);
 
-        // Build unread counts map
         const unreadMap = {};
         consultationsWithLastMessage.forEach(c => {
           if (c.unread_count > 0) unreadMap[c.id] = c.unread_count;
         });
         setUnreadCounts(unreadMap);
-
-        // REMOVED: Auto-select first active conversation - user selects manually
       } catch (err) {
         console.error('Failed to load consultations:', err);
       }
     };
     loadConsultations();
 
-    // 🔴 ENHANCED: More robust realtime handling for consultation status changes
     convChannelRef.current = consultationsService.subscribeToConsultations((payload) => {
-      console.log('[Clinic] Realtime consultation event:', payload.eventType, payload.new);
-
       if (payload.eventType === 'INSERT') {
-        // New consultation created - add to list and refresh messages/last message
         const newConv = { ...payload.new, last_message: '', last_timestamp: 0, unread_count: 0 };
-
-        // 🟢 NEW: Show alert notification for new consultation
         const patientName = payload.new.patient_name || 'A patient';
         const consultType = payload.new.consultation_type === 'dental' ? 'Dental' : 'Medical';
         setNewConsultationAlert({
@@ -945,12 +1122,9 @@ export const Consultations = () => {
           message: `${patientName} started a new ${consultType} consultation`,
           type: payload.new.consultation_type
         });
-        // Auto-dismiss alert after 5 seconds
         setTimeout(() => setNewConsultationAlert(null), 5000);
 
-        // Immediately fetch the last message and update
         consultationsService.getMessagesByConsultationId(payload.new.id, true).then(msgs => {
-          // 🟢 FIX: use lastVisibleMessage so a system row can't become the preview
           const lastMsg = lastVisibleMessage(msgs);
           if (lastMsg) {
             setConversations(prev => {
@@ -964,13 +1138,11 @@ export const Consultations = () => {
             });
           } else {
             setConversations(prev => {
-              // Avoid duplicates
               if (prev.some(c => c.id === newConv.id)) return prev;
               return [newConv, ...prev];
             });
           }
         }).catch(() => {
-          // Fallback: just add the conversation
           setConversations(prev => {
             if (prev.some(c => c.id === newConv.id)) return prev;
             return [newConv, ...prev];
@@ -979,15 +1151,11 @@ export const Consultations = () => {
       } else if (payload.eventType === 'UPDATE') {
         const updatedConv = payload.new;
 
-        // Check if status changed to active - need to refresh data and show alert
         setConversations(prev => {
           const idx = prev.findIndex(c => c.id === updatedConv.id);
-
-          // Get existing conversation for comparison
           const existing = idx !== -1 ? prev[idx] : null;
           const statusChanged = existing && existing.status !== updatedConv.status;
 
-          // 🟢 NEW: Alert when consultation is reactivated (ended -> active)
           if (statusChanged && updatedConv.status === 'active') {
             const patientName = existing?.patient_name || updatedConv.patient_name || 'A patient';
             const consultType = updatedConv.consultation_type === 'dental' ? 'Dental' : 'Medical';
@@ -1000,18 +1168,14 @@ export const Consultations = () => {
           }
 
           if (idx === -1) {
-            // Conversation not in list - add it if it's active
             if (updatedConv.status === 'active') {
               return [{ ...updatedConv, last_message: '', last_timestamp: 0, unread_count: 0 }, ...prev];
             }
             return prev;
           }
 
-          // If status changed to active, refresh the conversation data
           if (statusChanged && updatedConv.status === 'active') {
-            // Fetch fresh data for this conversation
             consultationsService.getMessagesByConsultationId(updatedConv.id, true).then(msgs => {
-              // 🟢 FIX: use lastVisibleMessage so a system row can't become the preview
               const lastMsg = lastVisibleMessage(msgs);
               if (lastMsg) {
                 setConversations(prev => prev.map(c =>
@@ -1030,7 +1194,6 @@ export const Consultations = () => {
           return prev.map(c => c.id === updatedConv.id ? { ...c, ...updatedConv } : c);
         });
 
-        // If this is the selected conversation, refresh messages too
         if (selectedConvId === updatedConv.id && updatedConv.status === 'active') {
           consultationsService.getMessagesByConsultationId(updatedConv.id, true).then(msgs => {
             if (msgs) {
@@ -1048,24 +1211,17 @@ export const Consultations = () => {
       }
     });
 
-    // Poll for unread count updates more frequently (every 3 seconds) to detect when patient reads messages
-    // 🟢 FIX: Clear message cache before polling to ensure fresh data
     const pollInterval = setInterval(async () => {
       try {
-        // Clear message cache for all conversations to ensure we get fresh data
         consultationsService.clearMessagesCache();
-
         const data = await consultationsService.getAllConsultations(null, true);
         if (!data) return;
 
-        // Update only the unread counts in conversations (don't re-fetch all messages)
         const unreadMap = {};
         const updatedConversations = await Promise.all(
           (data || []).map(async (conv) => {
             try {
-              // 🟢 FIX: Force refresh to get fresh messages
               const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
-              // 🟢 FIX: use lastVisibleMessage so a system row can't become the preview
               const lastMsg = lastVisibleMessage(msgs);
               const unreadCount = internalStaffId
                 ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
@@ -1085,21 +1241,15 @@ export const Consultations = () => {
         updatedConversations.sort((a, b) => b.last_timestamp - a.last_timestamp);
         setConversations(updatedConversations);
         setUnreadCounts(unreadMap);
-      } catch (err) {
-        // Silent fail for polling
-      }
+      } catch (err) {}
     }, 3000);
 
     return () => {
       if (convChannelRef.current) convChannelRef.current();
       clearInterval(pollInterval);
     };
-  }, [sessionReady]);
+  }, [sessionReady, selectedConvId, internalStaffId]);
 
-  // ── 4.5 Global real-time message listener (all conversations) ─────────
-  // Catches new/updated messages regardless of which conversation is
-  // currently open, so the sidebar and open thread update instantly
-  // without needing a manual reload or waiting for the 3s poll above.
   useEffect(() => {
     if (!sessionReady || !internalStaffId) return;
 
@@ -1113,14 +1263,11 @@ export const Consultations = () => {
         const convId = newMsg.consultation_id;
         const isFromPatient = !isClinicSender(newMsg.sender_role);
 
-        // Update sidebar: last message, timestamp, unread count, ordering
         setConversations(prev => {
           const idx = prev.findIndex(c => c.id === convId);
-          if (idx === -1) return prev; // brand-new conv row hasn't landed yet — the consultations channel/poll will add it
+          if (idx === -1) return prev;
           const updated = [...prev];
           const conv = { ...updated[idx] };
-          // 🟢 FIX: don't let a system/bot/triage message overwrite the preview —
-          // only clinic/patient messages should update last_message/last_timestamp.
           const incomingRole = (newMsg.sender_role || '').toLowerCase();
           if (!HIDDEN_PREVIEW_ROLES.includes(incomingRole)) {
             conv.last_message = newMsg.message;
@@ -1138,7 +1285,6 @@ export const Consultations = () => {
           setUnreadCounts(prev => ({ ...prev, [convId]: (prev[convId] || 0) + 1 }));
         }
 
-        // If it's for the currently open conversation, append instantly
         if (convId === selectedConvIdRef.current && !isSendingRef.current) {
           setMessages(prev => {
             if (prev.some(m => m.id === newMsg.id)) return prev;
@@ -1150,13 +1296,10 @@ export const Consultations = () => {
               read_at: newMsg.read_at,
             }];
           });
-          // 🟢 FIX: Clear message cache so next fetch gets fresh data
           consultationsService.clearMessagesCache(convId);
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' }, (payload) => {
-        // Keeps the ✓✓ seen indicator accurate even if the (removed)
-        // per-room channel hasn't resubscribed yet after switching threads.
         if (!payload.new?.read_at) return;
         if (payload.new.consultation_id !== selectedConvIdRef.current) return;
         setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, read_at: payload.new.read_at } : m));
@@ -1167,7 +1310,6 @@ export const Consultations = () => {
     return () => supabase.removeChannel(channel);
   }, [sessionReady, internalStaffId]);
 
-  // ── 5. Subscribe to presence ──────────────────────────────────────────
   useEffect(() => {
     if (!sessionReady) return;
     const loadPresence = async () => {
@@ -1191,7 +1333,6 @@ export const Consultations = () => {
     };
   }, [sessionReady]);
 
-  // ── 6. Load messages (live updates now handled by the global channel above) ──
   useEffect(() => {
     if (!sessionReady) return;
     const loadMessages = async () => {
@@ -1199,19 +1340,14 @@ export const Consultations = () => {
 
       setLoadingMsgs(true);
       try {
-        // Ensure valid session before loading messages
         await ensureValidSession();
-
-        // 🟢 FIX: Always get fresh data for the selected conversation
-        // This ensures new messages are displayed immediately
         const data = await consultationsService.getMessagesByConsultationId(selectedConvId, true);
-        // 🔴 FIXED: Classify styling based on the staff's internal ID, not the raw UID
         const formatted = (data || []).map(msg => ({
           ...msg,
           text: msg.message,
           timestamp: new Date(msg.created_at).getTime(),
           sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
-          read_at: msg.read_at, // Include read_at for seen indicator
+          read_at: msg.read_at,
         }));
         setMessages(formatted);
       } catch (err) {
@@ -1221,16 +1357,12 @@ export const Consultations = () => {
       }
     };
     loadMessages();
-    // 🟢 NOTE: per-room msgChannelRef/readChannel subscriptions were removed here —
-    // the global channel (effect 4.5) now handles new-message and read-receipt
-    // updates for every conversation, including whichever one is open.
-  }, [selectedConvId, sessionReady]);
+  }, [selectedConvId, sessionReady, ensureValidSession]);
 
   useEffect(() => { setShowPatientModal(false); }, [selectedConvId]);
   useEffect(() => { selectedConvIdRef.current = selectedConvId; }, [selectedConvId]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // ── Mark messages as read when viewing consultation ───────────────────
   useEffect(() => {
     const isEnded = conversations.find(c => c.id === selectedConvId)?.status === 'ended';
     if (selectedConvId && !isEnded && internalStaffId) {
@@ -1238,32 +1370,23 @@ export const Consultations = () => {
     }
   }, [selectedConvId, messages, conversations, internalStaffId]);
 
-  // ── Send Message ──────────────────────────────────────────────────────
   const sendMessage = async () => {
-    // 🔴 FIXED: Ensure the staff ID is fully loaded before allowing sends
     if (!selectedConvId || !messageInput.trim() || !internalStaffId) return;
 
-    // Ensure valid session before sending
     await ensureValidSession();
 
     const text = messageInput.trim();
     setMessageInput('');
-    isSendingRef.current = true; // Prevent realtime dupe
+    isSendingRef.current = true;
     try {
       await consultationsService.sendMessage(selectedConvId, {
         text,
-        sender_id: internalStaffId, // 🔴 FIXED: Injects the secure Postgres Internal Table ID
-        // 🟢 FIXED: Use the staff member's real first+last name (fetched from the
-        // `users` table in initAdminSession) instead of currentUser.name, which
-        // doesn't exist on the localStorage user object and always fell back to
-        // the generic "Clinic Staff" placeholder.
+        sender_id: internalStaffId,
         sender_name: internalStaffName || currentUser.name || 'Clinic Staff',
         sender_role: currentUser.role || 'staff',
       });
 
-      // Immediately fetch updated messages (force refresh to skip cache)
       const data = await consultationsService.getMessagesByConsultationId(selectedConvId, true);
-      // Deduplicate by message ID
       const uniqueData = (data || []).reduce((acc, msg) => {
         if (!acc.some(m => m.id === msg.id)) {
           acc.push(msg);
@@ -1281,19 +1404,15 @@ export const Consultations = () => {
       console.error('Send error:', err);
       showToast('Failed to send message', 'error');
     } finally {
-      isSendingRef.current = false; // Re-enable realtime
+      isSendingRef.current = false;
     }
   };
 
-  // ── Mark messages as read ──────────────────────────────────────────────
   const markMessagesAsRead = async () => {
     const isEnded = conversations.find(c => c.id === selectedConvId)?.status === 'ended';
     if (!selectedConvId || !internalStaffId || isEnded) return;
 
-    // Ensure valid session before making API call
     await ensureValidSession();
-
-    console.log('[Clinic] Marking messages as read for consultation:', selectedConvId, 'staffId:', internalStaffId);
 
     const token = localStorage.getItem('token');
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -1311,16 +1430,13 @@ export const Consultations = () => {
         }),
       });
       const result = await response.json();
-      console.log('[Clinic] Marked messages as read result:', result);
 
-      // Update unread counts - remove this conversation from the map
       if (result && result.length > 0) {
         setUnreadCounts(prev => {
           const newMap = { ...prev };
           delete newMap[selectedConvId];
           return newMap;
         });
-        // Also update the conversation's unread_count
         setConversations(prev => prev.map(c =>
           c.id === selectedConvId ? { ...c, unread_count: 0 } : c
         ));
@@ -1330,11 +1446,8 @@ export const Consultations = () => {
     }
   };
 
-  // ── End Consultation ──────────────────────────────────────────────────
   const handleEndConsultation = async () => {
     if (!selectedConvId) return;
-
-    // Ensure valid session before making API call
     await ensureValidSession();
 
     try {
@@ -1371,34 +1484,25 @@ export const Consultations = () => {
     return groups;
   };
 
-  // ── Derived data ─────────────────────────────────────────────────────
-  const selectedConv   = conversations.find(c => c.id === selectedConvId);
-  const isConvEnded    = selectedConv?.status === 'ended';
-  const patientId     = selectedConv?.patient_id;
+  const selectedConv = conversations.find(c => c.id === selectedConvId);
+  const isConvEnded = selectedConv?.status === 'ended';
+  const patientId = selectedConv?.patient_id;
   const patientProfile = patientProfiles[patientId] || {};
-  const patientName    = getFullName(patientProfile);
+  const patientName = getFullName(patientProfile);
   const isPatientOnline = onlinePresence[patientId]?.status === 'online';
 
   const onlineClinicStaff = Object.entries(onlinePresence)
-    .filter(([uid, p]) => p.status === 'online' && uid !== internalStaffId && // 🔴 FIXED
+    .filter(([uid, p]) => p.status === 'online' && uid !== internalStaffId &&
       ['doctor','nurse','dentist','sysadmin','administrator'].includes(p.role?.toLowerCase()))
     .map(([, p]) => p.name || 'Staff');
 
   const visibleConversations = conversations.filter(conv => {
-    // Filter by tab - only filter if activeTab is set
     if (activeTab && conv.consultation_type !== activeTab) return false;
-
-    // Filter by archived status - only show non-archived (is_archived is null or false)
     if (conv.is_archived === true) return false;
-
-    // Filter by status
     if (filterStatus === 'active' && conv.status === 'ended') return false;
     if (filterStatus === 'ended' && conv.status !== 'ended') return false;
 
-    // Get profile for search
     const profile = patientProfiles[conv.patient_id] || {};
-
-    // Filter by search term
     if (searchTerm) {
       const displayName = profile.first_name
         ? `${profile.last_name || ''}, ${profile.first_name || ''}`.trim()
@@ -1410,50 +1514,25 @@ export const Consultations = () => {
       if (!matchesName && !matchesId && !matchesProgram) return false;
     }
 
-    return true; // Show all consultations in the list
+    return true;
   }).sort((a, b) => {
-    // Sort by last_timestamp: newest first (desc) or oldest first (asc)
     const timeA = a.last_timestamp || 0;
     const timeB = b.last_timestamp || 0;
     return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
   });
 
-  // Debug: show why each conversation passes/fails filter
-  const debugFilter = conversations.map(conv => {
-    const tabMatch = activeTab ? conv.consultation_type === activeTab : true;
-    const archivedMatch = conv.is_archived !== true;
-    const statusMatch = filterStatus === 'all' ||
-      (filterStatus === 'active' && conv.status === 'active') ||
-      (filterStatus === 'ended' && conv.status === 'ended');
-    return {
-      id: conv.id,
-      type: conv.consultation_type,
-      status: conv.status,
-      archived: conv.is_archived,
-      tabMatch,
-      archivedMatch,
-      statusMatch,
-      passes: tabMatch && archivedMatch && statusMatch
-    };
-  });
-  console.log('[Clinic] filter debug:', debugFilter);
-  console.log('[Clinic] visibleConversations:', visibleConversations.map(c => ({ id: c.id, status: c.status, type: c.consultation_type, archived: c.is_archived })));
-  console.log('[Clinic] filterStatus:', filterStatus, 'activeTab:', activeTab);
-
   const unreadByTab = {};
   allowedTabs.forEach(tab => {
     unreadByTab[tab.key] = 0;
   });
-  // Accumulate unread counts from conversations (using visibleConversations after it's defined)
   conversations.forEach(conv => {
     if (conv.consultation_type && conv.unread_count > 0 && conv.status !== 'ended') {
-    unreadByTab[conv.consultation_type] = (unreadByTab[conv.consultation_type] || 0) + conv.unread_count;
+      unreadByTab[conv.consultation_type] = (unreadByTab[conv.consultation_type] || 0) + conv.unread_count;
     }
   });
 
   return (
     <div className="flex h-full bg-white overflow-hidden relative">
-      {/* ── MAGIC FIX: Hide hamburger when a chat is open on mobile ── */}
       {selectedConvId && (
         <style>{`
           @media (max-width: 768px) {
@@ -1555,7 +1634,6 @@ export const Consultations = () => {
                   <path d="M9 15V3M9 3L4 8M9 3L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
-
             </button>
           </div>
           <div className="flex gap-2 items-center">
@@ -1585,7 +1663,7 @@ export const Consultations = () => {
           ) : visibleConversations.map(conv => {
             const profile = patientProfiles[conv.patient_id] || {};
             const displayName = formatNameForList(profile);
-            const initial  = displayName.charAt(0).toUpperCase();
+            const initial = displayName.charAt(0).toUpperCase();
             const isOnline = onlinePresence[conv.patient_id]?.status === 'online';
             const isActive = selectedConvId === conv.id;
             const tab = TABS.find(t => t.key === conv.consultation_type) || TABS[0];
@@ -1661,14 +1739,14 @@ export const Consultations = () => {
           {/* Chat Header */}
           <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3 flex-shrink-0">
             <button
-  onClick={() => { setSelectedConvId(null); setShowPatientModal(false); }}
-  className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
-  title="Back to conversations"
->
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-  </svg>
-</button>
+              onClick={() => { setSelectedConvId(null); setShowPatientModal(false); }}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
+              title="Back to conversations"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
+            </button>
 
             {selectedConv ? (
               <>
@@ -1801,7 +1879,6 @@ export const Consultations = () => {
                       </div>
                       <div className={`text-xs text-slate-400 mt-1 mx-1 flex items-center gap-1 ${isClinic ? 'justify-end' : ''}`}>
                         <span>{formatTime(item.timestamp)}</span>
-                        {/* Seen indicator - only show for clinic messages */}
                         {isClinic && (
                           <span className={item.read_at ? 'text-blue-500' : ''} title={item.read_at ? `Seen at ${new Date(item.read_at).toLocaleString()}` : 'Sent'}>
                             {item.read_at ? '✓✓' : '✓'}
@@ -1841,14 +1918,14 @@ export const Consultations = () => {
               className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-base outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
             <button
-  onClick={sendMessage}
-  disabled={!selectedConvId || !messageInput.trim() || isConvEnded || !sessionReady}
-  className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
->
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-    <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
-  </svg>
-</button>
+              onClick={sendMessage}
+              disabled={!selectedConvId || !messageInput.trim() || isConvEnded || !sessionReady}
+              className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -1875,7 +1952,7 @@ export const Consultations = () => {
         </div>
       )}
 
-      {/* 🟢 NEW: Real-time consultation alert - shows when patient starts/reactivates consultation */}
+      {/* Real-time consultation alert */}
       {newConsultationAlert && (
         <div
           className="fixed top-4 right-4 z-[70] animate-slide-in cursor-pointer"

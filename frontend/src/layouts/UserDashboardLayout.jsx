@@ -554,7 +554,7 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
       }}
     >
       <header className="bg-transparent px-5 py-3 flex items-center justify-between relative z-[1000] flex-shrink-0">
-        <img src="/logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
+        <img src="../logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
         <div className="flex items-center gap-1">
           <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
           <ProfileDropdown

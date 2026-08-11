@@ -1,12 +1,19 @@
-// C:\Users\HP\MediTrack\features\consultations\consultations.service.js
+// backend/features/consultations/consultations.service.js
 const supabase = require('../../configs/database');
 const archiveHelper = require('../archives/archiveHelper');
+const notificationsService = require('../notifications/notifications.service');
 
 const ARCHIVE_TYPE = 'consultation';
 
-exports.getAllConsultations = async (consultationType = null, role = null) => {
-  console.log('[getAllConsultations] consultationType:', consultationType, 'role:', role);
+const getTargetRolesForConsultation = (consultationType) => {
+  const type = (consultationType || '').toLowerCase();
+  if (type === 'dental' || type.includes('dent') || type.includes('oral') || type.includes('tooth')) {
+    return ['dentist', 'sysadmin'];
+  }
+  return ['doctor', 'nurse', 'sysadmin'];
+};
 
+exports.getAllConsultations = async (consultationType = null, role = null) => {
   let query = supabase
     .from('consultations')
     .select('*')
@@ -17,13 +24,11 @@ exports.getAllConsultations = async (consultationType = null, role = null) => {
     query = query.eq('consultation_type', consultationType);
   }
 
-  console.log('[getAllConsultations] Query built, fetching...');
   const { data, error } = await query;
   if (error) {
     console.error('[getAllConsultations] Error:', error);
     throw new Error(error.message);
   }
-  console.log('[getAllConsultations] Results:', data?.length, data?.map(c => ({ id: c.id, type: c.consultation_type, status: c.status, is_archived: c.is_archived })));
   return data;
 };
 
@@ -70,9 +75,7 @@ exports.createConsultation = async (consultationData) => {
     return activeRows[0];
   }
 
-  // ── STEP 2: Always create a new session (skip reactivation) ───────────
-  // Creating a new consultation ensures it's properly set to 'active' from the start
-
+  // ── STEP 2: Create new session ───────────────────────────────────────
   const insertPayload = {
     patient_id: patient_id,
     consultation_type: consultation_type,
@@ -91,6 +94,23 @@ exports.createConsultation = async (consultationData) => {
   if (error) {
     console.error('[createConsultation] Insert error:', error);
     throw new Error(error.message);
+  }
+
+  // ── NOTIFY RELEVANT STAFF (DOCTOR / NURSE / DENTIST / SYSADMIN) ───────
+  try {
+    const targetRoles = getTargetRolesForConsultation(consultation_type);
+    const patientName = consultationData.patient_name || 'A patient';
+    const typeLabel = consultation_type === 'dental' ? 'Dental' : 'Medical';
+
+    await notificationsService.notifyRoles(targetRoles, {
+      type: 'consultation',
+      title: `New ${typeLabel} Consultation`,
+      message: `${patientName} started an online ${typeLabel.toLowerCase()} consultation.`,
+      referenceId: data.id,
+      referenceType: 'consultation',
+    });
+  } catch (notifyErr) {
+    console.error('[createConsultation] Staff notification error:', notifyErr.message);
   }
 
   return data;
@@ -112,27 +132,63 @@ exports.updateConsultation = async (id, data) => {
 };
 
 exports.endConsultation = async (id) => {
-  return exports.updateConsultation(id, {
-    status:   'ended',
+  const result = await exports.updateConsultation(id, {
+    status: 'ended',
     ended_at: new Date().toISOString(),
   });
+
+  // ── NOTIFY PATIENT THAT CONSULTATION HAS ENDED ─────────────────────────
+  try {
+    if (result?.patient_id) {
+      await notificationsService.createNotification({
+        type: 'consultation_ended',
+        title: 'Consultation Ended',
+        message: 'Your online consultation session has concluded.',
+        userId: result.patient_id,
+        referenceId: id,
+        referenceType: 'consultation',
+      });
+    }
+  } catch (err) {
+    console.error('[endConsultation] Patient notification error:', err.message);
+  }
+
+  return result;
 };
 
 exports.reactivateConsultation = async (id) => {
-  return exports.updateConsultation(id, {
-    status:   'active',
+  const result = await exports.updateConsultation(id, {
+    status: 'active',
     ended_at: null,
   });
+
+  // ── NOTIFY RELEVANT STAFF UPON REACTIVATION ───────────────────────────
+  try {
+    const targetRoles = getTargetRolesForConsultation(result?.consultation_type);
+    const patientName = result?.patient_name || 'A patient';
+    const typeLabel = result?.consultation_type === 'dental' ? 'Dental' : 'Medical';
+
+    await notificationsService.notifyRoles(targetRoles, {
+      type: 'consultation',
+      title: `${typeLabel} Consultation Reopened`,
+      message: `${patientName} returned to the online ${typeLabel.toLowerCase()} consultation.`,
+      referenceId: result.id,
+      referenceType: 'consultation',
+    });
+  } catch (err) {
+    console.error('[reactivateConsultation] Notification error:', err.message);
+  }
+
+  return result;
 };
 
 exports.deleteConsultation = async (id, deletedBy) => {
-  // Move to archives before deletion
   await archiveHelper.archiveAndDelete({
     type: ARCHIVE_TYPE,
     originalId: id,
     tableName: 'consultations',
     idColumn: 'id',
-    deletedBy
+    deletedBy,
   }, supabase);
 
   return { success: true };
@@ -153,11 +209,11 @@ exports.getMessagesByConsultationId = async (consultationId) => {
 exports.sendMessage = async (consultationId, messageData) => {
   const newMessage = {
     consultation_id: consultationId,
-    message:         messageData.text || messageData.message,
-    sender_id:       messageData.sender_id   || null,
-    sender_name:     messageData.sender_name || null,
-    sender_role:     messageData.sender_role || null,
-    created_at:      new Date().toISOString(),
+    message: messageData.text || messageData.message,
+    sender_id: messageData.sender_id || null,
+    sender_name: messageData.sender_name || null,
+    sender_role: messageData.sender_role || null,
+    created_at: new Date().toISOString(),
   };
 
   const { data, error } = await supabase
@@ -167,14 +223,50 @@ exports.sendMessage = async (consultationId, messageData) => {
     .single();
 
   if (error) throw new Error(error.message);
+
+  // ── NOTIFY RECIPIENT ON NEW MESSAGE ──────────────────────────────────
+  try {
+    const { data: consultation } = await supabase
+      .from('consultations')
+      .select('patient_id, patient_name, consultation_type')
+      .eq('id', consultationId)
+      .single();
+
+    if (consultation) {
+      const senderRole = (messageData.sender_role || '').toLowerCase();
+      const isStaff = ['doctor', 'nurse', 'dentist', 'sysadmin'].includes(senderRole);
+
+      if (isStaff && consultation.patient_id) {
+        // Staff sent message -> Notify patient
+        await notificationsService.createNotification({
+          type: 'consultation_response',
+          title: `New Message from ${messageData.sender_name || 'Clinic Staff'}`,
+          message: messageData.text || messageData.message || 'You received a new consultation response.',
+          userId: consultation.patient_id,
+          referenceId: consultationId,
+          referenceType: 'consultation',
+        });
+      } else if (!isStaff && messageData.sender_id) {
+        // Patient sent message -> Notify clinical staff
+        const targetRoles = getTargetRolesForConsultation(consultation.consultation_type);
+        await notificationsService.notifyRoles(targetRoles, {
+          type: 'consultation',
+          title: `New Message from ${consultation.patient_name || 'Patient'}`,
+          message: messageData.text || messageData.message || 'Sent a new message in consultation.',
+          referenceId: consultationId,
+          referenceType: 'consultation',
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[sendMessage] Notification dispatch error:', err.message);
+  }
+
   return data;
 };
 
 // Mark messages as read
 exports.markMessagesAsRead = async (consultationId, readerId, readerRole) => {
-  console.log('[markMessagesAsRead] Called with:', { consultationId, readerId, readerRole });
-
-  // First, get all unread messages for this consultation
   const { data: unreadMessages, error: fetchError } = await supabase
     .from('consultation_messages')
     .select('id, sender_id, read_at')
@@ -182,30 +274,20 @@ exports.markMessagesAsRead = async (consultationId, readerId, readerRole) => {
     .is('read_at', null)
     .not('sender_id', 'is', null);
 
-  console.log('[markMessagesAsRead] Unread messages:', unreadMessages);
-
   if (fetchError) {
     console.error('[markMessagesAsRead] Fetch error:', fetchError);
     throw new Error(fetchError.message);
   }
 
   if (!unreadMessages || unreadMessages.length === 0) {
-    console.log('[markMessagesAsRead] No unread messages to mark');
     return [];
   }
 
-  // Mark only messages where sender_id is NOT equal to readerId
-  const messagesToMark = unreadMessages.filter(msg => msg.sender_id !== readerId);
-  console.log('[markMessagesAsRead] Messages to mark as read:', messagesToMark);
+  const messagesToMark = unreadMessages.filter((msg) => msg.sender_id !== readerId);
+  if (messagesToMark.length === 0) return [];
 
-  if (messagesToMark.length === 0) {
-    console.log('[markMessagesAsRead] No messages from other sender');
-    return [];
-  }
+  const messageIds = messagesToMark.map((msg) => msg.id);
 
-  const messageIds = messagesToMark.map(msg => msg.id);
-
-  // Update only those messages
   const { data, error } = await supabase
     .from('consultation_messages')
     .update({ read_at: new Date().toISOString() })
@@ -217,7 +299,6 @@ exports.markMessagesAsRead = async (consultationId, readerId, readerRole) => {
     throw new Error(error.message);
   }
 
-  console.log(`[markMessagesAsRead] Marked ${data?.length || 0} messages as read`);
   return data;
 };
 
@@ -236,7 +317,7 @@ exports.setUserPresence = async (authUid, status = 'online') => {
   const { data, error } = await supabase
     .from('presence')
     .upsert({
-      user_id:   publicUser.id,
+      user_id: publicUser.id,
       status,
       last_seen: new Date().toISOString(),
     }, { onConflict: 'user_id' })

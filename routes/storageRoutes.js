@@ -15,13 +15,14 @@ const router = express.Router();
 // GET: List every bucket in the project
 router.get('/buckets', async (req, res, next) => {
   try {
-    const { data, error } = await supabase.storage.listBuckets();
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
 
+    const { data, error } = await supabase.storage.listBuckets();
     if (error) {
       console.error('Supabase listBuckets error:', error);
       return res.status(500).json({ error: 'Failed to list buckets' });
     }
-
     res.status(200).json({ buckets: data });
   } catch (error) {
     next(error);

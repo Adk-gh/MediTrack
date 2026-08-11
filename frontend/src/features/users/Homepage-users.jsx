@@ -242,7 +242,6 @@ const PullIndicator = ({ indicatorRef, isRefreshing }) => (
       transition:      'height 0.2s ease, opacity 0.2s ease',
     }}
   >
-    {/* Arrow — rotates 180° when past threshold */}
     <svg
       data-ptr-icon
       width="20" height="20"
@@ -257,7 +256,6 @@ const PullIndicator = ({ indicatorRef, isRefreshing }) => (
       <polyline points="6 9 12 15 18 9" />
     </svg>
 
-    {/* Spinner — shown while awaiting onRefresh() to resolve */}
     <svg
       data-ptr-spin
       width="20" height="20"
@@ -399,7 +397,6 @@ const HomePageUsers = () => {
   const currentUser = authService.getCurrentUser();
   const userName    = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
 
-  // Fetch user profile to check for incomplete sections
   const [profileData, setProfileData] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -414,7 +411,6 @@ const HomePageUsers = () => {
           return;
         }
 
-        // Fetch profile from Supabase directly (same as Profile-users.jsx)
         const { data, error } = await supabase
           .from('users')
           .select('*')
@@ -436,9 +432,6 @@ const HomePageUsers = () => {
     fetchProfile();
   }, []);
 
-  // ── Check if user has medical or dental records ──
-  // Mirrors the same guard used in Appointment-users.jsx so the homepage
-  // shows a compact version of the "Visit the Clinic First" notice.
   const [hasRecords, setHasRecords] = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(true);
 
@@ -454,7 +447,6 @@ const HomePageUsers = () => {
           return;
         }
 
-        // Resolve internal users.id — try by auth uid first, then university_id
         let internalId = null;
         if (uid) {
           const { data } = await supabase
@@ -502,7 +494,6 @@ const HomePageUsers = () => {
     checkRecords();
   }, []);
 
-  // Check if profile sections are incomplete (using database column names - snake_case)
   const isFieldEmpty = (val) => !val || val === '' || val === null || val === undefined;
 
   const hasEmptyAcademic = profileData && (
@@ -525,7 +516,6 @@ const HomePageUsers = () => {
     isFieldEmpty(profileData.emergency_contact?.address)
   );
 
-  // Vaccination is incomplete if NOT declined AND no vaccineName AND no date for any dose
   const hasEmptyVaccinations = profileData && (
     (!profileData.vaccinations?.declined?.dose1 && !profileData.vaccinations?.dose1?.vaccineName && !profileData.vaccinations?.dose1?.date) ||
     (!profileData.vaccinations?.declined?.dose2 && !profileData.vaccinations?.dose2?.vaccineName && !profileData.vaccinations?.dose2?.date) ||
@@ -533,7 +523,6 @@ const HomePageUsers = () => {
     (!profileData.vaccinations?.declined?.booster2 && !profileData.vaccinations?.booster2?.vaccineName && !profileData.vaccinations?.booster2?.date)
   );
 
-  // Dental is incomplete if NOT declined AND all fields are empty
   const hasEmptyDental = profileData && (
     !profileData.dental_history?.declined &&
     isFieldEmpty(profileData.dental_history?.lastVisit) &&
@@ -541,17 +530,11 @@ const HomePageUsers = () => {
     isFieldEmpty(profileData.dental_history?.physician)
   );
 
-  // Surgical is incomplete if NOT declined AND operations array is missing or empty
   const hasEmptySurgical = profileData && (
     !profileData.surgical_history?.declined &&
     (!profileData.surgical_history?.operations || profileData.surgical_history.operations.length === 0)
   );
 
-  const hasIncompleteProfile = !loadingProfile && profileData && (
-    hasEmptyAcademic || hasEmptyContact || hasEmptyEmergency || hasEmptyVaccinations || hasEmptyDental || hasEmptySurgical
-  );
-
-  // Determine what action to show (prioritize the most important missing info)
   let pendingAction = null;
   if (hasEmptyVaccinations) {
     pendingAction = {
@@ -603,7 +586,6 @@ const HomePageUsers = () => {
     };
   }
 
-  // Fetch appointments via API
   const [myAppointments, setMyAppointments] = useState([]);
   const [loadingAppts, setLoadingAppts] = useState(true);
 
@@ -619,10 +601,10 @@ const HomePageUsers = () => {
           return;
         }
 
+        // FIX: Removed 'x-user-uid' header to prevent CORS preflight blocking
         const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
           headers: {
             'Authorization': `Bearer ${token}`,
-            'x-user-uid': uid,
           },
         });
 
@@ -643,8 +625,6 @@ const HomePageUsers = () => {
   const [loadingAnn,    setLoadingAnn]    = useState(true);
   const [selectedAnn,   setSelectedAnn]   = useState(null);
   const [tipIndex]                        = useState(() => Math.floor(Math.random() * HEALTH_TIPS.length));
-
-  // NEW: State for pull-to-refresh
   const [isRefreshing, setIsRefreshing]   = useState(false);
 
   const loadAnnouncements = useCallback(async () => {
@@ -663,14 +643,12 @@ const HomePageUsers = () => {
 
   useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
 
-  // NEW: Wrapper function to handle the refresh state timing
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await loadAnnouncements();
     setIsRefreshing(false);
   }, [loadAnnouncements]);
 
-  // UPDATE: Pass handleRefresh to the hook
   const { scrollElRef, indicatorRef, onTouchStart, onTouchMove, onTouchEnd } =
     usePullToRefresh(handleRefresh);
 
@@ -687,7 +665,6 @@ const HomePageUsers = () => {
   return (
     <div className="flex flex-col h-full bg-[#f7faf8] relative">
 
-      {/* NEW: Top linear loading bar indicating PTR is active */}
       {isRefreshing && (
         <div className="absolute top-0 left-0 right-0 h-1 z-50 bg-[#eef2f1] overflow-hidden">
           <div className="h-full bg-[#466460] w-1/3 rounded-full loading-bar-anim"></div>
@@ -696,7 +673,7 @@ const HomePageUsers = () => {
 
       <style>{microAnimStyles}</style>
 
-      {/* ── Scrollable body — PTR listeners live here ── */}
+      {/* ── Scrollable body ── */}
       <div
         ref={scrollElRef}
         className="flex-1 overflow-y-auto p-4 flex flex-col gap-4"
@@ -705,7 +682,6 @@ const HomePageUsers = () => {
         onTouchEnd={onTouchEnd}
       >
 
-        {/* UPDATE: Pass isRefreshing to the indicator */}
         <PullIndicator indicatorRef={indicatorRef} isRefreshing={isRefreshing} />
 
         {/* ── Welcome Header ── */}
@@ -772,7 +748,6 @@ const HomePageUsers = () => {
           {loadingAppts || loadingRecords ? (
             <div className="bg-white border border-[#dfe6e5] rounded-2xl p-4 animate-pulse h-[72px]"></div>
           ) : !hasRecords ? (
-            /* ── No medical/dental record yet — compact "visit clinic first" notice ── */
             <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-3.5 flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-[#eef2f1] flex items-center justify-center flex-shrink-0">
                 <CalendarX size={16} className="text-[#466460]" strokeWidth={1.8} />

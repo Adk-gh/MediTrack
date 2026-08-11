@@ -4,7 +4,9 @@
   "description": "A comprehensive cross-platform student health record management system for educational institutions. MediTrack enables efficient management of student health records, appointments, medical examinations, and announcements through a modern, responsive web interface.",
   "main": "app.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "electron:start": "electron ./frontend/electron/main.js",
+    "electron:build": "npm run build && electron-builder"
   },
   "repository": {
     "type": "git",
@@ -34,6 +36,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1"
   }

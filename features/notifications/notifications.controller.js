@@ -1,10 +1,9 @@
-// C:\Users\HP\MediTrack\features\notifications\notifications.controller.js
-const notificationsService = require("./notifications.service");
+const notificationsService = require('./notifications.service');
 
 const getNotifications = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
-    const limit = parseInt(req.query.limit) || 20;
+    const userId = req.user.uid || req.user.id;
+    const limit = parseInt(req.query.limit, 10) || 20;
     const notifications = await notificationsService.getNotifications(userId, limit);
     res.status(200).json({ success: true, data: notifications });
   } catch (error) {
@@ -14,7 +13,7 @@ const getNotifications = async (req, res, next) => {
 
 const getUnreadCount = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.uid || req.user.id;
     const count = await notificationsService.getUnreadCount(userId);
     res.status(200).json({ success: true, data: count });
   } catch (error) {
@@ -25,7 +24,7 @@ const getUnreadCount = async (req, res, next) => {
 const markAsRead = async (req, res, next) => {
   try {
     await notificationsService.markAsRead(req.params.id);
-    res.status(200).json({ success: true, message: "Notification marked as read" });
+    res.status(200).json({ success: true, message: 'Notification marked as read' });
   } catch (error) {
     next(error);
   }
@@ -33,9 +32,9 @@ const markAsRead = async (req, res, next) => {
 
 const markAllAsRead = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.uid || req.user.id;
     await notificationsService.markAllAsRead(userId);
-    res.status(200).json({ success: true, message: "All notifications marked as read" });
+    res.status(200).json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
     next(error);
   }
@@ -43,9 +42,10 @@ const markAllAsRead = async (req, res, next) => {
 
 const deleteNotification = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
-    await notificationsService.deleteNotification(req.params.id, userId);
-    res.status(200).json({ success: true, message: "Notification deleted" });
+    const userId = req.user.uid || req.user.id;
+    const isSysAdmin = req.user.role === 'sysadmin';
+    await notificationsService.deleteNotification(req.params.id, userId, isSysAdmin);
+    res.status(200).json({ success: true, message: 'Notification deleted' });
   } catch (error) {
     if (error.status === 404) {
       return res.status(404).json({ success: false, message: error.message });

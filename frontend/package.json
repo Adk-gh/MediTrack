@@ -1,8 +1,11 @@
 {
-  "name": "meditrack-frontend",
+ "name": "meditrack-frontend",
   "private": true,
   "version": "0.1.0",
+  "description": "MediTrack Desktop Application",
+  "author": "MediTrack",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "start": "vite",
@@ -11,7 +14,10 @@
     "preview": "vite preview",
     "cap:sync": "npx cap sync",
     "cap:open:android": "npx cap open android",
-    "cap:open:ios": "npx cap open ios"
+    "cap:open:ios": "npx cap open ios",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -51,12 +57,32 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
+    "concurrently": "^9.2.4",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.10",
     "globals": "^15.0.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.meditrack.desktop",
+    "productName": "MediTrack",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    }
   }
 }

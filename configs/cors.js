@@ -1,4 +1,4 @@
-//C:\Users\HP\MediTrack\configs\cors.js
+// C:\Users\HP\MediTrack\configs\cors.js
 const cors = require("cors");
 
 const corsOptions = {
@@ -7,7 +7,8 @@ const corsOptions = {
     "https://meditrack-2-tvck.onrender.com"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  // 🟢 ADDED 'x-user-uid' below
+  allowedHeaders: ["Content-Type", "Authorization", "x-user-uid"],
   credentials: true,
 };
 

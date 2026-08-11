@@ -1,7 +1,6 @@
-// C:\Users\HP\MediTrack\frontend\src\components\Notifications.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../supabase';
-import notificationsService, { createTestNotification } from '../services/notifications.service.js';
+import notificationsService from '../services/notifications.service.js';
 import { sendNotification } from '../utils/notifier';
 
 // Icon components
@@ -99,7 +98,6 @@ const formatTimeAgo = (dateString) => {
   return `${diffYears}y ago`;
 };
 
-// Shared normalizer (module-level so both the panel and the modal can use it)
 const normalizeNotification = (n) => ({
   ...n,
   isRead: n.is_read ?? n.isRead ?? false,
@@ -109,7 +107,6 @@ const normalizeNotification = (n) => ({
   createdAt: n.created_at ?? n.createdAt ?? new Date().toISOString(),
 });
 
-// ─── Notification Bell Button (for header) ───────────────────────────────────────
 export function NotificationBell({ onClick, count }) {
   return (
     <button
@@ -129,44 +126,41 @@ export function NotificationBell({ onClick, count }) {
   );
 }
 
-// ─── Single notification row (shared by panel + modal) ───────────────────────────
-function NotificationRow({ notification, onMarkAsRead, onDelete, readOnly, dense }) {
+function NotificationRow({ notification, onMarkAsRead, onDelete, isSysAdmin, dense }) {
   const IconComponent = getNotificationIcon(notification.type);
   return (
     <div
-      className={`px-4 ${dense ? 'py-3' : 'py-4'} hover:bg-slate-50 transition-colors ${!readOnly ? 'cursor-pointer' : ''} ${
+      className={`px-4 ${dense ? 'py-3' : 'py-4'} hover:bg-slate-50 transition-colors cursor-pointer ${
         !notification.isRead ? 'bg-blue-50/50' : ''
       }`}
-      onClick={() => !readOnly && !notification.isRead && onMarkAsRead(notification.id)}
+      onClick={() => !notification.isRead && onMarkAsRead(notification.id)}
     >
       <div className="flex gap-3">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-          !notification.isRead ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-500'
-        }`}>
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+            !notification.isRead ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-500'
+          }`}
+        >
           <div className="w-5 h-5">
             <IconComponent />
           </div>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className={`text-sm font-semibold truncate ${
-              !notification.isRead ? 'text-slate-800' : 'text-slate-600'
-            }`}>
+            <p className={`text-sm font-semibold truncate ${!notification.isRead ? 'text-slate-800' : 'text-slate-600'}`}>
               {typeof notification.title === 'object' ? JSON.stringify(notification.title) : notification.title}
             </p>
-            {!readOnly && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(notification.id);
-                }}
-                className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
-              >
-                <div className="w-4 h-4">
-                  <XIcon />
-                </div>
-              </button>
-            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(notification.id);
+              }}
+              className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+            >
+              <div className="w-4 h-4">
+                <XIcon />
+              </div>
+            </button>
           </div>
           <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
             {typeof notification.message === 'object' ? JSON.stringify(notification.message) : notification.message}
@@ -175,7 +169,7 @@ function NotificationRow({ notification, onMarkAsRead, onDelete, readOnly, dense
             <p className="text-[10px] text-slate-400">
               {formatTimeAgo(notification.createdAt)}
             </p>
-            {readOnly && notification.userName && (
+            {isSysAdmin && notification.userName && (
               <>
                 <span className="text-slate-300">•</span>
                 <p className="text-[10px] text-slate-400 truncate">{notification.userName}</p>
@@ -191,10 +185,9 @@ function NotificationRow({ notification, onMarkAsRead, onDelete, readOnly, dense
   );
 }
 
-// ─── "View All Notifications" Modal ───────────────────────────────────────────────
 const MODAL_PAGE_SIZE = 30;
 
-function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotificationsChanged }) {
+function AllNotificationsModal({ isOpen, onClose, isSysAdmin, onNotificationsChanged }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -204,7 +197,6 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
     if (isSysAdmin) {
       const { data, error } = await supabase
         .from('notifications')
-        // Corrected syntax: referencing the 'users' table directly
         .select('*, users ( name, full_name, email )')
         .order('created_at', { ascending: false })
         .range(offset, offset + MODAL_PAGE_SIZE - 1);
@@ -216,7 +208,6 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
 
       return (data || []).map((n) => ({
         ...normalizeNotification(n),
-        // n.users will automatically resolve to the joined object
         userName: n.users?.full_name || n.users?.name || n.users?.email || null,
       }));
     }
@@ -258,7 +249,9 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
   const handleMarkAsRead = async (notificationId) => {
     try {
       await notificationsService.markAsRead(notificationId);
-      setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)));
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
+      );
       onNotificationsChanged?.();
     } catch (error) {
       console.error('Error marking as read:', error);
@@ -281,7 +274,6 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
     <div className="fixed inset-0 z-[2100] flex items-center justify-center p-0 sm:p-4">
       <div className="fixed inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white w-full h-full sm:h-auto sm:max-h-[85vh] sm:w-[520px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
         <div className="bg-gradient-to-br from-[#466460] to-[#38524d] px-4 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 text-white">
@@ -301,7 +293,6 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
           </button>
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-40">
@@ -322,7 +313,7 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
                   notification={notification}
                   onMarkAsRead={handleMarkAsRead}
                   onDelete={handleDelete}
-                  readOnly={isSysAdmin}
+                  isSysAdmin={isSysAdmin}
                   dense={false}
                 />
               ))}
@@ -330,7 +321,6 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
           )}
         </div>
 
-        {/* Footer */}
         {notifications.length > 0 && hasMore && (
           <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
             <button
@@ -354,10 +344,9 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, userId, onNotifica
   );
 }
 
-// ─── Notification Dropdown Panel ────────────────────────────────────────────────
 const PAGE_SIZE = 20;
 
-export function NotificationPanel({ isOpen, onClose }) {
+export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -367,42 +356,68 @@ export function NotificationPanel({ isOpen, onClose }) {
   const [showAllModal, setShowAllModal] = useState(false);
   const userIdRef = useRef(null);
 
-  // Get user ID + role from profile - use auth UID for notifications
   useEffect(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      userIdRef.current = user?.uid || null;
-      setIsSysAdmin(user?.role === 'sysadmin');
-    } catch {}
+    const initUser = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const isSysAdminRole = user?.role === 'sysadmin';
+        setIsSysAdmin(isSysAdminRole);
+
+        const internalId = await notificationsService.getInternalUserId();
+        userIdRef.current = internalId;
+      } catch (e) {
+        console.error('Error resolving user ID:', e);
+      }
+    };
+    initUser();
   }, []);
 
-  // Fetch notifications when panel opens - always get fresh data
+  const updateCount = (newCount) => {
+    setUnreadCount(newCount);
+    onUnreadCountChange?.(newCount);
+  };
+
+  const fetchNotifications = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [notifs, count] = await Promise.all([
+        notificationsService.getNotifications(PAGE_SIZE),
+        notificationsService.getUnreadCount(),
+      ]);
+      const normalized = (notifs || []).map(normalizeNotification);
+      setNotifications(normalized);
+      updateCount(count || 0);
+      setHasMore(normalized.length >= PAGE_SIZE);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
-      // Clear cache to ensure fresh fetch
       sessionStorage.removeItem('meditrack_notifications');
       sessionStorage.removeItem('meditrack_notif_count');
       fetchNotifications();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, isSysAdmin]);
+  }, [isOpen, fetchNotifications]);
 
-  // Real-time subscription for new notifications
+  // Realtime updates
   useEffect(() => {
     if (!isOpen) return;
     if (!isSysAdmin && !userIdRef.current) return;
 
     const filter = isSysAdmin ? undefined : `user_id=eq.${userIdRef.current}`;
-    let channel = supabase.channel(isSysAdmin ? 'admin-notifications-realtime' : 'notifications-realtime');
+    let channel = supabase.channel(isSysAdmin ? 'sysadmin-notifications-realtime' : 'user-notifications-realtime');
 
     channel = channel
-      .on('postgres_changes',
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
         (payload) => {
-          setNotifications(prev => [normalizeNotification(payload.new), ...prev].slice(0, PAGE_SIZE));
-          setUnreadCount(prev => prev + 1);
-          sessionStorage.removeItem('meditrack_notifications');
-          sessionStorage.removeItem('meditrack_notif_count');
+          setNotifications((prev) => [normalizeNotification(payload.new), ...prev].slice(0, PAGE_SIZE));
+          updateCount((prev) => prev + 1);
           if (!isSysAdmin) {
             sendNotification({
               userId: payload.new.user_id,
@@ -413,18 +428,20 @@ export function NotificationPanel({ isOpen, onClose }) {
           }
         }
       )
-      .on('postgres_changes',
+      .on(
+        'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
         (payload) => {
-          setNotifications(prev => prev.map(n =>
-            n.id === payload.new.id ? { ...n, isRead: payload.new.is_read } : n
-          ));
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === payload.new.id ? { ...n, isRead: payload.new.is_read } : n))
+          );
         }
       )
-      .on('postgres_changes',
+      .on(
+        'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
         (payload) => {
-          setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+          setNotifications((prev) => prev.filter((n) => n.id !== payload.old.id));
         }
       )
       .subscribe();
@@ -434,67 +451,13 @@ export function NotificationPanel({ isOpen, onClose }) {
     };
   }, [isOpen, isSysAdmin]);
 
-  const fetchNotifications = async () => {
-    setLoading(true);
-    try {
-      if (isSysAdmin) {
-        // Sysadmin sees every notification in the system, not just their own
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(0, PAGE_SIZE - 1);
-        if (error) throw error;
-
-        const { count: unread } = await supabase
-          .from('notifications')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_read', false);
-
-        setNotifications((data || []).map(normalizeNotification));
-        setUnreadCount(unread || 0);
-      } else {
-        const [notifs, count] = await Promise.all([
-          notificationsService.getNotifications(PAGE_SIZE),
-          notificationsService.getUnreadCount(),
-        ]);
-        const normalized = (notifs || []).map(normalizeNotification);
-        setNotifications(normalized);
-        setUnreadCount(count || 0);
-        setHasMore(normalized.length >= PAGE_SIZE);
-      }
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Inline "Load More" — only used by non-sysadmin roles (doctor, dentist, nurse).
-  // Sysadmin uses the "View All Notifications" modal instead.
-  const handleLoadMore = async () => {
-    if (loadingMore || !hasMore || isSysAdmin) return;
-    setLoadingMore(true);
-    try {
-      const nextLimit = notifications.length + PAGE_SIZE;
-      const notifs = await notificationsService.getNotifications(nextLimit);
-      const normalized = (notifs || []).map(normalizeNotification);
-      setNotifications(normalized);
-      setHasMore(normalized.length >= nextLimit);
-    } catch (error) {
-      console.error('Error loading more notifications:', error);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
   const handleMarkAsRead = async (notificationId) => {
     try {
       await notificationsService.markAsRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      updateCount(Math.max(0, unreadCount - 1));
     } catch (error) {
       console.error('Error marking as read:', error);
     }
@@ -503,8 +466,8 @@ export function NotificationPanel({ isOpen, onClose }) {
   const handleMarkAllAsRead = async () => {
     try {
       await notificationsService.markAllAsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      updateCount(0);
     } catch (error) {
       console.error('Error marking all as read:', error);
     }
@@ -513,9 +476,9 @@ export function NotificationPanel({ isOpen, onClose }) {
   const handleDelete = async (notificationId) => {
     try {
       await notificationsService.deleteNotification(notificationId);
-      const wasUnread = notifications.find(n => n.id === notificationId && !n.isRead);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      if (wasUnread) setUnreadCount(prev => Math.max(0, prev - 1));
+      const wasUnread = notifications.find((n) => n.id === notificationId && !n.isRead);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      if (wasUnread) updateCount(Math.max(0, unreadCount - 1));
     } catch (error) {
       console.error('Error deleting notification:', error);
     }
@@ -525,22 +488,15 @@ export function NotificationPanel({ isOpen, onClose }) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[1999]"
-        onClick={onClose}
-      />
-
-      {/* Panel */}
+      <div className="fixed inset-0 z-[1999]" onClick={onClose} />
       <div className="fixed top-0 right-0 sm:top-2 sm:right-2 z-[2000] w-full sm:w-[380px] h-full sm:h-[calc(100vh-16px)] sm:max-h-[600px] bg-white sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slideIn">
-        {/* Header */}
         <div className="bg-gradient-to-br from-[#466460] to-[#38524d] px-4 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 text-white">
               <BellIcon />
             </div>
             <h3 className="text-white font-bold text-base">
-              {isSysAdmin ? 'All Notifications' : 'Notifications'}
+              {isSysAdmin ? 'All System Notifications' : 'Notifications'}
             </h3>
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -549,18 +505,7 @@ export function NotificationPanel({ isOpen, onClose }) {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {!isSysAdmin && (
-              <button
-                onClick={async () => {
-                  await createTestNotification();
-                  fetchNotifications();
-                }}
-                className="text-yellow-300 hover:text-yellow-100 text-xs font-medium px-2 py-1 transition-colors"
-                title="Create test notification"
-              >
-              </button>
-            )}
-            {!isSysAdmin && unreadCount > 0 && (
+            {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
                 className="text-white/70 hover:text-white text-xs font-medium px-2 py-1 transition-colors"
@@ -579,7 +524,6 @@ export function NotificationPanel({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Notification List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-40">
@@ -601,7 +545,7 @@ export function NotificationPanel({ isOpen, onClose }) {
                   notification={notification}
                   onMarkAsRead={handleMarkAsRead}
                   onDelete={handleDelete}
-                  readOnly={isSysAdmin}
+                  isSysAdmin={isSysAdmin}
                   dense
                 />
               ))}
@@ -609,7 +553,6 @@ export function NotificationPanel({ isOpen, onClose }) {
           )}
         </div>
 
-        {/* Footer - View All (opens modal) */}
         {notifications.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
             <button
@@ -626,7 +569,6 @@ export function NotificationPanel({ isOpen, onClose }) {
         isOpen={showAllModal}
         onClose={() => setShowAllModal(false)}
         isSysAdmin={isSysAdmin}
-        userId={userIdRef.current}
         onNotificationsChanged={fetchNotifications}
       />
 
@@ -647,14 +589,9 @@ export function NotificationPanel({ isOpen, onClose }) {
   );
 }
 
-// ─── Notification Badge (for mobile) ─────────────────────────────────────────────
 export function NotificationBadge({ count, onClick }) {
   return (
-    <button
-      onClick={onClick}
-      className="relative p-2 -my-1"
-      aria-label="Notifications"
-    >
+    <button onClick={onClick} className="relative p-2 -my-1" aria-label="Notifications">
       <div className="w-5 h-5 text-[#466460]">
         <BellIcon />
       </div>

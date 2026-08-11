@@ -1,123 +1,59 @@
 import { supabase } from '../supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Cache key for notifications
 const NOTIF_CACHE_KEY = 'meditrack_notifications';
 const NOTIF_COUNT_KEY = 'meditrack_notif_count';
-const NOTIF_CACHE_TTL = 60000; // 1 minute
 
-// ── Cache Helpers ──────────────────────────────────────────────────────────────
-const getCachedNotifications = () => {
-  try {
-    const cached = sessionStorage.getItem(NOTIF_CACHE_KEY);
-    if (!cached) return null;
-    const { data, timestamp } = JSON.parse(cached);
-    if (Date.now() - timestamp > NOTIF_CACHE_TTL) return null;
-    return data;
-  } catch { return null; }
-};
-
-const setCachedNotifications = (data) => {
-  try {
-    sessionStorage.setItem(NOTIF_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
-  } catch {}
-};
-
-const getCachedUnreadCount = () => {
-  try {
-    const cached = sessionStorage.getItem(NOTIF_COUNT_KEY);
-    if (!cached) return null;
-    const { count, timestamp } = JSON.parse(cached);
-    if (Date.now() - timestamp > NOTIF_CACHE_TTL) return null;
-    return count;
-  } catch { return null; }
-};
-
-const setCachedUnreadCount = (count) => {
-  try {
-    sessionStorage.setItem(NOTIF_COUNT_KEY, JSON.stringify({ count, timestamp: Date.now() }));
-  } catch {}
-};
-
-// ── Auth header helper (mirrors the pattern used in createTestNotification) ────
-const getAuthHeaders = async () => {
+export const getAuthHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('No session token. Please log in again.');
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
   };
 };
 
-// ── Get user ID for notifications ───────────────────────────────────────────
-// NOTE: Notifications use the internal users.id (UUID), not Supabase Auth uid
-// We need to query the internal ID from the Supabase Auth uid
-const getUserId = async () => {
+export const getInternalUserId = async () => {
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const authUid = user?.uid || user?.id;
-
-    console.log('[Notifications] User auth uid:', authUid);
-
     if (!authUid) return null;
 
-    // Look up the internal user ID from the auth UID
     const { data: profile, error } = await supabase
       .from('users')
       .select('id')
       .eq('uid', authUid)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      console.error('[Notifications] Error looking up user:', error);
-      return null;
-    }
-
-    console.log('[Notifications] Internal user id:', profile?.id);
-    return profile?.id || null;
-  } catch (e) {
-    console.error('[Notifications] Error getting user ID:', e);
+    if (error || !profile) return authUid;
+    return profile.id;
+  } catch {
     return null;
   }
 };
 
-// ── API Functions ──────────────────────────────────────────────────────────────
 export const getNotifications = async (limit = 20) => {
-  const userId = await getUserId();
-  console.log('[Notifications Frontend] Getting notifications for internal userId:', userId);
-  if (!userId) {
-    console.warn('[Notifications] No userId found, returning empty array');
-    // Debug: show what's in localStorage
-    const userStr = localStorage.getItem('user');
-    console.log('[Notifications] Raw localStorage user:', userStr);
-    alert('No userId found. Check console for details.');
-    return [];
-  }
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isSysAdmin = user?.role === 'sysadmin';
 
-  // First, let's see ALL notifications in the database (for debugging)
-  console.log('[Notifications] Fetching ALL notifications from database...');
-  const { data: allNotifs, error: allError } = await supabase
-    .from('notifications')
-    .select('id, user_id, type, title, created_at')
-    .order('created_at', { ascending: false })
-    .limit(10);
+  if (isSysAdmin) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-  if (allError) {
-    console.error('[Notifications] Error fetching all notifications:', allError);
-  } else {
-    console.log('[Notifications] ALL notifications in DB (first 10):', allNotifs);
-    console.log('[Notifications] Looking for user_id:', userId);
-
-    // If we found notifications, show the user_ids
-    if (allNotifs && allNotifs.length > 0) {
-      console.log('[Notifications] User IDs in DB:', allNotifs.map(n => n.user_id));
+    if (error) {
+      console.error('Error fetching notifications for sysadmin:', error);
+      return [];
     }
+    return data || [];
   }
 
-  // Now query for specific user
-  console.log('[Notifications] Querying for user_id:', userId);
+  const userId = await getInternalUserId();
+  if (!userId) return [];
 
   const { data, error } = await supabase
     .from('notifications')
@@ -131,35 +67,32 @@ export const getNotifications = async (limit = 20) => {
     return [];
   }
 
-  console.log('[Notifications] Found notifications for user:', data?.length, 'items');
-  if (data?.length > 0) {
-    console.log('[Notifications] Sample notification:', data[0]);
-  }
-
-  // setCachedNotifications(data || []);
   return data || [];
 };
 
 export const getUnreadCount = async () => {
-  const userId = await getUserId();
-  if (!userId) return 0;
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isSysAdmin = user?.role === 'sysadmin';
 
-  // Try cache first
-  const cachedCount = getCachedUnreadCount();
-  if (cachedCount !== null) return cachedCount;
-
-  const { count, error } = await supabase
+  let query = supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
     .eq('is_read', false);
+
+  // If regular user (doctor, nurse, dentist), filter by user_id
+  if (!isSysAdmin) {
+    const userId = await getInternalUserId();
+    if (!userId) return 0;
+    query = query.eq('user_id', userId);
+  }
+
+  const { count, error } = await query;
 
   if (error) {
     console.error('Error fetching unread count:', error);
     return 0;
   }
 
-  setCachedUnreadCount(count || 0);
   return count || 0;
 };
 
@@ -169,153 +102,47 @@ export const markAsRead = async (notificationId) => {
     .update({ is_read: true })
     .eq('id', notificationId);
 
-  if (error) {
-    console.error('Error marking as read:', error);
-    throw error;
-  }
-
-  // Invalidate cache
+  if (error) throw error;
   sessionStorage.removeItem(NOTIF_CACHE_KEY);
   sessionStorage.removeItem(NOTIF_COUNT_KEY);
   return { success: true };
 };
 
 export const markAllAsRead = async () => {
-  const userId = await getUserId();
-  if (!userId) return { success: false };
-
-  const { error } = await supabase
-    .from('notifications')
-    .update({ is_read: true })
-    .eq('user_id', userId)
-    .eq('is_read', false);
-
-  if (error) {
-    console.error('Error marking all as read:', error);
-    throw error;
-  }
-
-  // Invalidate cache
-  sessionStorage.removeItem(NOTIF_CACHE_KEY);
-  sessionStorage.removeItem(NOTIF_COUNT_KEY);
-  return { success: true };
-};
-
-// Now routed through the backend so deletion is ownership-checked
-// server-side and audit-logged (see features/notifications/notifications.route.js).
-export const deleteNotification = async (notificationId) => {
-  try {
-    const headers = await getAuthHeaders();
-
-    const res = await fetch(`${API_URL}/notifications/${notificationId}`, {
-      method: 'DELETE',
-      headers,
-    });
-
-    const result = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      console.error('Error deleting notification:', result);
-      throw new Error(result?.message || 'Failed to delete notification');
-    }
-
-    // Invalidate cache
-    sessionStorage.removeItem(NOTIF_CACHE_KEY);
-    sessionStorage.removeItem(NOTIF_COUNT_KEY);
-    return result;
-  } catch (error) {
-    console.error('Error deleting notification:', error);
-    throw error;
-  }
-};
-
-// ── Create Notification (for backend/other services to use) ───────────────────
-export const createNotification = async (notification) => {
-  const { error } = await supabase
-    .from('notifications')
-    .insert(notification);
-
-  if (error) {
-    console.error('Error creating notification:', error);
-    throw error;
-  }
-
-  // Invalidate cache
-  sessionStorage.removeItem(NOTIF_CACHE_KEY);
-  sessionStorage.removeItem(NOTIF_COUNT_KEY);
-  return { success: true };
-};
-
-// ── Test function to create a notification ───────────────────────────────
-export const createTestNotification = async () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const authUid = user?.uid;
+  const isSysAdmin = user?.role === 'sysadmin';
 
-  if (!authUid) {
-    alert('No user found. Please log in again.');
-    return;
+  let query = supabase.from('notifications').update({ is_read: true }).eq('is_read', false);
+
+  if (!isSysAdmin) {
+    const userId = await getInternalUserId();
+    if (!userId) return { success: false };
+    query = query.eq('user_id', userId);
   }
 
-  console.log('[Test] Creating test notification via API for auth uid:', authUid);
+  const { error } = await query;
+  if (error) throw error;
 
-  // Get auth headers
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  sessionStorage.removeItem(NOTIF_CACHE_KEY);
+  sessionStorage.removeItem(NOTIF_COUNT_KEY);
+  return { success: true };
+};
 
-  if (!token) {
-    alert('No session token. Please log in again.');
-    return;
+export const deleteNotification = async (notificationId) => {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}/notifications/${notificationId}`, {
+    method: 'DELETE',
+    headers,
+  });
+
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(result?.message || 'Failed to delete notification');
   }
 
-  // Use backend API to create notification
-  try {
-    console.log('[Test] Calling API:', `${API_URL}/notifications/test`);
-    console.log('[Test] Auth token:', token ? 'present' : 'missing');
-
-    const response = await fetch(`${API_URL}/notifications/test`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        userId: authUid,
-        type: 'test',
-        title: 'Test Notification',
-        message: 'This is a test notification!',
-      }),
-    });
-
-    console.log('[Test] Response status:', response.status);
-
-    const text = await response.text();
-    console.log('[Test] Raw response:', text.substring(0, 200));
-
-    // Check if it's HTML (error page)
-    if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
-      console.error('[Test] Got HTML response instead of JSON - likely a server error page');
-      alert('Server error. Check console for details.');
-      return;
-    }
-
-    const result = JSON.parse(text);
-
-    if (!response.ok) {
-      console.error('[Test] API Error:', result);
-      alert('Error: ' + result.message);
-      return;
-    }
-
-    console.log('[Test] Notification created via API:', result);
-    alert('Test notification created!');
-
-    // Clear cache so next fetch gets fresh data
-    sessionStorage.removeItem('meditrack_notifications');
-    sessionStorage.removeItem('meditrack_notif_count');
-  } catch (err) {
-    console.error('[Test] Error:', err);
-    alert('Error creating notification: ' + err.message);
-  }
+  sessionStorage.removeItem(NOTIF_CACHE_KEY);
+  sessionStorage.removeItem(NOTIF_COUNT_KEY);
+  return result;
 };
 
 export default {
@@ -324,6 +151,5 @@ export default {
   markAsRead,
   markAllAsRead,
   deleteNotification,
-  createNotification,
-  createTestNotification,
+  getInternalUserId,
 };

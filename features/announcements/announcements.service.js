@@ -1,21 +1,20 @@
-// C:\Users\HP\MediTrack\features/announcements/announcements.service.js
+// backend/features/announcements/announcements.service.js
 const supabase = require('../../configs/database');
 const archiveHelper = require('../archives/archiveHelper');
+const notificationsService = require('../notifications/notifications.service');
 
 const ARCHIVE_TYPE = 'announcement';
 
-// ── In-Memory Cache Setup ──────────────────────────────────────────────
 let announcementsCache = {
   data: null,
   lastFetch: null,
 };
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const clearCache = () => {
   announcementsCache.data = null;
   announcementsCache.lastFetch = null;
 };
-// ───────────────────────────────────────────────────────────────────────
 
 const uploadImageToStorage = async (base64String) => {
   if (!base64String || base64String.startsWith('http')) {
@@ -54,14 +53,10 @@ const uploadImageToStorage = async (base64String) => {
 exports.getAllAnnouncements = async () => {
   const now = Date.now();
 
-  // 1. Check if cache is valid and not expired
   if (announcementsCache.data && announcementsCache.lastFetch && (now - announcementsCache.lastFetch < CACHE_TTL_MS)) {
-    console.log('>>> [Announcements] Serving from Node memory cache');
     return announcementsCache.data;
   }
 
-  // 2. If no cache or expired, fetch from Supabase
-  console.log('>>> [Announcements] Cache empty/expired. Fetching from Supabase DB...');
   const { data, error } = await supabase
     .from('announcements')
     .select('*')
@@ -70,7 +65,6 @@ exports.getAllAnnouncements = async () => {
 
   if (error) throw error;
 
-  // 3. Save the fresh data to the cache
   announcementsCache.data = data;
   announcementsCache.lastFetch = now;
 
@@ -78,13 +72,11 @@ exports.getAllAnnouncements = async () => {
 };
 
 exports.getAnnouncementById = async (id) => {
-  // Try to grab it from the cache first for instant load
   if (announcementsCache.data) {
     const cachedItem = announcementsCache.data.find(a => a.id === id);
     if (cachedItem) return cachedItem;
   }
 
-  // Fallback to database if not in cache
   const { data, error } = await supabase
     .from('announcements')
     .select('*')
@@ -93,9 +85,9 @@ exports.getAnnouncementById = async (id) => {
     .single();
 
   if (error || !data) {
-    const error = new Error('Announcement not found');
-    error.statusCode = 404;
-    throw error;
+    const err = new Error('Announcement not found');
+    err.statusCode = 404;
+    throw err;
   }
   return data;
 };
@@ -121,8 +113,10 @@ exports.createAnnouncement = async (data) => {
 
   if (error) throw error;
 
-  // Clear cache so all students see the new announcement instantly
   clearCache();
+
+  // ── Dispatch Broadcast Notification ──
+  await notificationsService.notifyAnnouncement(announcement);
 
   return announcement;
 };
@@ -147,14 +141,12 @@ exports.updateAnnouncement = async (id, data) => {
 
   if (error) throw error;
 
-  // Clear cache so edits propagate instantly
   clearCache();
 
   return { id, ...updateData };
 };
 
 exports.deleteAnnouncement = async (id, deletedBy) => {
-  // Move to archives before deletion
   await archiveHelper.archiveAndDelete({
     type: ARCHIVE_TYPE,
     originalId: id,
@@ -163,7 +155,6 @@ exports.deleteAnnouncement = async (id, deletedBy) => {
     deletedBy
   }, supabase);
 
-  // Clear cache so the deleted item vanishes instantly
   clearCache();
 
   return { id };

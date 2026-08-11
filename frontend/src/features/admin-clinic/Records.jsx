@@ -157,7 +157,9 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
 const typeBadgeClass = (roleStr) => {
   const t = (roleStr || '').toLowerCase();
   if (t.includes('student')) return 'bg-blue-100 text-blue-600';
-  if (['instructor', 'faculty', 'lecturer', 'professor', 'doctor', 'nurse'].some(k => t.includes(k)))
+  if (['doctor', 'nurse', 'dentist'].some(k => t.includes(k)))
+    return 'bg-rose-100 text-rose-600';
+  if (['instructor', 'faculty', 'lecturer', 'professor'].some(k => t.includes(k)))
     return 'bg-purple-100 text-purple-600';
   return 'bg-green-100 text-green-600';
 };
@@ -502,10 +504,14 @@ const normalizePatientData = (uid, d) => {
     : firstName || '—';
 
   return {
-    uid, name, firstName, lastName, middleName, suffix,
-    uid:              doc.uid || doc.id,
-    universityId,
-    studentId:        d.studentId  || d.student_id  || universityId || '',
+  uid: doc.uid || doc.id,
+  name,
+  firstName,
+  lastName,
+  middleName,
+  suffix,
+  universityId,
+  studentId: d.studentId || d.student_id || universityId || '',
     role:             d.role       || '',
     prog:             d.program    || d.course       || '',
     program:          d.program    || d.course       || '',

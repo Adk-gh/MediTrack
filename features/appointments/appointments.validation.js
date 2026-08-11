@@ -33,4 +33,21 @@ const updateAppointmentSchema = z.object({
   status: z.enum(["pending", "approved", "done", "missed", "rejected", "Pending", "Confirmed", "Completed", "Cancelled"]).optional(),
 });
 
-module.exports = { createAppointmentSchema, updateAppointmentSchema };
+// ── NEW: Faculty bulk-booking a group of students via CSV of University IDs ──
+const bulkCreateAppointmentSchema = z.object({
+  facultyName: z.string().min(2, "Faculty name is required").max(100),
+  facultyId:   z.string().optional(),
+  serviceType: z.string().min(1, "Service type is required"),
+  reason:      z.string().optional(),
+
+  year:  z.coerce.number().int().min(2020).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  day:   z.coerce.number().int().min(1).max(31).optional(),
+  time:  z.string().optional(),
+
+  studentIds: z.array(z.string().min(1))
+    .min(1, "At least one student University ID is required")
+    .max(200, "Maximum 200 students per bulk request"),
+});
+
+module.exports = { createAppointmentSchema, updateAppointmentSchema, bulkCreateAppointmentSchema };

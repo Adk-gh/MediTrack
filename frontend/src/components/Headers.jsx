@@ -1,6 +1,5 @@
 // C:\Users\HP\MediTrack\frontend\src\components\Headers.jsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import authService from '../services/auth.service.js';
 import { useLoading } from '../context/LoadingContext.jsx';
@@ -9,8 +8,12 @@ import AddressModal from './AddressModal.jsx';
 import { NotificationBell, NotificationPanel } from './Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
 import Settings from './Settings.jsx';
-
 import { supabase } from '../supabase';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const DOCUMENTS_BUCKET = 'health-documents';
+const ALLOWED_DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+const MAX_DOC_SIZE = 5 * 1024 * 1024; // 5MB
 
 // ─── Synchronous Role Helper ─────────────────────────────────────────────────
 const getStoredUserRole = () => {
@@ -30,7 +33,7 @@ const getStoredUserRole = () => {
           return 'doctor';
         } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
           return 'nurse';
-        } else if (classification === 'System Administrator') {
+        } else if (classification === 'system administrator' || classification === 'sysadmin') {
           return 'sysadmin';
         }
       }
@@ -40,14 +43,13 @@ const getStoredUserRole = () => {
       }
     }
   } catch (e) {
-    ('Error reading user role:', e);
+    console.error('Error reading user role:', e);
   }
 
   return null;
 };
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -124,6 +126,14 @@ const DefaultIcon = () => (
   </svg>
 );
 
+const DocIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" />
+  </svg>
+);
+
 // ─── Dental History static data ───────────────────────────────────────────────
 const DENTAL_PROCEDURES = [
   'Oral Prophylaxis', 'Filling / Restoration', 'Extraction',
@@ -170,51 +180,35 @@ const DrawerSectionHeader = ({ label, color = 'text-slate-400' }) => (
   <div className={`text-[9px] font-extrabold uppercase tracking-widest ${color} mb-3`}>{label}</div>
 );
 
-// ── Safely parses values that might come back as stringified JSON from Postgres
-// We use a while loop because sometimes data gets double-stringified (e.g. '"{\\"key\\": \\"value\\"}"')
-const parseJsonIfNeeded = (val, fieldName = 'unknown') => {
-  (`[parseJsonIfNeeded - ${fieldName}] Raw Input:`, val, '| Type:', typeof val);
-
+const parseJsonIfNeeded = (val) => {
   if (!val) return val;
-
   let currentVal = val;
-  // Keep parsing as long as it's a string that looks like JSON
   while (typeof currentVal === 'string') {
     try {
       const parsed = JSON.parse(currentVal);
       if (typeof parsed === 'object' || Array.isArray(parsed)) {
         currentVal = parsed;
-      } else if (typeof parsed === 'string') {
-        currentVal = parsed; // Might be double-stringified
       } else {
         break;
       }
-    } catch (e) {
-      // It's just a regular string, stop parsing
+    } catch {
       break;
     }
   }
-
-  (`[parseJsonIfNeeded - ${fieldName}] Final Output:`, currentVal);
   return currentVal;
 };
 
-// ── Ensures formData always has fully-shaped nested objects
 const withProfileDefaults = (p = {}) => {
-  ('[withProfileDefaults] Initial Profile DB Object:', p);
-
-  // Grab values prioritizing snake_case (direct from DB)
   const rawVac = p.vaccinations_history || p.vaccinations;
   const rawDent = p.dental_history || p.dentalHistory;
   const rawSurg = p.surgical_history || p.surgicalHistory;
   const rawEmerg = p.emergency_contact || p.emergencyContact;
 
-  const vac = parseJsonIfNeeded(rawVac, 'vaccinations') || {};
-  const rawDental = parseJsonIfNeeded(rawDent, 'dentalHistory') || {};
-  const rawSurgical = parseJsonIfNeeded(rawSurg, 'surgicalHistory');
-  const emergencyContact = parseJsonIfNeeded(rawEmerg, 'emergencyContact') || {};
+  const vac = parseJsonIfNeeded(rawVac) || {};
+  const rawDental = parseJsonIfNeeded(rawDent) || {};
+  const rawSurgical = parseJsonIfNeeded(rawSurg);
+  const emergencyContact = parseJsonIfNeeded(rawEmerg) || {};
 
-  // Structure Dental History safely
   const dentalHistory = {
     lastVisit: rawDental.lastVisit || '',
     prevDentist: rawDental.prevDentist || '',
@@ -222,7 +216,6 @@ const withProfileDefaults = (p = {}) => {
     declined: rawDental.declined || false,
   };
 
-  // Structure Surgical History safely (Handle array default '[]' vs Object from form)
   let surgicalHistory = { operations: [], declined: false };
   if (Array.isArray(rawSurgical)) {
     surgicalHistory.operations = rawSurgical;
@@ -230,9 +223,6 @@ const withProfileDefaults = (p = {}) => {
     surgicalHistory.operations = rawSurgical.operations || [];
     surgicalHistory.declined = rawSurgical.declined || false;
   }
-
-  ('[withProfileDefaults] Processed Dental:', dentalHistory);
-  ('[withProfileDefaults] Processed Surgical:', surgicalHistory);
 
   return {
     ...p,
@@ -247,6 +237,7 @@ const withProfileDefaults = (p = {}) => {
     },
     dentalHistory,
     surgicalHistory,
+    documents: Array.isArray(p.documents) ? p.documents : (parseJsonIfNeeded(p.documents) || []),
   };
 };
 
@@ -264,18 +255,20 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [showAddressModal, setShowAddressModal] = React.useState(false);
   const [addressType, setAddressType] = React.useState(null);
 
-  // ── Drag state ──────────────────────────────────────────────────────────────
+  // Document states
+  const [uploadingDocs, setUploadingDocs] = React.useState(false);
+  const [docToDelete, setDocToDelete] = React.useState(null);
+  const [isDeletingDoc, setIsDeletingDoc] = React.useState(false);
+  const documentsInputRef = React.useRef(null);
+
   const [dragY, setDragY] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
   const dragStartY = React.useRef(0);
   const dragStartTime = React.useRef(0);
   const sheetRef = React.useRef(null);
 
-  const { showLoading, hideLoading } = useLoading();
-
   React.useEffect(() => {
     if (isOpen) {
-      ('----- DRAWER OPENING: PROCESSING PROFILE DATA -----');
       setIsMounted(true);
       const normalizedProfile = withProfileDefaults(userProfile || {});
       setFormData(normalizedProfile);
@@ -295,7 +288,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     return () => window.removeEventListener('resize', check);
   }, [forceBottomSheet]);
 
-  // ── Touch handlers ──────────────────────────────────────────────────────────
   const handleTouchStart = (e) => {
     if (!isMobile) return;
     dragStartY.current = e.touches[0].clientY;
@@ -328,10 +320,126 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     }
   };
 
+  // ── Documents Management Handlers ─────────────────────────────────────────
+  const handleDocumentUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+
+    const invalid = files.find(f => !ALLOWED_DOC_TYPES.includes(f.type) || f.size > MAX_DOC_SIZE);
+    if (invalid) {
+      alert(`"${invalid.name}" is invalid. PDF/JPG/PNG only, max 5MB.`);
+      return;
+    }
+
+    setUploadingDocs(true);
+    const uploadedPaths = [];
+
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const uid = user?.uid || user?.id;
+      if (!uid) throw new Error('Not authenticated');
+
+      const uploadedDocs = [];
+
+      for (const file of files) {
+        const ext = file.name.split('.').pop();
+        const path = `${uid}/${crypto.randomUUID()}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(DOCUMENTS_BUCKET)
+          .upload(path, file, { cacheControl: '3600', upsert: false });
+
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(path);
+
+        uploadedDocs.push({
+          id: crypto.randomUUID(),
+          name: file.name,
+          path,
+          type: file.type,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+
+      const newDocuments = [...(formData.documents || []), ...uploadedDocs];
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ documents: newDocuments })
+        .eq('uid', uid);
+
+      if (updateError) throw updateError;
+
+      const updated = { ...formData, documents: newDocuments };
+      setFormData(updated);
+      if (onProfileUpdate) onProfileUpdate(updated);
+    } catch (err) {
+      console.error('[ProfileDrawer] Document upload error:', err);
+      if (uploadedPaths.length > 0) {
+        await supabase.storage.from(DOCUMENTS_BUCKET).remove(uploadedPaths);
+      }
+      alert('Failed to upload document(s).');
+    } finally {
+      setUploadingDocs(false);
+    }
+  };
+
+  const handleConfirmDeleteDoc = async () => {
+    if (!docToDelete) return;
+    setIsDeletingDoc(true);
+
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const uid = user?.uid || user?.id;
+      if (!uid) throw new Error('Not authenticated');
+
+      if (docToDelete.path) {
+        await supabase.storage.from(DOCUMENTS_BUCKET).remove([docToDelete.path]);
+      }
+
+      const newDocuments = (formData.documents || []).filter(d => d.id !== docToDelete.id);
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ documents: newDocuments })
+        .eq('uid', uid);
+
+      if (updateError) throw updateError;
+
+      const updated = { ...formData, documents: newDocuments };
+      setFormData(updated);
+      if (onProfileUpdate) onProfileUpdate(updated);
+      setDocToDelete(null);
+    } catch (err) {
+      console.error('[ProfileDrawer] Document delete error:', err);
+      alert('Failed to remove document.');
+    } finally {
+      setIsDeletingDoc(false);
+    }
+  };
+
+  const handleViewDocument = async (doc) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(DOCUMENTS_BUCKET)
+        .createSignedUrl(doc.path, 300);
+
+      if (error) throw error;
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Error opening document:', err);
+      alert('Failed to open document.');
+    }
+  };
+
   if (!isMounted) return null;
 
   const userRole = formData.role?.toLowerCase() || 'user';
-  const isStudent = userRole === 'student';
+
+  // Visible for Doctor, Dentist, Nurse, SysAdmin, and Personnel accounts
+  const isPersonnel = ['doctor', 'dentist', 'nurse', 'sysadmin', 'admin', 'administrator', 'personnel', 'faculty'].includes(userRole);
+  const isStudent = userRole === 'student' && !isPersonnel;
 
   const nameParts = [
     formData.firstName,
@@ -346,8 +454,8 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     : 0;
 
   const VACCINE_DOSE_KEYS = [
-    { key: 'dose1',    label: 'Dose 1'    },
-    { key: 'dose2',    label: 'Dose 2'    },
+    { key: 'dose1', label: 'Dose 1' },
+    { key: 'dose2', label: 'Dose 2' },
     { key: 'booster1', label: 'Booster 1' },
     { key: 'booster2', label: 'Booster 2' },
   ];
@@ -362,7 +470,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     'Security Services',
   ];
 
-  const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(userRole);
+  const isCurrentUserSysAdmin = userRole === 'sysadmin';
 
   const CLASSIFICATIONS = [
     'Teaching Personnel',
@@ -395,21 +503,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     return str.replace(/\w\S*/g, (txt) => {
       return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
     });
-  };
-
-  const isValidPhoneNumber = (phone) => {
-    if (!phone) return true;
-    const phoneRegex = /^09\d{9}$/;
-    return phoneRegex.test(phone);
-  };
-
-  const formatPhoneNumber = (phone) => {
-    if (!phone) return '';
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length === 10 && digits.startsWith('9')) return '0' + digits;
-    if (digits.startsWith('63')) return '0' + digits.substring(2);
-    if (digits.length === 11 && digits.startsWith('09')) return digits;
-    return digits;
   };
 
   const calculateAge = (birthday) => {
@@ -562,8 +655,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         sectionData.surgical_history = sectionData.surgicalHistory;
       }
 
-      ('[ProfileDrawer] Saving section:', editingSection, 'with data:', sectionData);
-
       if (Object.keys(sectionData).length === 0) {
         alert('No changes to save');
         setIsSaving(false);
@@ -603,7 +694,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
       closeEdit();
     } catch (err) {
-      ('Error updating profile:', err);
+      console.error('Error updating profile:', err);
       alert('Error updating profile.');
     }
     setIsSaving(false);
@@ -721,8 +812,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
-
-          {/* ── Personal Details ── */}
+          {/* Personal Details */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="Personal Details" />
@@ -735,16 +825,16 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             </div>
 
             <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-cake-candles" label="Birthday" field="birthday" value={formData.birthday} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-hashtag"    label="Age"          field="age"         type="number" value={formData.age} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-venus-mars" label="Sex"          field="sex"         value={formData.sex}         options={['Male', 'Female']} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-droplet"    label="Blood Type"   field="bloodType"   value={formData.bloodType}   options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-ring"       label="Civil Status" field="civilStatus" value={formData.civilStatus} options={['Single', 'Married', 'Widowed', 'Separated']} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-church"     label="Religion"     field="religion"    value={formData.religion} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-flag"       label="Nationality"  field="nationality" value={formData.nationality} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-house"      label="Home Address" field="homeAddress" value={formData.homeAddress} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-hashtag" label="Age" field="age" type="number" value={formData.age} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-venus-mars" label="Sex" field="sex" value={formData.sex} options={['Male', 'Female']} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-droplet" label="Blood Type" field="bloodType" value={formData.bloodType} options={['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-ring" label="Civil Status" field="civilStatus" value={formData.civilStatus} options={['Single', 'Married', 'Widowed', 'Separated']} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-church" label="Religion" field="religion" value={formData.religion} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-flag" label="Nationality" field="nationality" value={formData.nationality} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-house" label="Home Address" field="homeAddress" value={formData.homeAddress} />
           </div>
 
-          {/* ── Academic / Professional ── */}
+          {/* Academic / Professional */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label={isStudent ? 'Academic Information' : 'Professional Information'} />
@@ -756,7 +846,9 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
               </button>
             </div>
 
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange}
+            <DrawerEditableInfoRow
+              isEditing={false}
+              onChange={handleChange}
               icon="fa-id-card"
               label={isStudent ? 'Student No.' : 'Employee ID'}
               field="universityId"
@@ -765,22 +857,22 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
             {isStudent ? (
               <>
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-building"      label="Department" field="department" value={formData.department} />
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-graduation-cap" label="Program"   field="program"    value={formData.program} />
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-layer-group"   label="Year Level" field="yearLevel"  value={formData.yearLevel} />
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-users"         label="Section"    field="section"    value={formData.section} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-building" label="Department" field="department" value={formData.department} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-graduation-cap" label="Program" field="program" value={formData.program} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-layer-group" label="Year Level" field="yearLevel" value={formData.yearLevel} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-users" label="Section" field="section" value={formData.section} />
               </>
             ) : (
               <>
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-user-tie"  label="Classification" field="classification" value={formData.classification} />
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-building"  label="Department"     field="department"     value={formData.department} />
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-briefcase" label="Job Title"      field="jobTitle"       value={formData.jobTitle} />
-                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-id-card"   label="License No."    field="licenseNumber" value={formData.licenseNumber} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-user-tie" label="Classification" field="classification" value={formData.classification} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-building" label="Department" field="department" value={formData.department} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-briefcase" label="Job Title" field="jobTitle" value={formData.jobTitle} />
+                <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-id-card" label="License No." field="licenseNumber" value={formData.licenseNumber} />
               </>
             )}
           </div>
 
-          {/* ── Contact ── */}
+          {/* Contact */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="Contact Information" />
@@ -791,11 +883,11 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 <i className="fa-solid fa-pen text-[8px]"></i> Edit
               </button>
             </div>
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-phone"    label="Phone Number"  field="phoneNumber" type="tel"   value={formData.phoneNumber} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-envelope" label="Email Address" field="email"       type="email" value={formData.email} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-phone" label="Phone Number" field="phoneNumber" type="tel" value={formData.phoneNumber} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-envelope" label="Email Address" field="email" type="email" value={formData.email} />
           </div>
 
-          {/* ── Emergency Contact ── */}
+          {/* Emergency Contact */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-red-50/30">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="Emergency Contact" color="text-red-400" />
@@ -806,19 +898,19 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 <i className="fa-solid fa-pen text-[8px]"></i> Edit
               </button>
             </div>
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-address-book"  label="Full Name"    field="emergencyContact" nestedField="name"         value={formData.emergencyContact?.name} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-heart"         label="Relationship" field="emergencyContact" nestedField="relationship" value={formData.emergencyContact?.relationship} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-phone-volume"  label="Phone Number" field="emergencyContact" nestedField="phone"        type="tel" value={formData.emergencyContact?.phone} />
-            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-location-dot" label="Address"      field="emergencyContact" nestedField="address"      value={formData.emergencyContact?.address} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-address-book" label="Full Name" field="emergencyContact" nestedField="name" value={formData.emergencyContact?.name} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-heart" label="Relationship" field="emergencyContact" nestedField="relationship" value={formData.emergencyContact?.relationship} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-phone-volume" label="Phone Number" field="emergencyContact" nestedField="phone" type="tel" value={formData.emergencyContact?.phone} />
+            <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-location-dot" label="Address" field="emergencyContact" nestedField="address" value={formData.emergencyContact?.address} />
           </div>
 
-          {/* ── COVID-19 Vaccination ── */}
+          {/* COVID-19 Vaccination */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-blue-50/20">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="COVID-19 Vaccination" color="text-blue-400" />
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                  {vaccineDoseCount} / 5 doses
+                  {vaccineDoseCount} / 4 doses
                 </span>
                 <button
                   onClick={() => openEdit('vaccinations')}
@@ -842,7 +934,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                       </span>
                       <span className="text-[11px] text-slate-700 font-medium truncate flex-1">{dose.vaccineName}</span>
                     </div>
-
                     {dose.date && (
                       <div className="text-[10px] text-slate-400 pl-[72px]">{dose.date}</div>
                     )}
@@ -874,7 +965,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             </div>
           </div>
 
-          {/* ── Dental History ── */}
+          {/* Dental History */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="Dental History" />
@@ -926,7 +1017,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             )}
           </div>
 
-          {/* ── Past Surgical History ── */}
+          {/* Past Surgical History */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <DrawerSectionHeader label="Past Surgical History" />
@@ -965,36 +1056,137 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             )}
           </div>
 
-        </div>
+          {/* ── Health Documents (Doctor, Dentist, Nurse, Sysadmin, Personnel) ── */}
+          {(!isStudent || isPersonnel) && (
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+              <DrawerSectionHeader label="Health Documents" />
+              <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                Upload X-rays, medical records, or other clinic-required files (PDF, JPG, PNG · max 5MB).
+              </p>
 
-        {/* ── Footer Actions ── */}
-        <div className="px-4 sm:px-6 py-6 border-t border-slate-100 bg-white flex-shrink-0">
-            <div className="animate-fadeIn">
-              <div className="flex items-center justify-between text-[10px] text-slate-400 mb-4 px-1">
-                <span>MediTrack v2.4.1</span>
-                <span>Server: Online <span className="text-emerald-500 ml-1">✓</span></span>
+              {(formData.documents || []).length === 0 && !uploadingDocs && (
+                <div className="flex flex-col items-center py-3 bg-white rounded-lg border border-slate-200 border-dashed mb-3">
+                  <p className="text-[10px] text-slate-400 italic mb-2">No documents uploaded yet.</p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 mb-3">
+                {(formData.documents || []).map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-slate-50">
+                    <button
+                      type="button"
+                      onClick={() => handleViewDocument(doc)}
+                      className="flex items-center gap-2.5 min-w-0 text-left bg-transparent border-0 cursor-pointer text-slate-700 hover:text-[#466460]"
+                    >
+                      <span className="text-[#466460] shrink-0"><DocIcon /></span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold truncate max-w-[200px]">{doc.name}</span>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDocToDelete(doc)}
+                      className="w-6 h-6 rounded-md bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center border-0 cursor-pointer text-xs shrink-0"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
 
               <button
-                onClick={() => setShowSettings(true)}
-                className="w-full py-3 mb-3 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
+                type="button"
+                onClick={() => documentsInputRef.current?.click()}
+                disabled={uploadingDocs}
+                className="w-full py-2 bg-[#466460] text-white rounded-lg text-xs font-bold hover:bg-[#38524d] transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
               >
-                <i className="fa-solid fa-gear"></i>
-                Settings
+                {uploadingDocs ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    Uploading...
+                  </>
+                ) : (
+                  '+ Add Document(s)'
+                )}
               </button>
-
-              <button
-                onClick={onLogout}
-                className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-red-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
-              >
-                <i className="fa-solid fa-right-from-bracket"></i>
-                Sign Out
-              </button>
+              <input
+                ref={documentsInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                multiple
+                hidden
+                onChange={handleDocumentUpload}
+              />
             </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="px-4 sm:px-6 py-6 border-t border-slate-100 bg-white flex-shrink-0">
+          <div className="animate-fadeIn">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 mb-4 px-1">
+              <span>MediTrack v2.4.1</span>
+              <span>Server: Online <span className="text-emerald-500 ml-1">✓</span></span>
+            </div>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              className="w-full py-3 mb-3 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
+            >
+              <i className="fa-solid fa-gear"></i>
+              Settings
+            </button>
+
+            <button
+              onClick={onLogout}
+              className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-red-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
+            >
+              <i className="fa-solid fa-right-from-bracket"></i>
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── Edit Profile Modal ── */}
+      {/* Delete Document Confirmation Modal */}
+      {docToDelete && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget && !isDeletingDoc) setDocToDelete(null); }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[4500] flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col gap-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-800 mb-1">Remove Document?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Are you sure you want to remove <strong className="text-slate-700 break-all">"{docToDelete.name}"</strong>? This will permanently delete the file from your clinic record.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={isDeletingDoc}
+                onClick={() => setDocToDelete(null)}
+                className="flex-1 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingDoc}
+                onClick={handleConfirmDeleteDoc}
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                {isDeletingDoc ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Profile Modal */}
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
@@ -1004,20 +1196,19 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             </div>
 
             <div className="px-6 py-4 overflow-y-auto flex-1">
-              {/* ── Personal Section ── */}
               {editingSection === 'personal' && (
                 <>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">First Name</label>
-                    <input type="text" value={editData.firstName || ''} onChange={e => handleChange('firstName', toTitleCase(e.target.value))} onBlur={e => handleChange('firstName', toTitleCase(e.target.value))} placeholder="First Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                    <input type="text" value={editData.firstName || ''} onChange={e => handleChange('firstName', toTitleCase(e.target.value))} placeholder="First Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Middle Name</label>
-                    <input type="text" value={editData.middleName || ''} onChange={e => handleChange('middleName', toTitleCase(e.target.value))} onBlur={e => handleChange('middleName', toTitleCase(e.target.value))} placeholder="Middle Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                    <input type="text" value={editData.middleName || ''} onChange={e => handleChange('middleName', toTitleCase(e.target.value))} placeholder="Middle Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Name</label>
-                    <input type="text" value={editData.lastName || ''} onChange={e => handleChange('lastName', toTitleCase(e.target.value))} onBlur={e => handleChange('lastName', toTitleCase(e.target.value))} placeholder="Last Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                    <input type="text" value={editData.lastName || ''} onChange={e => handleChange('lastName', toTitleCase(e.target.value))} placeholder="Last Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Suffix</label>
@@ -1033,7 +1224,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Age (Auto-calculated)</label>
                     <input type="text" value={editData.age || ''} readOnly className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-500 cursor-not-allowed" />
-                    <span className="text-[10px] text-slate-400">Age is automatically calculated from birthday</span>
                   </div>
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Sex</label>
@@ -1080,7 +1270,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </>
               )}
 
-              {/* ── Professional Section (Staff) ── */}
               {editingSection === 'professional' && !isStudent && (
                 <>
                   <div className="mb-4">
@@ -1115,7 +1304,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </>
               )}
 
-              {/* ── Professional Section (Student) ── */}
               {editingSection === 'professional' && isStudent && (
                 <>
                   <div className="mb-4">
@@ -1147,7 +1335,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </>
               )}
 
-              {/* ── Contact Section ── */}
               {editingSection === 'contact' && (
                 <>
                   <div className="mb-4">
@@ -1157,13 +1344,10 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                   <div className="mb-4">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
                     <input type="tel" value={editData.phoneNumber || ''} onChange={e => { const formatted = formatPhoneNumber(e.target.value); handleChange('phoneNumber', formatted); }} onBlur={e => { if (e.target.value && !isValidPhoneNumber(e.target.value)) { alert('Phone number must be exactly 11 digits (e.g., 09123456789)'); } }} placeholder="09123456789" maxLength={11} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
-                    <span className="text-[10px] text-slate-400">Format: 09XXXXXXXXX (11 digits)</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-2">Note: Changing your email may require you to verify your identity.</p>
                 </>
               )}
 
-              {/* ── Emergency Section ── */}
               {editingSection === 'emergency' && (
                 <>
                   <div className="mb-4">
@@ -1190,7 +1374,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </>
               )}
 
-              {/* ── Vaccinations Section ── */}
               {editingSection === 'vaccinations' && (
                 <>
                   {VACCINE_DOSE_KEYS.map(({ key, label }) => {
@@ -1245,7 +1428,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </>
               )}
 
-              {/* ── Dental Section ── */}
               {editingSection === 'dental' && (
                 <>
                   <label className="flex items-center gap-3 p-4 rounded-xl mb-4 cursor-pointer bg-slate-50 border border-slate-200">
@@ -1275,7 +1457,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                       <p className="text-[10px] font-extrabold text-[#466460] uppercase tracking-wide mt-6 mb-3 pt-5 border-t border-slate-100">Procedures History</p>
                       {DENTAL_PROCEDURES.map(proc => {
                         const isYes = editData.dentalHistory?.procedures?.[proc] === 'Yes';
-                        const isNo  = editData.dentalHistory?.procedures?.[proc] === 'No' || !editData.dentalHistory?.procedures?.[proc];
+                        const isNo = editData.dentalHistory?.procedures?.[proc] === 'No' || !editData.dentalHistory?.procedures?.[proc];
                         return (
                           <div key={proc} className="flex items-center justify-between mb-3 text-xs text-slate-800 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg">
                             <span className="font-semibold">{proc}</span>
@@ -1295,7 +1477,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 </>
               )}
 
-              {/* ── Surgical History Section ── */}
               {editingSection === 'surgical' && (
                 <>
                   <label className="flex items-center gap-3 p-4 rounded-xl mb-4 cursor-pointer bg-slate-50 border border-slate-200">
@@ -1374,14 +1555,14 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         </div>
       )}
 
-      {/* ── Settings Overlay ── */}
+      {/* Settings Overlay */}
       {showSettings && (
         <div className="fixed inset-0 z-[3000]">
           <Settings onLogout={onLogout} onClose={() => setShowSettings(false)} />
         </div>
       )}
 
-      {/* ── Address Modal ── */}
+      {/* Address Modal */}
       {showAddressModal && (
         <AddressModal
           isOpen={showAddressModal}
@@ -1447,18 +1628,18 @@ export const DesktopHeader = ({ onOpenQR }) => {
   const authUser = authService.getCurrentUser();
   const [fullProfile, setFullProfile] = useState(authUser || {});
 
-  useEffect(() => {
-    const fetchUnreadCount = async () => {
-      try {
-        const count = await notificationsService.getUnreadCount();
-        setUnreadCount(count || 0);
-      } catch (err) {
-        ('Error fetching unread count:', err);
-      }
-    };
-    fetchUnreadCount();
+  const refreshUnreadCount = async () => {
+    try {
+      const count = await notificationsService.getUnreadCount();
+      setUnreadCount(count || 0);
+    } catch (err) {
+      console.error('Error fetching unread count:', err);
+    }
+  };
 
-    const interval = setInterval(fetchUnreadCount, 30000);
+  useEffect(() => {
+    refreshUnreadCount();
+    const interval = setInterval(refreshUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1485,7 +1666,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
           setFullProfile({ ...authUser, ...result.data });
         }
       } catch (err) {
-        ('Error fetching full profile for header:', err);
+        console.error('Error fetching full profile for header:', err);
       }
     };
 
@@ -1493,37 +1674,44 @@ export const DesktopHeader = ({ onOpenQR }) => {
   }, [navigate]);
 
   useEffect(() => {
-    const getUserId = () => {
-      try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        return user?.uid || null;
-      } catch { return null; }
+    let channel;
+    const setupRealtime = async () => {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const isSysAdmin = user?.role === 'sysadmin';
+      const internalId = await notificationsService.getInternalUserId();
+
+      const filter = isSysAdmin ? undefined : `user_id=eq.${internalId}`;
+      channel = supabase
+        .channel(isSysAdmin ? 'header-sysadmin-notif-count' : 'header-user-notif-count')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
+          () => {
+            setUnreadCount((prev) => prev + 1);
+            sessionStorage.removeItem('meditrack_notif_count');
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
+          async () => {
+            refreshUnreadCount();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
+          async () => {
+            refreshUnreadCount();
+          }
+        )
+        .subscribe();
     };
 
-    const userId = getUserId();
-    if (!userId) return;
-
-    const channel = supabase
-      .channel('header-notif-count')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-        () => {
-          setUnreadCount(prev => prev + 1);
-          sessionStorage.removeItem('meditrack_notif_count');
-        }
-      )
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-        async () => {
-          const count = await notificationsService.getUnreadCount();
-          setUnreadCount(count);
-          sessionStorage.removeItem('meditrack_notif_count');
-        }
-      )
-      .subscribe();
+    setupRealtime();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
@@ -1555,7 +1743,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         lg:px-6
       ">
         <img
-          src="/logo1.png"
+          src="./logo1.png"
           alt="MediTrack Logo"
           className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
           onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
@@ -1605,6 +1793,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
       <NotificationPanel
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
+        onUnreadCountChange={setUnreadCount}
       />
     </>
   );
@@ -1614,7 +1803,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
 const ROLE_NAV_CONFIG = {
   sysadmin: [
     { to: '/dashboard', label: 'Dashboard' },
-     { to: '/approval-management', label: 'Approvals' },
+    { to: '/approval-management', label: 'Approvals' },
     { to: '/appointment-management', label: 'Appointments' },
     { to: '/record-management', label: 'Records' },
     { to: '/consultation-management', label: 'Consultations' },
@@ -1680,12 +1869,12 @@ export const DesktopNav = () => {
             setUserRole('doctor');
           } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
             setUserRole('nurse');
-          } else if (classification === 'System Administrator') {
+          } else if (classification === 'system administrator' || classification === 'sysadmin') {
             setUserRole('sysadmin');
           }
         }
       } catch (err) {
-        ('Error fetching user role:', err);
+        console.error('Error fetching user role:', err);
       } finally {
         setIsLoading(false);
       }
@@ -1746,7 +1935,7 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
         sm:px-6 sm:min-h-[70px]
       ">
         <img
-          src="/logo.jpg"
+          src="./logo.jpg"
           alt="MediTrack Logo"
           className="h-10 object-contain rounded-xl"
           onError={e => { e.target.src = 'https://placehold.co/200x40/557a5b/white?text=MediTrack'; }}
@@ -1766,7 +1955,7 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
       sm:px-6 sm:min-h-[70px]
     ">
       <img
-        src="/logo1.png"
+        src="./logo1.png"
         alt="MediTrack Logo"
         className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
         style={{ mixBlendMode: 'multiply' }}
@@ -1873,7 +2062,7 @@ export const MobileNav = ({
           setUserRole(result.data.role.toLowerCase());
         }
       } catch (err) {
-        ('Error fetching user role:', err);
+        console.error('Error fetching user role:', err);
       }
     };
     fetchUserRole();
@@ -1888,13 +2077,13 @@ export const MobileNav = ({
   const items = getItems();
   return (
     <nav className="
-  bg-white border-b border-slate-200 shadow-sm
-  flex gap-4 sm:gap-6 lg:gap-12
-  px-3 sm:px-6 lg:px-8
-  py-3 sm:py-4
-  z-10
-  overflow-y-auto scrollbar-none
-">
+      bg-white border-b border-slate-200 shadow-sm
+      flex gap-4 sm:gap-6 lg:gap-12
+      px-3 sm:px-6 lg:px-8
+      py-3 sm:py-4
+      z-10
+      overflow-y-auto scrollbar-none
+    ">
       {items.map((item) => {
         const IconComponent = item.icon || DefaultIcon;
         const isActive = active === item.id;
@@ -1933,12 +2122,13 @@ export const MobileLayout = ({
   userId,
   bottomNavItems,
   onLogout,
+  onProfileClick,
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogoutRequest = () => setShowLogoutConfirm(true);
-  const handleConfirm       = () => { setShowLogoutConfirm(false); onLogout?.(); };
-  const handleCancel        = () => setShowLogoutConfirm(false);
+  const handleConfirm = () => { setShowLogoutConfirm(false); onLogout?.(); };
+  const handleCancel = () => setShowLogoutConfirm(false);
 
   return (
     <>
@@ -1949,7 +2139,7 @@ export const MobileLayout = ({
         .scrollbar-none { scrollbar-width: none; }
         @keyframes fadeIn  { from { opacity:0; transform:translateY(8px); }  to { opacity:1; transform:translateY(0); } }
         @keyframes slideUp { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:translateY(0); } }
-        .animate-fadeIn  { animation: fadeIn  0.28s ease both; }
+        .animate-fadeIn  { animation: fadeIn 0.28s ease both; }
         .animate-slideUp { animation: slideUp 0.32s cubic-bezier(.34,1.56,.64,1) both; }
       `}</style>
 
@@ -1959,6 +2149,7 @@ export const MobileLayout = ({
           userName={userName}
           userId={userId}
           onProfileClick={onProfileClick}
+          onLogout={onLogout ? handleLogoutRequest : undefined}
         />
         <div className="flex-1 overflow-y-auto pt-[64px] pb-[70px] scrollbar-none">
           {children}
@@ -1984,6 +2175,7 @@ export const MobileLayout = ({
             userName={userName}
             userId={userId}
             onLogout={onLogout ? handleLogoutRequest : undefined}
+            onProfileClick={onProfileClick}
           />
           <div className="h-full overflow-y-auto pt-[64px] pb-[80px] scrollbar-none">
             {children}

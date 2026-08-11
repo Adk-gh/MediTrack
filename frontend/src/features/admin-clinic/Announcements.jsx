@@ -1,3 +1,4 @@
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Announcements.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
@@ -7,7 +8,6 @@ import { supabase } from '../../supabase';
 // ============================================================
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// --- PLSP Department Data ---
 const departmentsData = [
   {
     abbr: 'CCSE',
@@ -89,7 +89,6 @@ const departmentsData = [
   },
 ];
 
-// All available departments (without "All Departments" option - that's handled by selecting all)
 const DEPT_OPTIONS = departmentsData.map(d => d.full);
 const ALL_DEPT_LABEL = 'All Departments';
 const CATEGORIES = ['General', 'Vaccination', 'Screening', 'Dental', 'Mental Health', 'Emergency', 'Schedule', 'Event'];
@@ -111,9 +110,6 @@ const PRIORITY_CONFIG = {
   normal: { label: 'Normal',  color: 'bg-slate-300',  dot: 'bg-slate-400'  },
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   if (isNaN(Date.parse(dateStr))) return dateStr;
@@ -130,7 +126,6 @@ const toBase64 = (file) =>
     reader.readAsDataURL(file);
   });
 
-// ── Get role from localStorage (checks multiple possible keys) ──────────────
 const getRoleFromStorage = () => {
   const direct = localStorage.getItem('role');
   if (direct) return direct.toLowerCase();
@@ -144,7 +139,6 @@ const getRoleFromStorage = () => {
   return null;
 };
 
-// Helper to format dept for display (handles array, JSON string, or plain string)
 const formatDeptDisplay = (deptValue) => {
   let deptArray = [];
   if (!deptValue) return [ALL_DEPT_LABEL];
@@ -159,7 +153,6 @@ const formatDeptDisplay = (deptValue) => {
     }
   }
 
-  // If all 8 departments are selected, display as "All Departments"
   if (deptArray.length === DEPT_OPTIONS.length && DEPT_OPTIONS.every(d => deptArray.includes(d))) {
     return [ALL_DEPT_LABEL];
   }
@@ -170,7 +163,7 @@ const formatDeptDisplay = (deptValue) => {
 const EMPTY_FORM = {
   title:    '',
   content:  '',
-  dept:     [], // Array of selected departments
+  dept:     [],
   category: 'General',
   priority: 'normal',
   location: '',
@@ -180,9 +173,6 @@ const EMPTY_FORM = {
   imageFile:     null,
 };
 
-// ============================================================
-// COMPONENTS
-// ============================================================
 const Snackbar = ({ message, type, visible }) => (
   <div className={`fixed bottom-8 left-1/2 z-[9999] flex w-[90%] sm:w-auto max-w-md items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
     ${visible ? '-translate-x-1/2 translate-y-0' : '-translate-x-1/2 translate-y-24 opacity-0'}
@@ -239,9 +229,6 @@ const ImageDropZone = ({ value, onChange, onClear }) => {
   );
 };
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 export const Announcements = () => {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading]             = useState(true);
@@ -255,7 +242,6 @@ export const Announcements = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [currentEditId, setCurrentEditId]     = useState(null);
 
-  // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -267,7 +253,6 @@ export const Announcements = () => {
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const snackbarTimer           = useRef(null);
 
-  // ── Role-based access control ───────────────────────────────────────────────
   const [userRole, setUserRole] = useState('');
 
   useEffect(() => {
@@ -298,10 +283,8 @@ export const Announcements = () => {
     fetchUserRole();
   }, []);
 
-  // ONLY Admin/Sysadmin/Administrator can manage. Nurse, Doctor, Dentist view only.
   const canManage = ['sysadmin', 'administrator', 'admin'].includes(userRole);
 
-  // ── CUSTOM HOOK FOR DRAGGING MOBILE DRAWERS ──
   const useDrawerDrag = (onCloseCallback) => {
     const [dragY, setDragY] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
@@ -343,7 +326,6 @@ export const Announcements = () => {
   const formDrawer = useDrawerDrag(() => setIsFormModalOpen(false));
   const viewDrawer = useDrawerDrag(() => setIsViewModalOpen(false));
 
-  // ── Fetch Announcements via Supabase ──
   useEffect(() => {
     const fetchAnnouncements = async () => {
       setLoading(true);
@@ -366,7 +348,6 @@ export const Announcements = () => {
     fetchAnnouncements();
   }, []);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       const dropdown = document.getElementById('dept-dropdown');
@@ -393,7 +374,6 @@ export const Announcements = () => {
   const handleOpenForm = (editId = null) => {
     if (editId) {
       const target = announcements.find(a => a.id === editId);
-      // Handle dept - could be array (new) or string/JSON (old)
       let deptArray = [];
       if (target.dept) {
         if (Array.isArray(target.dept)) {
@@ -402,20 +382,20 @@ export const Announcements = () => {
           try {
             deptArray = JSON.parse(target.dept);
           } catch {
-            deptArray = [target.dept]; // Single dept string
+            deptArray = [target.dept];
           }
         }
       }
       setFormData({
-        title:         target.title        || '',
-        content:       target.content      || '',
+        title:         target.title         || '',
+        content:       target.content       || '',
         dept:          deptArray,
-        category:      target.category     || 'General',
-        priority:      target.priority     || 'normal',
-        location:      target.location     || '',
+        category:      target.category      || 'General',
+        priority:      target.priority      || 'normal',
+        location:      target.location      || '',
         contactPerson: target.contact_person|| '',
         contactEmail:  target.contact_email || '',
-        image_url:     target.image_url    || null,
+        image_url:     target.image_url     || null,
         imageFile:     null,
       });
       setCurrentEditId(editId);
@@ -427,7 +407,6 @@ export const Announcements = () => {
     setIsFormModalOpen(true);
   };
 
-  // ── Handle Save / Update via Supabase ──
   const handleSave = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
       showSnackbar('Title and content are required', 'error');
@@ -438,14 +417,13 @@ export const Announcements = () => {
     try {
       let finalImageUrl = formData.image_url;
 
-      // Supabase Storage Image Upload
       if (formData.imageFile) {
         const fileExt = formData.imageFile.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('MediStorage') // Your Supabase storage bucket name
+          .from('MediStorage')
           .upload(`announcements/${filePath}`, formData.imageFile);
 
         if (uploadError) throw new Error('Image upload failed: ' + uploadError.message);
@@ -457,8 +435,6 @@ export const Announcements = () => {
         finalImageUrl = publicUrlData.publicUrl;
       }
 
-      // Map JS camelCase back to DB snake_case
-      // Store dept as JSON array string
       const deptValue = formData.dept && formData.dept.length > 0 ? JSON.stringify(formData.dept) : 'All Departments';
       const payload = {
         title:          formData.title.trim(),
@@ -490,7 +466,41 @@ export const Announcements = () => {
           .select();
 
         if (error) throw error;
-        setAnnouncements(prev => [data[0], ...prev]);
+        const newAnnouncement = data[0];
+        setAnnouncements(prev => [newAnnouncement, ...prev]);
+
+        // ── Broadcast Notification to Target Department Users ──
+        try {
+          const isAllDepts = formData.dept.length === 0 || formData.dept.length === DEPT_OPTIONS.length;
+          let userQuery = supabase.from('users').select('id, department');
+
+          if (!isAllDepts) {
+            userQuery = userQuery.in('department', formData.dept);
+          }
+
+          const { data: targetUsers } = await userQuery;
+
+          if (targetUsers && targetUsers.length > 0) {
+            const notifRows = targetUsers.map((u) => ({
+              type: 'announcement',
+              title: `📢 ${newAnnouncement.title}`,
+              message: newAnnouncement.content?.substring(0, 140) || 'A new announcement has been posted.',
+              user_id: u.id,
+              reference_id: newAnnouncement.id,
+              reference_type: 'announcement',
+              is_read: false,
+              created_at: new Date().toISOString(),
+            }));
+
+            // Chunk inserts by batches of 200
+            for (let i = 0; i < notifRows.length; i += 200) {
+              await supabase.from('notifications').insert(notifRows.slice(i, i + 200));
+            }
+          }
+        } catch (notifErr) {
+          console.error('Failed to dispatch announcement notifications:', notifErr);
+        }
+
         showSnackbar('Announcement posted', 'success');
       }
       setIsFormModalOpen(false);
@@ -502,7 +512,6 @@ export const Announcements = () => {
     }
   };
 
-  // ── Delete Modal Handlers ──
   const openDeleteModal = (item) => {
     setAnnouncementToDelete(item);
     setShowDeleteModal(true);
@@ -514,11 +523,9 @@ export const Announcements = () => {
     setDeleting(true);
 
     try {
-      // Get current user info for deleted_by
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const name = localStorage.getItem('name') || '';
 
-      // Set is_archived to true instead of deleting
       const { error } = await supabase
         .from('announcements')
         .update({
@@ -531,7 +538,7 @@ export const Announcements = () => {
       if (error) throw error;
 
       setAnnouncements(prev => prev.filter(a => a.id !== announcementToDelete.id));
-      showSnackbar('Announcement archived successfully. You can restore it from the Archives page.');
+      showSnackbar('Announcement archived successfully.');
     } catch (err) {
       console.error("Failed to archive announcement:", err);
       showSnackbar('Failed to archive announcement', 'error');
@@ -549,13 +556,7 @@ export const Announcements = () => {
 
   const setField = (key, val) => setFormData(f => ({ ...f, [key]: val }));
 
-  // Debug: log filter values and some data to help diagnose
-  console.log('[Announcements] Filter Category:', filterCategory, 'Filter Priority:', filterPriority, 'Search:', searchTerm);
-  console.log('[Announcements] Sample data:', announcements.slice(0, 2).map(a => ({ category: a.category, priority: a.priority })));
-
   const filtered = announcements.filter(a => {
-    // Case-insensitive comparison for category and priority
-    // Also handle empty/undefined values
     const annCategory = a.category || '';
     const annPriority = a.priority || '';
     const catOk  = filterCategory === 'All' ||
@@ -565,7 +566,6 @@ export const Announcements = () => {
       annPriority.toLowerCase() === filterPriority.toLowerCase() ||
       annPriority === filterPriority;
 
-    // Department filter - handle JSON array or string
     let annDepts = [];
     const deptValue = a.dept;
     if (deptValue) {
@@ -581,7 +581,6 @@ export const Announcements = () => {
     }
     const deptOk = filterDept === 'All' || annDepts.includes(filterDept);
 
-    // Search filter - searches title and content
     const searchLower = searchTerm.toLowerCase();
     const searchOk = !searchTerm ||
       (a.title || '').toLowerCase().includes(searchLower) ||
@@ -601,12 +600,9 @@ export const Announcements = () => {
         .animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
       `}</style>
 
-      {/* ── Header Bar (fixed — does not scroll) ── */}
+      {/* Header Bar */}
       <div className="shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-6 pt-6 pb-5 border-b-2 border-[#e0eceb] bg-white z-10">
-
-        {/* Search + Filters (left side of the bar) */}
         <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 w-full sm:w-auto">
-          {/* Search Bar */}
           <div className="relative flex-1 sm:flex-none sm:w-64">
             <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
             <input
@@ -618,7 +614,6 @@ export const Announcements = () => {
             />
           </div>
 
-          {/* Filter group */}
           <div className="flex gap-2 w-full xl:w-auto bg-slate-50 border border-[#e2e8f0] rounded-full p-1">
             <select
               value={filterCategory}
@@ -651,7 +646,6 @@ export const Announcements = () => {
           </div>
         </div>
 
-        {/* New Post button (right side of the bar) */}
         {canManage && (
           <button
             onClick={() => handleOpenForm()}
@@ -662,7 +656,7 @@ export const Announcements = () => {
         )}
       </div>
 
-      {/* ── Announcement List (only this area scrolls) ── */}
+      {/* Announcement List */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
         {loading ? (
           <div className="text-center py-12 text-slate-400 text-sm"><i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading…</div>
@@ -684,8 +678,6 @@ export const Announcements = () => {
                 )}
 
                 <div className={`flex-1 min-w-0 p-3 sm:p-4 relative flex flex-col justify-center ${!item.image_url ? 'ml-[3px] pl-4 sm:pl-5' : 'pl-3 sm:pl-4'}`}>
-
-                  {/* ── Edit/Delete menu — only for admins/nurses ── */}
                   {canManage && (
                     <div className="absolute top-2.5 right-2 sm:right-3" onClick={e => e.stopPropagation()}>
                       <button
@@ -731,6 +723,7 @@ export const Announcements = () => {
                     <span><i className="fa-regular fa-calendar mr-1"></i>{formatDate(item.created_at)}</span>
                     {item.location && <span className="truncate"><i className="fa-solid fa-location-dot mr-1"></i>{item.location}</span>}
                     {item.contact_person && <span className="truncate"><i className="fa-solid fa-user mr-1"></i>{item.contact_person}</span>}
+                    {item.contact_email && <span><i className="fa-solid fa-envelope mr-1"></i>{item.contact_email}</span>}
                   </div>
 
                   <p className="text-sm text-slate-600 leading-relaxed line-clamp-2">{item.content}</p>
@@ -741,19 +734,15 @@ export const Announcements = () => {
         )}
       </div>
 
-      {/* ── CREATE / EDIT MODAL ── */}
+      {/* Form Modal */}
       {isFormModalOpen && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-start justify-center pt-0 sm:pt-8">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsFormModalOpen(false)}></div>
-
-          {/* Modal Content */}
           <div
             ref={formDrawer.sheetRef}
             className="relative bg-white w-full sm:max-w-5xl mx-4 my-4 flex flex-col shadow-2xl overflow-hidden rounded-2xl max-h-[92vh] animate-[fadeInSlide_0.3s_ease-out_forwards]"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
             <div
               className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between"
               onTouchStart={formDrawer.handleTouchStart}
@@ -771,131 +760,129 @@ export const Announcements = () => {
 
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
               <div className="p-4 sm:p-6 lg:p-8 bg-white rounded-xl shadow-sm">
-              <label className={labelCls}>Title <span className="text-red-400">*</span></label>
-              <input type="text" placeholder="Announcement title" className={inputCls} value={formData.title} onChange={e => setField('title', e.target.value)} />
+                <label className={labelCls}>Title <span className="text-red-400">*</span></label>
+                <input type="text" placeholder="Announcement title" className={inputCls} value={formData.title} onChange={e => setField('title', e.target.value)} />
 
-              <label className={labelCls}>Details <span className="text-red-400">*</span></label>
-              <textarea placeholder="Write the full details..." rows={3} className={`${inputCls} resize-none`} value={formData.content} onChange={e => setField('content', e.target.value)} />
+                <label className={labelCls}>Details <span className="text-red-400">*</span></label>
+                <textarea placeholder="Write the full details..." rows={3} className={`${inputCls} resize-none`} value={formData.content} onChange={e => setField('content', e.target.value)} />
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                <div>
-                  <label className={labelCls}>Category</label>
-                  <select className={inputCls} value={formData.category} onChange={e => setField('category', e.target.value)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
-                </div>
-                <div>
-                  <label className={labelCls}>Priority</label>
-                  <select className={inputCls} value={formData.priority} onChange={e => setField('priority', e.target.value)}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-                </div>
-                <div>
-                  <label className={labelCls}>Target Dept</label>
-                  <div className="relative">
-                    <div
-                      className={`${inputCls} cursor-pointer flex items-center gap-2 min-h-[46px] sm:min-h-[42px] pr-3`}
-                      onClick={() => document.getElementById('dept-dropdown').classList.toggle('hidden')}
-                    >
-                      {formData.dept.length === 0 ? (
-                        <span className="text-slate-500">Select departments...</span>
-                      ) : (
-                        <>
-                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[#e0eceb] text-[#466460] shrink-0">
-                            {formData.dept[0].length > 25 ? formData.dept[0].substring(0, 25) + '...' : formData.dept[0]}
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setField('dept', formData.dept.filter(x => x !== formData.dept[0])); }}
-                              className="hover:text-red-500 ml-0.5"
-                            >
-                              <i className="fa-solid fa-xmark text-[10px]"></i>
-                            </button>
-                          </span>
-                          {formData.dept.length > 1 && (
-                            <span className="text-xs px-2 py-1 rounded-full bg-[#466460] text-white shrink-0">
-                              +{formData.dept.length - 1} more
-                            </span>
-                          )}
-                        </>
-                      )}
-                      <span className="ml-auto text-slate-400 flex-shrink-0 flex items-center">
-                        <i className="fa-solid fa-chevron-down text-xs"></i>
-                      </span>
-                    </div>
-                    {/* Dropdown content */}
-                    <div id="dept-dropdown" className="hidden absolute z-20 w-full mt-1 border border-[#e2e8f0] rounded-xl bg-white shadow-lg max-h-48 overflow-y-auto">
-                      {/* Select All option */}
-                      <label
-                        className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 font-semibold bg-slate-50"
-                        onClick={(e) => e.stopPropagation()}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                  <div>
+                    <label className={labelCls}>Category</label>
+                    <select className={inputCls} value={formData.category} onChange={e => setField('category', e.target.value)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Priority</label>
+                    <select className={inputCls} value={formData.priority} onChange={e => setField('priority', e.target.value)}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Target Dept</label>
+                    <div className="relative">
+                      <div
+                        className={`${inputCls} cursor-pointer flex items-center gap-2 min-h-[46px] sm:min-h-[42px] pr-3`}
+                        onClick={() => document.getElementById('dept-dropdown').classList.toggle('hidden')}
                       >
-                        <input
-                          type="checkbox"
-                          checked={formData.dept.length === DEPT_OPTIONS.length}
-                          ref={(el) => {
-                            if (el) el.indeterminate = formData.dept.length > 0 && formData.dept.length < DEPT_OPTIONS.length;
-                          }}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setField('dept', [...DEPT_OPTIONS]);
-                            } else {
-                              setField('dept', []);
-                            }
-                          }}
-                          className="w-4 h-4 text-[#466460] rounded border-slate-300 focus:ring-[#466460]"
-                        />
-                        <span className="text-sm text-slate-700 truncate">Select All</span>
-                      </label>
-                      {DEPT_OPTIONS.map(d => (
+                        {formData.dept.length === 0 ? (
+                          <span className="text-slate-500">Select departments...</span>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[#e0eceb] text-[#466460] shrink-0">
+                              {formData.dept[0].length > 25 ? formData.dept[0].substring(0, 25) + '...' : formData.dept[0]}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setField('dept', formData.dept.filter(x => x !== formData.dept[0])); }}
+                                className="hover:text-red-500 ml-0.5"
+                              >
+                                <i className="fa-solid fa-xmark text-[10px]"></i>
+                              </button>
+                            </span>
+                            {formData.dept.length > 1 && (
+                              <span className="text-xs px-2 py-1 rounded-full bg-[#466460] text-white shrink-0">
+                                +{formData.dept.length - 1} more
+                              </span>
+                            )}
+                          </>
+                        )}
+                        <span className="ml-auto text-slate-400 flex-shrink-0 flex items-center">
+                          <i className="fa-solid fa-chevron-down text-xs"></i>
+                        </span>
+                      </div>
+                      <div id="dept-dropdown" className="hidden absolute z-20 w-full mt-1 border border-[#e2e8f0] rounded-xl bg-white shadow-lg max-h-48 overflow-y-auto">
                         <label
-                          key={d}
-                          className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                          className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 font-semibold bg-slate-50"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <input
                             type="checkbox"
-                            checked={formData.dept.includes(d)}
+                            checked={formData.dept.length === DEPT_OPTIONS.length}
+                            ref={(el) => {
+                              if (el) el.indeterminate = formData.dept.length > 0 && formData.dept.length < DEPT_OPTIONS.length;
+                            }}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setField('dept', [...formData.dept, d]);
+                                setField('dept', [...DEPT_OPTIONS]);
                               } else {
-                                setField('dept', formData.dept.filter(x => x !== d));
+                                setField('dept', []);
                               }
                             }}
                             className="w-4 h-4 text-[#466460] rounded border-slate-300 focus:ring-[#466460]"
                           />
-                          <span className="text-sm text-slate-600 truncate">{d}</span>
+                          <span className="text-sm text-slate-700 truncate">Select All</span>
                         </label>
-                      ))}
+                        {DEPT_OPTIONS.map(d => (
+                          <label
+                            key={d}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.dept.includes(d)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setField('dept', [...formData.dept, d]);
+                                } else {
+                                  setField('dept', formData.dept.filter(x => x !== d));
+                                }
+                              }}
+                              className="w-4 h-4 text-[#466460] rounded border-slate-300 focus:ring-[#466460]"
+                            />
+                            <span className="text-sm text-slate-600 truncate">{d}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                <div>
-                  <label className={labelCls}>Location / Venue <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
-                  <input type="text" placeholder="e.g. Clinic Room 2" className={inputCls} value={formData.location} onChange={e => setField('location', e.target.value)} />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                  <div>
+                    <label className={labelCls}>Location / Venue <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
+                    <input type="text" placeholder="e.g. Clinic Room 2" className={inputCls} value={formData.location} onChange={e => setField('location', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Contact Person <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
+                    <input type="text" placeholder="Dr. Santos" className={inputCls} value={formData.contactPerson} onChange={e => setField('contactPerson', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Contact Email <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
+                    <input type="email" placeholder="clinic@plsp.edu" className={inputCls} value={formData.contactEmail} onChange={e => setField('contactEmail', e.target.value)} />
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Contact Person <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
-                  <input type="text" placeholder="Dr. Santos" className={inputCls} value={formData.contactPerson} onChange={e => setField('contactPerson', e.target.value)} />
-                </div>
-                <div>
-                  <label className={labelCls}>Contact Email <span className="text-slate-400 font-normal normal-case">(opt)</span></label>
-                  <input type="email" placeholder="clinic@plsp.edu" className={inputCls} value={formData.contactEmail} onChange={e => setField('contactEmail', e.target.value)} />
-                </div>
-              </div>
 
-              <label className={labelCls}><i className="fa-solid fa-image mr-1"></i>Infographic / Image <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
-              <ImageDropZone
-                value={formData.image_url}
-                onChange={(b64, file) => {
-                  setField('image_url', b64);
-                  setField('imageFile', file);
-                }}
-                onClear={() => {
-                  setField('image_url', null);
-                  setField('imageFile', null);
-                }}
-              />
-            </div>
+                <label className={labelCls}><i className="fa-solid fa-image mr-1"></i>Infographic / Image <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
+                <ImageDropZone
+                  value={formData.image_url}
+                  onChange={(b64, file) => {
+                    setField('image_url', b64);
+                    setField('imageFile', file);
+                  }}
+                  onClear={() => {
+                    setField('image_url', null);
+                    setField('imageFile', null);
+                  }}
+                />
+              </div>
             </div>
 
             <div className="shrink-0 bg-white border-t border-[#d1e7e5] px-6 py-4 flex items-center justify-end gap-3">
@@ -909,10 +896,9 @@ export const Announcements = () => {
         document.body
       )}
 
-      {/* ── VIEW MODAL ── */}
+      {/* View Modal */}
       {isViewModalOpen && viewData && createPortal(
         <div className="fixed inset-0 z-[99999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsViewModalOpen(false)}>
-
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             style={{ opacity: viewDrawer.isDragging ? Math.max(0, 1 - viewDrawer.dragY / 500) : 1 }}
@@ -927,7 +913,6 @@ export const Announcements = () => {
             }}
             onClick={e => e.stopPropagation()}
           >
-
             {viewData.image_url && (
               <div className="relative h-48 sm:h-56 w-full shrink-0 overflow-hidden bg-slate-100 -mb-2 sm:mb-0">
                 <div
@@ -941,10 +926,10 @@ export const Announcements = () => {
                 <img src={viewData.image_url} alt={viewData.title} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
                 <button onClick={() => setIsViewModalOpen(false)} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-  </svg>
-</button>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
               </div>
             )}
 
@@ -987,12 +972,11 @@ export const Announcements = () => {
                 {viewData.contact_person && <span><i className="fa-solid fa-user mr-1 w-3 text-center text-[#466460]"></i>{viewData.contact_person}</span>}
                 {viewData.contact_email && <span><i className="fa-solid fa-envelope mr-1 w-3 text-center text-[#466460]"></i>{viewData.contact_email}</span>}
               </div>
-             <div className="border-t border-slate-100 pt-4"><p className="text-[15px] sm:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
+              <div className="border-t border-slate-100 pt-4"><p className="text-[15px] sm:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{viewData.content}</p></div>
             </div>
 
             <div className="px-6 sm:px-8 py-5 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-3 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
               <button onClick={() => setIsViewModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Close</button>
-              {/* Edit button in view modal — only for admins/nurses */}
               {canManage && (
                 <button
                   onClick={() => { setIsViewModalOpen(false); handleOpenForm(viewData.id); }}

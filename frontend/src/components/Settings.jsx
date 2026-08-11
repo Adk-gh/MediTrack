@@ -1,6 +1,7 @@
 // C:\Users\HP\MediTrack\frontend\src\components\Settings.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { createClient } from '@supabase/supabase-js';
 
 // ─── Environment Variables ────────────────────────────────────────────────────
 const OCR_SERVICE_URL = (import.meta.env.VITE_OCR_SERVICE_URL || 'http://localhost:5001').replace(/\/$/, '');
@@ -828,13 +829,20 @@ function DentistSettings() {
 // ─── Storage Manager Sub-Component ────────────────────────────────────────────
 // Browses Supabase Storage buckets via the backend (service-role) endpoints
 // defined in storage.routes.js, and lets admins delete files/folders.
+//
+// Note the "cache: 'no-store'" fetch option below is REQUIRED, not cosmetic:
+// this endpoint was previously getting cached by the browser (a 304 replaying
+// a stale empty-array response), which made the manager intermittently show
+// "no buckets" even though buckets existed. See fetchBuckets() for details.
 function StorageSettings() {
   const [buckets, setBuckets] = useState([]);
   const [selectedBucket, setSelectedBucket] = useState('');
   const [pathParts, setPathParts] = useState([]);
   const [items, setItems] = useState([]);
   const [loadingBuckets, setLoadingBuckets] = useState(true);
+  const [bucketsError, setBucketsError] = useState(null);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [itemsError, setItemsError] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
@@ -858,14 +866,24 @@ function StorageSettings() {
 
   const fetchBuckets = async () => {
     setLoadingBuckets(true);
+    setBucketsError(null); // reset on every attempt so a retry can clear a stale error
     try {
-      const res = await fetch(`${API_URL}/storage/buckets`);
-      if (!res.ok) throw new Error('Failed to load buckets');
+      const res = await fetch(`${API_URL}/storage/buckets`, {
+        cache: 'no-store' // <-- must live inside the fetch options object to do anything
+      });
+
+      if (!res.ok) {
+        // Backend reached, but responded with an error status
+        throw new Error(`Server responded ${res.status}`);
+      }
+
       const data = await res.json();
       setBuckets(data.buckets || []);
       if (data.buckets?.length) setSelectedBucket(data.buckets[0].name);
     } catch (error) {
+      // Network failure, CORS issue, backend down, bad JSON, etc.
       console.error('Failed to fetch buckets:', error);
+      setBucketsError(error.message || 'Failed to reach backend');
       showToast('Failed to load storage buckets. Make sure your backend is running.', 'error');
     } finally {
       setLoadingBuckets(false);
@@ -874,15 +892,19 @@ function StorageSettings() {
 
   const fetchItems = async () => {
     setLoadingItems(true);
+    setItemsError(null);
     setSelected(new Set());
     try {
       const query = currentPrefix ? `?prefix=${encodeURIComponent(currentPrefix)}` : '';
-      const res = await fetch(`${API_URL}/storage/buckets/${encodeURIComponent(selectedBucket)}/list${query}`);
-      if (!res.ok) throw new Error('Failed to load items');
+      const res = await fetch(`${API_URL}/storage/buckets/${encodeURIComponent(selectedBucket)}/list${query}`, {
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
       const data = await res.json();
       setItems(data.items || []);
     } catch (error) {
       console.error('Failed to fetch items:', error);
+      setItemsError(error.message || 'Failed to reach backend');
       showToast('Failed to load folder contents.', 'error');
       setItems([]);
     } finally {
@@ -1000,12 +1022,24 @@ function StorageSettings() {
 
   if (loadingBuckets) return <div style={{ padding: '24px', color: '#64748b' }}>Loading storage buckets...</div>;
 
-  if (!buckets.length) return (
+  if (bucketsError) return (
     <div style={{ padding: '24px', color: '#ef4444' }}>
-      No storage buckets found, or the backend couldn't be reached.
+      Couldn't reach the backend to load storage buckets.
       <p style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
-        Make sure `/api/storage/buckets` is mounted on your Express server.
+        {bucketsError} — make sure `/api/storage/buckets` is mounted and the server is running.
       </p>
+      <button
+        onClick={fetchBuckets}
+        style={{ marginTop: '12px', background: '#466460', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+
+  if (!buckets.length) return (
+    <div style={{ padding: '24px', color: '#94a3b8' }}>
+      This project has no storage buckets yet.
     </div>
   );
 
@@ -1082,6 +1116,17 @@ function StorageSettings() {
         <div style={{ border: '1px solid #e2ebe8', borderRadius: 12, overflow: 'hidden' }}>
           {loadingItems ? (
             <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>Loading...</div>
+          ) : itemsError ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: '#ef4444', fontSize: 13 }}>
+              Couldn't load this folder.
+              <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>{itemsError}</div>
+              <button
+                onClick={fetchItems}
+                style={{ marginTop: 10, background: '#466460', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Retry
+              </button>
+            </div>
           ) : items.length === 0 ? (
             <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>This folder is empty.</div>
           ) : (
@@ -1161,11 +1206,22 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
 
     // Clinic Staff Settings
     if (['nurse', 'doctor', 'dentist', 'staff', 'registrar'].includes(normalizedRole)) {
-      return [
+      const staffSections = [];
+
+      if (normalizedRole === 'doctor') {
+        staffSections.push({ id: 'doctor', label: 'Doctor Settings', icon: DoctorIcon });
+      }
+      if (normalizedRole === 'dentist') {
+        staffSections.push({ id: 'dentist', label: 'Dentist Settings', icon: DentistIcon });
+      }
+
+      staffSections.push(
         { id: 'notifications', label: 'Notifications', icon: BellIcon },
         { id: 'data', label: 'Data & Privacy', icon: DataIcon },
         { id: 'general', label: 'General', icon: GeneralIcon },
-      ];
+      );
+
+      return staffSections;
     }
 
     // Default / Student Settings
@@ -1384,7 +1440,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
             <SectionLabel>Application</SectionLabel>
             <SectionCard>
               <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-                <img src="/logo.jpg" alt="MediTrack Logo" style={{ height: 64, borderRadius: 16, marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
+                <img src="./logo.jpg" alt="MediTrack Logo" style={{ height: 64, borderRadius: 16, marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
                 <h4 style={{ fontSize: 22, fontWeight: 800, color: '#1a2e22', margin: '0 0 6px' }}>MediTrack</h4>
                 <span style={{ display: 'inline-block', background: '#edf4f2', color: '#466460', fontSize: 11, fontWeight: 700, padding: '4px 14px', borderRadius: 40, marginBottom: 20 }}>Version 2.4.1</span>
                 <p style={{ fontSize: 13, color: '#7a9e8e', lineHeight: 1.7, margin: '0 0 8px' }}>

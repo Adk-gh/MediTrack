@@ -1,34 +1,29 @@
-// C:\Users\HP\MediTrack\features\notifications\notifications.service.js
+// backend/features/notifications/notifications.service.js
 const supabase = require('../../configs/database');
 
 const notificationsService = {
-  async createNotification(notificationData) {
-    // notificationData.userId is the Supabase Auth UUID (from localStorage user.uid)
-    // We need to look up the internal users.id to satisfy the foreign key constraint
-    let userIdToUse = notificationData.userId;
+  async getInternalUserId(authUidOrInternalId) {
+    if (!authUidOrInternalId) return null;
 
-    // Try to find internal user ID from the Supabase Auth UUID
-    if (notificationData.userId) {
-      const { data: userProfile } = await supabase
-        .from('users')
-        .select('id')
-        .eq('uid', notificationData.userId)
-        .single();
+    const { data: userProfile } = await supabase
+      .from('users')
+      .select('id')
+      .eq('uid', authUidOrInternalId)
+      .maybeSingle();
 
-      if (userProfile?.id) {
-        console.log('[Notifications] Found internal user id:', userProfile.id, 'from auth uid:', notificationData.userId);
-        userIdToUse = userProfile.id;
-      } else {
-        console.warn('[Notifications] Could not find internal user for uid:', notificationData.userId);
-      }
+    if (userProfile?.id) {
+      return userProfile.id;
     }
 
-    console.log('[Notifications] Creating notification:', {
-      type: notificationData.type,
-      title: notificationData.title,
-      userId: userIdToUse, // Now using internal ID
-      referenceId: notificationData.referenceId,
-    });
+    return authUidOrInternalId;
+  },
+
+  async createNotification(notificationData) {
+    let userIdToUse = notificationData.userId;
+
+    if (notificationData.userId) {
+      userIdToUse = await this.getInternalUserId(notificationData.userId);
+    }
 
     const notification = {
       type: notificationData.type,
@@ -51,15 +46,106 @@ const notificationsService = {
       console.error('[Notifications] Error creating notification:', error);
       throw error;
     }
-    console.log('[Notifications] Notification created successfully:', data);
     return data;
   },
 
+  async notifyRoles(roles, notificationData) {
+    const roleList = Array.isArray(roles) ? roles : [roles];
+
+    const { data: targetUsers, error } = await supabase
+      .from('users')
+      .select('id, role')
+      .in('role', roleList);
+
+    if (error || !targetUsers || targetUsers.length === 0) return;
+
+    const notifications = targetUsers.map((user) => ({
+      type: notificationData.type,
+      title: notificationData.title,
+      message: notificationData.message,
+      user_id: user.id,
+      reference_id: notificationData.referenceId,
+      reference_type: notificationData.referenceType,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    const { error: insertError } = await supabase
+      .from('notifications')
+      .insert(notifications);
+
+    if (insertError) {
+      console.error('[Notifications] Role bulk insert error:', insertError.message);
+    }
+  },
+
+  // ── Notify Users for New Announcements ──
+  async notifyAnnouncement(announcementData) {
+    try {
+      let targetDepts = [];
+      const rawDept = announcementData.dept;
+
+      if (Array.isArray(rawDept)) {
+        targetDepts = rawDept;
+      } else if (typeof rawDept === 'string') {
+        try {
+          const parsed = JSON.parse(rawDept);
+          targetDepts = Array.isArray(parsed) ? parsed : [rawDept];
+        } catch {
+          targetDepts = [rawDept];
+        }
+      }
+
+      const isAllDepts =
+        targetDepts.length === 0 ||
+        targetDepts.includes('All Departments') ||
+        targetDepts.includes('All');
+
+      let query = supabase.from('users').select('id, department');
+
+      if (!isAllDepts) {
+        query = query.in('department', targetDepts);
+      }
+
+      const { data: targetUsers, error } = await query;
+
+      if (error || !targetUsers || targetUsers.length === 0) return;
+
+      const notifications = targetUsers.map((user) => ({
+        type: 'announcement',
+        title: `📢 ${announcementData.title}`,
+        message: announcementData.content?.substring(0, 140) || 'A new announcement has been posted.',
+        user_id: user.id,
+        reference_id: announcementData.id || null,
+        reference_type: 'announcement',
+        is_read: false,
+        created_at: new Date().toISOString(),
+      }));
+
+      // Chunk in batches of 200 to prevent oversized payloads
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < notifications.length; i += CHUNK_SIZE) {
+        const chunk = notifications.slice(i, i + CHUNK_SIZE);
+        const { error: insertError } = await supabase.from('notifications').insert(chunk);
+        if (insertError) {
+          console.error('[Notifications] Announcement insert error batch:', insertError.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Notifications] notifyAnnouncement error:', err.message);
+    }
+  },
+
+  async notifyAdmins(notificationData) {
+    return this.notifyRoles(['sysadmin'], notificationData);
+  },
+
   async getNotifications(userId, limit = 20) {
+    const internalId = await this.getInternalUserId(userId);
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', internalId)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -68,10 +154,11 @@ const notificationsService = {
   },
 
   async getUnreadCount(userId) {
+    const internalId = await this.getInternalUserId(userId);
     const { count, error } = await supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
+      .eq('user_id', internalId)
       .eq('is_read', false);
 
     if (error) throw error;
@@ -88,71 +175,38 @@ const notificationsService = {
   },
 
   async markAllAsRead(userId) {
+    const internalId = await this.getInternalUserId(userId);
     const { error } = await supabase
       .from('notifications')
       .update({ is_read: true })
-      .eq('user_id', userId)
+      .eq('user_id', internalId)
       .eq('is_read', false);
 
     if (error) throw error;
   },
 
-  // Ownership-scoped delete: only removes the row if it belongs to userId.
-  // Throws a NOT_FOUND-style error if the notification doesn't exist or
-  // isn't owned by this user, so the controller can respond appropriately.
-  async deleteNotification(notificationId, userId) {
-    const { data, error } = await supabase
+  async deleteNotification(notificationId, userId, isSysAdmin = false) {
+    let query = supabase
       .from('notifications')
       .delete()
-      .eq('id', notificationId)
-      .eq('user_id', userId)
-      .select()
-      .maybeSingle();
+      .eq('id', notificationId);
+
+    if (!isSysAdmin) {
+      const internalId = await this.getInternalUserId(userId);
+      query = query.eq('user_id', internalId);
+    }
+
+    const { data, error } = await query.select().maybeSingle();
 
     if (error) throw error;
 
     if (!data) {
-      const notFoundError = new Error('Notification not found or not owned by this user');
+      const notFoundError = new Error('Notification not found or unauthorized to delete');
       notFoundError.status = 404;
       throw notFoundError;
     }
 
     return data;
-  },
-
-  async notifyAdmins(notificationData) {
-    // Get admin users — select both id (internal, used as notifications.user_id
-    // per the FK constraint) and uid (kept here only in case other callers
-    // start needing it for logging).
-    const { data: adminUsers, error } = await supabase
-      .from('users')
-      .select('id, uid')
-      .eq('role', 'admin');
-
-    if (error || !adminUsers) return;
-
-    // Create notifications for each admin. FIX: notifications.user_id
-    // references users.id (internal), not users.uid (auth id) — the
-    // previous version sent admin.uid here, which either violated the FK
-    // or pointed at the wrong row.
-    const notifications = adminUsers.map(admin => ({
-      type: notificationData.type,
-      title: notificationData.title,
-      message: notificationData.message,
-      user_id: admin.id,
-      reference_id: notificationData.referenceId,
-      reference_type: notificationData.referenceType,
-      is_read: false,
-      created_at: new Date().toISOString(),
-    }));
-
-    const { error: insertError } = await supabase
-      .from('notifications')
-      .insert(notifications);
-
-    if (insertError) {
-      console.error('>>> [Notifications] Bulk insert error:', insertError);
-    }
   },
 };
 

@@ -1,13 +1,15 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Consultation-users.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import axios from 'axios';
 import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import consultationsService from '../../services/consultations.service';
 
 // ── CACHE KEYS ─────────────────────────────────────────────────────────────
 const MSG_CACHE_KEY      = 'meditrack_chat_messages';
 const CONSULT_CACHE_KEY  = 'meditrack_consultations';
 const PRESENCE_CACHE_KEY = 'meditrack_clinic_presence';
-const PRESENCE_TTL_MS    = 60000; // 1 minute cache for clinic status
+const PRESENCE_TTL_MS    = 60000;
 
 // ── Message Cache Helpers ─────────────────────────────────────────────────
 const getCachedMessages = (consultationId) => {
@@ -30,7 +32,6 @@ const setCachedMessages = (consultationId, messages) => {
   } catch {}
 };
 
-// ── Consultation Cache Helpers ────────────────────────────────────────────
 const getCachedConsultations = (userId) => {
   if (!userId) return null;
   try {
@@ -51,7 +52,6 @@ const setCachedConsultations = (userId, data) => {
   } catch {}
 };
 
-// ── Presence Cache Helpers ─────────────────────────────────────────────────
 const getCachedPresence = () => {
   try {
     const cache = JSON.parse(sessionStorage.getItem(PRESENCE_CACHE_KEY) || 'null');
@@ -67,7 +67,6 @@ const setCachedPresence = (isOnline) => {
   } catch {}
 };
 
-// ── Fetch sender roles from users table ────────────────────────────────────────
 const fetchSenderRoles = async (senderIds) => {
   if (!senderIds || senderIds.length === 0) return {};
   const uniqueIds = [...new Set(senderIds.filter(Boolean))];
@@ -77,13 +76,12 @@ const fetchSenderRoles = async (senderIds) => {
     .in('id', uniqueIds);
   if (!data) return {};
   const roleMap = {};
-  data.forEach(u => {
+  data.forEach((u) => {
     roleMap[u.id] = { role: u.role, first_name: u.first_name, last_name: u.last_name, sex: u.sex };
   });
   return roleMap;
 };
 
-// Gender icon helper
 const getGenderIcon = (sex) => {
   if (!sex) return null;
   const s = sex.toLowerCase();
@@ -108,16 +106,64 @@ const formatDate = (ts) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// ── Appointment date/time formatting + countdown helpers ───────────────────
+const formatApptDateTime = (appt) => {
+  if (!appt?.year || !appt?.month || !appt?.day || !appt?.time) return '';
+  const [h, m] = appt.time.split(':').map(Number);
+  const d = new Date(appt.year, appt.month - 1, appt.day, h, m);
+  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }) +
+    ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+function ApptCountdown({ targetDate }) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!targetDate) return null;
+
+  const diffMs = targetDate - now;
+  if (diffMs <= 0) {
+    return <span className="text-[13px] font-bold text-[#1a5c3a]">Starting now…</span>;
+  }
+
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const days    = Math.floor(totalSeconds / 86400);
+  const hours   = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const Unit = ({ value, label }) => (
+    <div className="flex flex-col items-center">
+      <span className="text-xl font-extrabold text-[#466460] tabular-nums">{String(value).padStart(2, '0')}</span>
+      <span className="text-[9px] font-bold text-[#9bb5a5] uppercase">{label}</span>
+    </div>
+  );
+
+  return (
+    <div className="flex items-center justify-center gap-2 mt-3">
+      {days > 0 && <Unit value={days} label="Days" />}
+      <Unit value={hours} label="Hrs" />
+      <span className="text-xl font-extrabold text-[#c4dbd8]">:</span>
+      <Unit value={minutes} label="Min" />
+      <span className="text-xl font-extrabold text-[#c4dbd8]">:</span>
+      <Unit value={seconds} label="Sec" />
+    </div>
+  );
+}
+
 function BotText({ text }) {
   const parts = text.split(/\*\*(.+?)\*\*/g);
   return (
     <span>
-      {parts.map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+      {parts.map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part))}
     </span>
   );
 }
 
-// ── Linkify: Converts URLs in text to clickable links ────────────────────────
 function LinkifiedText({ text, isPatient = false }) {
   const urlRegex = /(https?:\/\/[^\s<]+)/g;
   const linkColor = isPatient ? '#a8d5ba' : '#1a5c3a';
@@ -144,9 +190,15 @@ function LinkifiedText({ text, isPatient = false }) {
       {parts.map((part, i) => {
         if (i % 2 === 1) {
           return (
-            <a key={i} href={part} target="_blank" rel="noopener noreferrer"
-               className="underline break-all hover:opacity-80"
-               style={{ color: linkColor }} onClick={(e) => e.stopPropagation()}>
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline break-all hover:opacity-80"
+              style={{ color: linkColor }}
+              onClick={(e) => e.stopPropagation()}
+            >
               {part}
             </a>
           );
@@ -168,14 +220,14 @@ function LinkifiedText({ text, isPatient = false }) {
 }
 
 const INITIAL_OPTIONS = [
-  { label: '🤒 Illness / Fever',         type: 'medical' },
-  { label: '🤕 Injury / Pain',           type: 'medical' },
-  { label: '💊 Prescription / Medicine', type: 'medical' },
-  { label: '📄 Medical Certificate',     type: 'medical' },
-  { label: '🩺 Follow-up Check-up',      type: 'medical' },
-  { label: '🦷 Toothache / Pain',        type: 'dental'  },
-  { label: '🔍 Dental Check-up',         type: 'dental'  },
-  { label: '😬 Oral Health Concern',     type: 'dental'  },
+  { label: '🤒 Illness / Fever',           type: 'medical' },
+  { label: '🤕 Injury / Pain',             type: 'medical' },
+  { label: '💊 Prescription / Medicine',   type: 'medical' },
+  { label: '📄 Medical Certificate',       type: 'medical' },
+  { label: '🩺 Follow-up Check-up',        type: 'medical' },
+  { label: '🦷 Toothache / Pain',          type: 'dental'  },
+  { label: '🔍 Dental Check-up',           type: 'dental'  },
+  { label: '😬 Oral Health Concern',       type: 'dental'  },
 ];
 
 const MSG_PAGE_SIZE = 30;
@@ -191,7 +243,6 @@ const writeProfileCache = (data) => {
   catch {}
 };
 
-// ── PTR spinner keyframe (self-contained, injected once) ──────────────────────
 const ptrStyles = `
   @keyframes ptr-spin { to { transform: rotate(360deg); } }
   [data-spin="true"]  [data-ptr-icon] { display: none;  }
@@ -200,7 +251,6 @@ const ptrStyles = `
   [data-spin="false"] [data-ptr-spin] { display: none;  }
 `;
 
-// ── Pull-to-Refresh Indicator ─────────────────────────────────────────────────
 const PullIndicator = ({ indicatorRef }) => (
   <div ref={indicatorRef} data-spin="false" style={{ overflow: 'hidden', height: 0, opacity: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'height 0.2s ease, opacity 0.2s ease' }}>
     <svg data-ptr-icon width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s ease' }}>
@@ -215,30 +265,27 @@ const PullIndicator = ({ indicatorRef }) => (
 
 export default function ConsultationUsers() {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-
   const profileCacheRef = useRef(readProfileCache());
   const profileCache    = profileCacheRef.current;
 
-  const [messages,          setMessages]        = useState([]);
-  const [inputValue,        setInputValue]      = useState('');
-  const [isClinicOnline,    setIsClinicOnline]  = useState(false);
-  const [isEnded,           setIsEnded]         = useState(true);
-  const [consultType,       setConsultType]     = useState(null);
-  const [historyFilter,     setHistoryFilter]   = useState('medical'); // 'medical' or 'dental'
-  const [activeRoomId,      setActiveRoomId]    = useState(null);
-  const [internalUserId,    setInternalUserId]  = useState(profileCache?.internalUserId ?? null);
-  const [internalName,      setInternalName]    = useState(profileCache?.internalName   ?? 'Patient');
-  const [sessionReady,      setSessionReady]    = useState(!!(profileCache?.internalUserId));
-  const [loadingHistory,    setLoadingHistory]  = useState(true);
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  const [loadingMore,       setLoadingMore]     = useState(false);
-  const [showHistoryMenu, setShowHistoryMenu] = useState(false);
-  const [clinicUnreadCount, setClinicUnreadCount] = useState(0);
-  const [senderRoles, setSenderRoles] = useState({});
-  const [hasRecords,      setHasRecords]     = useState(false);
-  const [loadingRecords, setLoadingRecords] = useState(true);
+  const [messages,            setMessages]            = useState([]);
+  const [inputValue,          setInputValue]          = useState('');
+  const [isClinicOnline,      setIsClinicOnline]      = useState(false);
+  const [isEnded,             setIsEnded]             = useState(true);
+  const [consultType,         setConsultType]         = useState(null);
+  const [historyFilter,       setHistoryFilter]       = useState('medical');
+  const [activeRoomId,        setActiveRoomId]        = useState(null);
+  const [internalUserId,      setInternalUserId]      = useState(profileCache?.internalUserId ?? null);
+  const [internalName,        setInternalName]        = useState(profileCache?.internalName   ?? 'Patient');
+  const [sessionReady,        setSessionReady]        = useState(!!(profileCache?.internalUserId));
+  const [loadingHistory,      setLoadingHistory]      = useState(true);
+  const [hasMoreMessages,     setHasMoreMessages]     = useState(false);
+  const [loadingMore,         setLoadingMore]         = useState(false);
+  const [showHistoryMenu,     setShowHistoryMenu]     = useState(false);
+  const [clinicUnreadCount,   setClinicUnreadCount]   = useState(0);
+  const [hasRecords,          setHasRecords]          = useState(false);
+  const [loadingRecords,      setLoadingRecords]      = useState(true);
 
-  // ── REAL TIME CLOCK FOR APPOINTMENT RESTRICTION ──
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -248,9 +295,9 @@ export default function ConsultationUsers() {
 
   const [onlineAppt,          setOnlineAppt]          = useState({ medical: false, dental: false });
   const [onlineApptDetails,   setOnlineApptDetails]   = useState({ medical: null, dental: null });
-  const [loadingOnlineAppt, setLoadingOnlineAppt]  = useState(true);
-
-  const [lastEndedByType, setLastEndedByType] = useState({ medical: null, dental: null });
+  const [pendingAppt,         setPendingAppt]         = useState({ medical: false, dental: false });
+  const [loadingOnlineAppt,   setLoadingOnlineAppt]   = useState(true);
+  const [lastEndedByType,     setLastEndedByType]     = useState({ medical: null, dental: null });
   const lastEndedByTypeRef = useRef({ medical: null, dental: null });
 
   const updateLastEndedByType = useCallback((next) => {
@@ -258,212 +305,9 @@ export default function ConsultationUsers() {
     setLastEndedByType(next);
   }, []);
 
-  // Check records
-  useEffect(() => {
-    const checkRecords = async () => {
-      if (!profileCache?.internalUserId) {
-        setLoadingRecords(false);
-        setHasRecords(false);
-        return;
-      }
-      try {
-        const { data: medicalData } = await supabase
-          .from('medical_records')
-          .select('id, status')
-          .eq('user_id', profileCache.internalUserId)
-          .eq('is_archived', false);
-
-        const { data: dentalData } = await supabase
-          .from('dental_records')
-          .select('id, status')
-          .eq('user_id', profileCache.internalUserId)
-          .eq('is_archived', false);
-
-        setHasRecords((medicalData && medicalData.length > 0) || (dentalData && dentalData.length > 0));
-      } catch (err) {
-        setHasRecords(false);
-      } finally {
-        setLoadingRecords(false);
-      }
-    };
-    checkRecords();
-  }, [profileCache?.internalUserId]);
-
-const checkOnlineAppointments = useCallback(async () => {
-    if (!internalUserId) {
-      setLoadingOnlineAppt(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('appointments')
-        // ADDED 'reason' TO THIS SELECT
-        .select('id, service_type, reason, status, month, day, year, time, created_at')
-        .eq('user_id', internalUserId)
-        .eq('is_archived', false);
-
-      if (error) throw error;
-
-      const approvedOnline = (data || []).filter(a => {
-        const isApproved = a.status?.toLowerCase() === 'approved';
-        // CHECK BOTH COLUMNS
-        const isOnline = a.service_type?.toLowerCase().includes('online') ||
-                         a.reason?.toLowerCase().includes('online');
-        return isApproved && isOnline;
-      });
-
-      const medicalAppt = approvedOnline.find(a =>
-        a.service_type?.toLowerCase().includes('medical') ||
-        a.reason?.toLowerCase().includes('medical')
-      ) || null;
-
-      const dentalAppt  = approvedOnline.find(a =>
-        a.service_type?.toLowerCase().includes('dental') ||
-        a.reason?.toLowerCase().includes('dental')
-      ) || null;
-
-      setOnlineAppt({ medical: !!medicalAppt, dental: !!dentalAppt });
-      setOnlineApptDetails({ medical: medicalAppt, dental: dentalAppt });
-
-    } catch (err) {
-      setOnlineAppt({ medical: false, dental: false });
-      setOnlineApptDetails({ medical: null, dental: null });
-    } finally {
-      setLoadingOnlineAppt(false);
-    }
-  }, [internalUserId]);
-
-  useEffect(() => {
-    checkOnlineAppointments();
-  }, [checkOnlineAppointments]);
-
-  // Keep gate live
-  useEffect(() => {
-    if (!internalUserId) return;
-    const channel = supabase
-      .channel(`appointments-consult-gate-${internalUserId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' },
-        (payload) => {
-          const row = payload.new || payload.old;
-          if (String(row?.user_id) !== String(internalUserId)) return;
-          checkOnlineAppointments();
-        })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [internalUserId, checkOnlineAppointments]);
-
-  // TIME VALIDATOR HELPER
-  const isApptActive = useCallback((type) => {
-    const appt = onlineApptDetails[type];
-
-    if (!appt || !appt.year || !appt.month || !appt.day || !appt.time) {
-      return false; // No valid appointment to check
-    }
-
-    const [hour, minute] = appt.time.split(':').map(Number);
-    // Note: JavaScript Date months are 0-indexed, so we subtract 1 from the DB month
-    const apptStart = new Date(appt.year, appt.month - 1, appt.day, hour, minute);
-    const apptEnd = new Date(apptStart.getTime() + 60 * 60 * 1000); // +1 Hour
-
-    const isActive = currentTime >= apptStart && currentTime <= apptEnd;
-
-    // Log the math happening in the background for debugging
-    console.log(`[Time Check - ${type.toUpperCase()}]`);
-    console.log(`   └─ Target Appt Start: ${apptStart.toLocaleString()}`);
-    console.log(`   └─ Target Appt End:   ${apptEnd.toLocaleString()}`);
-    console.log(`   └─ Current Time:      ${currentTime.toLocaleString()}`);
-    console.log(`   └─ Access Granted?    ${isActive ? 'YES 🟢' : 'NO 🔴'}`);
-
-    return isActive;
-  }, [onlineApptDetails, currentTime]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('consultUnreadCount', String(clinicUnreadCount));
-    } catch {}
-  }, [clinicUnreadCount]);
-
-  useEffect(() => {
-    if (isEnded) {
-      setClinicUnreadCount(0);
-      return;
-    }
-    if (!messages.length || !internalUserId) {
-      setClinicUnreadCount(0);
-      return;
-    }
-    const clinicMessages = messages.filter(m =>
-      m.sender_id && String(m.sender_id) !== String(internalUserId)
-    );
-    const unread = clinicMessages.filter(m => !m.read_at).length;
-    setClinicUnreadCount(unread);
-  }, [messages, internalUserId, isEnded]);
-
-  useEffect(() => {
-    sessionStorage.removeItem(CONSULT_CACHE_KEY);
-  }, []);
-
-  const [startingOption,  setStartingOption]  = useState(null);
-
-  const messagesEndRef  = useRef(null);
-  const scrollAreaRef   = useRef(null);
-  const isEndedRef      = useRef(true);
-  const initRanRef      = useRef(false);
-  const fetchRanRef     = useRef(false);
-  const activeRoomIdRef = useRef(null);
-  const prevMsgCountRef = useRef(0);
-  const prevFirstIdRef  = useRef(null);
-  const isSendingRef    = useRef(false);
-  const justStartedAtRef = useRef(0);
-
-  useEffect(() => { isEndedRef.current = isEnded; }, [isEnded]);
-  useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
-
-  useEffect(() => {
-    if (activeRoomId) {
-      fetchMessages(activeRoomId, null, true);
-    }
-  }, [activeRoomId]);
-
-  useEffect(() => {
-    if (internalUserId && internalName && internalName !== 'Patient') {
-      writeProfileCache({ internalUserId, internalName });
-    }
-  }, [internalUserId, internalName]);
-
-  const refreshMessages = useCallback(async () => {
-    const roomId = activeRoomIdRef.current;
-    if (!roomId) return;
-    const { data } = await supabase
-      .from('consultation_messages')
-      .select('*')
-      .eq('consultation_id', roomId)
-      .order('created_at', { ascending: false })
-      .limit(MSG_PAGE_SIZE);
-    if (data) {
-      const ordered = [...data].reverse();
-      setMessages(ordered);
-      setCachedMessages(roomId, ordered);
-    }
-  }, []);
-
-  const {
-    scrollElRef:  ptrScrollRef,
-    indicatorRef,
-    onTouchStart: ptrTouchStart,
-    onTouchMove:  ptrTouchMove,
-    onTouchEnd:   ptrTouchEnd,
-  } = usePullToRefresh(refreshMessages);
-
-  const setScrollRef = useCallback((el) => {
-    scrollAreaRef.current = el;
-    ptrScrollRef.current  = el;
-  }, [ptrScrollRef]);
-
   const isTokenExpired = (token) => {
     try {
-     const payload = JSON.parse(atob(token.split('.')[1]));
+      const payload = JSON.parse(atob(token.split('.')[1]));
       return Date.now() / 1000 > payload.exp - 30;
     } catch {
       return true;
@@ -506,14 +350,240 @@ const checkOnlineAppointments = useCallback(async () => {
     }
   }, []);
 
-  // INIT
+  useEffect(() => {
+    if (!internalUserId) return;
+    let isMounted = true;
+
+    const checkRecords = async () => {
+      try {
+        const { data: medicalData } = await supabase
+          .from('medical_records')
+          .select('id, status')
+          .eq('user_id', internalUserId)
+          .eq('is_archived', false);
+
+        const { data: dentalData } = await supabase
+          .from('dental_records')
+          .select('id, status')
+          .eq('user_id', internalUserId)
+          .eq('is_archived', false);
+
+        if (isMounted) {
+          setHasRecords((medicalData && medicalData.length > 0) || (dentalData && dentalData.length > 0));
+        }
+      } catch (err) {
+        if (isMounted) setHasRecords(false);
+      } finally {
+        if (isMounted) setLoadingRecords(false);
+      }
+    };
+    checkRecords();
+    return () => { isMounted = false; };
+  }, [internalUserId]);
+
+  const checkOnlineAppointments = useCallback(async () => {
+    if (!internalUserId) return;
+
+    try {
+      const token = await ensureValidSession();
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+      let data = [];
+      try {
+        const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.data.success) {
+          data = response.data.data;
+        }
+      } catch (apiErr) {
+        const { data: sbData, error } = await supabase
+          .from('appointments')
+          .select('id, service_type, reason, status, month, day, year, time, created_at')
+          .eq('user_id', internalUserId)
+          .eq('is_archived', false);
+        if (!error) data = sbData || [];
+      }
+
+      const onlineRows = data.filter((a) => {
+        const type = a.service_type?.toLowerCase() || '';
+        const reason = a.reason?.toLowerCase() || '';
+        return type.includes('online') || reason.includes('online');
+      });
+
+      const approvedOnline = onlineRows.filter((a) => a.status?.toLowerCase() === 'approved');
+      const pendingOnline  = onlineRows.filter((a) => a.status?.toLowerCase() === 'pending');
+
+      const medicalAppt = approvedOnline.find((a) =>
+        a.service_type?.toLowerCase().includes('medical') || a.reason?.toLowerCase().includes('medical')
+      ) || null;
+
+      const dentalAppt = approvedOnline.find((a) =>
+        a.service_type?.toLowerCase().includes('dental') || a.reason?.toLowerCase().includes('dental')
+      ) || null;
+
+      setOnlineAppt({ medical: !!medicalAppt, dental: !!dentalAppt });
+      setOnlineApptDetails({ medical: medicalAppt, dental: dentalAppt });
+      setPendingAppt({
+        medical: pendingOnline.some((a) =>
+          a.service_type?.toLowerCase().includes('medical') || a.reason?.toLowerCase().includes('medical')
+        ),
+        dental: pendingOnline.some((a) =>
+          a.service_type?.toLowerCase().includes('dental') || a.reason?.toLowerCase().includes('dental')
+        ),
+      });
+    } catch (err) {
+      setOnlineAppt({ medical: false, dental: false });
+      setOnlineApptDetails({ medical: null, dental: null });
+      setPendingAppt({ medical: false, dental: false });
+    } finally {
+      setLoadingOnlineAppt(false);
+    }
+  }, [internalUserId, ensureValidSession]);
+
+  useEffect(() => {
+    checkOnlineAppointments();
+  }, [checkOnlineAppointments]);
+
+  useEffect(() => {
+    if (!internalUserId) return;
+    const channel = supabase
+      .channel(`appointments-consult-gate-${internalUserId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, (payload) => {
+        const row = payload.new || payload.old;
+        if (String(row?.user_id) !== String(internalUserId)) return;
+        checkOnlineAppointments();
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [internalUserId, checkOnlineAppointments]);
+
+  const isApptActive = useCallback((type) => {
+    const appt = onlineApptDetails[type];
+    if (!appt || !appt.year || !appt.month || !appt.day || !appt.time) {
+      return false;
+    }
+
+    const [hour, minute] = appt.time.split(':').map(Number);
+    const apptStart = new Date(appt.year, appt.month - 1, appt.day, hour, minute);
+    const apptEnd = new Date(apptStart.getTime() + 60 * 60 * 1000);
+
+    return currentTime >= apptStart && currentTime <= apptEnd;
+  }, [onlineApptDetails, currentTime]);
+
+  // ── Derived gating states ─────────────────────────────────────────────
+  const hasApprovedOnline = onlineAppt.medical || onlineAppt.dental;
+  const hasPendingOnline  = pendingAppt.medical || pendingAppt.dental;
+  const hasAnyActiveNow   = isApptActive('medical') || isApptActive('dental');
+
+  // Earliest upcoming approved-but-not-yet-open appointment, for the countdown screen
+  const nextApptTarget = useMemo(() => {
+    const candidates = ['medical', 'dental']
+      .filter((t) => onlineAppt[t] && !isApptActive(t))
+      .map((t) => {
+        const appt = onlineApptDetails[t];
+        if (!appt?.year || !appt?.month || !appt?.day || !appt?.time) return null;
+        const [h, m] = appt.time.split(':').map(Number);
+        return { type: t, appt, date: new Date(appt.year, appt.month - 1, appt.day, h, m) };
+      })
+      .filter((c) => c && c.date > currentTime)
+      .sort((a, b) => a.date - b.date);
+    return candidates[0] || null;
+  }, [onlineAppt, onlineApptDetails, currentTime, isApptActive]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('consultUnreadCount', String(clinicUnreadCount));
+    } catch {}
+  }, [clinicUnreadCount]);
+
+  useEffect(() => {
+    if (isEnded) {
+      setClinicUnreadCount(0);
+      return;
+    }
+    if (!messages.length || !internalUserId) {
+      setClinicUnreadCount(0);
+      return;
+    }
+    const clinicMessages = messages.filter((m) =>
+      m.sender_id && String(m.sender_id) !== String(internalUserId)
+    );
+    const unread = clinicMessages.filter((m) => !m.read_at).length;
+    setClinicUnreadCount(unread);
+  }, [messages, internalUserId, isEnded]);
+
+  useEffect(() => {
+    sessionStorage.removeItem(CONSULT_CACHE_KEY);
+  }, []);
+
+  const [startingOption,  setStartingOption]  = useState(null);
+
+  const messagesEndRef   = useRef(null);
+  const scrollAreaRef    = useRef(null);
+  const isEndedRef       = useRef(true);
+  const initRanRef       = useRef(false);
+  const fetchRanRef      = useRef(false);
+  const activeRoomIdRef  = useRef(null);
+  const prevMsgCountRef  = useRef(0);
+  const prevFirstIdRef   = useRef(null);
+  const isSendingRef     = useRef(false);
+  const justStartedAtRef = useRef(0);
+
+  useEffect(() => { isEndedRef.current = isEnded; }, [isEnded]);
+  useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
+
+  useEffect(() => {
+    if (activeRoomId) {
+      fetchMessages(activeRoomId, null, true);
+    }
+  }, [activeRoomId]);
+
+  useEffect(() => {
+    if (internalUserId && internalName && internalName !== 'Patient') {
+      writeProfileCache({ internalUserId, internalName });
+    }
+  }, [internalUserId, internalName]);
+
+  const refreshMessages = useCallback(async () => {
+    const roomId = activeRoomIdRef.current;
+    if (!roomId) return;
+    const { data } = await supabase
+      .from('consultation_messages')
+      .select('*')
+      .eq('consultation_id', roomId)
+      .order('created_at', { ascending: false })
+      .limit(MSG_PAGE_SIZE);
+    if (data) {
+      const ordered = [...data].reverse();
+      setMessages(ordered);
+      setCachedMessages(roomId, ordered);
+    }
+  }, []);
+
+  const {
+    scrollElRef: ptrScrollRef,
+    indicatorRef,
+    onTouchStart: ptrTouchStart,
+    onTouchMove: ptrTouchMove,
+    onTouchEnd: ptrTouchEnd,
+  } = usePullToRefresh(refreshMessages);
+
+  const setScrollRef = useCallback((el) => {
+    scrollAreaRef.current = el;
+    ptrScrollRef.current  = el;
+  }, [ptrScrollRef]);
+
   useEffect(() => {
     if (initRanRef.current) return;
     initRanRef.current = true;
 
     const run = async () => {
-      if (!currentUser?.uid || !localStorage.getItem('token')) {
+      const authUid = currentUser?.uid || currentUser?.id;
+      if (!authUid || !localStorage.getItem('token')) {
         setLoadingHistory(false);
+        setLoadingRecords(false);
+        setLoadingOnlineAppt(false);
         return;
       }
 
@@ -532,12 +602,14 @@ const checkOnlineAppointments = useCallback(async () => {
       const { data: profiles, error } = await supabase
         .from('users')
         .select('id, first_name, last_name')
-        .eq('uid', currentUser.uid)
+        .eq('uid', authUid)
         .limit(1);
 
       const profile = profiles?.[0] || null;
       if (error || !profile) {
         setLoadingHistory(false);
+        setLoadingRecords(false);
+        setLoadingOnlineAppt(false);
         return;
       }
 
@@ -570,7 +642,7 @@ const checkOnlineAppointments = useCallback(async () => {
         );
       }
     };
-  }, [ensureValidSession, currentUser?.uid, profileCache?.internalUserId]);
+  }, [ensureValidSession, currentUser, profileCache?.internalUserId]);
 
   useEffect(() => {
     if (internalUserId) localStorage.setItem('_internalUserId', String(internalUserId));
@@ -608,7 +680,7 @@ const checkOnlineAppointments = useCallback(async () => {
     const ordered = [...data].reverse();
 
     if (beforeId) {
-      setMessages(prev => [...ordered, ...prev]);
+      setMessages((prev) => [...ordered, ...prev]);
     } else {
       setMessages(ordered);
       setCachedMessages(roomId, ordered);
@@ -616,10 +688,10 @@ const checkOnlineAppointments = useCallback(async () => {
 
     setHasMoreMessages(data.length === MSG_PAGE_SIZE);
 
-    const senderIds = ordered.map(m => m.sender_id).filter(Boolean);
+    const senderIds = ordered.map((m) => m.sender_id).filter(Boolean);
     if (senderIds.length > 0) {
       const roles = await fetchSenderRoles(senderIds);
-      setSenderRoles(prev => ({ ...prev, ...roles }));
+      setSenderRoles((prev) => ({ ...prev, ...roles }));
     }
   }, []);
 
@@ -634,7 +706,7 @@ const checkOnlineAppointments = useCallback(async () => {
       if (!session) return;
 
       try {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         const { data: activeConsults } = await supabase
           .from('consultations')
           .select('*')
@@ -679,7 +751,7 @@ const checkOnlineAppointments = useCallback(async () => {
           .order('created_at', { ascending: false });
 
         const latestByType = {};
-        (allEnded || []).forEach(c => {
+        (allEnded || []).forEach((c) => {
           if (!latestByType[c.consultation_type]) latestByType[c.consultation_type] = c;
         });
         updateLastEndedByType({
@@ -733,7 +805,7 @@ const checkOnlineAppointments = useCallback(async () => {
           return;
         }
 
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const { data: recheckActive } = await supabase
           .from('consultations')
           .select('id, status')
@@ -782,9 +854,9 @@ const checkOnlineAppointments = useCallback(async () => {
           .select('id, read_at')
           .eq('consultation_id', activeRoomId);
         if (data && data.length > 0) {
-          setMessages(msgs =>
-            msgs.map(msg => {
-              const updated = data.find(m => m.id === msg.id);
+          setMessages((msgs) =>
+            msgs.map((msg) => {
+              const updated = data.find((m) => m.id === msg.id);
               return updated && updated.read_at !== msg.read_at ? { ...msg, read_at: updated.read_at } : msg;
             })
           );
@@ -801,13 +873,13 @@ const checkOnlineAppointments = useCallback(async () => {
 
           if (newMsgRoomId === String(currentRoomId)) {
             if (isSendingRef.current) return;
-            setMessages(msgs => {
-              if (msgs.some(m => m.id === payload.new.id)) return msgs;
+            setMessages((msgs) => {
+              if (msgs.some((m) => m.id === payload.new.id)) return msgs;
               return [...msgs, payload.new];
             });
             if (payload.new.sender_id) {
               const roles = await fetchSenderRoles([payload.new.sender_id]);
-              setSenderRoles(prev => ({ ...prev, ...roles }));
+              setSenderRoles((prev) => ({ ...prev, ...roles }));
             }
           } else if (isEndedRef.current && currentRoomId) {
             const { data: consultData } = await supabase
@@ -826,8 +898,8 @@ const checkOnlineAppointments = useCallback(async () => {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' },
         (payload) => {
           if (payload.new?.read_at) {
-            setMessages(msgs =>
-              msgs.map(msg =>
+            setMessages((msgs) =>
+              msgs.map((msg) =>
                 msg.id === payload.new.id ? { ...msg, read_at: payload.new.read_at } : msg
               )
             );
@@ -911,12 +983,12 @@ const checkOnlineAppointments = useCallback(async () => {
         return;
       }
 
-      const onlineIds = onlineRows.map(r => r.user_id);
+      const onlineIds = onlineRows.map((r) => r.user_id);
       const { data: staffRows } = await supabase.from('users').select('id, role').in('id', onlineIds);
       if (!isMounted) return;
 
-      const clinicOnline = (staffRows || []).some(u =>
-        ['doctor', 'nurse', 'dentist', 'sysadmin', 'administrator'].includes(u.role?.toLowerCase())
+      const clinicOnline = (staffRows || []).some((u) =>
+        ['doctor', 'nurse', 'dentist', 'sysadmin'].includes(u.role?.toLowerCase())
       );
       setIsClinicOnline(clinicOnline);
       setCachedPresence(clinicOnline);
@@ -982,13 +1054,13 @@ const checkOnlineAppointments = useCallback(async () => {
       const scrollHeightBefore = scrollEl?.scrollHeight ?? 0;
       const scrollTopBefore    = scrollEl?.scrollTop    ?? 0;
 
-      setMessages(prev => [...ordered, ...prev]);
+      setMessages((prev) => [...ordered, ...prev]);
       setHasMoreMessages(data.length === MSG_PAGE_SIZE);
 
-      const senderIds = ordered.map(m => m.sender_id).filter(Boolean);
+      const senderIds = ordered.map((m) => m.sender_id).filter(Boolean);
       if (senderIds.length > 0) {
         const roles = await fetchSenderRoles(senderIds);
-        setSenderRoles(prev => ({ ...prev, ...roles }));
+        setSenderRoles((prev) => ({ ...prev, ...roles }));
       }
 
       requestAnimationFrame(() => {
@@ -1017,7 +1089,6 @@ const checkOnlineAppointments = useCallback(async () => {
 
       let roomId;
       let consultation;
-      let isReactivation = false;
 
       let existingEndedId = (isEndedRef.current && activeRoomIdRef.current && consultType === option.type)
         ? activeRoomIdRef.current
@@ -1035,74 +1106,29 @@ const checkOnlineAppointments = useCallback(async () => {
         if (dbCheck) existingEndedId = dbCheck.id;
       }
 
-      const token = localStorage.getItem('token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
       if (existingEndedId) {
-        const reactivateResponse = await fetch(`${API_URL}/consultations/${existingEndedId}/reactivate`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          },
-        });
-
-        const reactivateResult = await reactivateResponse.json();
-
-        if (!reactivateResponse.ok) {
-          if (reactivateResponse.status === 403) {
-             alert(reactivateResult.message || 'You can only join during your scheduled time.');
-             setStartingOption(null);
-             return;
+        try {
+          const reactivateResult = await consultationsService.updateConsultation(existingEndedId, {
+            status: 'active',
+            ended_at: null,
+          });
+          if (reactivateResult?.id) {
+            roomId = reactivateResult.id;
+            consultation = reactivateResult;
           }
-          console.error('[Chat] Failed to reactivate consultation:', reactivateResult.message);
-        } else if (reactivateResult.success && reactivateResult.data) {
-          roomId = reactivateResult.data.id;
-          consultation = reactivateResult.data;
-          isReactivation = true;
+        } catch (err) {
+          console.error('[Chat] Failed to reactivate consultation:', err);
         }
       }
 
       if (!roomId) {
-        const response = await fetch(`${API_URL}/consultations`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            patient_id:        internalUserId,
-            patient_name:      internalName,
-            patient_role:      currentUser.role || 'student',
-            consultation_type: option.type,
-          }),
+        consultation = await consultationsService.createConsultation({
+          patient_id: internalUserId,
+          patient_name: internalName,
+          patient_role: currentUser.role || 'student',
+          consultation_type: option.type,
         });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          if (response.status === 403) {
-             alert(result.message || 'You can only join during your scheduled time.');
-             setStartingOption(null);
-             return;
-          }
-          throw new Error(result.message || 'Failed to create consultation');
-        }
-
-        consultation = result.data;
         roomId = consultation.id;
-
-        const { data: verifyData } = await supabase.from('consultations').select('id, status').eq('id', roomId).single();
-
-        if (verifyData?.status !== 'active') {
-          await fetch(`${API_URL}/consultations/${roomId}/reactivate`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-            },
-          });
-        }
       }
 
       updateLastEndedByType({ ...lastEndedByTypeRef.current, [option.type]: null });
@@ -1117,22 +1143,21 @@ const checkOnlineAppointments = useCallback(async () => {
       setCachedConsultations(internalUserId, { activeConsult: consultation, lastEnded: null });
       setCachedMessages(roomId, null);
 
+      await consultationsService.sendMessage(roomId, {
+        sender_id: internalUserId,
+        sender_name: internalName,
+        sender_role: currentUser.role || 'student',
+        message: option.label,
+      });
+
       await supabase.from('consultation_messages').insert([
         {
           consultation_id: roomId,
-          sender_id:       internalUserId,
-          sender_name:     internalName,
-          sender_role:     currentUser.role || 'student',
-          message:         option.label,
-          created_at:      new Date().toISOString(),
-        },
-        {
-          consultation_id: roomId,
-          sender_id:       null,
-          sender_name:     'System',
-          sender_role:     'system',
-          message:         `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
-          created_at:      new Date(Date.now() + 100).toISOString(),
+          sender_id: null,
+          sender_name: 'System',
+          sender_role: 'system',
+          message: `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
+          created_at: new Date(Date.now() + 100).toISOString(),
         }
       ]);
 
@@ -1147,6 +1172,7 @@ const checkOnlineAppointments = useCallback(async () => {
         setCachedMessages(roomId, newMessages);
       }
     } catch (err) {
+      console.error('[handleOptionSelect] Error starting session:', err);
       setIsEnded(true);
     } finally {
       setStartingOption(null);
@@ -1160,13 +1186,11 @@ const checkOnlineAppointments = useCallback(async () => {
     isSendingRef.current = true;
 
     try {
-      await supabase.from('consultation_messages').insert({
-        consultation_id: activeRoomId,
-        sender_id:       internalUserId,
-        sender_name:     internalName,
-        sender_role:     currentUser.role || 'student' ,
-        message:         text,
-        created_at:      new Date().toISOString(),
+      await consultationsService.sendMessage(activeRoomId, {
+        sender_id: internalUserId,
+        sender_name: internalName,
+        sender_role: currentUser.role || 'student',
+        message: text,
       });
 
       const { data: updatedMessages } = await supabase
@@ -1177,7 +1201,7 @@ const checkOnlineAppointments = useCallback(async () => {
 
       if (updatedMessages) {
         const uniqueMessages = updatedMessages.reduce((acc, msg) => {
-          if (!acc.some(m => m.id === msg.id)) {
+          if (!acc.some((m) => m.id === msg.id)) {
             acc.push(msg);
           }
           return acc;
@@ -1190,6 +1214,7 @@ const checkOnlineAppointments = useCallback(async () => {
       }
       setCachedMessages(activeRoomId, null);
     } catch (err) {
+      console.error('[handleSend] Error:', err);
     } finally {
       isSendingRef.current = false;
     }
@@ -1215,7 +1240,7 @@ const checkOnlineAppointments = useCallback(async () => {
         },
         body: JSON.stringify(bodyToSend),
       });
-    } catch (err) { }
+    } catch (err) {}
   }, [activeRoomId, internalUserId, isEnded, currentUser.role]);
 
   useEffect(() => {
@@ -1266,7 +1291,7 @@ const checkOnlineAppointments = useCallback(async () => {
   const groupedMessages = useMemo(() => {
     const groups = [];
     let lastDate = null;
-    messages.forEach(msg => {
+    messages.forEach((msg) => {
       const dateLabel = formatDate(msg.created_at);
       if (dateLabel !== lastDate) {
         groups.push({ type: 'date', label: dateLabel, key: `date-${msg.created_at}` });
@@ -1278,14 +1303,15 @@ const checkOnlineAppointments = useCallback(async () => {
   }, [messages]);
 
   const typeConfig = useMemo(() => ({
-    generic: { label: 'MediTrack', sublabel: 'Assistant',      accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
+    generic: { label: 'MediTrack', sublabel: 'Assistant',        accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
     medical: { label: 'Medical',   sublabel: 'Doctors & Nurses', accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
     dental:  { label: 'Dental',    sublabel: 'Dentists',         accent: '#1a4a7a', accentLight: '#e8f0fa', accentBorder: '#b2c8e8' },
   }), []);
+
   const cfg = useMemo(() => (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic, [consultType, isEnded, typeConfig]);
 
   const availableOptions = useMemo(
-    () => INITIAL_OPTIONS.filter(opt => onlineAppt[opt.type]),
+    () => INITIAL_OPTIONS.filter((opt) => onlineAppt[opt.type]),
     [onlineAppt]
   );
 
@@ -1383,46 +1409,21 @@ const checkOnlineAppointments = useCallback(async () => {
     );
   };
 
+  const isLoading = loadingRecords || loadingOnlineAppt || !internalUserId;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#f4f7f5' }}>
       <style>{ptrStyles}</style>
 
-      {!loadingRecords && !hasRecords ? (
+      {isLoading ? (
         <div className="flex-1 flex items-center justify-center p-8 h-full">
-          <div className="text-center max-w-sm">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
-              <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Visit the Clinic First</h3>
-            <p className="text-[13px] text-[#64748b]">
-              Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before accessing digital consultations.
-            </p>
+          <div className="text-center text-[#9bb5a5] text-[12px] flex flex-col items-center">
+            <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 text-[#c6dfd0]"></i>
+            <span>Syncing consultation data...</span>
           </div>
         </div>
-      ) : !loadingRecords && !loadingOnlineAppt && !onlineAppt.medical && !onlineAppt.dental ? (
-        <div className="flex-1 flex items-center justify-center p-8 h-full">
-          <div className="text-center max-w-sm">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
-              <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Book an Online Consultation First</h3>
-            <p className="text-[13px] text-[#64748b] mb-4">
-              Digital consultations open up once the clinic approves an online medical or dental appointment for you. Please request one from your Appointments page and wait for approval.
-            </p>
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
-              className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
-            >
-              <i className="fa-solid fa-calendar-plus"></i>
-              Go to Appointments
-            </button>
-          </div>
-        </div>
-      ) : (
+      ) : hasAnyActiveNow ? (
+        // ── STATE 5: ACTIVE CONSULTATION UI ──────────────────────────────────────
         <>
           <div
             style={{ position: 'sticky', top: 0, zIndex: 20, background: '#ffffff', borderBottom: '1px solid #edf3f0', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', flexShrink: 0 }}
@@ -1615,14 +1616,14 @@ const checkOnlineAppointments = useCallback(async () => {
             <input
               type="text"
               value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
               disabled={isEnded || !sessionReady}
               className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
               style={{ borderColor: cfg.accentBorder }}
-              onFocus={e => !isEnded && (e.target.style.borderColor = cfg.accent)}
-              onBlur={e  =>             (e.target.style.borderColor = cfg.accentBorder)}
+              onFocus={(e) => !isEnded && (e.target.style.borderColor = cfg.accent)}
+              onBlur={(e) => (e.target.style.borderColor = cfg.accentBorder)}
             />
             <button
               onClick={handleSend}
@@ -1638,6 +1639,83 @@ const checkOnlineAppointments = useCallback(async () => {
             </button>
           </div>
         </>
+      ) : hasApprovedOnline ? (
+        // ── STATE 4: APPROVED APPOINTMENT COUNTDOWN ────────────────────────────
+        <div className="flex-1 flex items-center justify-center p-8 h-full">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#e8f5ee] flex items-center justify-center">
+              <svg className="w-8 h-8 text-[#1a5c3a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Appointment Confirmed</h3>
+            <p className="text-[13px] text-[#64748b]">
+              {nextApptTarget
+                ? `Your ${nextApptTarget.type} consultation is scheduled for ${formatApptDateTime(nextApptTarget.appt)}. This chat unlocks once your appointment window opens.`
+                : 'Your online consultation is approved. This chat will unlock once your appointment window opens.'}
+            </p>
+            <ApptCountdown targetDate={nextApptTarget?.date} />
+          </div>
+        </div>
+      ) : hasPendingOnline ? (
+        // ── STATE 3: PENDING APPOINTMENT APPROVAL ──────────────────────────────
+        <div className="flex-1 flex items-center justify-center p-8 h-full">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#FEF3E2] flex items-center justify-center">
+              <svg className="w-8 h-8 text-[#b45309]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Waiting for Approval</h3>
+            <p className="text-[13px] text-[#64748b]">
+              Your online consultation request has been submitted and is waiting for the clinic to review and approve it. You'll be able to chat here once it's approved.
+            </p>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
+              className="mt-4 inline-flex items-center gap-2 bg-white border border-[#c4dbd8] hover:border-[#466460] text-[#466460] text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
+            >
+              <i className="fa-solid fa-calendar-days"></i>
+              View My Requests
+            </button>
+          </div>
+        </div>
+      ) : !hasRecords ? (
+        // ── STATE 1: NO RECORDS, NO ONLINE APPOINTMENT ─────────────────────────
+        <div className="flex-1 flex items-center justify-center p-8 h-full">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
+              <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Visit the Clinic First</h3>
+            <p className="text-[13px] text-[#64748b]">
+              Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before accessing digital consultations.
+            </p>
+          </div>
+        </div>
+      ) : (
+        // ── STATE 2: HAS RECORDS, NO ONLINE APPOINTMENT ────────────────────────
+        <div className="flex-1 flex items-center justify-center p-8 h-full">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
+              <svg className="w-8 h-8 text-[#466460]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Book an Online Consultation First</h3>
+            <p className="text-[13px] text-[#64748b] mb-4">
+              Digital consultations open up once the clinic approves an online medical or dental appointment for you. Please request one from your Appointments page.
+            </p>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
+              className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
+            >
+              <i className="fa-solid fa-calendar-plus"></i>
+              Request Appointment
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
