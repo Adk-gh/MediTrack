@@ -49,6 +49,12 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
+# Health check for Cloud Run
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
 # Rate limit error handler
 @app.errorhandler(429)
 def ratelimit_handler(e):

@@ -1,26 +1,21 @@
 // C:\Users\HP\MediTrack\routes\settingsRoutes.js
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+const multer = require('multer');
+const supabase = require('../configs/database');
 
 const router = express.Router();
 
-// 1. Find the keys, checking all common environment variable names
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY;
-
-// 2. Safely initialize the client to prevent server crashes on boot
-let supabase = null;
-if (supabaseUrl && supabaseKey) {
-  supabase = createClient(supabaseUrl, supabaseKey);
-} else {
-  console.error('\n⚠️ [Settings Route] SUPABASE CONFIG ERROR: Missing URL or Key in .env file. Settings will not save.\n');
-}
-
+// Multer memory storage for signature uploads (2MB limit)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
+  }
+});
 
 // ==========================================
 // DOCTOR SETTINGS ROUTES
@@ -29,13 +24,9 @@ if (supabaseUrl && supabaseKey) {
 // GET: Retrieve doctor settings
 router.get('/doctor', async (req, res, next) => {
   try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase client is not configured properly.' });
-    }
-
     const { data, error } = await supabase
       .from('doctor_settings')
-      .select('name, title, licenseNo, ptrNo')
+      .select('name, title, licenseNo, ptrNo, signatureUrl')
       .eq('id', 1)
       .single();
 
@@ -46,18 +37,13 @@ router.get('/doctor', async (req, res, next) => {
 
     res.status(200).json(data);
   } catch (error) {
-    // Pass to your global-err middleware
     next(error);
   }
 });
 
-// PUT: Update doctor settings
+// PUT: Update doctor text fields
 router.put('/doctor', async (req, res, next) => {
   try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase client is not configured properly.' });
-    }
-
     const { name, title, licenseNo, ptrNo } = req.body;
 
     if (!name || !title || !licenseNo || !ptrNo) {
@@ -68,7 +54,7 @@ router.put('/doctor', async (req, res, next) => {
       .from('doctor_settings')
       .upsert({
         id: 1,
-        name: name.toUpperCase(), // Backend enforcement of all-caps
+        name: name.toUpperCase(),
         title,
         licenseNo,
         ptrNo,
@@ -78,11 +64,11 @@ router.put('/doctor', async (req, res, next) => {
 
     if (error) {
       console.error('Supabase update error:', error);
-      return res.status(500).json({ error: 'Failed to update database records' });
+      return res.status(500).json({ error: 'Failed to update doctor records' });
     }
 
     res.status(200).json({
-      message: 'Settings updated successfully',
+      message: 'Doctor settings updated successfully',
       data: data[0]
     });
   } catch (error) {
@@ -90,6 +76,84 @@ router.put('/doctor', async (req, res, next) => {
   }
 });
 
+// POST: Upload / update doctor signature image
+router.post('/doctor/signature', upload.single('signature'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    const ext = (req.file.originalname.split('.').pop() || 'png').toLowerCase();
+    const fileName = `signatures/doctor-1-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('MediStorage')
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('Supabase storage upload error:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload signature image' });
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('MediStorage')
+      .getPublicUrl(fileName);
+
+    const signatureUrl = publicUrlData.publicUrl;
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('doctor_settings')
+      .select('id')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Supabase fetch error:', fetchError);
+      return res.status(500).json({ error: 'Failed to check existing doctor settings' });
+    }
+
+    let dbResult;
+    if (existing) {
+      dbResult = await supabase
+        .from('doctor_settings')
+        .update({
+          signatureUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', 1)
+        .select();
+    } else {
+      dbResult = await supabase
+        .from('doctor_settings')
+        .insert({
+          id: 1,
+          name: 'CAREN NAVATA JOSE M.D.',
+          title: 'Medical Officer III',
+          licenseNo: '0114665',
+          ptrNo: '9978569',
+          signatureUrl,
+          updated_at: new Date().toISOString()
+        })
+        .select();
+    }
+
+    if (dbResult.error) {
+      console.error('Supabase update error:', dbResult.error);
+      return res.status(500).json({ error: 'Failed to save signature URL' });
+    }
+
+    res.status(200).json({
+      message: 'Signature uploaded successfully',
+      signatureUrl,
+      data: dbResult.data[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ==========================================
 // DENTIST SETTINGS ROUTES
@@ -98,13 +162,9 @@ router.put('/doctor', async (req, res, next) => {
 // GET: Retrieve dentist settings
 router.get('/dentist', async (req, res, next) => {
   try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase client is not configured properly.' });
-    }
-
     const { data, error } = await supabase
       .from('dentist_settings')
-      .select('name, title')
+      .select('name, title, signatureUrl')
       .eq('id', 1)
       .single();
 
@@ -119,13 +179,9 @@ router.get('/dentist', async (req, res, next) => {
   }
 });
 
-// PUT: Update dentist settings
+// PUT: Update dentist text fields
 router.put('/dentist', async (req, res, next) => {
   try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase client is not configured properly.' });
-    }
-
     const { name, title } = req.body;
 
     if (!name || !title) {
@@ -136,7 +192,7 @@ router.put('/dentist', async (req, res, next) => {
       .from('dentist_settings')
       .upsert({
         id: 1,
-        name: name.toUpperCase(), // Backend enforcement of all-caps
+        name: name.toUpperCase(),
         title,
         updated_at: new Date().toISOString()
       })
@@ -144,12 +200,89 @@ router.put('/dentist', async (req, res, next) => {
 
     if (error) {
       console.error('Supabase update error:', error);
-      return res.status(500).json({ error: 'Failed to update database records' });
+      return res.status(500).json({ error: 'Failed to update dentist records' });
     }
 
     res.status(200).json({
       message: 'Dentist settings updated successfully',
       data: data[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST: Upload / update dentist signature image
+router.post('/dentist/signature', upload.single('signature'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    const ext = (req.file.originalname.split('.').pop() || 'png').toLowerCase();
+    const fileName = `signatures/dentist-1-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('MediStorage')
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('Supabase storage upload error:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload signature image' });
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('MediStorage')
+      .getPublicUrl(fileName);
+
+    const signatureUrl = publicUrlData.publicUrl;
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('dentist_settings')
+      .select('id')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Supabase fetch error:', fetchError);
+      return res.status(500).json({ error: 'Failed to check existing dentist settings' });
+    }
+
+    let dbResult;
+    if (existing) {
+      dbResult = await supabase
+        .from('dentist_settings')
+        .update({
+          signatureUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', 1)
+        .select();
+    } else {
+      dbResult = await supabase
+        .from('dentist_settings')
+        .insert({
+          id: 1,
+          name: 'DR. JOSELITO S. REYES',
+          title: 'DENTIST II',
+          signatureUrl,
+          updated_at: new Date().toISOString()
+        })
+        .select();
+    }
+
+    if (dbResult.error) {
+      console.error('Supabase update error:', dbResult.error);
+      return res.status(500).json({ error: 'Failed to save signature URL' });
+    }
+
+    res.status(200).json({
+      message: 'Signature uploaded successfully',
+      signatureUrl,
+      data: dbResult.data[0]
     });
   } catch (error) {
     next(error);

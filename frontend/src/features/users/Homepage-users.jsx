@@ -1,4 +1,4 @@
-// C:\Users\HP\MediTrack\frontend\src\features\users\HomePageUsers.jsx
+// C:\Users\HP\MediTrack\frontend\src\features\users\Homepage-users.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -436,6 +436,72 @@ const HomePageUsers = () => {
     fetchProfile();
   }, []);
 
+  // ── Check if user has medical or dental records ──
+  // Mirrors the same guard used in Appointment-users.jsx so the homepage
+  // shows a compact version of the "Visit the Clinic First" notice.
+  const [hasRecords, setHasRecords] = useState(false);
+  const [loadingRecords, setLoadingRecords] = useState(true);
+
+  useEffect(() => {
+    const checkRecords = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const uid  = user?.uid;
+        const idno = user?.university_id || user?.universityId || user?.student_id || user?.idno;
+
+        if (!uid && !idno) {
+          setLoadingRecords(false);
+          return;
+        }
+
+        // Resolve internal users.id — try by auth uid first, then university_id
+        let internalId = null;
+        if (uid) {
+          const { data } = await supabase
+            .from('users')
+            .select('id')
+            .eq('uid', uid)
+            .maybeSingle();
+          internalId = data?.id || null;
+        }
+        if (!internalId && idno) {
+          const { data } = await supabase
+            .from('users')
+            .select('id')
+            .eq('university_id', idno)
+            .maybeSingle();
+          internalId = data?.id || null;
+        }
+        if (!internalId) {
+          setLoadingRecords(false);
+          setHasRecords(false);
+          return;
+        }
+
+        const { data: medicalData } = await supabase
+          .from('medical_records')
+          .select('id')
+          .eq('user_id', internalId)
+          .eq('is_archived', false);
+
+        const { data: dentalData } = await supabase
+          .from('dental_records')
+          .select('id')
+          .eq('user_id', internalId)
+          .eq('is_archived', false);
+
+        setHasRecords((medicalData && medicalData.length > 0) || (dentalData && dentalData.length > 0));
+      } catch (err) {
+        console.error('[HomePage] Error checking records:', err);
+        setHasRecords(false);
+      } finally {
+        setLoadingRecords(false);
+      }
+    };
+
+    checkRecords();
+  }, []);
+
   // Check if profile sections are incomplete (using database column names - snake_case)
   const isFieldEmpty = (val) => !val || val === '' || val === null || val === undefined;
 
@@ -703,8 +769,21 @@ const HomePageUsers = () => {
             )}
           </div>
 
-          {loadingAppts ? (
+          {loadingAppts || loadingRecords ? (
             <div className="bg-white border border-[#dfe6e5] rounded-2xl p-4 animate-pulse h-[72px]"></div>
+          ) : !hasRecords ? (
+            /* ── No medical/dental record yet — compact "visit clinic first" notice ── */
+            <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-3.5 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-[#eef2f1] flex items-center justify-center flex-shrink-0">
+                <CalendarX size={16} className="text-[#466460]" strokeWidth={1.8} />
+              </div>
+              <div className="flex-1">
+                <p className="text-[11px] font-bold text-[#1f2d2b] leading-tight">Visit the clinic first</p>
+                <p className="text-[10px] text-[#98a8a5] leading-snug mt-0.5">
+                  A face-to-face visit creates your record before you can book online.
+                </p>
+              </div>
+            </div>
           ) : upcomingAppt ? (
             <div
               onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}

@@ -1,9 +1,13 @@
-// C:\Users\HP\MediTrack\frontend\src\features\users\Profile-users.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const DOCUMENTS_BUCKET = 'health-documents';
+const ALLOWED_DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+const MAX_DOC_SIZE = 5 * 1024 * 1024; // 5MB
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const DocIcon = () => (
@@ -78,7 +82,6 @@ const inputStyle = {
 };
 
 const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
-
 const RELIGIONS = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'];
 const NATIONALITIES = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
 const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
@@ -88,7 +91,6 @@ const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
 const VACCINE_BRANDS = ['Pfizer', 'Moderna', 'AstraZeneca', 'Sinovac', 'Janssen', 'Novavax', 'Covaxin', 'Sputnik', 'Other'];
 const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
-// Department and Program data (same as ProfileSetup)
 const DEPARTMENTS_DATA = [
   { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['BS in Information Technology', 'BS in Information System', 'BS in Computer Engineering', 'BS in Industrial Engineering'] },
   { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['BS in Entrepreneurship', 'BS in Public Administration', 'BS in Office Administration', 'BS in Business Administration (HRDM)', 'BS in Business Administration (FM)', 'BS in Business Administration (MM)'] },
@@ -100,39 +102,13 @@ const DEPARTMENTS_DATA = [
   { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['BS in Nursing'] },
 ];
 const DEPT_ABBR_TO_FULL = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.full]));
-const PROGRAMS_BY_DEPT = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.programs]));
 const DEPARTMENTS = DEPARTMENTS_DATA.map(d => d.abbr);
 const ALL_PROGRAMS = [...new Set(DEPARTMENTS_DATA.flatMap(d => d.programs))];
 
 const NON_ACADEMIC_OFFICES = ['Accounting Office', 'University Clinic', 'Human Resources', 'Library', 'Maintenance', 'Registrar Office', 'Security Services'];
-const PLSP_OFFICES = [...DEPARTMENTS, ...NON_ACADEMIC_OFFICES];
+const CLASSIFICATIONS = ['Teaching Personnel', 'Nurse Personnel', 'Dentist', 'Physician / Doctor', 'System Administrator', 'Non-Teaching Personnel', 'Security Personnel'];
+const JOB_TITLES = ['Nurse', 'Physician', 'Dentist', 'Administrator', 'Lecturer', 'Professor', 'Instructor', 'Librarian', 'Technician', 'Security Guard', 'Staff'];
 
-const CLASSIFICATIONS = [
-  'Teaching Personnel',
-  'Nurse Personnel',
-  'Dentist',
-  'Physician / Doctor',
-  'System Administrator',
-  'Non-Teaching Personnel',
-  'Security Personnel',
-];
-
-const JOB_TITLES = [
-  'Nurse',
-  'Physician',
-  'Dentist',
-  'Administrator',
-  'Lecturer',
-  'Professor',
-  'Instructor',
-  'Librarian',
-  'Technician',
-  'Security Guard',
-  'Staff',
-];
-
-// Validation helpers
-// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
 const normalizeName = (name) => {
   if (!name) return '';
   let trimmed = name.trim();
@@ -141,52 +117,35 @@ const normalizeName = (name) => {
 
 const toTitleCase = (str) => {
   if (!str) return '';
-  return str.replace(/\w\S*/g, (txt) => {
-    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-  });
+  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 };
 
 const isValidPhoneNumber = (phone) => {
   if (!phone) return true;
-  const phoneRegex = /^09\d{9}$/;
-  return phoneRegex.test(phone);
+  return /^09\d{9}$/.test(phone);
 };
 
 const formatPhoneNumber = (phone) => {
   if (!phone) return '';
   const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10 && digits.startsWith('9')) {
-    return '0' + digits;
-  }
-  if (digits.startsWith('63')) {
-    return '0' + digits.substring(2);
-  }
-  if (digits.length === 11 && digits.startsWith('09')) {
-    return digits;
-  }
+  if (digits.length === 10 && digits.startsWith('9')) return '0' + digits;
+  if (digits.startsWith('63')) return '0' + digits.substring(2);
   return digits;
 };
 
-// Calculate age from birthday
 const calculateAge = (birthday) => {
   if (!birthday) return '';
   const today = new Date();
   const birthDate = new Date(birthday);
-
   if (isNaN(birthDate.getTime())) return '';
-
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
-
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-    age--;
-  }
-
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
   return age > 0 ? age.toString() : '';
 };
 
 const classificationColors = {
-  Regular:   { bg: '#e0eceb', text: '#466460', dot: '#466460' },
+  Regular: { bg: '#e0eceb', text: '#466460', dot: '#466460' },
   Irregular: { bg: '#fff7e6', text: '#92400e', dot: '#f59e0b' },
   Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
 };
@@ -197,13 +156,12 @@ const DENTAL_PROCEDURES = [
 ];
 
 const DOSE_LABELS = [
-  { key: 'dose1',    label: 'Dose 1' },
-  { key: 'dose2',    label: 'Dose 2' },
+  { key: 'dose1', label: 'Dose 1' },
+  { key: 'dose2', label: 'Dose 2' },
   { key: 'booster1', label: 'Booster 1' },
   { key: 'booster2', label: 'Booster 2' },
 ];
 
-// ── PTR spinner keyframe ──────────────────────────────────────────────────────
 const ptrStyles = `
   @keyframes ptr-spin { to { transform: rotate(360deg); } }
   [data-spin="true"]  [data-ptr-icon] { display: none;  }
@@ -212,92 +170,70 @@ const ptrStyles = `
   [data-spin="false"] [data-ptr-spin] { display: none;  }
 `;
 
-// ── Pull-to-Refresh Indicator ─────────────────────────────────────────────────
 const PullIndicator = ({ indicatorRef }) => (
   <div
     ref={indicatorRef}
     data-spin="false"
     style={{
-      overflow:       'hidden',
-      height:         0,
-      opacity:        0,
-      display:        'flex',
-      alignItems:     'center',
+      overflow: 'hidden',
+      height: 0,
+      opacity: 0,
+      display: 'flex',
+      alignItems: 'center',
       justifyContent: 'center',
-      flexShrink:     0,
-      transition:     'height 0.2s ease, opacity 0.2s ease',
+      flexShrink: 0,
+      transition: 'height 0.2s ease, opacity 0.2s ease',
     }}
   >
-    {/* Arrow */}
-    <svg
-      data-ptr-icon
-      width="20" height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#466460"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ transition: 'transform 0.2s ease' }}
-    >
+    <svg data-ptr-icon width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s ease' }}>
       <polyline points="6 9 12 15 18 9" />
     </svg>
-
-    {/* Spinner */}
-    <svg
-      data-ptr-spin
-      width="20" height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#466460"
-      strokeWidth="2.5"
-      style={{ animation: 'ptr-spin 0.8s linear infinite' }}
-    >
+    <svg data-ptr-spin width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" style={{ animation: 'ptr-spin 0.8s linear infinite' }}>
       <circle cx="12" cy="12" r="9" strokeOpacity="0.2" />
       <path d="M12 3 a9 9 0 0 1 9 9" />
     </svg>
   </div>
 );
 
-// ─── DB → component shape mapper (used in both fetch and save) ────────────────
+// ─── DB → component shape mapper ──────────────────────────────────────────────
 const mapDbToProfile = (profileData, fallbackEmail = '') => ({
-  firstName:             profileData.first_name              || '',
-  middleName:            profileData.middle_name             || '',
-  lastName:              profileData.last_name               || '',
-  suffix:                profileData.suffix                  || '',
-  birthday:              profileData.birthday                || '',
-  age:                   profileData.age                     || '',
-  sex:                   profileData.sex                     || '',
-  bloodType:             profileData.blood_type              || '',
-  homeAddress:           profileData.home_address            || '',
-  religion:              profileData.religion                || '',
-  nationality:           profileData.nationality             || '',
-  civilStatus:           profileData.civil_status            || '',
-  universityId:          profileData.university_id           || '',
-  role:                  profileData.role                    || '',
-  studentId:             profileData.student_id              || '',
-  department:            profileData.department               || '',
-  program:               profileData.program                 || '',
-  yearLevel:             profileData.year_level              || '',
-  section:               profileData.section                 || '',
-  studentClassification: profileData.student_classification  || 'Regular',
-  classification:        profileData.classification          || '',
-  jobTitle:              profileData.job_title               || '',
-  licenseNumber:         profileData.license_number          || '',
-  email:                 profileData.email                   || fallbackEmail,
-  phoneNumber:           profileData.phone_number            || '',
+  firstName: profileData.first_name || '',
+  middleName: profileData.middle_name || '',
+  lastName: profileData.last_name || '',
+  suffix: profileData.suffix || '',
+  birthday: profileData.birthday || '',
+  age: profileData.age || '',
+  sex: profileData.sex || '',
+  bloodType: profileData.blood_type || '',
+  homeAddress: profileData.home_address || '',
+  religion: profileData.religion || '',
+  nationality: profileData.nationality || '',
+  civilStatus: profileData.civil_status || '',
+  universityId: profileData.university_id || '',
+  role: profileData.role || '',
+  studentId: profileData.student_id || '',
+  department: profileData.department || '',
+  program: profileData.program || '',
+  yearLevel: profileData.year_level || '',
+  section: profileData.section || '',
+  studentClassification: profileData.student_classification || 'Regular',
+  classification: profileData.classification || '',
+  jobTitle: profileData.job_title || '',
+  licenseNumber: profileData.license_number || '',
+  email: profileData.email || fallbackEmail,
+  phoneNumber: profileData.phone_number || '',
   emergencyContact: {
-    name:         profileData.emergency_contact?.name         || '',
+    name: profileData.emergency_contact?.name || '',
     relationship: profileData.emergency_contact?.relationship || '',
-    phone:        profileData.emergency_contact?.phone        || '',
-    address:      profileData.emergency_contact?.address      || '',
+    phone: profileData.emergency_contact?.phone || '',
+    address: profileData.emergency_contact?.address || '',
   },
   vaccinations: {
-    dose1:    { vaccineName: profileData.vaccinations?.dose1?.vaccineName    || '', date: profileData.vaccinations?.dose1?.date    || '' },
-    dose2:    { vaccineName: profileData.vaccinations?.dose2?.vaccineName    || '', date: profileData.vaccinations?.dose2?.date    || '' },
+    dose1: { vaccineName: profileData.vaccinations?.dose1?.vaccineName || '', date: profileData.vaccinations?.dose1?.date || '' },
+    dose2: { vaccineName: profileData.vaccinations?.dose2?.vaccineName || '', date: profileData.vaccinations?.dose2?.date || '' },
     booster1: { vaccineName: profileData.vaccinations?.booster1?.vaccineName || '', date: profileData.vaccinations?.booster1?.date || '' },
     booster2: { vaccineName: profileData.vaccinations?.booster2?.vaccineName || '', date: profileData.vaccinations?.booster2?.date || '' },
-    history:  profileData.vaccinations?.history || '',
+    history: profileData.vaccinations?.history || '',
     declined: typeof profileData.vaccinations?.declined === 'object' ? {
       dose1: !!profileData.vaccinations.declined.dose1,
       dose2: !!profileData.vaccinations.declined.dose2,
@@ -307,45 +243,51 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
     } : (profileData.vaccinations?.declined ? { dose1: true, dose2: true, booster1: true, booster2: true, history: true } : { dose1: false, dose2: false, booster1: false, booster2: false, history: false }),
   },
   dentalHistory: {
-    lastVisit:   profileData.dental_history?.lastVisit   || '',
+    lastVisit: profileData.dental_history?.lastVisit || '',
     prevDentist: profileData.dental_history?.prevDentist || '',
-    procedures:  profileData.dental_history?.procedures  || {},
-    declined:    profileData.dental_history?.declined    || false,
+    procedures: profileData.dental_history?.procedures || {},
+    declined: profileData.dental_history?.declined || false,
   },
   surgicalHistory: {
     operations: Array.isArray(profileData.surgical_history?.operations) ? profileData.surgical_history.operations : [],
-    declined:   profileData.surgical_history?.declined || false,
+    declined: profileData.surgical_history?.declined || false,
   },
+  documents: Array.isArray(profileData.documents) ? profileData.documents : [],
 });
+
+// ─── Reusable Active UID Extractor ───────────────────────────────────────────
+const getActiveUid = async () => {
+  const accessToken = localStorage.getItem('token');
+  const refreshToken = localStorage.getItem('refresh_token') || '';
+  if (accessToken) {
+    await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  }
+  const { data: { user } } = await supabase.auth.getUser();
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  return user?.id || currentUser?.uid;
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [loading, setLoading]         = useState(true);
+  const [loading, setLoading] = useState(true);
   const [scrollToSection, setScrollToSection] = useState(null);
-  const [toast, setToast]             = useState(null);
+  const [toast, setToast] = useState(null);
 
   const [editingSection, setEditingSection] = useState(null);
-  const [editData, setEditData]             = useState({});
-  const [isSaving, setIsSaving]             = useState(false);
+  const [editData, setEditData] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
   const [dentalDeclined, setDentalDeclined] = useState(false);
   const [surgicalDeclined, setSurgicalDeclined] = useState(false);
   const [vaccinationsDeclined, setVaccinationsDeclined] = useState({ dose1: false, dose2: false, booster1: false, booster2: false, history: false });
 
-  const [xrayDate, setXrayDate]           = useState('April 22, 2026');
-  const [xrayFile, setXrayFile]           = useState('X-ray_Report_2026.pdf');
-  const [drugtestDate, setDrugtestDate]   = useState('April 22, 2026');
-  const [drugtestFile, setDrugtestFile]   = useState('Drug_Test_Result_2026.pdf');
-  const [documentsNote, setDocumentsNote] = useState('Valid documents · last updated April 2026');
-  const [previewModal, setPreviewModal]       = useState(false);
-  const [previewFileName, setPreviewFileName] = useState('');
-  const [previewContent, setPreviewContent]   = useState(null);
-  const [pendingFile, setPendingFile]         = useState(null);
-  const [pendingDocType, setPendingDocType]   = useState(null);
-  const xrayInputRef     = useRef(null);
-  const drugtestInputRef = useRef(null);
+  // Document management state
+  const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [docToDelete, setDocToDelete] = useState(null);
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+  const documentsInputRef = useRef(null);
 
   const [profile, setProfile] = useState({
     firstName: '', middleName: '', lastName: '', suffix: '',
@@ -358,11 +300,11 @@ export default function ProfileUsers({ onLogout }) {
     email: '', phoneNumber: '',
     emergencyContact: { name: '', relationship: '', phone: '', address: '' },
     vaccinations: {
-      dose1:    { vaccineName: '', date: '' },
-      dose2:    { vaccineName: '', date: '' },
+      dose1: { vaccineName: '', date: '' },
+      dose2: { vaccineName: '', date: '' },
       booster1: { vaccineName: '', date: '' },
       booster2: { vaccineName: '', date: '' },
-      history:  '',
+      history: '',
       declined: { dose1: false, dose2: false, booster1: false, booster2: false, history: false },
     },
     dentalHistory: {
@@ -373,26 +315,19 @@ export default function ProfileUsers({ onLogout }) {
     surgicalHistory: {
       operations: [],
       declined: false,
-    }
+    },
+    documents: [],
   });
 
-  // ── Fetch Profile Extracted for PTR ──────────────────────────────────────
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // ── Fetch Profile ───────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
     try {
-      const accessToken  = localStorage.getItem('token');
-      const refreshToken = localStorage.getItem('refresh_token') || '';
-
-      if (accessToken) {
-        await supabase.auth.setSession({
-          access_token:  accessToken,
-          refresh_token: refreshToken,
-        });
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      const activeUid   = user?.id || currentUser?.uid;
-
+      const activeUid = await getActiveUid();
       if (!activeUid) { setLoading(false); return; }
 
       const { data, error } = await supabase
@@ -404,10 +339,11 @@ export default function ProfileUsers({ onLogout }) {
       const profileData = data?.[0] || null;
       if (error) throw error;
 
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       if (profileData) {
-        setProfile(mapDbToProfile(profileData, user?.email || currentUser?.email || ''));
+        setProfile(mapDbToProfile(profileData, currentUser?.email || ''));
       } else {
-        setProfile(prev => ({ ...prev, email: user?.email || currentUser?.email || '' }));
+        setProfile(prev => ({ ...prev, email: currentUser?.email || '' }));
       }
     } catch (err) {
       console.error('[ProfileUsers] Fetch error:', err);
@@ -416,7 +352,6 @@ export default function ProfileUsers({ onLogout }) {
     }
   }, []);
 
-  // ── Pull-to-refresh hook ────────────────────────────────────────────────────
   const { scrollElRef, indicatorRef } = usePullToRefresh(async () => {
     await fetchProfile();
   });
@@ -425,14 +360,12 @@ export default function ProfileUsers({ onLogout }) {
     fetchProfile();
   }, [fetchProfile]);
 
-  // ── Capture scroll target from navigation state ───────────────────────────────
   useEffect(() => {
     if (location.state?.scrollTo && !scrollToSection) {
       setScrollToSection(location.state.scrollTo);
     }
   }, [location.state, scrollToSection]);
 
-  // ── Auto-scroll to section ────────────────────────────────────────────────────
   useEffect(() => {
     if (!loading && scrollToSection) {
       const sectionRefs = {
@@ -467,13 +400,9 @@ export default function ProfileUsers({ onLogout }) {
   ].filter(Boolean).join(' ');
 
   const isStudent = profile.role?.toLowerCase() === 'student';
-
   const isFieldEmpty = (value) => !value || value === '';
 
-  const personalFields = [
-    profile.birthday, profile.age, profile.sex, profile.bloodType,
-    profile.civilStatus, profile.religion, profile.nationality, profile.homeAddress
-  ];
+  const personalFields = [profile.birthday, profile.age, profile.sex, profile.bloodType, profile.civilStatus, profile.religion, profile.nationality, profile.homeAddress];
   const hasEmptyPersonal = personalFields.some(isFieldEmpty);
 
   const academicFields = isStudent
@@ -499,20 +428,124 @@ export default function ProfileUsers({ onLogout }) {
 
   const hasEmptySurgical = !profile.surgicalHistory?.declined && (!profile.surgicalHistory?.operations || profile.surgicalHistory.operations.length === 0);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
+  // ── Document Handlers ──────────────────────────────────────────────────────
+  const handleDocumentUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+
+    const invalid = files.find(f => !ALLOWED_DOC_TYPES.includes(f.type) || f.size > MAX_DOC_SIZE);
+    if (invalid) {
+      showToast(`"${invalid.name}" is invalid. PDF/JPG/PNG only, max 5MB.`);
+      return;
+    }
+
+    setUploadingDocs(true);
+    const uploadedPaths = [];
+
+    try {
+      const uid = await getActiveUid();
+      if (!uid) throw new Error('Not authenticated');
+
+      const uploadedDocs = [];
+
+      for (const file of files) {
+        const ext = file.name.split('.').pop();
+        const path = `${uid}/${crypto.randomUUID()}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(DOCUMENTS_BUCKET)
+          .upload(path, file, { cacheControl: '3600', upsert: false });
+
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(path);
+
+        uploadedDocs.push({
+          id: crypto.randomUUID(),
+          name: file.name,
+          path,
+          type: file.type,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+
+      const newDocuments = [...(profile.documents || []), ...uploadedDocs];
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ documents: newDocuments })
+        .eq('uid', uid);
+
+      if (updateError) throw updateError;
+
+      setProfile(prev => ({ ...prev, documents: newDocuments }));
+      showToast(uploadedDocs.length > 1 ? 'Documents uploaded successfully!' : 'Document uploaded successfully!');
+    } catch (err) {
+      console.error('[ProfileUsers] Document upload error:', err);
+      if (uploadedPaths.length > 0) {
+        await supabase.storage.from(DOCUMENTS_BUCKET).remove(uploadedPaths);
+      }
+      showToast('Failed to upload document(s).');
+    } finally {
+      setUploadingDocs(false);
+    }
   };
 
-  // ── Editing Handlers ─────────────────────────────────────────────────────
-  const openEdit   = (section) => {
+  const handleConfirmDelete = async () => {
+    if (!docToDelete) return;
+    setIsDeletingDoc(true);
+
+    try {
+      const uid = await getActiveUid();
+      if (!uid) throw new Error('Not authenticated');
+
+      if (docToDelete.path) {
+        await supabase.storage.from(DOCUMENTS_BUCKET).remove([docToDelete.path]);
+      }
+
+      const newDocuments = (profile.documents || []).filter(d => d.id !== docToDelete.id);
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ documents: newDocuments })
+        .eq('uid', uid);
+
+      if (updateError) throw updateError;
+
+      setProfile(prev => ({ ...prev, documents: newDocuments }));
+      showToast('Document removed.');
+      setDocToDelete(null);
+    } catch (err) {
+      console.error('[ProfileUsers] Document delete error:', err);
+      showToast('Failed to remove document.');
+    } finally {
+      setIsDeletingDoc(false);
+    }
+  };
+
+  const handleViewDocument = async (doc) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(DOCUMENTS_BUCKET)
+        .createSignedUrl(doc.path, 300); // 5 minutes validity
+
+      if (error) throw error;
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Error opening document:', err);
+      showToast('Failed to open document.');
+    }
+  };
+
+  // ── Profile Editing Handlers ───────────────────────────────────────────────
+  const openEdit = (section) => {
     setEditData(JSON.parse(JSON.stringify(profile)));
     setEditingSection(section);
     setDentalDeclined(profile.dentalHistory?.declined || false);
     setSurgicalDeclined(profile.surgicalHistory?.declined || false);
     setVaccinationsDeclined(profile.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false, history: false });
   };
-  const closeEdit  = ()        => { setEditingSection(null); setEditData({}); };
+  const closeEdit = () => { setEditingSection(null); setEditData({}); };
 
   const handleChange = (field, value) => {
     if (field === 'birthday') {
@@ -522,11 +555,11 @@ export default function ProfileUsers({ onLogout }) {
       setEditData(prev => ({ ...prev, [field]: value }));
     }
   };
-  const handleNestedChange     = (parent, field, value) => setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
-  const handleVaxChange        = (dose, field, value)  => setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, [dose]: { ...prev.vaccinations[dose], [field]: value } } }));
-  const handleCovidHistoryChange = (value)             => setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, history: value } }));
-  const handleDentalChange     = (field, value)        => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, [field]: value } }));
-  const handleDentalProcChange = (proc, value)         => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, procedures: { ...(prev.dentalHistory.procedures || {}), [proc]: value } } }));
+  const handleNestedChange = (parent, field, value) => setEditData(prev => ({ ...prev, [parent]: { ...prev[parent], [field]: value } }));
+  const handleVaxChange = (dose, field, value) => setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, [dose]: { ...prev.vaccinations[dose], [field]: value } } }));
+  const handleCovidHistoryChange = (value) => setEditData(prev => ({ ...prev, vaccinations: { ...prev.vaccinations, history: value } }));
+  const handleDentalChange = (field, value) => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, [field]: value } }));
+  const handleDentalProcChange = (proc, value) => setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, procedures: { ...(prev.dentalHistory.procedures || {}), [proc]: value } } }));
 
   const handleAddOperation = () => setEditData(prev => ({
     ...prev,
@@ -552,11 +585,7 @@ export default function ProfileUsers({ onLogout }) {
 
   const getSectionFields = (section, isStudentUser) => {
     const sectionFields = {
-      personal: [
-        'firstName', 'middleName', 'lastName', 'suffix',
-        'birthday', 'age', 'sex', 'bloodType',
-        'civilStatus', 'religion', 'nationality', 'homeAddress'
-      ],
+      personal: ['firstName', 'middleName', 'lastName', 'suffix', 'birthday', 'age', 'sex', 'bloodType', 'civilStatus', 'religion', 'nationality', 'homeAddress'],
       academic: isStudentUser
         ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification']
         : ['classification', 'department', 'jobTitle', 'licenseNumber'],
@@ -569,15 +598,11 @@ export default function ProfileUsers({ onLogout }) {
     return sectionFields[section] || [];
   };
 
-  const extractSectionData = (editData, section, isStudentUser) => {
+  const extractSectionData = (data, section, isStudentUser) => {
     const fields = getSectionFields(section, isStudentUser);
     const sectionData = {};
     fields.forEach(field => {
-      if (editData[field] && typeof editData[field] === 'object' && !Array.isArray(editData[field])) {
-        sectionData[field] = editData[field];
-      } else {
-        sectionData[field] = editData[field];
-      }
+      sectionData[field] = data[field];
     });
     return sectionData;
   };
@@ -588,7 +613,6 @@ export default function ProfileUsers({ onLogout }) {
       const token = localStorage.getItem('token');
       let sectionData = extractSectionData(editData, editingSection, isStudent);
 
-      // Normalize names before saving: first letter capitalized, rest lowercase
       if (sectionData.firstName) sectionData.firstName = normalizeName(sectionData.firstName);
       if (sectionData.middleName) sectionData.middleName = normalizeName(sectionData.middleName);
       if (sectionData.lastName) sectionData.lastName = normalizeName(sectionData.lastName);
@@ -608,16 +632,10 @@ export default function ProfileUsers({ onLogout }) {
       if (!res.ok) throw new Error(data.message || 'Failed to update profile');
 
       const updatedProfile = { ...profile };
-
       Object.keys(data.data).forEach(key => {
-        if (key === 'emergencyContact' || key === 'vaccinations' || key === 'dentalHistory' || key === 'surgicalHistory') {
-          updatedProfile[key] = data.data[key];
-        } else {
-          updatedProfile[key] = data.data[key];
-        }
+        updatedProfile[key] = data.data[key];
       });
 
-      console.log('[Profile-users] Updated profile surgicalHistory:', JSON.stringify(updatedProfile.surgicalHistory));
       setProfile(updatedProfile);
       showToast('Profile updated successfully!');
       closeEdit();
@@ -626,46 +644,6 @@ export default function ProfileUsers({ onLogout }) {
       showToast('Error updating profile.');
     }
     setIsSaving(false);
-  };
-
-  const handleFileChange = (e, docType) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setPendingFile(file);
-    setPendingDocType(docType);
-    setPreviewFileName(file.name);
-    if (file.type.startsWith('image/')) {
-      setPreviewContent(<img src={URL.createObjectURL(file)} alt="Preview" style={{ maxWidth: '100%', borderRadius: 12 }} />);
-    } else if (file.type === 'application/pdf') {
-      setPreviewContent(<iframe src={URL.createObjectURL(file)} title="PDF Preview" style={{ width: '100%', height: 300, border: 'none', borderRadius: 12 }} />);
-    } else {
-      setPreviewContent(
-        <div style={{ textAlign: 'center', padding: 40, color: '#9bb5a5' }}>
-          <DocIcon /><div style={{ fontSize: 12, marginTop: 8 }}>{file.name}</div>
-          <div style={{ fontSize: 11, marginTop: 4 }}>Preview not available.</div>
-        </div>
-      );
-    }
-    setPreviewModal(true);
-    e.target.value = '';
-  };
-
-  const closePreview = () => { setPreviewModal(false); setPendingFile(null); setPendingDocType(null); setPreviewContent(null); };
-
-  const confirmUpdate = () => {
-    if (!pendingFile || !pendingDocType) { closePreview(); return; }
-    if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(pendingFile.type)) {
-      showToast('Invalid file type. PDF, JPG, or PNG only.'); closePreview(); return;
-    }
-    if (pendingFile.size > 5 * 1024 * 1024) {
-      showToast('File too large. Max 5MB.'); closePreview(); return;
-    }
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    if (pendingDocType === 'xray') { setXrayDate(dateStr); setXrayFile(pendingFile.name); showToast('X-RAY updated'); }
-    else { setDrugtestDate(dateStr); setDrugtestFile(pendingFile.name); showToast('Drug Test updated'); }
-    setDocumentsNote('Documents pending verification...');
-    setTimeout(() => { setDocumentsNote('Valid documents · last updated ' + dateStr); showToast('Documents verified and saved'); }, 2000);
-    closePreview();
   };
 
   if (loading && !profile.email) {
@@ -684,10 +662,7 @@ export default function ProfileUsers({ onLogout }) {
         ref={scrollElRef}
         style={{
           flex: 1,
-          minHeight: 0,          // FIX: lets this div shrink to fill the parent flex column
-                                 // instead of growing to its content's natural height, which
-                                 // is what made the MobileShell wrapper above ALSO scrollable
-                                 // (two nested scroll containers fighting for the same touch gesture).
+          minHeight: 0,
           overflowY: 'auto',
           padding: '18px 16px 32px',
           display: 'flex',
@@ -731,13 +706,13 @@ export default function ProfileUsers({ onLogout }) {
         {/* ── Personal Information ── */}
         <Card>
           <SectionHeader label="Personal Information" onEdit={() => openEdit('personal')} hasEmpty={hasEmptyPersonal} />
-          <InfoRow label="Birthday"     value={profile.birthday}     empty={isFieldEmpty(profile.birthday)} />
-          <InfoRow label="Age"          value={profile.age}          empty={isFieldEmpty(profile.age)} />
-          <InfoRow label="Sex"          value={profile.sex}          empty={isFieldEmpty(profile.sex)} />
-          <InfoRow label="Blood Type"   value={profile.bloodType}   empty={isFieldEmpty(profile.bloodType)} />
+          <InfoRow label="Birthday" value={profile.birthday} empty={isFieldEmpty(profile.birthday)} />
+          <InfoRow label="Age" value={profile.age} empty={isFieldEmpty(profile.age)} />
+          <InfoRow label="Sex" value={profile.sex} empty={isFieldEmpty(profile.sex)} />
+          <InfoRow label="Blood Type" value={profile.bloodType} empty={isFieldEmpty(profile.bloodType)} />
           <InfoRow label="Civil Status" value={profile.civilStatus} empty={isFieldEmpty(profile.civilStatus)} />
-          <InfoRow label="Religion"     value={profile.religion}     empty={isFieldEmpty(profile.religion)} />
-          <InfoRow label="Nationality"  value={profile.nationality}  empty={isFieldEmpty(profile.nationality)} />
+          <InfoRow label="Religion" value={profile.religion} empty={isFieldEmpty(profile.religion)} />
+          <InfoRow label="Nationality" value={profile.nationality} empty={isFieldEmpty(profile.nationality)} />
           <InfoRow label="Home Address" value={profile.homeAddress} empty={isFieldEmpty(profile.homeAddress)} last />
         </Card>
 
@@ -746,18 +721,18 @@ export default function ProfileUsers({ onLogout }) {
           <SectionHeader label={isStudent ? 'Academic Information' : 'Work Information'} onEdit={() => openEdit('academic')} hasEmpty={hasEmptyAcademic} />
           {isStudent ? (
             <>
-              <InfoRow label="Student No."    value={profile.universityId || profile.studentId} empty={isFieldEmpty(profile.universityId || profile.studentId)} />
-              <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
-              <InfoRow label="Program"        value={profile.program} empty={isFieldEmpty(profile.program)} />
-              <InfoRow label="Year Level"     value={profile.yearLevel} empty={isFieldEmpty(profile.yearLevel)} />
-              <InfoRow label="Section"        value={profile.section} empty={isFieldEmpty(profile.section)} />
+              <InfoRow label="Student No." value={profile.universityId || profile.studentId} empty={isFieldEmpty(profile.universityId || profile.studentId)} />
+              <InfoRow label="Department" value={profile.department} empty={isFieldEmpty(profile.department)} />
+              <InfoRow label="Program" value={profile.program} empty={isFieldEmpty(profile.program)} />
+              <InfoRow label="Year Level" value={profile.yearLevel} empty={isFieldEmpty(profile.yearLevel)} />
+              <InfoRow label="Section" value={profile.section} empty={isFieldEmpty(profile.section)} />
               <InfoRow label="Classification" value={profile.studentClassification} empty={isFieldEmpty(profile.studentClassification)} last />
             </>
           ) : (
             <>
               <InfoRow label="Classification" value={profile.classification} empty={isFieldEmpty(profile.classification)} />
-              <InfoRow label="Department"     value={profile.department} empty={isFieldEmpty(profile.department)} />
-              <InfoRow label="Job Title"      value={profile.jobTitle} last />
+              <InfoRow label="Department" value={profile.department} empty={isFieldEmpty(profile.department)} />
+              <InfoRow label="Job Title" value={profile.jobTitle} last />
             </>
           )}
         </Card>
@@ -766,16 +741,16 @@ export default function ProfileUsers({ onLogout }) {
         <Card>
           <SectionHeader label="Contact Details" onEdit={() => openEdit('contact')} hasEmpty={hasEmptyContact} />
           <InfoRow label="Email Address" value={profile.email} empty={isFieldEmpty(profile.email)} />
-          <InfoRow label="Phone Number"  value={profile.phoneNumber} empty={isFieldEmpty(profile.phoneNumber)} last />
+          <InfoRow label="Phone Number" value={profile.phoneNumber} empty={isFieldEmpty(profile.phoneNumber)} last />
         </Card>
 
         {/* ── Emergency Contact ── */}
         <Card id="emergency-section">
           <SectionHeader label="Emergency Contact" onEdit={() => openEdit('emergency')} hasEmpty={hasEmptyEmergency} />
-          <InfoRow label="Name"         value={profile.emergencyContact.name}         empty={isFieldEmpty(profile.emergencyContact?.name)} />
+          <InfoRow label="Name" value={profile.emergencyContact.name} empty={isFieldEmpty(profile.emergencyContact?.name)} />
           <InfoRow label="Relationship" value={profile.emergencyContact.relationship} empty={isFieldEmpty(profile.emergencyContact?.relationship)} />
-          <InfoRow label="Phone"        value={profile.emergencyContact.phone}        empty={isFieldEmpty(profile.emergencyContact?.phone)} />
-          <InfoRow label="Address"      value={profile.emergencyContact.address}      empty={isFieldEmpty(profile.emergencyContact?.address)} last />
+          <InfoRow label="Phone" value={profile.emergencyContact.phone} empty={isFieldEmpty(profile.emergencyContact?.phone)} />
+          <InfoRow label="Address" value={profile.emergencyContact.address} empty={isFieldEmpty(profile.emergencyContact?.address)} last />
         </Card>
 
         {/* ── COVID-19 Vaccination History ── */}
@@ -786,7 +761,7 @@ export default function ProfileUsers({ onLogout }) {
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase' }}>Vaccine Brand</span>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9bb5a5', textTransform: 'uppercase', textAlign: 'right' }}>Date Given</span>
           </div>
-          {DOSE_LABELS.map(({ key, label }, i) => {
+          {DOSE_LABELS.map(({ key, label }) => {
             const v = profile.vaccinations?.[key];
             const isDeclined = profile.vaccinations?.declined?.[key];
             const doseEmpty = !v?.vaccineName && !v?.date;
@@ -823,10 +798,10 @@ export default function ProfileUsers({ onLogout }) {
               <span style={{ fontSize: 12, fontWeight: 600, color: '#466460' }}>No dental history / Not applicable</span>
             </div>
           ) : (
-          <>
-          <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} empty={isFieldEmpty(profile.dentalHistory?.lastVisit)} />
-          <InfoRow label="Previous Dentist"  value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} empty={isFieldEmpty(profile.dentalHistory?.prevDentist)} last />
-          </>
+            <>
+              <InfoRow label="Last Dental Visit" value={profile.dentalHistory.lastVisit} empty={isFieldEmpty(profile.dentalHistory?.lastVisit)} />
+              <InfoRow label="Previous Dentist" value={profile.dentalHistory.prevDentist ? `Dr. ${profile.dentalHistory.prevDentist}` : ''} empty={isFieldEmpty(profile.dentalHistory?.prevDentist)} last />
+            </>
           )}
         </Card>
 
@@ -852,37 +827,193 @@ export default function ProfileUsers({ onLogout }) {
           )}
         </Card>
 
-        {/* ── Health Documents ── */}
-        {!isStudent && <Card>
-          <SectionHeader label="Health Documents" />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #edf3f0' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{xrayDate}</span>
-              <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{xrayFile}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>X-RAY</span>
-              <button onClick={() => xrayInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
-              <input ref={xrayInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'xray')} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#466460', background: '#e0eceb', padding: '3px 10px', borderRadius: 30, width: 'fit-content' }}>{drugtestDate}</span>
-              <span style={{ fontSize: 11, color: '#6b8577', fontWeight: 500 }}>{drugtestFile}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ background: '#e0eceb', padding: '5px 12px', borderRadius: 30, fontSize: 12, fontWeight: 700, color: '#466460' }}>Drug Test</span>
-              <button onClick={() => drugtestInputRef.current?.click()} style={{ background: '#466460', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 8, fontSize: 10, cursor: 'pointer' }}>Update</button>
-              <input ref={drugtestInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={e => handleFileChange(e, 'drugtest')} />
-            </div>
-          </div>
-          <hr style={{ margin: '10px 0', border: 'none', borderTop: '1px solid #c4dbd8' }} />
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#466460', background: '#e0eceb', padding: '8px 12px', borderRadius: 40, width: 'fit-content' }}>{documentsNote}</div>
-        </Card>}
+        {/* ── Health Documents (Personnel Only) ── */}
+        {!isStudent && (
+          <Card>
+            <SectionHeader label="Health Documents" />
+            <p style={{ fontSize: 11, color: '#6b8577', margin: '-4px 0 14px', lineHeight: 1.5 }}>
+              Upload X-rays, drug test results, or other clinic-required documents. PDF, JPG, or PNG · max 5MB each.
+            </p>
+
+            {(profile.documents || []).length === 0 && !uploadingDocs && (
+              <p style={{ fontSize: 12, color: '#92400e', fontStyle: 'italic', padding: '12px 0', textAlign: 'center', margin: 0 }}>
+                No documents uploaded yet.
+              </p>
+            )}
+
+            {(profile.documents || []).map((doc) => (
+              <div
+                key={doc.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 0',
+                  borderBottom: '1px solid #edf3f0',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleViewDocument(doc)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    color: '#1a2e22',
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={{ color: '#466460', flexShrink: 0 }}><DocIcon /></span>
+                  <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                      {doc.name}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#9bb5a5' }}>
+                      {new Date(doc.uploadedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDocToDelete(doc)}
+                  style={{
+                    background: '#fef2f2',
+                    color: '#e07a5f',
+                    border: 'none',
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    flexShrink: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => documentsInputRef.current?.click()}
+              disabled={uploadingDocs}
+              style={{
+                width: '100%',
+                marginTop: 12,
+                background: uploadingDocs ? '#9bb5a5' : '#466460',
+                color: '#fff',
+                border: 'none',
+                padding: '10px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: uploadingDocs ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {uploadingDocs ? 'Uploading...' : '+ Add Document(s)'}
+            </button>
+            <input
+              ref={documentsInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              multiple
+              hidden
+              onChange={handleDocumentUpload}
+            />
+          </Card>
+        )}
       </div>
 
-      {/* ── Edit Profile Modal (sibling of scrollElRef — not a descendant) ── */}
+      {/* ── Delete Document Confirmation Modal ── */}
+      {docToDelete && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeletingDoc) setDocToDelete(null);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(26, 46, 34, 0.45)',
+            backdropFilter: 'blur(3px)',
+            zIndex: 4500,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 380,
+              padding: 24,
+              boxShadow: '0 12px 35px rgba(0,0,0,0.12)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: 16, fontWeight: 800, color: '#1a2e22' }}>
+                Remove Document?
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: '#6b8577', lineHeight: 1.5 }}>
+                Are you sure you want to remove <strong style={{ color: '#1a2e22', wordBreak: 'break-all' }}>"{docToDelete.name}"</strong>? This will permanently delete the file from your clinic record.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button
+                type="button"
+                disabled={isDeletingDoc}
+                onClick={() => setDocToDelete(null)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #c4dbd8',
+                  background: '#fbfcfc',
+                  color: '#6b8577',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: isDeletingDoc ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingDoc}
+                onClick={handleConfirmDelete}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: '#e07a5f',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: isDeletingDoc ? 'not-allowed' : 'pointer',
+                  opacity: isDeletingDoc ? 0.7 : 1,
+                }}
+              >
+                {isDeletingDoc ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Profile Modal ── */}
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
@@ -894,7 +1025,7 @@ export default function ProfileUsers({ onLogout }) {
 
             <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
 
-              {/* ── Personal Section ── */}
+              {/* Personal Section */}
               {editingSection === 'personal' && (
                 <>
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -970,7 +1101,7 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
-              {/* ── Academic Section (Student) ── */}
+              {/* Academic Section (Student) */}
               {editingSection === 'academic' && isStudent && (
                 <>
                   <FormGroup label="Student No.">
@@ -1006,7 +1137,7 @@ export default function ProfileUsers({ onLogout }) {
                     <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
                       {STUDENT_CLASSIFICATIONS.map(cls => {
                         const isActive = editData.studentClassification === cls;
-                        const colors   = classificationColors[cls];
+                        const colors = classificationColors[cls];
                         return (
                           <button
                             key={cls}
@@ -1031,7 +1162,7 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
-              {/* ── Academic Section (Staff) ── */}
+              {/* Academic Section (Staff) */}
               {editingSection === 'academic' && !isStudent && (
                 <>
                   <FormGroup label="Classification">
@@ -1052,11 +1183,13 @@ export default function ProfileUsers({ onLogout }) {
                       {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
                     </select>
                   </FormGroup>
-                  <FormGroup label="License Number"><input style={inputStyle} value={editData.licenseNumber || ''} placeholder="e.g., PRC-123456" onChange={e => handleChange('licenseNumber', e.target.value.toUpperCase())} /></FormGroup>
+                  <FormGroup label="License Number">
+                    <input style={inputStyle} value={editData.licenseNumber || ''} placeholder="e.g., PRC-123456" onChange={e => handleChange('licenseNumber', e.target.value.toUpperCase())} />
+                  </FormGroup>
                 </>
               )}
 
-              {/* ── Contact Section ── */}
+              {/* Contact Section */}
               {editingSection === 'contact' && (
                 <>
                   <FormGroup label="Email Address">
@@ -1081,10 +1214,12 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
-              {/* ── Emergency Section ── */}
+              {/* Emergency Section */}
               {editingSection === 'emergency' && (
                 <>
-                  <FormGroup label="Contact Name"><input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} /></FormGroup>
+                  <FormGroup label="Contact Name">
+                    <input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} />
+                  </FormGroup>
                   <FormGroup label="Relationship">
                     <select style={inputStyle} value={editData.emergencyContact.relationship} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)}>
                       <option value="">Select</option>
@@ -1105,11 +1240,13 @@ export default function ProfileUsers({ onLogout }) {
                       maxLength={11}
                     />
                   </FormGroup>
-                  <FormGroup label="Address"><textarea style={{ ...inputStyle, minHeight: 80 }} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} /></FormGroup>
+                  <FormGroup label="Address">
+                    <textarea style={{ ...inputStyle, minHeight: 80 }} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} />
+                  </FormGroup>
                 </>
               )}
 
-              {/* ── Vaccinations Section ── */}
+              {/* Vaccinations Section */}
               {editingSection === 'vaccinations' && (
                 <>
                   {DOSE_LABELS.map(({ key, label }) => {
@@ -1136,7 +1273,7 @@ export default function ProfileUsers({ onLogout }) {
                         {!isDeclined && (
                           <>
                             <FormGroup label="Vaccine Brand">
-                              <select style={{...inputStyle, backgroundColor: '#fff'}} value={editData.vaccinations[key]?.vaccineName || ''} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)}>
+                              <select style={{ ...inputStyle, backgroundColor: '#fff' }} value={editData.vaccinations[key]?.vaccineName || ''} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)}>
                                 <option value="">Select</option>
                                 {VACCINE_BRANDS.map(v => <option key={v} value={v}>{v}</option>)}
                               </select>
@@ -1153,7 +1290,6 @@ export default function ProfileUsers({ onLogout }) {
                     );
                   })}
 
-                  {/* COVID-19 History Edit Block */}
                   <div style={{ background: vaccinationsDeclined.history ? '#fef3c7' : '#f4f7f5', padding: 16, borderRadius: 12, marginBottom: 16, border: vaccinationsDeclined.history ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: vaccinationsDeclined.history ? 0 : 12 }}>
                       <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>COVID-19 History</p>
@@ -1186,7 +1322,7 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
-              {/* ── Dental History Section ── */}
+              {/* Dental Section */}
               {editingSection === 'dental' && (
                 <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: dentalDeclined ? '#fef3c7' : '#f4f7f5', borderRadius: 10, marginBottom: 16, cursor: 'pointer', border: dentalDeclined ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
@@ -1203,39 +1339,39 @@ export default function ProfileUsers({ onLogout }) {
                       I don't have dental history / Not applicable
                     </span>
                   </label>
-                  {!dentalDeclined ? (
-                  <>
-                  <FormGroup label="Last Dental Visit">
-                    <DatePicker value={editData.dentalHistory.lastVisit || ''} onChange={val => handleDentalChange('lastVisit', val)} />
-                  </FormGroup>
-                  <FormGroup label="Previous Dentist (Dr.)">
-                    <input style={inputStyle} value={editData.dentalHistory.prevDentist} placeholder="e.g. Smith" onChange={e => handleDentalChange('prevDentist', e.target.value)} />
-                  </FormGroup>
+                  {!dentalDeclined && (
+                    <>
+                      <FormGroup label="Last Dental Visit">
+                        <DatePicker value={editData.dentalHistory.lastVisit || ''} onChange={val => handleDentalChange('lastVisit', val)} />
+                      </FormGroup>
+                      <FormGroup label="Previous Dentist (Dr.)">
+                        <input style={inputStyle} value={editData.dentalHistory.prevDentist} placeholder="e.g. Smith" onChange={e => handleDentalChange('prevDentist', e.target.value)} />
+                      </FormGroup>
 
-                  <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: '24px 0 12px 0', textTransform: 'uppercase', borderTop: '1px solid #edf3f0', paddingTop: 20, letterSpacing: 0.5 }}>Procedures History</p>
-                  {DENTAL_PROCEDURES.map(proc => {
-                    const isYes = editData.dentalHistory.procedures?.[proc] === 'Yes';
-                    const isNo  = editData.dentalHistory.procedures?.[proc] === 'No' || !editData.dentalHistory.procedures?.[proc];
-                    return (
-                      <div key={proc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 12, color: '#1a2e22', background: '#fbfcfc', border: '1px solid #edf3f0', padding: '10px 14px', borderRadius: 10 }}>
-                        <span style={{ fontWeight: 600 }}>{proc}</span>
-                        <div style={{ display: 'flex', gap: 16 }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
-                            <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} style={{ accentColor: '#466460' }} /> Yes
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
-                            <input type="radio" name={`modal_dh_${proc}`} checked={isNo}  onChange={() => handleDentalProcChange(proc, 'No')}  style={{ accentColor: '#466460' }} /> No
-                          </label>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  </>
-                ) : null}
+                      <p style={{ fontSize: 11, fontWeight: 800, color: '#466460', margin: '24px 0 12px 0', textTransform: 'uppercase', borderTop: '1px solid #edf3f0', paddingTop: 20, letterSpacing: 0.5 }}>Procedures History</p>
+                      {DENTAL_PROCEDURES.map(proc => {
+                        const isYes = editData.dentalHistory.procedures?.[proc] === 'Yes';
+                        const isNo = editData.dentalHistory.procedures?.[proc] === 'No' || !editData.dentalHistory.procedures?.[proc];
+                        return (
+                          <div key={proc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 12, color: '#1a2e22', background: '#fbfcfc', border: '1px solid #edf3f0', padding: '10px 14px', borderRadius: 10 }}>
+                            <span style={{ fontWeight: 600 }}>{proc}</span>
+                            <div style={{ display: 'flex', gap: 16 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
+                                <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} style={{ accentColor: '#466460' }} /> Yes
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
+                                <input type="radio" name={`modal_dh_${proc}`} checked={isNo} onChange={() => handleDentalProcChange(proc, 'No')} style={{ accentColor: '#466460' }} /> No
+                              </label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </>
               )}
 
-              {/* ── Past Surgical History Section ── */}
+              {/* Surgical Section */}
               {editingSection === 'surgical' && (
                 <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: surgicalDeclined ? '#fef3c7' : '#f4f7f5', borderRadius: 10, marginBottom: 16, cursor: 'pointer', border: surgicalDeclined ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
@@ -1285,6 +1421,8 @@ export default function ProfileUsers({ onLogout }) {
                 </>
               )}
 
+            </div>
+
             <div style={{ padding: '16px 24px', borderTop: '1px solid #edf3f0', display: 'flex', gap: 12, background: '#fff' }}>
               <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577', transition: 'background 0.2s' }}>Cancel</button>
               <button onClick={saveProfileEdits} disabled={isSaving} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1, transition: 'background 0.2s' }}>
@@ -1293,28 +1431,9 @@ export default function ProfileUsers({ onLogout }) {
             </div>
           </div>
         </div>
-        </div>
       )}
 
-
-      {/* ── File Preview Modal (sibling of scrollElRef) ── */}
-      {previewModal && (
-        <div onClick={e => e.target === e.currentTarget && closePreview()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.8)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 340, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.15)' }}>
-            <div style={{ background: '#466460', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, truncate: true, maxWidth: '80%' }}>Preview — {previewFileName}</span>
-              <button onClick={closePreview} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16 }}>✕</button>
-            </div>
-            <div style={{ padding: 20 }}>{previewContent}</div>
-            <div style={{ display: 'flex', gap: 12, padding: '0 20px 20px' }}>
-              <button onClick={closePreview} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#f4f7f5', color: '#6b8577', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-              <button onClick={confirmUpdate} style={{ flex: 1, background: '#466460', color: '#fff', border: 'none', padding: 12, borderRadius: 10, cursor: 'pointer', fontWeight: 700 }}>Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Toast (sibling of scrollElRef) ── */}
+      {/* ── Toast ── */}
       {toast && (
         <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#466460', color: '#fff', padding: '12px 24px', borderRadius: 40, fontSize: 13, fontWeight: 600, zIndex: 5000, whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
           {toast}

@@ -221,9 +221,9 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [x] fix the appointment to set time accurately, then for the consultation-users.jsx it should only be accesible if theres an appointment.
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
 * [ ] make the settings functional
-* [ ] the uploading of health documents is not working profile users and headers.jsx
+* [x] the uploading of health documents is not working profile users and headers.jsx
 * [x] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic. i need to add a new page for that that should sit on the settings page for the admin under the ocr settings tab.
-* [ ] add Examination (medical) medical Certificate digital singature should be png
+* [x] add Examination (medical) medical Certificate digital singature should be png
 
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired

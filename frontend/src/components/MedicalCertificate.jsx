@@ -66,19 +66,20 @@ export const MedicalCertificate = ({
 }) => {
   const [finding1, setFinding1] = useState(examination?.finding1 || '');
   const [remarks,  setRemarks]  = useState(examination?.remarks  || '');
-  const [isFit,            setIsFit]           = useState(examination?.isFit           ?? true);
+  const [isFit,             setIsFit]             = useState(examination?.isFit           ?? true);
   const [isNormalFindings, setIsNormalFindings] = useState(examination?.isNormalFindings ?? true);
   const [downloading, setDownloading] = useState(false);
 
-  // ADDED: State to hold database-fetched doctor details with default fallback values
+  // State to hold database-fetched doctor details with fallback
   const [doctorInfo, setDoctorInfo] = useState({
     name: 'CAREN NAVATA JOSE M.D.',
     title: 'Medical Officer III',
     licenseNo: '0114665',
-    ptrNo: '9978569'
+    ptrNo: '9978569',
+    signatureUrl: ''
   });
 
-  // ADDED: Fetch doctor info from the database on mount
+  // Fetch doctor info from the database on mount
   useEffect(() => {
     const fetchDoctorInfo = async () => {
       try {
@@ -90,7 +91,8 @@ export const MedicalCertificate = ({
               name: data.name || 'CAREN NAVATA JOSE M.D.',
               title: data.title || 'Medical Officer III',
               licenseNo: data.licenseNo || '0114665',
-              ptrNo: data.ptrNo || '9978569'
+              ptrNo: data.ptrNo || '9978569',
+              signatureUrl: data.signatureUrl || ''
             });
           }
         }
@@ -102,7 +104,6 @@ export const MedicalCertificate = ({
     fetchDoctorInfo();
   }, []);
 
-  // Direct public Supabase Storage URL
   const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
 
   const handleFinding1 = useCallback((v) => setFinding1(v), []);
@@ -202,21 +203,39 @@ export const MedicalCertificate = ({
         }
       };
 
+      // ── Load logo + doctor signature images in parallel ──────────────────
       const logoUrlPdf = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
       const logo = new Image();
       logo.crossOrigin = 'Anonymous';
       logo.src = logoUrlPdf;
 
-      await new Promise((resolve, reject) => {
-        logo.onload = resolve;
-        logo.onerror = (e) => {
-          console.warn('Could not load logo for PDF generation:', e);
-          const fallbackLogo = new Image();
-          fallbackLogo.src = '/plsp-logo.jpg';
-          fallbackLogo.onload = resolve;
-          fallbackLogo.onerror = resolve;
-        };
-      });
+      const sigImage = doctorInfo.signatureUrl ? new Image() : null;
+      if (sigImage) {
+        sigImage.crossOrigin = 'Anonymous';
+        sigImage.src = doctorInfo.signatureUrl;
+      }
+
+      await Promise.all([
+        new Promise((resolve) => {
+          logo.onload = resolve;
+          logo.onerror = (e) => {
+            console.warn('Could not load logo for PDF generation:', e);
+            const fallbackLogo = new Image();
+            fallbackLogo.src = '/plsp-logo.jpg';
+            fallbackLogo.onload = resolve;
+            fallbackLogo.onerror = resolve;
+          };
+        }),
+        sigImage
+          ? new Promise((resolve) => {
+              sigImage.onload = resolve;
+              sigImage.onerror = (e) => {
+                console.warn('Could not load signature image for PDF generation:', e);
+                resolve();
+              };
+            })
+          : Promise.resolve()
+      ]);
 
       if (logo.complete && logo.naturalWidth > 0) {
         try {
@@ -344,27 +363,48 @@ export const MedicalCertificate = ({
       textBox(remarks, mar, cw, y, 2);
       ln(1, 18);
 
-      const sigX = W - mar - 56;
-      doc.setDrawColor(15, 23, 42);
-      doc.setLineWidth(0.6);
-      doc.line(sigX, y, W - mar, y);
-      ln(1, 4);
+      // ── Signature block (Signature Image -> Name -> Underline -> Titles) ─
+      const sigBlockW = 60;
+      const sigX = W - mar - sigBlockW;
+      const sigCenterX = sigX + sigBlockW / 2;
 
-      // Dynamically populate database-fetched Doctor info in the PDF
+      // 1. Draw signature image floating above the name
+      if (sigImage && sigImage.complete && sigImage.naturalWidth > 0) {
+        const sigMaxW = 40;
+        const sigMaxH = 14;
+        const sigAspect = sigImage.naturalWidth / sigImage.naturalHeight;
+        let drawW = sigMaxW, drawH = sigMaxW / sigAspect;
+        if (drawH > sigMaxH) { drawH = sigMaxH; drawW = sigMaxH * sigAspect; }
+        const sigFormat = /\.(jpe?g)(\?|$)/i.test(doctorInfo.signatureUrl) ? 'JPEG' : 'PNG';
+        try {
+          doc.addImage(sigImage, sigFormat, sigCenterX - drawW / 2, y - drawH, drawW, drawH);
+        } catch (e) {
+          console.warn('Error adding signature to PDF:', e);
+        }
+      }
+
+      // 2. Doctor Name
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(doctorInfo.name, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
-      ln(1, 4.5);
+      doc.text(doctorInfo.name, sigCenterX, y, { align: 'center', baseline: 'bottom' });
+
+      // 3. Line directly UNDER the doctor's name
+      doc.setDrawColor(15, 23, 42);
+      doc.setLineWidth(0.6);
+      doc.line(sigX, y + 1.2, W - mar, y + 1.2);
+
+      // 4. Titles and registration details
+      ln(1, 5.5);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.text(doctorInfo.title, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(doctorInfo.title, sigCenterX, y, { align: 'center', baseline: 'bottom' });
       ln(1, 4);
       doc.setFontSize(7.5);
       doc.setTextColor(80, 80, 80);
-      doc.text(`License no. ${doctorInfo.licenseNo}`, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(`License no. ${doctorInfo.licenseNo}`, sigCenterX, y, { align: 'center', baseline: 'bottom' });
       ln(1, 3.5);
-      doc.text(`PTR no. ${doctorInfo.ptrNo}`, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(`PTR no. ${doctorInfo.ptrNo}`, sigCenterX, y, { align: 'center', baseline: 'bottom' });
       ln(1, 11);
 
       doc.setFont('times', 'italic');
@@ -535,7 +575,13 @@ export const MedicalCertificate = ({
         {/* Signature */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28 }}>
           <div style={{ textAlign: 'center', minWidth: 200 }}>
-            {/* Dynamically populate database-fetched Doctor info in the React render */}
+            {doctorInfo.signatureUrl && (
+              <img
+                src={doctorInfo.signatureUrl}
+                alt="Doctor's signature"
+                style={{ maxHeight: 48, maxWidth: 180, objectFit: 'contain', marginBottom: -6 }}
+              />
+            )}
             <div style={{ borderBottom: '2px solid #0f172a', paddingBottom: 4, marginBottom: 4, fontFamily: 'helvetica, sans-serif', fontWeight: 900, fontSize: 11, color: '#0f172a', textTransform: 'uppercase' }}>
               {doctorInfo.name}
             </div>
@@ -563,9 +609,8 @@ export const MedicalCertificate = ({
           </tbody>
         </table>
 
-        {/* --- REFACTORED ACTION BUTTONS --- */}
+        {/* Action buttons */}
         <div style={{ marginTop: 36, paddingTop: 20, borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
-
           <button
             onClick={handleDownload}
             disabled={downloading}

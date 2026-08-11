@@ -1,32 +1,37 @@
-// C:\Users\HP\MediTrack\app.js
 require('dotenv').config();
 const express = require("express");
+const helmet = require("helmet");
+const corsMiddleware = require("./configs/cors");
 const globalErr = require("./middleware/global-err");
 const routes = require("./routes/index");
-const cors = require("cors");
-const helmet = require("helmet");
+
+// 1. Initialize Express FIRST
 const app = express();
 
-// ✅ Middleware
-app.use(helmet());
-app.use(cors());
+// 2. Security and CORS Middleware
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+app.use(corsMiddleware);
 
-// 🔴 FIX: Increase the payload limits to handle large Base64 image strings
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// 3. Payload limit parsing
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-// ✅ Debug test route
+// 4. Debug test route
 app.post("/test", (req, res) => {
   res.json({ received: req.body });
 });
 
-// ✅ Routes
-// Everything inside 'routes/index' will be prefixed with /api
+// 5. API Routes
 app.use("/api", routes);
 
-// ✅ Error handler LAST
+// 6. Error handling (Always last middleware)
 app.use(globalErr);
 
+// 7. Server listen
 const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, "0.0.0.0", () => {
@@ -38,22 +43,19 @@ const server = app.listen(PORT, "0.0.0.0", () => {
 =========================================
   `);
 
-  // Prevent server from exiting
-  server.on('close', () => {
-    console.log('Server closed');
+  server.on("close", () => {
+    console.log("Server closed");
   });
 });
 
-// Prevent process from exiting
 process.stdin.resume();
 
-// Keep the server running and log any unexpected exits
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 module.exports = app;

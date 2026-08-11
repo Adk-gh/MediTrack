@@ -323,8 +323,8 @@ const formData = {
 ### Summary of Column Reduction:
 
 * **Before:** 80+ columns
-* **After:** ~35 columns
-* **Reduction:** ~45 columns consolidated into 4 JSONB fields (patient_info, covid_history, laboratory_results, vital_records)
+* **After:** \~35 columns
+* **Reduction:** \~45 columns consolidated into 4 JSONB fields (patient\_info, covid\_history, laboratory\_results, vital\_records)
 
 ***
 

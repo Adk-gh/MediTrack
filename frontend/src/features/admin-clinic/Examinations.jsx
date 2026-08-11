@@ -9,7 +9,7 @@ const normalizePatient = (uid, d) => {
   // Handle both camelCase (cached) and snake_case (Supabase direct)
   const firstName     = d.firstName    || d.first_name    || '';
   const lastName      = d.lastName     || d.last_name     || '';
-  const middleName = d.middleName || d.middle_name   || '';
+  const middleName    = d.middleName   || d.middle_name   || '';
   const suffix        = d.suffix       || '';
   const universityId  = d.universityId || d.university_id || d.studentId || d.student_id || '';
 
@@ -19,9 +19,9 @@ const normalizePatient = (uid, d) => {
 
   return {
     uid, name, firstName, lastName, middleName, suffix,
-    id:             universityId || uid,
+    id:             d.university_id || uid,
     universityId,
-    studentId:      d.studentId  || d.student_id  || universityId || '',
+    studentId:      d.studentId  || d.student_id  || d.university_id || '',
     role:           d.role       || '',
     prog:           d.program    || d.course       || '',
     program:        d.program    || d.course       || '',
@@ -254,7 +254,7 @@ export const Examinations = ({ currentUserRole = 'sysadmin' }) => {
           <i className="fa-solid fa-arrow-left text-lg"></i>
         </button>
 
-        {/* Patient banner — Compact */}
+       {/* Patient banner — Compact */}
         <div className="flex-1 bg-gradient-to-r from-[#e0eceb] to-white rounded-xl px-4 py-2 border border-[#d1e7e5] flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-[#466460] flex items-center justify-center shrink-0">
             <i className="fa-solid fa-user text-white text-sm"></i>
@@ -263,7 +263,8 @@ export const Examinations = ({ currentUserRole = 'sysadmin' }) => {
           <div>
             <p className="font-bold text-sm text-slate-800 leading-tight">{selectedPatient.name}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              {selectedPatient.id}
+              {/* FIXED: changed university_id to universityId */}
+              {selectedPatient.universityId || 'No University ID'}
               {selectedPatient.department ? ` • ${selectedPatient.department}` : ''}
               {selectedPatient.prog       ? ` • ${selectedPatient.prog}`       : ''}
               {selectedPatient.year       ? ` ${selectedPatient.year}`         : ''}

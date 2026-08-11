@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     if (!authHeader) throw new Error('Missing authorization header')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_KEY') ?? ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Server misconfiguration')

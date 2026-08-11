@@ -1,5 +1,5 @@
 // frontend/src/components/admin/DoctorSettings.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // ─── Snackbar Component ───────────────────────────────────────────────────────
 const Snackbar = ({ message, type, onClose }) => {
@@ -23,9 +23,13 @@ export const DoctorSettings = () => {
     name: '',
     title: '',
     licenseNo: '',
-    ptrNo: ''
+    ptrNo: '',
+    signatureUrl: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingSig, setIsUploadingSig] = useState(false);
+  const [sigPreview, setSigPreview] = useState(null); // local preview before the upload completes
+  const fileInputRef = useRef(null);
 
   // Replaced static message state with a toast state
   const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
@@ -43,7 +47,7 @@ export const DoctorSettings = () => {
         const response = await fetch('/api/settings/doctor');
         if (response.ok) {
           const data = await response.json();
-          setFormData(data);
+          setFormData(prev => ({ ...prev, ...data }));
         }
       } catch (error) {
         console.error('Failed to fetch doctor settings:', error);
@@ -72,7 +76,12 @@ export const DoctorSettings = () => {
           'Content-Type': 'application/json',
           // 'Authorization': `Bearer ${token}` // If you are using JWT auth
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          title: formData.title,
+          licenseNo: formData.licenseNo,
+          ptrNo: formData.ptrNo
+        })
       });
 
       if (response.ok) {
@@ -87,6 +96,50 @@ export const DoctorSettings = () => {
       setIsLoading(false);
     }
   };
+
+  // ── Digital signature upload ──────────────────────────────────────────
+  const handleSignatureFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select an image file.', 'error');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Image must be under 2MB.', 'error');
+      return;
+    }
+
+    setSigPreview(URL.createObjectURL(file));
+    uploadSignature(file);
+  };
+
+  const uploadSignature = async (file) => {
+    setIsUploadingSig(true);
+    try {
+      const body = new FormData();
+      body.append('signature', file);
+
+      const response = await fetch('/api/settings/doctor/signature', {
+        method: 'POST',
+        body
+      });
+
+      if (!response.ok) throw new Error('Upload failed');
+      const result = await response.json();
+
+      setFormData(prev => ({ ...prev, signatureUrl: result.signatureUrl }));
+      showToast('Signature uploaded successfully!', 'success');
+    } catch (error) {
+      console.error('Signature upload error:', error);
+      showToast('Failed to upload signature. Please try again.', 'error');
+    } finally {
+      setIsUploadingSig(false);
+    }
+  };
+
+  const currentSigSrc = sigPreview || formData.signatureUrl;
 
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-sm border border-slate-200 relative">
@@ -171,6 +224,53 @@ export const DoctorSettings = () => {
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-teal-600 outline-none transition-colors"
               required
             />
+          </div>
+        </div>
+
+        {/* ── Digital Signature Upload ── */}
+        <div className="pt-2">
+          <label className="block text-sm font-semibold text-slate-700 mb-1">
+            Digital Signature
+          </label>
+          <p className="text-xs text-slate-500 mb-3">
+            Upload a transparent PNG of the doctor's signature. This appears above the name on every generated certificate.
+          </p>
+
+          <div className="flex items-center gap-5">
+            <div className="w-40 h-20 border border-dashed border-slate-300 rounded-lg flex items-center justify-center bg-slate-50 overflow-hidden">
+              {currentSigSrc ? (
+                <img src={currentSigSrc} alt="Signature preview" className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="text-xs text-slate-400">No signature yet</span>
+              )}
+            </div>
+
+            <div>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                ref={fileInputRef}
+                onChange={handleSignatureFileChange}
+                className="hidden"
+                id="signatureFile"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingSig}
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60 flex items-center gap-2"
+              >
+                {isUploadingSig ? (
+                  <>
+                    <i className="fa-solid fa-spinner fa-spin"></i> Uploading...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-upload"></i> {formData.signatureUrl ? 'Replace signature' : 'Upload signature'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
