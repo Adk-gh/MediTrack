@@ -3,9 +3,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import authService from '../../services/auth.service.js';
-import * as announcementsService from '../../services/announcements.service';
-import { usePullToRefresh } from '../../hooks/usePullToRefresh';
-import { supabase } from '../../supabase';
+import * as announcementsService from '../../services/announcements.service.js';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh.js';
+import { supabase } from '../../supabase.js';
 
 // API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';

@@ -7,7 +7,7 @@ import ProfileSetup from "../../components/ProfileSetup.jsx";
 import { useLoading } from "../../context/LoadingContext.jsx";
 import UserDashboardLayout from "../../layouts/UserDashboardLayout.jsx";
 
-import HomePageUsers     from "./HomePage-users.jsx";
+import HomePageUsers     from "./Homepage-users.jsx";
 import AppointmentUsers  from "./Appointment-users.jsx";
 import ConsultationUsers from "./Consultation-users.jsx";
 import RecordsUsers      from "./Records-users.jsx";
