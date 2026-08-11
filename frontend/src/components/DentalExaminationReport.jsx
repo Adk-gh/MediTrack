@@ -3,6 +3,9 @@ import React, { useState, useCallback, memo, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import { savePdf } from '../utils/pdfDownload';
 
+// ─── Environment Variable for API URL ────────────────────────────────────────
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+
 // ── Stable input components (memoized so they never re-mount on parent re-render)
 const DentalNotesTextarea = memo(({ value, onChange, placeholder, readOnly, rows = 3 }) => (
   <textarea
@@ -66,6 +69,34 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
 
   // Only initialize state from examination on first load
   const [initialized, setInitialized] = useState(false);
+
+  // ADDED: State to hold database-fetched dentist details with default fallback values
+  const [dentistInfo, setDentistInfo] = useState({
+    name: 'DR. JOSELITO S. REYES',
+    title: 'DENTIST II'
+  });
+
+  // ADDED: Fetch dentist info from the database on mount
+  useEffect(() => {
+    const fetchDentistInfo = async () => {
+      try {
+        const response = await fetch(`${API_URL}/settings/dentist`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setDentistInfo({
+              name: data.name || 'DR. JOSELITO S. REYES',
+              title: data.title || 'DENTIST II'
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[DentalExaminationReport] Failed to fetch dentist settings, using defaults:', err);
+      }
+    };
+
+    fetchDentistInfo();
+  }, []);
 
   // Extract restoration and extraction from toothData
   const extractToothConditions = (toothData, conditions) => {
@@ -667,11 +698,11 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
       doc.text('Very Truly Yours,', docSigX, y);
       ln(1, 8);
       doc.setFont('helvetica', 'bold');
-      doc.text('DR. JOSELITO S. REYES', docSigX, y);
+      doc.text(dentistInfo.name, docSigX, y);
       doc.line(docSigX, y + 1, docSigX + 45, y + 1);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.text('DENTIST II', docSigX + 22.5, y + 5, { align: 'center' });
+      doc.text(dentistInfo.title, docSigX + 22.5, y + 5, { align: 'center' });
 
       ln(1, 12);
 
@@ -926,9 +957,9 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
           <div style={{ textAlign: 'center', minWidth: 200 }}>
             <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, color: '#334155', marginBottom: 30 }}>Very Truly Yours,</div>
             <div style={{ borderBottom: '1px solid #0f172a', paddingBottom: 4, marginBottom: 4, fontFamily: 'helvetica, sans-serif', fontWeight: 800, fontSize: 12, color: '#0f172a' }}>
-              DR. JOSELITO S. REYES
+              {dentistInfo.name}
             </div>
-            <div style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 11, color: '#475569' }}>DENTIST II</div>
+            <div style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 11, color: '#475569' }}>{dentistInfo.title}</div>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 // ─── Environment Variables ────────────────────────────────────────────────────
 const OCR_SERVICE_URL = (import.meta.env.VITE_OCR_SERVICE_URL || 'http://localhost:5001').replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const GeneralIcon = () => (
@@ -70,7 +71,42 @@ const SupportIcon = () => (
   </svg>
 );
 
+const DoctorIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <path d="M12 22v-4M12 22a4 4 0 0 0 4-4V6M12 22a4 4 0 0 1-4-4V6M16 6a4 4 0 0 0-8 0M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <circle cx="12" cy="11" r="1.5" />
+  </svg>
+);
+
+const DentistIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <path d="M8 3c-1.5 0-2.5 1-2.5 2.5 0 1 .5 2 1.5 3v6.5c0 2 1.5 3 2.5 3 .5 0 1-.5 1.5-1.5L12 14l1 2.5c.5 1 1 1.5 1.5 1.5 1 0 2.5-1 2.5-3V8.5c1-1 1.5-2 1.5-3C18.5 4 17.5 3 16 3c-1.5 0-2.5 1-2.5 2.5C13.5 4 12.5 3 12 3s-1.5 1-1.5 2.5C10.5 4 9.5 3 8 3z" />
+  </svg>
+);
+
 // ─── Shared Components ────────────────────────────────────────────────────────
+
+const Snackbar = ({ message, type, onClose }) => {
+  if (!message) return null;
+  return (
+    <div style={{
+      position: 'fixed', bottom: 40, left: '50%', transform: 'translateX(-50%)',
+      background: type === 'error' ? '#ef4444' : '#10b981', color: '#fff',
+      padding: '14px 24px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12,
+      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)', zIndex: 9999,
+      fontFamily: 'helvetica, sans-serif', fontSize: 14, fontWeight: 600,
+    }}>
+      <span>{message}</span>
+      <button
+        onClick={onClose}
+        style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 4px', fontSize: 20, lineHeight: 1 }}
+      >
+        &times;
+      </button>
+    </div>
+  );
+};
+
 const Toggle = ({ checked, onChange }) => (
   <div
     onClick={onChange}
@@ -134,7 +170,13 @@ function OcrSettings() {
   const [saving, setSaving] = useState(false);
   const [newInstKeyword, setNewInstKeyword] = useState('');
   const [newRoleKeywords, setNewRoleKeywords] = useState({});
+  const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
   const hasFetched = useRef(false);
+
+  const showToast = (text, type = 'success') => {
+    setToast({ show: true, text, type });
+    setTimeout(() => setToast({ show: false, text: '', type: 'success' }), 3500);
+  };
 
   useEffect(() => {
     if (hasFetched.current) return;
@@ -164,9 +206,9 @@ function OcrSettings() {
         body: JSON.stringify(config)
       });
       if (!res.ok) throw new Error("Server error");
-      alert('OCR Configuration saved successfully!');
+      showToast('OCR Configuration saved successfully!', 'success');
     } catch (error) {
-      alert('Failed to save config. Make sure the OCR server is running.');
+      showToast('Failed to save config. Make sure the OCR server is running.', 'error');
     }
     setSaving(false);
   };
@@ -218,7 +260,14 @@ function OcrSettings() {
   );
 
   return (
-    <div style={{ padding: '24px', width: '100%', height: '100%', overflowY: 'auto' }}>
+    <div style={{ padding: '24px', width: '100%', height: '100%', overflowY: 'auto', position: 'relative' }}>
+      {toast.show && (
+        <Snackbar
+          message={toast.text}
+          type={toast.type}
+          onClose={() => setToast({ show: false, text: '', type: 'success' })}
+        />
+      )}
       <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2ebe8', maxWidth: '800px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
@@ -304,6 +353,257 @@ function OcrSettings() {
   );
 }
 
+// ─── Doctor Settings Sub-Component ────────────────────────────────────────────
+function DoctorSettings() {
+  const [config, setConfig] = useState({
+    name: '', title: '', licenseNo: '', ptrNo: ''
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
+  const hasFetched = useRef(false);
+
+  const showToast = (text, type = 'success') => {
+    setToast({ show: true, text, type });
+    setTimeout(() => setToast({ show: false, text: '', type: 'success' }), 3500);
+  };
+
+  useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    fetchConfig();
+  }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(`${API_URL}/settings/doctor`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfig(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch doctor config:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/settings/doctor`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (!res.ok) throw new Error("Server error");
+      showToast('Medical Officer configuration saved successfully!', 'success');
+    } catch (error) {
+      showToast('Failed to save config. Make sure your server is running.', 'error');
+    }
+    setSaving(false);
+  };
+
+  if (loading) return <div style={{ padding: '24px', color: '#64748b' }}>Loading settings...</div>;
+
+  return (
+    <div style={{ padding: '24px', width: '100%', height: '100%', overflowY: 'auto', position: 'relative' }}>
+      {toast.show && (
+        <Snackbar
+          message={toast.text}
+          type={toast.type}
+          onClose={() => setToast({ show: false, text: '', type: 'success' })}
+        />
+      )}
+      <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2ebe8', maxWidth: '800px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', margin: '0 0 4px 0' }}>Medical Officer Settings</h2>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Update the doctor credentials displayed on the Medical Certificate.</p>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              background: '#466460', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px',
+              fontSize: '14px', fontWeight: 'bold', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1
+            }}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+              Full Name (with Title)
+            </label>
+            <input
+              type="text"
+              value={config.name}
+              onChange={e => setConfig({ ...config, name: e.target.value })}
+              placeholder="e.g. CAREN NAVATA JOSE M.D."
+              style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', textTransform: 'uppercase' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+              Position / Title
+            </label>
+            <input
+              type="text"
+              value={config.title}
+              onChange={e => setConfig({ ...config, title: e.target.value })}
+              placeholder="e.g. Medical Officer III"
+              style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 200px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+                License Number
+              </label>
+              <input
+                type="text"
+                value={config.licenseNo}
+                onChange={e => setConfig({ ...config, licenseNo: e.target.value })}
+                placeholder="e.g. 0114665"
+                style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ flex: '1 1 200px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+                PTR Number
+              </label>
+              <input
+                type="text"
+                value={config.ptrNo}
+                onChange={e => setConfig({ ...config, ptrNo: e.target.value })}
+                placeholder="e.g. 9978569"
+                style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dentist Settings Sub-Component ───────────────────────────────────────────
+function DentistSettings() {
+  const [config, setConfig] = useState({
+    name: '', title: ''
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
+  const hasFetched = useRef(false);
+
+  const showToast = (text, type = 'success') => {
+    setToast({ show: true, text, type });
+    setTimeout(() => setToast({ show: false, text: '', type: 'success' }), 3500);
+  };
+
+  useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    fetchConfig();
+  }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(`${API_URL}/settings/dentist`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfig(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch dentist config:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/settings/dentist`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (!res.ok) throw new Error("Server error");
+      showToast('School Dentist configuration saved successfully!', 'success');
+    } catch (error) {
+      showToast('Failed to save config. Make sure your server is running.', 'error');
+    }
+    setSaving(false);
+  };
+
+  if (loading) return <div style={{ padding: '24px', color: '#64748b' }}>Loading settings...</div>;
+
+  return (
+    <div style={{ padding: '24px', width: '100%', height: '100%', overflowY: 'auto', position: 'relative' }}>
+      {toast.show && (
+        <Snackbar
+          message={toast.text}
+          type={toast.type}
+          onClose={() => setToast({ show: false, text: '', type: 'success' })}
+        />
+      )}
+      <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2ebe8', maxWidth: '800px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', margin: '0 0 4px 0' }}>School Dentist Settings</h2>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Update the dentist credentials displayed on the Dental Examination Report.</p>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              background: '#466460', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px',
+              fontSize: '14px', fontWeight: 'bold', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1
+            }}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+              Full Name (with Title)
+            </label>
+            <input
+              type="text"
+              value={config.name}
+              onChange={e => setConfig({ ...config, name: e.target.value })}
+              placeholder="e.g. DR. JOSELITO S. REYES"
+              style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', textTransform: 'uppercase' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+              Position / Title
+            </label>
+            <input
+              type="text"
+              value={config.title}
+              onChange={e => setConfig({ ...config, title: e.target.value })}
+              placeholder="e.g. DENTIST II"
+              style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Settings Component ──────────────────────────────────────────────────
 export default function Settings({ onLogout, onClose, userRole: propRole }) {
   const location = useLocation();
@@ -322,6 +622,8 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
     if (normalizedRole === 'sysadmin' || normalizedRole === 'administrator') {
       return [
         { id: 'ocr', label: 'OCR Settings', icon: OcrIcon },
+        { id: 'doctor', label: 'Doctor Settings', icon: DoctorIcon },
+        { id: 'dentist', label: 'Dentist Settings', icon: DentistIcon }, // NEW
         { id: 'security', label: 'Security', icon: LockIcon },
         { id: 'system', label: 'System Config', icon: SystemIcon },
       ];
@@ -390,6 +692,12 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
     switch (activeSection) {
       case 'ocr':
         return <OcrSettings />;
+
+      case 'doctor':
+        return <DoctorSettings />;
+
+      case 'dentist':
+        return <DentistSettings />;
 
       case 'security':
         return (

@@ -218,12 +218,12 @@ PENDING ITEMS 📋=============as of (07/28/26)
 * [x] Approval management make sure to emphasis the for archiving the approvals, it should says to check in archive medical or dental in the snackbar.
 * [x] add a hyperlink to the snackbar to redirect into the specific page (archive) when you archive a record.
 * [x] also make the duration of the snackbar to be longer and have a way to close the snakcbar
-* [ ] fix the appointment to set time accurately, then for the consultation-users.jsx it should only be accesible if theres an appointment.
+* [x] fix the appointment to set time accurately, then for the consultation-users.jsx it should only be accesible if theres an appointment.
 * [ ] caching (redis/ sql lite) - SQLite guide created: docs/sqlite-offline-mode-guide.md
 * [ ] make the settings functional
-* [ ] the uploading of health documents is not working(bukas to)
-* [ ] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic. i need to add a new page for that that should sit on the settings page for the admin under the ocr settings tab.
-* [ ] Examination (medical) medical Certificate digital singature should be png
+* [ ] the uploading of health documents is not working profile users and headers.jsx
+* [x] the name of the doctor and dentist to be added in certificate for the medical certificate and dental reports should be set in the admin side. to make it more dynamic. i need to add a new page for that that should sit on the settings page for the admin under the ocr settings tab.
+* [ ] add Examination (medical) medical Certificate digital singature should be png
 
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
 > > > Supabase JWT Verification Failed: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
@@ -258,6 +258,8 @@ should the chat history be seen by nurse and doctor or should ie be hidden
 Announcement should only be manage by the whole clinic or only admin?
 
 add new feature wherein the examination.jsx both dental and medical forms can be edited. if in the future the medical form and dental form has been changed, admin can do that too. if the questions are changed, etc etc.(not sure)
+
+how many patient per hour or how long it takes to examine 1 patients.
 
 # ============ROLE MATRIX===============
 

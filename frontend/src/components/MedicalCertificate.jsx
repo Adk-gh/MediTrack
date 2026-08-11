@@ -1,7 +1,10 @@
 // frontend/src/components/MedicalCertificate.jsx
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import jsPDF from 'jspdf';
 import { savePdf } from '../utils/pdfDownload';
+
+// ─── Environment Variable for API URL ────────────────────────────────────────
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
 // ── Stable input components (memoized so they never re-mount on parent re-render)
 const DoctorTextarea = memo(({ value, onChange, placeholder, readOnly }) => (
@@ -55,15 +58,51 @@ const RemarksTextarea = memo(({ value, onChange, placeholder, readOnly }) => (
 ));
 
 // ── Main component
-export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = false }) => {
+export const MedicalCertificate = ({
+  examination,
+  onSubmit,
+  onEdit,
+  readOnly = false,
+}) => {
   const [finding1, setFinding1] = useState(examination?.finding1 || '');
   const [remarks,  setRemarks]  = useState(examination?.remarks  || '');
   const [isFit,            setIsFit]           = useState(examination?.isFit           ?? true);
   const [isNormalFindings, setIsNormalFindings] = useState(examination?.isNormalFindings ?? true);
   const [downloading, setDownloading] = useState(false);
-  // Direct public Supabase Storage URL — no fetch needed, so there's no
-  // corresponding setter/effect here (previously an effect tried to call a
-  // setLogoUrl() that didn't exist, which would throw on every mount).
+
+  // ADDED: State to hold database-fetched doctor details with default fallback values
+  const [doctorInfo, setDoctorInfo] = useState({
+    name: 'CAREN NAVATA JOSE M.D.',
+    title: 'Medical Officer III',
+    licenseNo: '0114665',
+    ptrNo: '9978569'
+  });
+
+  // ADDED: Fetch doctor info from the database on mount
+  useEffect(() => {
+    const fetchDoctorInfo = async () => {
+      try {
+        const response = await fetch(`${API_URL}/settings/doctor`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setDoctorInfo({
+              name: data.name || 'CAREN NAVATA JOSE M.D.',
+              title: data.title || 'Medical Officer III',
+              licenseNo: data.licenseNo || '0114665',
+              ptrNo: data.ptrNo || '9978569'
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[MedicalCertificate] Failed to fetch doctor settings, using defaults:', err);
+      }
+    };
+
+    fetchDoctorInfo();
+  }, []);
+
+  // Direct public Supabase Storage URL
   const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
 
   const handleFinding1 = useCallback((v) => setFinding1(v), []);
@@ -89,7 +128,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
     [examination.year || examination.yearLevel, examination.section].filter(Boolean).join(' - ') || '';
   const program     = examination.course || examination.program || '';
 
-  // Format examDate to Month DD, YYYY (e.g., July 02, 2026)
   const formatDateOnly = (dateStr) => {
     if (!dateStr) return currentDate;
     const date = new Date(dateStr);
@@ -164,7 +202,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         }
       };
 
-      // Load logo from Supabase URL for PDF
       const logoUrlPdf = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
       const logo = new Image();
       logo.crossOrigin = 'Anonymous';
@@ -174,7 +211,6 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         logo.onload = resolve;
         logo.onerror = (e) => {
           console.warn('Could not load logo for PDF generation:', e);
-          // Try fallback
           const fallbackLogo = new Image();
           fallbackLogo.src = '/plsp-logo.jpg';
           fallbackLogo.onload = resolve;
@@ -313,20 +349,22 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
       doc.setLineWidth(0.6);
       doc.line(sigX, y, W - mar, y);
       ln(1, 4);
+
+      // Dynamically populate database-fetched Doctor info in the PDF
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text('CAREN NAVATA JOSE M.D.', (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(doctorInfo.name, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
       ln(1, 4.5);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.text('Medical Officer III', (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(doctorInfo.title, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
       ln(1, 4);
       doc.setFontSize(7.5);
       doc.setTextColor(80, 80, 80);
-      doc.text('License no. 0114665', (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(`License no. ${doctorInfo.licenseNo}`, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
       ln(1, 3.5);
-      doc.text('PTR no. 9978569', (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
+      doc.text(`PTR no. ${doctorInfo.ptrNo}`, (sigX + W - mar) / 2, y, { align: 'center', baseline: 'bottom' });
       ln(1, 11);
 
       doc.setFont('times', 'italic');
@@ -497,12 +535,13 @@ export const MedicalCertificate = ({ examination, onSubmit, onEdit, readOnly = f
         {/* Signature */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28 }}>
           <div style={{ textAlign: 'center', minWidth: 200 }}>
+            {/* Dynamically populate database-fetched Doctor info in the React render */}
             <div style={{ borderBottom: '2px solid #0f172a', paddingBottom: 4, marginBottom: 4, fontFamily: 'helvetica, sans-serif', fontWeight: 900, fontSize: 11, color: '#0f172a', textTransform: 'uppercase' }}>
-              CAREN NAVATA JOSE M.D.
+              {doctorInfo.name}
             </div>
-            <div style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 10, color: '#0f766e' }}>Medical Officer III</div>
-            <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 9, color: '#64748b', marginTop: 3 }}>License no. 0114665</div>
-            <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 9, color: '#64748b' }}>PTR no. 9978569</div>
+            <div style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 10, color: '#0f766e' }}>{doctorInfo.title}</div>
+            <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 9, color: '#64748b', marginTop: 3 }}>License no. {doctorInfo.licenseNo}</div>
+            <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 9, color: '#64748b' }}>PTR no. {doctorInfo.ptrNo}</div>
           </div>
         </div>
 

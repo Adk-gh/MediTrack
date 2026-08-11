@@ -140,6 +140,50 @@ function useCurrentPatient() {
   }, []);
 }
 
+// ── Token freshness helpers ────────────────────────────────────────────────
+// Mirrors the logic used in Consultation-users.jsx so this page never sends
+// a stale/expired JWT to the backend.
+function isTokenExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return Date.now() / 1000 > payload.exp - 30; // 30s safety buffer
+  } catch {
+    return true;
+  }
+}
+
+async function getFreshToken() {
+  const accessToken  = localStorage.getItem('token');
+  const refreshToken = localStorage.getItem('refresh_token') || '';
+
+  if (!accessToken) return null;
+
+  if (!isTokenExpired(accessToken)) {
+    return accessToken;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+
+    if (!error && data?.session) {
+      const newAccess  = data.session.access_token;
+      const newRefresh = data.session.refresh_token;
+      localStorage.setItem('token', newAccess);
+      if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
+      try { supabase.realtime.setAuth(newAccess); } catch {}
+      return newAccess;
+    }
+  } catch (err) {
+    console.error('[AppointmentUsers] Token refresh failed:', err);
+  }
+
+  // Fall back to whatever we had — request will surface a 401 upstream
+  // if it's truly dead, which is at least explicit instead of silently stale.
+  return accessToken;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AppointmentUsers() {
   const currentPatient = useCurrentPatient();
@@ -311,9 +355,10 @@ export default function AppointmentUsers() {
     try {
       setLoadingAppts(true);
       console.log('[AppointmentUsers] Fetching appointments for:', currentPatient.uid);
+      const token = await getFreshToken();
       const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
         headers: {
-          'Authorization': `Bearer ${currentPatient.token}`,
+          'Authorization': `Bearer ${token}`,
           'x-user-uid':    currentPatient.uid,
         },
       });
@@ -424,9 +469,10 @@ const serviceType = isDentalPurpose
 
     try {
       console.log('[AppointmentUsers] Submitting appointment with payload:', payload);
+      const token = await getFreshToken();
       const response = await axios.post(`${API_URL}/appointments`, payload, {
         headers: {
-          'Authorization': `Bearer ${currentPatient.token}`,
+          'Authorization': `Bearer ${token}`,
           'x-user-uid':    currentPatient.uid,
         },
       });
