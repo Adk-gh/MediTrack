@@ -27,7 +27,7 @@ import ConsultationManagement from './features/admin-clinic/ConsultationManageme
 import AppointmentManagement from './features/admin-clinic/AppointmentManagement.jsx';
 import ApprovalManagement from './features/admin-clinic/ApprovalManagement.jsx';
 import Meditrack from './features/users/Meditrack.jsx';
-import NotificationsManagement from './features/admin-clinic/NotificationsManagement.jsx';
+
 
 // Rarely used pages (lazy loaded)
 const SignupForm = lazy(() => import('./features/SignupForm.jsx'));
