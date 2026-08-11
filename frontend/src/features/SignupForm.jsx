@@ -22,10 +22,10 @@ const validateEmailWithEasyEmail = async (email) => {
     const data = await response.json();
 
     if (data.valid === false || data.inbox_exists === false || data.deliverable === false) {
-       return {
-           isDeliverable: false,
-           message: "This email address does not exist or cannot receive emails. Please provide a valid email."
-       };
+      return {
+        isDeliverable: false,
+        message: "This email address does not exist or cannot receive emails. Please provide a valid email."
+      };
     }
 
     return { isDeliverable: true };
@@ -152,14 +152,14 @@ const SignupForm = () => {
     setLoading(true);
 
     try {
-      // ── NEW: Validate email exists before doing heavy ID uploads ──
+      // ── Validate email exists before doing heavy ID uploads ──
       const validationResult = await validateEmailWithEasyEmail(formData.email);
       if (!validationResult.isDeliverable) {
         setError(validationResult.message);
         setLoading(false);
         return;
       }
-      // ──────────────────────────────────────────────────────────────
+      // ──────────────────────────────────────────────────────────
 
       const isIdUsed = await authService.checkIdExists(formData.universityId);
       if (isIdUsed) { setLoading(false); return setError('This University ID is already registered.'); }
@@ -341,14 +341,16 @@ const SignupForm = () => {
             MOBILE — redesigned native shell
         ════════════════════════════════════ */
         @media (max-width: 640px) {
-            .lf-mobile-wrapper {
-              position: relative;
-              min-height: 100vh;
-              min-height: 100dvh; /* accounts for mobile browser chrome resizing */
-              flex-direction: column;
-              background: #F2F4F3;
-              -webkit-overflow-scrolling: touch;
-            }
+          .lf-mobile-wrapper {
+            position: relative;
+            min-height: 100vh;
+            min-height: 100dvh;
+            flex-direction: column;
+            background: #F2F4F3;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+          }
 
           /* ── Top bar ── */
           .m-topbar {
@@ -383,7 +385,7 @@ const SignupForm = () => {
           /* ── Card ── */
           .m-card {
             background: #fff; border-radius: 28px 28px 0 0;
-            padding: 32px 24px 56px; flex: 1;
+            padding: 32px 24px 56px; flex: 1 0 auto;
             padding-bottom: calc(56px + env(safe-area-inset-bottom));
             box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
             animation: m-fadeUp 0.5s ease 0.2s both;
@@ -447,7 +449,7 @@ const SignupForm = () => {
             box-shadow: 0 0 0 4px rgba(61,122,111,0.1);
           }
           .m-pill-input {
-            flex: 1; min-width: 0;  border: none; background: transparent; outline: none;
+            flex: 1; min-width: 0; border: none; background: transparent; outline: none;
             font-size: 15px; font-family: inherit; color: #1A2E2B;
             padding: 13px 14px;
           }
