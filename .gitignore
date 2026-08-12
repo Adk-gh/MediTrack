@@ -1,27 +1,36 @@
 # Node
+
 node_modules/
 
 # Environment variables
+
 .env
 .env.local
 
 # Sensitive credentials
+
 configs/serviceAccountkey.json
 
 # Python cache / compiled files
+
 __pycache__/
 *.pyc
 *.pyd
 *.dll
 
 # Python virtual environments
+
 venv/
 venv_ocr/
 
 # OCR / generated data
+
 .paddleocr/
+.paddlex/
+.cache/
 
 # Build outputs
+
 dist/
 build/
 release/
@@ -29,6 +38,7 @@ out/
 dist-electron/
 
 # Electron packages
+
 *.exe
 *.msi
 *.nsis
@@ -36,6 +46,7 @@ dist-electron/
 *.dmg
 
 # Electron release/build files
+
 frontend/release/
 frontend/dist/
 frontend/dist-electron/
