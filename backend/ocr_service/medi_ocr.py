@@ -1,11 +1,11 @@
-# C:\Users\HP\MediTrack\backend\ocr_service\medi_ocr.py
 import os
 import uuid
 import re
 import json
-import fitz  # PyMuPDF
+import fitz
 import tempfile
 import traceback
+
 from flask import Flask, request, jsonify
 from PIL import Image
 from flask_cors import CORS
@@ -13,24 +13,64 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from supabase import create_client, Client
 
-# --- 1. ENVIRONMENT SETUP ---
+
 temp_dir = tempfile.gettempdir()
 
-# Redirect ALL AI hidden folders to /tmp
-os.environ['HOME'] = temp_dir
-os.environ['PADDLE_HOME'] = os.path.join(temp_dir, ".paddleocr")
-os.environ['PADDLEX_HOME'] = os.path.join(temp_dir, ".paddlex")
-os.environ['XDG_CACHE_HOME'] = os.path.join(temp_dir, ".cache")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+DET_MODEL_DIR = os.path.join(
+    BASE_DIR,
+    "models",
+    "det",
+    "en_PP-OCRv3_det_infer"
+)
 
-os.environ['FLAGS_use_mkldnn'] = '0'
-os.environ['FLAGS_enable_mkldnn'] = '0'
+REC_MODEL_DIR = os.path.join(
+    BASE_DIR,
+    "models",
+    "rec",
+    "en_PP-OCRv3_rec_infer"
+)
+
+CLS_MODEL_DIR = os.path.join(
+    BASE_DIR,
+    "models",
+    "cls",
+    "ch_ppocr_mobile_v2.0_cls_infer"
+)
+
+MODEL_DIR = os.environ.get(
+    "PADDLE_HOME",
+    "/opt/paddleocr"
+)
+
+PADDLEX_DIR = os.environ.get(
+    "PADDLEX_HOME",
+    os.path.join(MODEL_DIR, ".paddlex")
+)
+
+CACHE_DIR = os.environ.get(
+    "XDG_CACHE_HOME",
+    os.path.join(MODEL_DIR, ".cache")
+)
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(PADDLEX_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+os.environ["PADDLE_HOME"] = MODEL_DIR
+os.environ["PADDLEX_HOME"] = PADDLEX_DIR
+os.environ["XDG_CACHE_HOME"] = CACHE_DIR
+
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["FLAGS_enable_mkldnn"] = "0"
+
 
 app = Flask(__name__)
 
-# --- RATE LIMITER SETUP ---
+
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
@@ -38,24 +78,31 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# More restrictive limits for OCR endpoint
-OCR_RATE_LIMIT = "10 per minute"  # 10 OCR requests per minute per IP
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+OCR_RATE_LIMIT = "10 per minute"
+
+
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=False
+)
+
 
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization"
+    )
     return response
 
-# Health check for Cloud Run
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
 
-# Rate limit error handler
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({
@@ -64,117 +111,258 @@ def ratelimit_handler(e):
         "retry_after": e.description
     }), 429
 
+
 @app.route("/config", methods=["OPTIONS"])
 def config_options():
-    return '', 204
+    return "", 204
+
 
 @app.route("/ocr", methods=["OPTIONS"])
 def ocr_options():
-    return '', 204
+    return "", 204
+
 
 ocr_engine = None
 
-# --- 2. SUPABASE SETUP ---
-# Get from environment variables (set in Google Cloud Run or .env)
-SUPABASE_URL = os.environ.get('SUPABASE_URL')
-SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    print("[WARNING] SUPABASE_URL or SUPABASE_SERVICE_KEY not set. Using fallback mode.", flush=True)
+    print(
+        "[WARNING] SUPABASE_URL or SUPABASE_SERVICE_KEY not set. "
+        "Using fallback mode.",
+        flush=True
+    )
 
-# Initialize Supabase client
+
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
-    supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    supabase_client: Client = create_client(
+        SUPABASE_URL,
+        SUPABASE_SERVICE_KEY
+    )
 else:
     supabase_client = None
 
+
 DEFAULT_CONFIG = {
-    "institution_keywords": ["PAMANTASAN", "UNIVERSITY", "COLLEGE"],
+    "institution_keywords": [
+        "PAMANTASAN",
+        "UNIVERSITY",
+        "COLLEGE"
+    ],
     "role_mappings": [
-        # Medical (most specific first — order matters!)
-        {"name": "Doctor",        "id_type": "Employee ID", "keywords": ["DOCTOR", "PHYSICIAN", "MEDICAL DOCTOR", "MD"]},
-        {"name": "Dentist",       "id_type": "Employee ID", "keywords": ["DENTIST", "DENTAL"]},
-        {"name": "Nurse",         "id_type": "Employee ID", "keywords": ["NURSE"]},
-        # Academic
-        {"name": "Lecturer",      "id_type": "Employee ID", "keywords": ["LECTURER"]},
-        {"name": "Professor",     "id_type": "Employee ID", "keywords": ["PROFESSOR", "PROF"]},
-        {"name": "Instructor",    "id_type": "Employee ID", "keywords": ["INSTRUCTOR"]},
-        {"name": "Administrator", "id_type": "Employee ID", "keywords": ["ADMINISTRATOR", "ADMIN"]},
-        {"name": "Librarian",     "id_type": "Employee ID", "keywords": ["LIBRARIAN"]},
-        # Staff
-        {"name": "Technician",    "id_type": "Employee ID", "keywords": ["TECHNICIAN", "TECH"]},
-        {"name": "Guard",         "id_type": "Employee ID", "keywords": ["GUARD", "SECURITY"]},
-        {"name": "Staff",         "id_type": "Employee ID", "keywords": ["STAFF", "EMPLOYEE", "FACULTY", "JANITOR", "CLEANER", "MAINTENANCE"]},
-        # Student (last — least specific)
-        {"name": "Student",       "id_type": "Student ID",  "keywords": ["BSIT", "BSIS", "BSBA", "BSED", "BSCS", "BSCRIM", "BSHM", "BSENT", "BSOA", "COURSE", "ENROLLMENT", "YEAR LEVEL", "STUDENT"]},
+        {
+            "name": "Doctor",
+            "id_type": "Employee ID",
+            "keywords": [
+                "DOCTOR",
+                "PHYSICIAN",
+                "MEDICAL DOCTOR",
+                "MD"
+            ]
+        },
+        {
+            "name": "Dentist",
+            "id_type": "Employee ID",
+            "keywords": [
+                "DENTIST",
+                "DENTAL"
+            ]
+        },
+        {
+            "name": "Nurse",
+            "id_type": "Employee ID",
+            "keywords": [
+                "NURSE"
+            ]
+        },
+        {
+            "name": "Lecturer",
+            "id_type": "Employee ID",
+            "keywords": [
+                "LECTURER"
+            ]
+        },
+        {
+            "name": "Professor",
+            "id_type": "Employee ID",
+            "keywords": [
+                "PROFESSOR",
+                "PROF"
+            ]
+        },
+        {
+            "name": "Instructor",
+            "id_type": "Employee ID",
+            "keywords": [
+                "INSTRUCTOR"
+            ]
+        },
+        {
+            "name": "Administrator",
+            "id_type": "Employee ID",
+            "keywords": [
+                "ADMINISTRATOR",
+                "ADMIN"
+            ]
+        },
+        {
+            "name": "Librarian",
+            "id_type": "Employee ID",
+            "keywords": [
+                "LIBRARIAN"
+            ]
+        },
+        {
+            "name": "Technician",
+            "id_type": "Employee ID",
+            "keywords": [
+                "TECHNICIAN",
+                "TECH"
+            ]
+        },
+        {
+            "name": "Guard",
+            "id_type": "Employee ID",
+            "keywords": [
+                "GUARD",
+                "SECURITY"
+            ]
+        },
+        {
+            "name": "Staff",
+            "id_type": "Employee ID",
+            "keywords": [
+                "STAFF",
+                "EMPLOYEE",
+                "FACULTY",
+                "JANITOR",
+                "CLEANER",
+                "MAINTENANCE"
+            ]
+        },
+        {
+            "name": "Student",
+            "id_type": "Student ID",
+            "keywords": [
+                "BSIT",
+                "BSIS",
+                "BSBA",
+                "BSED",
+                "BSCS",
+                "BSCRIM",
+                "BSHM",
+                "BSENT",
+                "BSOA",
+                "COURSE",
+                "ENROLLMENT",
+                "YEAR LEVEL",
+                "STUDENT"
+            ]
+        }
     ]
 }
 
 
 def load_config() -> dict:
-    """Load config from Supabase, creating default if it doesn't exist."""
-    # Use fallback if Supabase is not configured
     if supabase_client is None:
         return load_config_fallback()
 
     try:
-        response = supabase_client.table('ocr_settings').select('config').eq('id', 'default').execute()
+        response = (
+            supabase_client
+            .table("ocr_settings")
+            .select("config")
+            .eq("id", "default")
+            .execute()
+        )
+
         if response.data and len(response.data) > 0:
-            return response.data[0]['config']
-        else:
-            # Create default config in Supabase
-            supabase_client.table('ocr_settings').insert({
-                'id': 'default',
-                'config': DEFAULT_CONFIG
-            }).execute()
-            return DEFAULT_CONFIG
+            return response.data[0]["config"]
+
+        (
+            supabase_client
+            .table("ocr_settings")
+            .insert({
+                "id": "default",
+                "config": DEFAULT_CONFIG
+            })
+            .execute()
+        )
+
+        return DEFAULT_CONFIG
+
     except Exception as e:
-        print(f"[ERROR] Failed to load config from Supabase: {e}", flush=True)
-        # Fallback to local file
+        print(
+            f"[ERROR] Failed to load config from Supabase: {e}",
+            flush=True
+        )
         return load_config_fallback()
 
 
 def load_config_fallback() -> dict:
-    """Fallback to local file if Supabase fails."""
-    config_file = os.path.join(temp_dir, "ocr_config.json")
+    config_file = os.path.join(
+        temp_dir,
+        "ocr_config.json"
+    )
+
     if not os.path.exists(config_file):
-        with open(config_file, 'w') as f:
+        with open(config_file, "w") as f:
             json.dump(DEFAULT_CONFIG, f, indent=2)
+
         return DEFAULT_CONFIG
-    with open(config_file, 'r') as f:
+
+    with open(config_file, "r") as f:
         return json.load(f)
 
 
 def save_config(config: dict) -> bool:
-    """Save config to Supabase."""
-    # Use fallback if Supabase is not configured
     if supabase_client is None:
         return save_config_fallback(config)
 
     try:
-        supabase_client.table('ocr_settings').update({
-            'config': config,
-            'updated_at': 'now()'
-        }).eq('id', 'default').execute()
+        (
+            supabase_client
+            .table("ocr_settings")
+            .update({
+                "config": config,
+                "updated_at": "now()"
+            })
+            .eq("id", "default")
+            .execute()
+        )
+
         return True
+
     except Exception as e:
-        print(f"[ERROR] Failed to save config to Supabase: {e}", flush=True)
+        print(
+            f"[ERROR] Failed to save config to Supabase: {e}",
+            flush=True
+        )
         return save_config_fallback(config)
 
 
 def save_config_fallback(config: dict) -> bool:
-    """Fallback to local file if Supabase fails."""
     try:
-        config_file = os.path.join(temp_dir, "ocr_config.json")
-        with open(config_file, 'w') as f:
+        config_file = os.path.join(
+            temp_dir,
+            "ocr_config.json"
+        )
+
+        with open(config_file, "w") as f:
             json.dump(config, f, indent=2)
+
         return True
+
     except Exception as e:
-        print(f"[ERROR] Failed to save config locally: {e}", flush=True)
+        print(
+            f"[ERROR] Failed to save config locally: {e}",
+            flush=True
+        )
         return False
 
-
-# --- 3. CONFIG API ENDPOINTS ---
 
 @app.route("/config", methods=["GET"])
 def get_config():
@@ -182,153 +370,383 @@ def get_config():
 
 
 @app.route("/config", methods=["POST"])
-@limiter.limit("5 per minute")  # Stricter limit for config changes
+@limiter.limit("5 per minute")
 def update_config():
+
     new_config = request.json
+
     if not new_config:
-        return jsonify({"success": False, "error": "No config data received"}), 400
+        return jsonify({
+            "success": False,
+            "error": "No config data received"
+        }), 400
 
     if save_config(new_config):
-        return jsonify({"success": True, "message": "Configuration updated successfully"})
-    else:
-        return jsonify({"success": False, "error": "Failed to save configuration"}), 500
+        return jsonify({
+            "success": True,
+            "message": "Configuration updated successfully"
+        })
 
+    return jsonify({
+        "success": False,
+        "error": "Failed to save configuration"
+    }), 500
 
-# --- 4. PARSING LOGIC ---
 
 def parse_id_fields(text_lines: list) -> dict:
+
     full_text = " ".join(text_lines)
 
-    # DEBUG: always print what OCR actually saw
-    print(f"[DEBUG] raw text_lines: {text_lines}", flush=True)
-    print(f"[DEBUG] full_text: {full_text}", flush=True)
+    print(
+        f"[DEBUG] raw text_lines: {text_lines}",
+        flush=True
+    )
+
+    print(
+        f"[DEBUG] full_text: {full_text}",
+        flush=True
+    )
 
     fields = {
-        "id_number":   None,
-        "role":        "Unknown",
-        "id_type":     "Unknown",
-        "name":        None,
-        "institution": None,
+        "id_number": None,
+        "role": "Unknown",
+        "id_type": "Unknown",
+        "name": None,
+        "institution": None
     }
 
     config = load_config()
 
-    # --- ID Number ---
-    # Matches formats like: 2023-0149, 23-0149, 2023.0149, 20230149
-    id_match = re.search(r"(\d{2,4})\s*[\-\.\s\_]\s*(\d{4,6})", full_text)
+    id_match = re.search(
+        r"(\d{2,4})\s*[\-\.\s\_]\s*(\d{4,6})",
+        full_text
+    )
+
     if id_match:
-        fields["id_number"] = f"{id_match.group(1)}-{id_match.group(2)}"
-        print(f"[DEBUG] id_number matched: {fields['id_number']}", flush=True)
+        fields["id_number"] = (
+            f"{id_match.group(1)}-{id_match.group(2)}"
+        )
+
+        print(
+            f"[DEBUG] id_number matched: {fields['id_number']}",
+            flush=True
+        )
     else:
-        print("[DEBUG] id_number NOT matched", flush=True)
+        print(
+            "[DEBUG] id_number NOT matched",
+            flush=True
+        )
 
-    # --- Dynamic Role Detection ---
-    # Uses (?<!\w) / (?!\w) instead of \b so multi-word keywords like
-    # "MEDICAL DOCTOR" are not broken by re.escape() turning the space.
     matched = False
-    for mapping in config.get("role_mappings", []):
-        escaped_keywords = [re.escape(kw) for kw in mapping["keywords"]]
-        pattern_str = r"(?<!\w)(" + "|".join(escaped_keywords) + r")(?!\w)"
 
-        m = re.search(pattern_str, full_text, re.IGNORECASE)
+    for mapping in config.get("role_mappings", []):
+
+        escaped_keywords = [
+            re.escape(kw)
+            for kw in mapping["keywords"]
+        ]
+
+        pattern_str = (
+            r"(?<!\w)("
+            + "|".join(escaped_keywords)
+            + r")(?!\w)"
+        )
+
+        m = re.search(
+            pattern_str,
+            full_text,
+            re.IGNORECASE
+        )
+
         if m:
-            fields["role"]    = mapping["name"]
+            fields["role"] = mapping["name"]
             fields["id_type"] = mapping["id_type"]
-            print(f"[DEBUG] role matched: '{mapping['name']}' (matched token: '{m.group(0)}')", flush=True)
+
+            print(
+                f"[DEBUG] role matched: "
+                f"'{mapping['name']}' "
+                f"(matched token: '{m.group(0)}')",
+                flush=True
+            )
+
             matched = True
             break
 
     if not matched:
-        print("[DEBUG] No role pattern matched — defaulting to Unknown", flush=True)
+        print(
+            "[DEBUG] No role pattern matched — defaulting to Unknown",
+            flush=True
+        )
 
-    # --- Name (LASTNAME, FIRSTNAME format) ---
-    name_match = re.search(r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)", full_text)
+    name_match = re.search(
+        r"([A-Z]{2,}(?:\s+[A-Z]{2,})*,\s+[A-Z][A-Z\s\.]+)",
+        full_text
+    )
+
     if name_match:
         fields["name"] = name_match.group(1).strip()
-        print(f"[DEBUG] name matched: {fields['name']}", flush=True)
 
-    # --- Dynamic Institution Detection ---
-    inst_keywords = config.get("institution_keywords", [])
+        print(
+            f"[DEBUG] name matched: {fields['name']}",
+            flush=True
+        )
+
+    inst_keywords = config.get(
+        "institution_keywords",
+        []
+    )
+
     if inst_keywords:
-        escaped_inst  = [re.escape(kw) for kw in inst_keywords]
-        inst_pattern  = r"((?:" + "|".join(escaped_inst) + r")[^\n,]{3,60})"
-        inst_match    = re.search(inst_pattern, full_text, re.IGNORECASE)
+
+        escaped_inst = [
+            re.escape(kw)
+            for kw in inst_keywords
+        ]
+
+        inst_pattern = (
+            r"((?:"
+            + "|".join(escaped_inst)
+            + r")[^\n,]{3,60})"
+        )
+
+        inst_match = re.search(
+            inst_pattern,
+            full_text,
+            re.IGNORECASE
+        )
+
         if inst_match:
-            fields["institution"] = inst_match.group(1).strip()
-            print(f"[DEBUG] institution matched: {fields['institution']}", flush=True)
+            fields["institution"] = (
+                inst_match.group(1).strip()
+            )
+
+            print(
+                f"[DEBUG] institution matched: "
+                f"{fields['institution']}",
+                flush=True
+            )
 
     return fields
 
 
-# --- 5. OCR ENDPOINT ---
-
 @app.route("/ocr", methods=["POST"])
 @limiter.limit(OCR_RATE_LIMIT)
 def perform_ocr():
+
     global ocr_engine
+
     print(">>> Request Received", flush=True)
 
     try:
+
         if ocr_engine is None:
-            print(">>> Importing Paddle Libraries...", flush=True)
+
+            print(
+                ">>> Importing Paddle Libraries...",
+                flush=True
+            )
+
             from paddleocr import PaddleOCR
 
-            print(">>> Initializing AI Models (This may take 40s)...", flush=True)
-            ocr_engine = PaddleOCR(use_angle_cls=True, lang="en")
-            print(">>> AI Engine Ready!", flush=True)
+            print(
+                ">>> Initializing AI Models...",
+                flush=True
+            )
 
-        if 'image' not in request.files:
-            return jsonify({"error": "Missing 'image' key"}), 400
+            print(
+                f">>> Detection model: {DET_MODEL_DIR}",
+                flush=True
+            )
 
-        file     = request.files['image']
+            print(
+                f">>> Recognition model: {REC_MODEL_DIR}",
+                flush=True
+            )
+
+            print(
+                f">>> Classification model: {CLS_MODEL_DIR}",
+                flush=True
+            )
+
+            if not os.path.exists(DET_MODEL_DIR):
+                raise FileNotFoundError(
+                    f"Detection model not found: {DET_MODEL_DIR}"
+                )
+
+            if not os.path.exists(REC_MODEL_DIR):
+                raise FileNotFoundError(
+                    f"Recognition model not found: {REC_MODEL_DIR}"
+                )
+
+            if not os.path.exists(CLS_MODEL_DIR):
+                raise FileNotFoundError(
+                    f"Classification model not found: {CLS_MODEL_DIR}"
+                )
+
+            ocr_engine = PaddleOCR(
+                use_angle_cls=True,
+                lang="en",
+                det_model_dir=DET_MODEL_DIR,
+                rec_model_dir=REC_MODEL_DIR,
+                cls_model_dir=CLS_MODEL_DIR,
+                use_gpu=False
+            )
+
+            print(
+                ">>> AI Engine Ready!",
+                flush=True
+            )
+
+        if "image" not in request.files:
+            return jsonify({
+                "error": "Missing 'image' key"
+            }), 400
+
+        file = request.files["image"]
+
+        if not file.filename:
+            return jsonify({
+                "error": "No filename provided"
+            }), 400
+
         filename = file.filename.lower()
-        temp_path = os.path.join(temp_dir, f"scan_{uuid.uuid4().hex}.jpg")
 
-        if filename.endswith('.pdf'):
-            print("[LOG] Processing PDF...", flush=True)
-            doc  = fitz.open(stream=file.read(), filetype="pdf")
-            page = doc.load_page(0)
-            pix  = page.get_pixmap()
-            img  = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img.save(temp_path)
-            doc.close()
-        else:
-            print("[LOG] Processing Image...", flush=True)
-            img = Image.open(file.stream).convert("RGB")
-            img.save(temp_path)
+        temp_path = os.path.join(
+            temp_dir,
+            f"scan_{uuid.uuid4().hex}.jpg"
+        )
 
-        print("[LOG] Starting OCR Scan...", flush=True)
-        result = ocr_engine.ocr(temp_path)
-        print("[LOG] Scan Complete.", flush=True)
+        try:
 
-        text_lines = []
-        if result and result[0]:
-            for line in result:
-                for word_info in line:
-                    text_lines.append(word_info[1][0])
+            if filename.endswith(".pdf"):
 
-        structured = parse_id_fields(text_lines)
+                print(
+                    "[LOG] Processing PDF...",
+                    flush=True
+                )
 
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+                doc = fitz.open(
+                    stream=file.read(),
+                    filetype="pdf"
+                )
 
-        print(f"[DEBUG] Final parsed result: {structured}", flush=True)
+                if len(doc) == 0:
+                    doc.close()
 
-        return jsonify({
-            "success":   True,
-            "file_type": "pdf" if filename.endswith('.pdf') else "image",
-            "raw_text":  " ".join(text_lines),
-            "parsed":    structured
-        })
+                    return jsonify({
+                        "success": False,
+                        "error": "PDF contains no pages"
+                    }), 400
+
+                page = doc.load_page(0)
+
+                pix = page.get_pixmap()
+
+                img = Image.frombytes(
+                    "RGB",
+                    [pix.width, pix.height],
+                    pix.samples
+                )
+
+                img.save(temp_path)
+
+                doc.close()
+
+            else:
+
+                print(
+                    "[LOG] Processing Image...",
+                    flush=True
+                )
+
+                img = Image.open(
+                    file.stream
+                ).convert("RGB")
+
+                img.save(temp_path)
+
+            print(
+                "[LOG] Starting OCR Scan...",
+                flush=True
+            )
+
+            result = ocr_engine.ocr(temp_path)
+
+            print(
+                "[LOG] Scan Complete.",
+                flush=True
+            )
+
+            text_lines = []
+
+            if result and result[0]:
+
+                for line in result:
+
+                    if not line:
+                        continue
+
+                    for word_info in line:
+
+                        if (
+                            word_info
+                            and len(word_info) > 1
+                            and word_info[1]
+                        ):
+                            text_lines.append(
+                                word_info[1][0]
+                            )
+
+            structured = parse_id_fields(
+                text_lines
+            )
+
+            print(
+                f"[DEBUG] Final parsed result: {structured}",
+                flush=True
+            )
+
+            return jsonify({
+                "success": True,
+                "file_type": (
+                    "pdf"
+                    if filename.endswith(".pdf")
+                    else "image"
+                ),
+                "raw_text": " ".join(text_lines),
+                "parsed": structured
+            })
+
+        finally:
+
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     except Exception as e:
+
         error_msg = traceback.format_exc()
-        print(f"[FATAL CRASH] {error_msg}", flush=True)
-        return jsonify({"success": False, "error": str(e), "trace": error_msg}), 500
 
+        print(
+            f"[FATAL CRASH] {error_msg}",
+            flush=True
+        )
 
-# --- 6. ENTRY POINT ---
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "trace": error_msg
+        }), 500
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5001))
-    app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
+
+    port = int(
+        os.environ.get("PORT", 5001)
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        threaded=False
+    )
