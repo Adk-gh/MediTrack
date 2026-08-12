@@ -1,5 +1,6 @@
 // frontend/src/layouts/AuthLayout.jsx
 import React from 'react';
+import logo from '../assets/logo.jpg';
 
 export const AuthLayout = ({ children, title, widthClass = "max-w-[320px]" }) => {
   return (
@@ -12,7 +13,7 @@ export const AuthLayout = ({ children, title, widthClass = "max-w-[320px]" }) =>
       <div className={`bg-white p-[30px] sm:p-[40px] rounded-[25px] border border-[#cbd5d1] shadow-[0_10px_25px_rgba(0,0,0,0.05)] w-full ${widthClass} text-center animate-fade-in-slide`}>
 
         <img
-          src="./logo.jpg"
+          src={logo}
           alt="MediTrack Logo"
           className="w-[180px] h-auto mb-[20px] mx-auto block"
         />

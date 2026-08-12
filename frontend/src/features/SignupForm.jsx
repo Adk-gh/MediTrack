@@ -6,6 +6,7 @@ import authService from '../services/auth.service.js';
 import { registerSchema, getFieldErrors } from '../validation/schemas.js';
 import LoadingAnimation from '../components/LoadingAnimation.jsx';
 
+
 // ── Frontend Email Validation Helper ──────────────────────────────────────────
 const validateEmailWithEasyEmail = async (email) => {
   const API_KEY = import.meta.env.VITE_EASY_EMAIL_API;

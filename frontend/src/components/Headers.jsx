@@ -9,6 +9,8 @@ import { NotificationBell, NotificationPanel } from './Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
 import Settings from './Settings.jsx';
 import { supabase } from '../supabase';
+import logo from '../assets/logo.jpg';
+import logo1 from '../assets/logo1.png';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const DOCUMENTS_BUCKET = 'health-documents';
@@ -1743,7 +1745,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
         lg:px-6
       ">
         <img
-          src="./logo1.png"
+          src={logo1}
           alt="MediTrack Logo"
           className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
           onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
@@ -1935,7 +1937,7 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
         sm:px-6 sm:min-h-[70px]
       ">
         <img
-          src="./logo.jpg"
+          src={logo}
           alt="MediTrack Logo"
           className="h-10 object-contain rounded-xl"
           onError={e => { e.target.src = 'https://placehold.co/200x40/557a5b/white?text=MediTrack'; }}

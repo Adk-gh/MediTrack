@@ -18,12 +18,35 @@ router.get('/buckets', async (req, res, next) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.set('Pragma', 'no-cache');
 
-    const { data, error } = await supabase.storage.listBuckets();
-    if (error) {
-      console.error('Supabase listBuckets error:', error);
+    let bucketsData = [];
+    let fetchError = null;
+
+    // Try up to 3 times to get the buckets to handle Supabase cold-start glitches
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { data, error } = await supabase.storage.listBuckets();
+
+      fetchError = error;
+      bucketsData = data || [];
+
+      // If we got buckets, break out of the loop immediately!
+      if (!error && bucketsData.length > 0) {
+        break;
+      }
+
+      // If it returned an empty array (and we know MediStorage should exist),
+      // wait 1 second before trying again.
+      if (attempt < 3) {
+        console.warn(`Supabase returned empty buckets on attempt ${attempt}, waiting for DB to wake up...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (fetchError) {
+      console.error('Supabase listBuckets error:', fetchError);
       return res.status(500).json({ error: 'Failed to list buckets' });
     }
-    res.status(200).json({ buckets: data });
+
+    res.status(200).json({ buckets: bucketsData });
   } catch (error) {
     next(error);
   }

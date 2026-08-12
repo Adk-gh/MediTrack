@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import logo from '../assets/logo.jpg';
 
 // ─── Environment Variables ────────────────────────────────────────────────────
 const OCR_SERVICE_URL = (import.meta.env.VITE_OCR_SERVICE_URL || 'http://localhost:5001').replace(/\/$/, '');
@@ -864,30 +865,54 @@ function StorageSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBucket, currentPrefix]);
 
-  const fetchBuckets = async () => {
+const fetchBuckets = async (retries = 3) => {
     setLoadingBuckets(true);
-    setBucketsError(null); // reset on every attempt so a retry can clear a stale error
-    try {
-      const res = await fetch(`${API_URL}/storage/buckets`, {
-        cache: 'no-store' // <-- must live inside the fetch options object to do anything
-      });
+    setBucketsError(null);
 
-      if (!res.ok) {
-        // Backend reached, but responded with an error status
-        throw new Error(`Server responded ${res.status}`);
+    // We'll use a loop to retry the fetch if it fails
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(`${API_URL}/storage/buckets`, {
+          cache: 'no-store'
+        });
+
+        if (!res.ok) {
+          throw new Error(`Server responded ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        // Sometimes cloud providers return an empty array during a degraded state
+        // instead of throwing an error. Since MediTrack should always have at least
+        // one bucket (like 'MediStorage'), you can treat an empty array as a failed
+        // fetch and force a retry if needed:
+        if (data.buckets?.length === 0 && attempt < retries) {
+          throw new Error('Received empty buckets array, assuming cold start glitch');
+        }
+
+        // Success! Set the state and exit the function.
+        setBuckets(data.buckets || []);
+        if (data.buckets?.length) setSelectedBucket(data.buckets[0].name);
+
+        setLoadingBuckets(false);
+        return;
+
+      } catch (error) {
+        console.warn(`Bucket fetch attempt ${attempt} failed:`, error.message);
+
+        if (attempt === retries) {
+          // If we've exhausted all retries, finally show the error state
+          console.error('Failed to fetch buckets after retries:', error);
+          setBucketsError(error.message || 'Failed to reach backend');
+          showToast('Failed to load storage buckets. Make sure your backend is running.', 'error');
+        } else {
+          // Wait 1 second before trying again (exponential backoff: 1s, 2s, 3s)
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
       }
-
-      const data = await res.json();
-      setBuckets(data.buckets || []);
-      if (data.buckets?.length) setSelectedBucket(data.buckets[0].name);
-    } catch (error) {
-      // Network failure, CORS issue, backend down, bad JSON, etc.
-      console.error('Failed to fetch buckets:', error);
-      setBucketsError(error.message || 'Failed to reach backend');
-      showToast('Failed to load storage buckets. Make sure your backend is running.', 'error');
-    } finally {
-      setLoadingBuckets(false);
     }
+
+    setLoadingBuckets(false);
   };
 
   const fetchItems = async () => {
@@ -1440,7 +1465,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
             <SectionLabel>Application</SectionLabel>
             <SectionCard>
               <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-                <img src="./logo.jpg" alt="MediTrack Logo" style={{ height: 64, borderRadius: 16, marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
+                <img src={logo} alt="MediTrack Logo" style={{ height: 64, borderRadius: 16, marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
                 <h4 style={{ fontSize: 22, fontWeight: 800, color: '#1a2e22', margin: '0 0 6px' }}>MediTrack</h4>
                 <span style={{ display: 'inline-block', background: '#edf4f2', color: '#466460', fontSize: 11, fontWeight: 700, padding: '4px 14px', borderRadius: 40, marginBottom: 20 }}>Version 2.4.1</span>
                 <p style={{ fontSize: 13, color: '#7a9e8e', lineHeight: 1.7, margin: '0 0 8px' }}>
