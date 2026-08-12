@@ -106,7 +106,7 @@ exports.forgotPassword = async (req, res) => {
 
       // Build reset URL
       const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
-      const resetUrl = `${baseUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
+      const resetUrl = `${baseUrl}/#/reset-password?token=${resetToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
 
       console.log('>>> [Forgot] Reset URL:', resetUrl);
 
@@ -243,7 +243,8 @@ exports.register = async (req, res) => {
       .eq('uid', userData.uid);
 
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(email.toLowerCase())}`;
+    // In register, sendVerificationEmail, and adminResendVerification:
+  const verifyUrl = `${baseUrl}/#/verify-email?token=${verifyToken}&email=${encodeURIComponent(email.toLowerCase())}`;
 
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
