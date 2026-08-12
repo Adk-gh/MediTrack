@@ -1,5 +1,4 @@
 // C:\Users\HP\MediTrack\features/user/profile-setup/profile-setup.js
-
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -19,7 +18,26 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
     const uid = req.user.uid;
     const body = req.body;
 
-    console.log('[profile-setup] Raw req.body:', JSON.stringify(body, null, 2));
+    // 1. SECURE ADMIN CHECK
+    // Fetch the actual role from the database instead of trusting req.body
+    const { data: currentUser, error: userError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('uid', uid)
+      .single();
+
+    if (userError) throw userError;
+
+    const dbRole = (currentUser?.role || 'student').toLowerCase();
+
+    // Bypass setup completely for admins
+    if (dbRole === 'sysadmin' || dbRole === 'admin') {
+      console.log(`[profile-setup] Skipping profile setup for admin: ${uid}`);
+      return res.status(200).json({
+        success: true,
+        message: 'Admin profile bypassed successfully.',
+      });
+    }
 
     const parseField = (value) => {
       if (typeof value === 'string') {
@@ -28,49 +46,25 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
       return value;
     };
 
-    const {
-      firstName, middleName, lastName, suffix,
-      birthday, age, sex, bloodType,
-      homeAddress, religion, nationality, civilStatus,
-      universityId, department, program, yearLevel, section,
-      studentClassification, classification, jobTitle,
-      email, phoneNumber, role,
-    } = body;
-
-    console.log('>>> [DEBUG] studentClassification from body:', studentClassification);
-    console.log('>>> [DEBUG] role from body:', role);
-
     const emergencyContact = parseField(body.emergencyContact) || {};
     const vaccinations = parseField(body.vaccinations) || {};
 
-    const userRole = (role || 'student').toLowerCase();
-    console.log('>>> [DEBUG] userRole evaluated as:', userRole);
-    console.log('>>> [DEBUG] userRole === student?', userRole === 'student');
-
-    // Skip profile setup for admin/sysadmin - they don't need university ID, department, etc.
-    if (userRole === 'sysadmin' || userRole === 'admin') {
-      console.log(`[profile-setup] Skipping profile setup for admin: ${uid}`);
-      return res.status(200).json({
-        success: true,
-        message: 'Admin profile updated successfully!',
-      });
-    }
-
+    // 2. FIX DATABASE COLUMNS (Convert all to snake_case)
     const updateData = {
-      first_name: firstName || '',
-      middle_name: middleName || '',
-      last_name: lastName || '',
-      suffix: suffix || '',
-      birthday: birthday || '',
-      age: age || '',
-      sex: sex || '',
-      bloodType: bloodType || '',
-      homeAddress: homeAddress || '',
-      religion: religion || '',
-      nationality: nationality || '',
-      civilStatus: civilStatus || '',
-      phoneNumber: phoneNumber || '',
-      emergencyContact: {
+      first_name: body.firstName || '',
+      middle_name: body.middleName || '',
+      last_name: body.lastName || '',
+      suffix: body.suffix || '',
+      birthday: body.birthday || '',
+      age: body.age || '',
+      sex: body.sex || '',
+      blood_type: body.bloodType || '',             // Fixed
+      home_address: body.homeAddress || '',         // Fixed
+      religion: body.religion || '',
+      nationality: body.nationality || '',
+      civil_status: body.civilStatus || '',         // Fixed
+      phone_number: body.phoneNumber || '',         // Fixed
+      emergency_contact: {                          // Fixed
         name: emergencyContact.name || '',
         relationship: emergencyContact.relationship || '',
         phone: emergencyContact.phone || '',
@@ -82,28 +76,26 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
         booster1: { vaccineName: vaccinations.booster1?.vaccineName || '', date: vaccinations.booster1?.date || '' },
         booster2: { vaccineName: vaccinations.booster2?.vaccineName || '', date: vaccinations.booster2?.date || '' },
       },
-      isProfileSetup: true,
-      profileComplete: true,
-      updatedAt: new Date().toISOString(),
+      is_profile_setup: true,                       // Fixed
+      profile_complete: true,                       // Fixed
+      updated_at: new Date().toISOString(),         // Fixed
     };
 
-    if (userRole === 'student') {
-      updateData.universityId = universityId || '';
-      updateData.department = department || '';
-      updateData.program = program || '';
-      updateData.yearLevel = yearLevel || '';
-      updateData.section = section || '';
-      updateData.studentClassification = studentClassification || 'Regular';
-      console.log('>>> [DEBUG] updateData.studentClassification:', updateData.studentClassification);
+    // Role-specific fields using snake_case
+    if (dbRole === 'student') {
+      updateData.university_id = body.universityId || '';
+      updateData.department = body.department || '';
+      updateData.program = body.program || '';
+      updateData.year_level = body.yearLevel || '';
+      updateData.section = body.section || '';
+      updateData.student_classification = body.studentClassification || 'Regular';
     } else {
-      updateData.classification = classification || '';
-      updateData.department = department || '';
-      updateData.jobTitle = jobTitle || '';
-      console.log('>>> [DEBUG] non-student branch taken — studentClassification NOT written');
+      updateData.classification = body.classification || '';
+      updateData.department = body.department || '';
+      updateData.job_title = body.jobTitle || '';
     }
 
-    console.log(`[profile-setup] uid: ${uid} | role: ${userRole}`);
-    console.log('[profile-setup] Writing to Supabase:', JSON.stringify(updateData, null, 2));
+    console.log(`[profile-setup] uid: ${uid} | role: ${dbRole}`);
 
     // Write to Supabase
     const { data, error } = await supabase
@@ -117,8 +109,6 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
       throw error;
     }
 
-    console.log('>>> [DEBUG] Supabase after write — studentClassification:', data?.studentClassification);
-
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully!',
@@ -126,7 +116,7 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
 
   } catch (error) {
     console.error('[profile-setup] Error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
+    res.status(500).json({ success: false, message: 'Internal server error.', error: error.message });
   }
 });
 

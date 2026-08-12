@@ -400,7 +400,7 @@ exports.setupProfile = async (userId, profileData) => {
 
   const { data: existingUser } = await supabase
     .from('users')
-    .select('email, role')
+    .select('email, role, university_id')
     .eq('uid', userId)
     .single();
 
@@ -409,6 +409,12 @@ exports.setupProfile = async (userId, profileData) => {
 
   // Preserve existing email if not provided in profileData
   const email = profileData.email || existingUser?.email || '';
+
+  // Preserve the existing university_id (set during OCR-verified registration)
+  // if the client didn't send one. Never write an empty string into this
+  // column — it has a unique constraint, and unlike NULL, multiple empty
+  // strings collide and throw a duplicate-key error (23505).
+  const universityId = profileData.universityId || existingUser?.university_id || null;
 
   const sanitized = {
     email:                  email,
@@ -424,7 +430,7 @@ exports.setupProfile = async (userId, profileData) => {
     religion:               profileData.religion ?? '',
     nationality:            profileData.nationality ?? '',
     civil_status:           profileData.civilStatus ?? '',
-    university_id:          profileData.universityId ?? '',
+    university_id:          universityId,
     department:             profileData.department ?? '',
     program:                profileData.program ?? '',
     year_level:             profileData.yearLevel ?? '',
@@ -817,6 +823,12 @@ exports.adminUpdateUser = async (targetUid, updates) => {
   if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
   else if (updates.profile_complete !== undefined) dbUpdates.profile_complete = updates.profile_complete;
 
+  // Profile setup (both camelCase and snake_case) — this was previously MISSING,
+  // which is why toggling "Profile Complete" in the admin UI never updated
+  // is_profile_setup even though the frontend was already sending it.
+  if (updates.isProfileSetup !== undefined) dbUpdates.is_profile_setup = updates.isProfileSetup;
+  else if (updates.is_profile_setup !== undefined) dbUpdates.is_profile_setup = updates.is_profile_setup;
+
   // Emergency contact
   if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
 
@@ -888,6 +900,7 @@ exports.adminUpdateUser = async (targetUid, updates) => {
     role:                 data.role,
     universityId:         data.university_id,
     isVerified:           data.is_verified,
+    isProfileSetup:       data.is_profile_setup,
     profileComplete:      data.profile_complete,
     birthday:             data.birthday || '',
     age:                  data.age || '',

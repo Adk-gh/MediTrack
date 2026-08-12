@@ -1,5 +1,5 @@
 // frontend/src/components/ProfileSetup.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import DatePicker from './Datepicker';
@@ -256,6 +256,7 @@ function getDefaultClassification(role) {
   const classMap = {
     'administrator': 'System Administrator',
     'admin':         'System Administrator',
+    'sysadmin':      'System Administrator',
     'nurse':         'Nurse Personnel',
     'doctor':        'Physician / Doctor',
     'dentist':       'Dentist',
@@ -277,6 +278,7 @@ function getDefaultJobTitle(role) {
     'doctor':        'Physician',
     'dentist':       'Dentist',
     'admin':         'System Administrator',
+    'sysadmin':      'System Administrator',
     'administrator': 'System Administrator',
     'lecturer':      'Lecturer',
     'professor':     'Professor',
@@ -334,9 +336,14 @@ const ProfileSetup = ({ user, onComplete }) => {
   // Check if user is sysadmin - skip profile setup entirely for sysadmin
   const isSysAdmin = userRole === 'sysadmin' || userRole === 'administrator' || userRole === 'admin';
 
-  // Auto-complete profile setup for sysadmin without showing the form
+  // Prevent infinite loop
+  const hasAttemptedAdminSetup = useRef(false);
+
+  // Auto-complete profile setup for sysadmin
   useEffect(() => {
-    if (isSysAdmin) {
+    if (isSysAdmin && !hasAttemptedAdminSetup.current) {
+      hasAttemptedAdminSetup.current = true;
+
       const completeSysAdminProfile = async () => {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -345,12 +352,17 @@ const ProfileSetup = ({ user, onComplete }) => {
         }
 
         try {
+          // 1. Include required fields using the 'user' prop to prevent the DB 500 error
+          // 2. Use camelCase because user.service.js maps it internally
           const payload = {
+            firstName: user?.firstName || 'Admin',
+            lastName: user?.lastName || 'Admin',
+            sex: user?.sex || 'Male',
+            birthday: user?.birthday || '1990-01-01',
+            age: user?.age ? Number(user.age) : 36,
             role: userRole,
-            isProfileSetup: true,
-            profileComplete: true,
             classification: 'System Administrator',
-            jobTitle: 'System Administrator',
+            jobTitle: 'System Administrator'
           };
 
           const response = await fetch(`${API_URL}/user/profile-setup`, {
@@ -362,24 +374,39 @@ const ProfileSetup = ({ user, onComplete }) => {
           if (response.ok) {
             const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
             localStorage.setItem('user', JSON.stringify({ ...storedUser, isProfileSetup: true, profileComplete: true }));
+
+            // ONLY navigate and reload if the backend successfully saved the data
             if (onComplete) {
               onComplete();
             } else {
               navigate('/dashboard');
+              window.location.reload(); // Safe to reload now
             }
+          } else {
+            console.error("Auto-setup failed with status:", response.status);
+            // If it fails, we DO NOT reload. We just unmount the modal to break the loop.
+            if (onComplete) onComplete();
           }
         } catch (err) {
           console.error('Error completing sysadmin profile:', err);
+          if (onComplete) onComplete();
         }
       };
 
       completeSysAdminProfile();
     }
-  }, [isSysAdmin, navigate, onComplete, userRole]);
+  }, [isSysAdmin, navigate, onComplete, userRole, user]); // Added 'user' to dependencies
 
-  // If sysadmin, don't render the form
+  // If sysadmin, show a loading screen while rerouting
   if (isSysAdmin) {
-    return null;
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+         <div className="flex flex-col items-center gap-3">
+            <span className="w-8 h-8 border-4 border-white/40 border-t-white rounded-full animate-spin"></span>
+            <p className="text-white font-bold tracking-widest text-sm">ROUTING ADMIN...</p>
+         </div>
+      </div>
+    );
   }
 
   const [formData, setFormData] = useState({
@@ -742,8 +769,8 @@ const ProfileSetup = ({ user, onComplete }) => {
 
         // Meta
         role:            userRole,
-        isProfileSetup:  true,
-        profileComplete: true,
+        is_profile_setup:  true,
+        profile_complete: true,
       };
 
       console.log('[ProfileSetup] Submitting payload:', JSON.stringify(payload, null, 2));

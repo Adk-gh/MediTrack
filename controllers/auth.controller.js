@@ -1,4 +1,3 @@
-// C:\Users\HP\MediTrack\controllers\auth.controller.js
 const userService = require('../features/user/user.service');
 const supabase = require('../configs/supabase');
 const { sendEmail } = require('../configs/email');
@@ -63,27 +62,6 @@ const validateEmailWithEasyEmail = async (email) => {
 };
 // -------------------------------
 
-// In-memory store for reset tokens (use Redis for production)
-const passwordResetTokens = new Map();
-
-// In-memory store for email verification tokens
-const emailVerificationTokens = new Map();
-
-// Clean up expired tokens every hour
-setInterval(() => {
-  const now = Date.now();
-  for (const [token, data] of passwordResetTokens) {
-    if (data.expiresAt < now) {
-      passwordResetTokens.delete(token);
-    }
-  }
-  for (const [token, data] of emailVerificationTokens) {
-    if (data.expiresAt < now) {
-      emailVerificationTokens.delete(token);
-    }
-  }
-}, 60 * 60 * 1000);
-
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -108,16 +86,23 @@ exports.forgotPassword = async (req, res) => {
 
       // Generate secure reset token
       const resetToken = crypto.randomBytes(32).toString('hex');
-      const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
-      // Store token
-      passwordResetTokens.set(resetToken, {
-        uid: userData.uid,
-        email: userData.email.toLowerCase(),
-        expiresAt,
-      });
+      // Store token in database
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          reset_password_token: resetToken,
+          reset_password_expires_at: expiresAt
+        })
+        .eq('uid', userData.uid);
 
-      console.log('>>> [Forgot] Token stored. All tokens:', Array.from(passwordResetTokens.keys()));
+      if (updateError) {
+        console.error('Failed to store reset token in DB:', updateError);
+        throw new Error('Failed to generate reset token');
+      }
+
+      console.log('>>> [Forgot] Token stored in DB.');
 
       // Build reset URL
       const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -135,7 +120,7 @@ exports.forgotPassword = async (req, res) => {
             <a href="${resetUrl}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a>
           </div>
           <p>Or copy and paste this link: <br><span style="color: #4F46E5;">${resetUrl}</span></p>
-          <p style="color: #666; font-size: 14px;">This link expires in 1 hour.</p>
+          <p style="color: #666; font-size: 14px;">This link expires in 5 minutes.</p>
           <p style="color: #666; font-size: 14px;">If you didn't request this, please ignore this email.</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
           <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
@@ -166,7 +151,6 @@ exports.resetPassword = async (req, res) => {
 
     console.log('>>> [Reset] Token:', token);
     console.log('>>> [Reset] Email:', email);
-    console.log('>>> [Reset] Stored tokens:', Array.from(passwordResetTokens.keys()));
 
     if (!token || !email || !password) {
       return res.status(400).json({ success: false, message: 'Token, email, and new password are required' });
@@ -176,39 +160,41 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
     }
 
-    // Verify token
-    const tokenData = passwordResetTokens.get(token);
+    const submittedEmail = email.toLowerCase().trim();
 
-    console.log('>>> [Reset] Token data:', tokenData);
+    // Verify token from Database
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('uid, reset_password_expires_at')
+      .eq('email', submittedEmail)
+      .eq('reset_password_token', token)
+      .single();
 
-    if (!tokenData) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+    if (fetchError || !user) {
+      return res.status(400).json({ success: false, message: 'Invalid reset token or email mismatch' });
     }
 
-    if (tokenData.expiresAt < Date.now()) {
-      passwordResetTokens.delete(token);
+    if (new Date(user.reset_password_expires_at) < new Date()) {
+      // Optional: Clear expired token
+      await supabase.from('users').update({ reset_password_token: null, reset_password_expires_at: null }).eq('uid', user.uid);
       return res.status(400).json({ success: false, message: 'Reset token has expired' });
     }
 
-    // Compare emails (both lowercase)
-    const submittedEmail = email.toLowerCase().trim();
-    if (tokenData.email !== submittedEmail) {
-      console.log('>>> [Reset] Email mismatch:', { stored: tokenData.email, submitted: submittedEmail });
-      return res.status(400).json({ success: false, message: 'Invalid token for this email' });
-    }
-
     // Update password in Supabase Auth
-    const { error: updateError } = await supabase.auth.admin.updateUserById(tokenData.uid, {
+    const { error: updateError } = await supabase.auth.admin.updateUserById(user.uid, {
       password: password
     });
 
     if (updateError) {
-      console.error('Reset password error:', updateError);
+      console.error('Reset password auth error:', updateError);
       return res.status(400).json({ success: false, message: 'Failed to update password' });
     }
 
-    // Delete the used token
-    passwordResetTokens.delete(token);
+    // Delete the used token in DB
+    await supabase.from('users').update({
+      reset_password_token: null,
+      reset_password_expires_at: null
+    }).eq('uid', user.uid);
 
     res.json({ success: true, message: 'Password updated successfully!' });
   } catch (error) {
@@ -243,15 +229,18 @@ exports.register = async (req, res) => {
       idFile
     );
 
-    // Send verification email
+    // Generate verification token
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
-    emailVerificationTokens.set(verifyToken, {
-      uid: userData.uid,
-      email: email.toLowerCase(),
-      expiresAt,
-    });
+    // Store in Database
+    await supabase
+      .from('users')
+      .update({
+        verification_token: verifyToken,
+        verification_token_expires_at: expiresAt
+      })
+      .eq('uid', userData.uid);
 
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
     const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(email.toLowerCase())}`;
@@ -265,7 +254,7 @@ exports.register = async (req, res) => {
           <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
         </div>
         <p>Or copy and paste this link: <br><span style="color: #466460;">${verifyUrl}</span></p>
-        <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+        <p style="color: #666; font-size: 14px;">This link expires in 5 minutes.</p>
         <p style="color: #666; font-size: 14px;">If you didn't create an account, please ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
@@ -323,13 +312,16 @@ exports.sendVerificationEmail = async (req, res) => {
 
     // Generate verification token
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
-    emailVerificationTokens.set(verifyToken, {
-      uid: userData.uid,
-      email: userData.email.toLowerCase(),
-      expiresAt,
-    });
+    // Store in Database
+    await supabase
+      .from('users')
+      .update({
+        verification_token: verifyToken,
+        verification_token_expires_at: expiresAt
+      })
+      .eq('uid', userData.uid);
 
     // Build verification URL
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -345,7 +337,7 @@ exports.sendVerificationEmail = async (req, res) => {
           <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
         </div>
         <p>Or copy and paste this link: <br><span style="color: #466460;">${verifyUrl}</span></p>
-        <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+        <p style="color: #666; font-size: 14px;">This link expires in 5 minutes.</p>
         <p style="color: #666; font-size: 14px;">If you didn't create an account, please ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
@@ -381,37 +373,45 @@ exports.verifyEmail = async (req, res) => {
     console.log('>>> [Verify] Token:', token);
     console.log('>>> [Verify] Email:', email);
 
-    // Verify token
-    const tokenData = emailVerificationTokens.get(token);
+    const submittedEmail = email.toLowerCase().trim();
 
-    if (!tokenData) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired verification token' });
+    // 1. Look up the user by email AND token in Supabase
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('uid, verification_token_expires_at, is_verified')
+      .eq('email', submittedEmail)
+      .eq('verification_token', token)
+      .single();
+
+    // If no user is found with that email + token combination
+    if (fetchError || !user) {
+      return res.status(400).json({ success: false, message: 'Invalid verification token' });
     }
 
-    if (tokenData.expiresAt < Date.now()) {
-      emailVerificationTokens.delete(token);
+    // 2. Check if the token has expired
+    if (new Date(user.verification_token_expires_at) < new Date()) {
+      // Clear the expired token
+      await supabase.from('users').update({
+        verification_token: null,
+        verification_token_expires_at: null
+      }).eq('uid', user.uid);
       return res.status(400).json({ success: false, message: 'Verification token has expired' });
     }
 
-    // Compare emails
-    const submittedEmail = email.toLowerCase().trim();
-    if (tokenData.email !== submittedEmail) {
-      return res.status(400).json({ success: false, message: 'Invalid token for this email' });
-    }
-
-    // Update user as verified
+    // 3. Mark user as verified and clear the token
     const { error: updateError } = await supabase
       .from('users')
-      .update({ is_verified: true })
-      .eq('uid', tokenData.uid);
+      .update({
+        is_verified: true,
+        verification_token: null,
+        verification_token_expires_at: null
+      })
+      .eq('uid', user.uid);
 
     if (updateError) {
       console.error('Verify email error:', updateError);
       return res.status(400).json({ success: false, message: 'Failed to verify email' });
     }
-
-    // Delete the used token
-    emailVerificationTokens.delete(token);
 
     res.json({ success: true, message: 'Email verified successfully! You can now login.' });
 
@@ -458,13 +458,16 @@ exports.adminResendVerification = async (req, res) => {
 
     // Generate new verification token
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
-    emailVerificationTokens.set(verifyToken, {
-      uid: userData.uid,
-      email: userData.email.toLowerCase(),
-      expiresAt,
-    });
+    // Store in Database
+    await supabase
+      .from('users')
+      .update({
+        verification_token: verifyToken,
+        verification_token_expires_at: expiresAt
+      })
+      .eq('uid', userData.uid);
 
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
     const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
@@ -478,7 +481,7 @@ exports.adminResendVerification = async (req, res) => {
           <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
         </div>
         <p>Or copy and paste this link: <br><span style="color: #466460;">${verifyUrl}</span></p>
-        <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+        <p style="color: #666; font-size: 14px;">This link expires in 5 minutes.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px;">MediTrack - University Health Management System</p>
       </div>

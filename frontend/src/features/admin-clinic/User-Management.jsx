@@ -449,7 +449,7 @@ export const UserManagement = () => {
     birthday:'', age:'', sex:'', blood_type:'', civil_status:'',
     religion:'', nationality:'', home_address:'',
     year_level:'', section:'', student_classification:'', classification:'',
-    is_verified:false, profile_complete:false,
+    is_verified:false, profile_complete:false, is_profile_setup:false,
   };
   const [editForm, setEditForm] = useState(EMPTY_FORM);
 
@@ -539,6 +539,7 @@ export const UserManagement = () => {
       student_classification: user.student_classification || '',
       classification: user.classification || '',
       is_verified: user.is_verified ?? false, profile_complete: user.profile_complete ?? false,
+      is_profile_setup: user.is_profile_setup ?? false,
     });
     setPhoneError('');
     setEditShowPwd(false);
@@ -586,6 +587,17 @@ export const UserManagement = () => {
   };
 
   const field = (key, value) => setEditForm(f => ({ ...f, [key]: value }));
+
+  // Profile Complete and Profile Setup are kept in lockstep: turning the
+  // "Profile Complete" toggle off should also mark the profile as not set
+  // up (and vice versa), so the two columns can't drift apart like in the
+  // legacy data (is_profile_setup = TRUE while profile_complete = FALSE).
+  const toggleProfileComplete = () => {
+    setEditForm(f => {
+      const next = !f.profile_complete;
+      return { ...f, profile_complete: next, is_profile_setup: next };
+    });
+  };
 
   const saveEdit = async (e) => {
     e.preventDefault();
@@ -652,6 +664,7 @@ export const UserManagement = () => {
           home_address: result.data.homeAddress, year_level: result.data.yearLevel,
           student_classification: result.data.studentClassification,
           is_verified: result.data.isVerified, profile_complete: result.data.profileComplete,
+          is_profile_setup: result.data.isProfileSetup,
         };
         setUsers(users.map(u => {
           const userId = u.uid || u.id;
@@ -1105,9 +1118,9 @@ export const UserManagement = () => {
                         </div>
                       </div>
 
-                      {/* Profile Complete Toggle */}
+                      {/* Profile Complete Toggle — also drives is_profile_setup */}
                       <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <Toggle checked={editForm.profile_complete} onChange={() => field('profile_complete', !editForm.profile_complete)} />
+                        <Toggle checked={editForm.profile_complete} onChange={toggleProfileComplete} />
                         <span className="text-sm font-semibold text-slate-700 truncate">Profile Complete</span>
                       </div>
                     </div>
