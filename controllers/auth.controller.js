@@ -471,7 +471,7 @@ exports.adminResendVerification = async (req, res) => {
       .eq('uid', userData.uid);
 
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const verifyUrl = `${baseUrl}/verify-email?token=${verifyToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
+    const verifyUrl = `${baseUrl}/#/verify-email?token=${verifyToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
 
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
