@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
+import AddressModal from '../../components/AddressModal.jsx';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -82,33 +83,113 @@ const inputStyle = {
   transition: 'border 0.2s',
 };
 
+// ─── Custom Select (dropdown) ─────────────────────────────────────────────
+const CustomSelect = ({ value, onChange, options, placeholder = 'Select', style, dropUp = false }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  const normalized = options.map(opt =>
+    typeof opt === 'object' && opt !== null ? opt : { value: opt, label: opt }
+  );
+  const currentOption = normalized.find(o => o.value === value);
+  const currentLabel = currentOption ? currentOption.label : placeholder;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%',
+          padding: '11px 14px',
+          borderRadius: 12,
+          fontSize: 13,
+          fontWeight: 600,
+          border: `1px solid ${open ? '#81b29a' : '#c4dbd8'}`,
+          background: '#fbfcfc',
+          color: currentOption ? '#1a2e22' : '#9bb5a5',
+          cursor: 'pointer',
+          outline: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          textAlign: 'left',
+          boxSizing: 'border-box',
+          transition: 'border 0.15s',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {currentLabel}
+        </span>
+        <svg
+          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="3"
+          style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: dropUp ? 'auto' : 'calc(100% + 6px)',
+            bottom: dropUp ? 'calc(100% + 6px)' : 'auto',
+            background: '#fff', border: '1px solid #c4dbd8', borderRadius: 12,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.14)', overflow: 'hidden', zIndex: 100,
+            maxHeight: 240, overflowY: 'auto',
+          }}
+        >
+          {normalized.map(opt => {
+            const isActive = value === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px',
+                  fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: isActive ? '#e0eceb' : 'transparent',
+                  color: isActive ? '#466460' : '#1a2e22',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Standard Static Arrays ───────────────────────────────────────────────────
 const STUDENT_CLASSIFICATIONS = ['Regular', 'Irregular', 'Returning'];
 const RELIGIONS = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'];
 const NATIONALITIES = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
 const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
 const EMERGENCY_RELATIONSHIPS = ['Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent', 'Relative', 'Guardian', 'Friend', 'Other'];
-const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
 const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
 const VACCINE_BRANDS = ['Pfizer', 'Moderna', 'AstraZeneca', 'Sinovac', 'Janssen', 'Novavax', 'Covaxin', 'Sputnik', 'Other'];
 const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
-
-const DEPARTMENTS_DATA = [
-  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['BS in Information Technology', 'BS in Information System', 'BS in Computer Engineering', 'BS in Industrial Engineering'] },
-  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['BS in Entrepreneurship', 'BS in Public Administration', 'BS in Office Administration', 'BS in Business Administration (HRDM)', 'BS in Business Administration (FM)', 'BS in Business Administration (MM)'] },
-  { abbr: 'CAS', full: 'College of Art and Sciences', programs: ['BS in Economics', 'AB in Communication', 'BS in Psychology', 'AB in Political Science'] },
-  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['BS in Tourism Management', 'BS in Hospitality Management'] },
-  { abbr: 'COA', full: 'College of Accountancy', programs: ['BS in Accountancy', 'BS in Accountancy Information System', 'BS in Management Accounting'] },
-  { abbr: 'CTE', full: 'College of Teacher Education', programs: ['BSEd Major in English', 'BSEd Major in Filipino', 'BSEd Major in Math', 'BSEd Major in Science', 'BSEd Major in Social Studies', 'BEED', 'BTVTEd', 'BSNEd'] },
-  { abbr: 'CHK', full: 'College of Human Kinetics', programs: ['BS in Physical Education', 'BS in Sports Science'] },
-  { abbr: 'CNAHS', full: 'College of Nursing and Allied Health Sciences', programs: ['BS in Nursing'] },
-];
-const DEPT_ABBR_TO_FULL = Object.fromEntries(DEPARTMENTS_DATA.map(d => [d.abbr, d.full]));
-const DEPARTMENTS = DEPARTMENTS_DATA.map(d => d.abbr);
-const ALL_PROGRAMS = [...new Set(DEPARTMENTS_DATA.flatMap(d => d.programs))];
-
-const NON_ACADEMIC_OFFICES = ['Accounting Office', 'University Clinic', 'Human Resources', 'Library', 'Maintenance', 'Registrar Office', 'Security Services'];
-const CLASSIFICATIONS = ['Teaching Personnel', 'Nurse Personnel', 'Dentist', 'Physician / Doctor', 'System Administrator', 'Non-Teaching Personnel', 'Security Personnel'];
-const JOB_TITLES = ['Nurse', 'Physician', 'Dentist', 'Administrator', 'Lecturer', 'Professor', 'Instructor', 'Librarian', 'Technician', 'Security Guard', 'Staff'];
+const SEX_OPTIONS = ['Male', 'Female'];
+const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 
 const normalizeName = (name) => {
   if (!name) return '';
@@ -207,6 +288,17 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
   sex: profileData.sex || '',
   bloodType: profileData.blood_type || '',
   homeAddress: profileData.home_address || '',
+  addressCountry: profileData.address_country || '',
+  addressRegion: profileData.address_region || '',
+  addressRegionCode: profileData.address_region_code || '',
+  addressProvince: profileData.address_province || '',
+  addressProvinceCode: profileData.address_province_code || '',
+  addressCity: profileData.address_city || '',
+  addressCityCode: profileData.address_city_code || '',
+  addressBarangay: profileData.address_barangay || '',
+  addressBarangayCode: profileData.address_barangay_code || '',
+  addressStreet: profileData.address_street || '',
+  addressZipCode: profileData.address_zip_code || '',
   religion: profileData.religion || '',
   nationality: profileData.nationality || '',
   civilStatus: profileData.civil_status || '',
@@ -228,6 +320,17 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
     relationship: profileData.emergency_contact?.relationship || '',
     phone: profileData.emergency_contact?.phone || '',
     address: profileData.emergency_contact?.address || '',
+    addressCountry: profileData.emergency_contact?.addressCountry || '',
+    addressRegion: profileData.emergency_contact?.addressRegion || '',
+    addressRegionCode: profileData.emergency_contact?.addressRegionCode || '',
+    addressProvince: profileData.emergency_contact?.addressProvince || '',
+    addressProvinceCode: profileData.emergency_contact?.addressProvinceCode || '',
+    addressCity: profileData.emergency_contact?.addressCity || '',
+    addressCityCode: profileData.emergency_contact?.addressCityCode || '',
+    addressBarangay: profileData.emergency_contact?.addressBarangay || '',
+    addressBarangayCode: profileData.emergency_contact?.addressBarangayCode || '',
+    addressStreet: profileData.emergency_contact?.addressStreet || '',
+    addressZipCode: profileData.emergency_contact?.addressZipCode || '',
   },
   vaccinations: {
     dose1: { vaccineName: profileData.vaccinations?.dose1?.vaccineName || '', date: profileData.vaccinations?.dose1?.date || '' },
@@ -256,7 +359,6 @@ const mapDbToProfile = (profileData, fallbackEmail = '') => ({
   documents: Array.isArray(profileData.documents) ? profileData.documents : [],
 });
 
-// ─── Reusable Active UID Extractor ───────────────────────────────────────────
 const getActiveUid = async () => {
   const accessToken = localStorage.getItem('token');
   const refreshToken = localStorage.getItem('refresh_token') || '';
@@ -267,6 +369,7 @@ const getActiveUid = async () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   return user?.id || currentUser?.uid;
 };
+
 // ============================================================
 // DOCUMENT PREVIEW MODAL (PORTAL - MOBILE SCROLLABLE)
 // ============================================================
@@ -275,7 +378,6 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  // Prevent background scrolling while modal is active
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -307,7 +409,7 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
 
         const { data, error } = await supabase.storage
           .from(DOCUMENTS_BUCKET)
-          .createSignedUrl(doc.path, 300); // 5 minutes
+          .createSignedUrl(doc.path, 300);
 
         if (error) throw error;
         setSignedUrl(data.signedUrl);
@@ -331,80 +433,31 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
     <div
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
+        top: 0, left: 0, right: 0, bottom: 0,
         zIndex: 99999,
         backgroundColor: 'rgba(15, 23, 20, 0.75)',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '8px',
-        overflowY: 'auto', // Allows outer scrolling on small screens if needed
-        WebkitOverflowScrolling: 'touch',
+        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '8px', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: '860px',
-          height: '88vh',
-          maxHeight: '88vh',
-          backgroundColor: '#ffffff',
-          borderRadius: '20px',
-          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.35)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          margin: 'auto',
+          position: 'relative', width: '100%', maxWidth: '860px',
+          height: '88vh', maxHeight: '88vh', backgroundColor: '#ffffff',
+          borderRadius: '20px', boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.35)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', margin: 'auto',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
-        <div
-          style={{
-            flexShrink: 0,
-            background: 'linear-gradient(to right, #e0eceb, #ffffff)',
-            borderBottom: '1px solid #d1e7e5',
-            padding: '12px 18px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
+        <div style={{ flexShrink: 0, background: 'linear-gradient(to right, #e0eceb, #ffffff)', borderBottom: '1px solid #d1e7e5', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, paddingRight: '8px' }}>
-            <div
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                backgroundColor: '#466460',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                flexShrink: 0,
-              }}
-            >
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#466460', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
               <DocIcon />
             </div>
             <div style={{ minWidth: 0 }}>
-              <h3
-                style={{
-                  fontWeight: 700,
-                  fontSize: '13px',
-                  color: '#1e293b',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  margin: 0,
-                }}
-              >
+              <h3 style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>
                 {doc.name}
               </h3>
               {doc.uploadedAt && (
@@ -417,26 +470,7 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {signedUrl && (
-              <a
-                href={signedUrl}
-                download={doc.name}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #c8ddd8',
-                  color: '#466460',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                }}
-              >
+              <a href={signedUrl} download={doc.name} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', borderRadius: '8px', backgroundColor: '#ffffff', border: '1px solid #c8ddd8', color: '#466460', fontSize: '11px', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="7 10 12 15 17 10" />
@@ -445,43 +479,11 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
                 Download
               </a>
             )}
-            <button
-              onClick={onClose}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                backgroundColor: '#f4f7f5',
-                border: 'none',
-                color: '#64748b',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '14px',
-                fontWeight: 'bold',
-              }}
-              aria-label="Close modal"
-            >
-              ✕
-            </button>
+            <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#f4f7f5', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>✕</button>
           </div>
         </div>
 
-        {/* Modal Body / Viewer */}
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            backgroundColor: '#f1f5f9',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '8px',
-            overflowY: 'auto', // Ensures content area is fully scrollable on touch devices
-            WebkitOverflowScrolling: 'touch',
-          }}
-        >
+        <div style={{ flex: 1, minHeight: 0, backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {loading ? (
             <div style={{ textAlign: 'center', color: '#64748b' }}>
               <span className="lf-spinner" style={{ borderColor: '#466460', borderTopColor: 'transparent', width: '26px', height: '26px' }} />
@@ -493,32 +495,10 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
               <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', margin: 0 }}>Please verify storage permissions or try downloading directly.</p>
             </div>
           ) : isPdf ? (
-            <iframe
-              src={`${signedUrl}#view=FitH&toolbar=0&navpanes=0`}
-              title={doc.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                borderRadius: '8px',
-                backgroundColor: '#ffffff',
-                border: '1px solid #e2e8f0',
-                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
-              }}
-            />
+            <iframe src={`${signedUrl}#view=FitH&toolbar=0&navpanes=0`} title={doc.name} style={{ width: '100%', height: '100%', borderRadius: '8px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }} />
           ) : isImage ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
-              <img
-                src={signedUrl}
-                alt={doc.name}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                  border: '1px solid #e2e8f0',
-                }}
-              />
+              <img src={signedUrl} alt={doc.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0' }} />
             </div>
           ) : (
             <div style={{ textAlign: 'center', color: '#475569', backgroundColor: '#ffffff', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
@@ -539,6 +519,7 @@ export default function ProfileUsers({ onLogout }) {
   const location = useLocation();
 
   const [loading, setLoading] = useState(true);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
   const [scrollToSection, setScrollToSection] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -549,12 +530,25 @@ export default function ProfileUsers({ onLogout }) {
   const [surgicalDeclined, setSurgicalDeclined] = useState(false);
   const [vaccinationsDeclined, setVaccinationsDeclined] = useState({ dose1: false, dose2: false, booster1: false, booster2: false, history: false });
 
+  // Address Modal State
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [addressModalTarget, setAddressModalTarget] = useState(null); // 'personal' | 'emergency'
+
+  // System Config State
+  const [configData, setConfigData] = useState({
+    departments: [],
+    non_academic_offices: [],
+    classifications: {},
+    job_titles: {},
+    sections: [] // Dynamically loaded sections
+  });
+
   // Document management state
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [docToDelete, setDocToDelete] = useState(null);
   const [isDeletingDoc, setIsDeletingDoc] = useState(false);
 
-  // Document Viewer Modal State (Matching Records.jsx)
+  // Document Viewer Modal State
   const [previewDoc, setPreviewDoc] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -563,13 +557,26 @@ export default function ProfileUsers({ onLogout }) {
   const [profile, setProfile] = useState({
     firstName: '', middleName: '', lastName: '', suffix: '',
     birthday: '', age: '', sex: '', bloodType: '',
-    homeAddress: '', religion: '', nationality: '', civilStatus: '',
+    homeAddress: '',
+    addressCountry: '', addressRegion: '', addressRegionCode: '',
+    addressProvince: '', addressProvinceCode: '',
+    addressCity: '', addressCityCode: '',
+    addressBarangay: '', addressBarangayCode: '',
+    addressStreet: '', addressZipCode: '',
+    religion: '', nationality: '', civilStatus: '',
     universityId: '', role: '',
     studentId: '', department: '', program: '', yearLevel: '', section: '',
     studentClassification: '',
     classification: '', jobTitle: '', licenseNumber: '',
     email: '', phoneNumber: '',
-    emergencyContact: { name: '', relationship: '', phone: '', address: '' },
+    emergencyContact: {
+      name: '', relationship: '', phone: '', address: '',
+      addressCountry: '', addressRegion: '', addressRegionCode: '',
+      addressProvince: '', addressProvinceCode: '',
+      addressCity: '', addressCityCode: '',
+      addressBarangay: '', addressBarangayCode: '',
+      addressStreet: '', addressZipCode: '',
+    },
     vaccinations: {
       dose1: { vaccineName: '', date: '' },
       dose2: { vaccineName: '', date: '' },
@@ -623,13 +630,29 @@ export default function ProfileUsers({ onLogout }) {
     }
   }, []);
 
+  // ── Fetch System Configuration ──────────────────────────────────────────────
+  const fetchSystemConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
+      const result = await res.json();
+      if (result.success) {
+        setConfigData(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch system configuration:', error);
+    } finally {
+      setIsConfigLoading(false);
+    }
+  }, []);
+
   const { scrollElRef, indicatorRef } = usePullToRefresh(async () => {
-    await fetchProfile();
+    await Promise.all([fetchProfile(), fetchSystemConfig()]);
   });
 
   useEffect(() => {
     fetchProfile();
-  }, [fetchProfile]);
+    fetchSystemConfig();
+  }, [fetchProfile, fetchSystemConfig]);
 
   useEffect(() => {
     if (location.state?.scrollTo && !scrollToSection) {
@@ -638,7 +661,7 @@ export default function ProfileUsers({ onLogout }) {
   }, [location.state, scrollToSection]);
 
   useEffect(() => {
-    if (!loading && scrollToSection) {
+    if (!loading && !isConfigLoading && scrollToSection) {
       const sectionRefs = {
         academic: 'academic-section',
         contact: 'contact-section',
@@ -661,8 +684,35 @@ export default function ProfileUsers({ onLogout }) {
       }
       setScrollToSection(null);
     }
-  }, [loading, scrollToSection]);
+  }, [loading, isConfigLoading, scrollToSection]);
 
+  // Lock background scroll whenever the edit modal, address modal, or delete-confirm modal is open
+  useEffect(() => {
+    const shouldLock = !!editingSection || !!docToDelete || addressModalOpen;
+    if (shouldLock) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [editingSection, docToDelete, addressModalOpen]);
+
+  // ── Derived Configuration Data ───────────────────────────────────────────────
+  const selectedDept = configData.departments.find(d =>
+    d.full === editData.department || d.abbr === editData.department
+  );
+
+  const availablePrograms = selectedDept
+    ? selectedDept.programs
+    : [...new Set(configData.departments.flatMap(d => d.programs))];
+
+  const uniqueClassifications = Array.from(new Set(Object.values(configData.classifications)));
+  const uniqueJobTitles = Array.from(new Set(Object.values(configData.job_titles)));
+  const departmentOptions = configData.departments.map(d => d.full);
+
+  // ── View Variables ───────────────────────────────────────────────────────────
   const fullName = [
     profile.firstName,
     profile.middleName || '',
@@ -698,6 +748,85 @@ export default function ProfileUsers({ onLogout }) {
   const hasEmptyDental = !profile.dentalHistory?.declined && dentalFields.every(isFieldEmpty);
 
   const hasEmptySurgical = !profile.surgicalHistory?.declined && (!profile.surgicalHistory?.operations || profile.surgicalHistory.operations.length === 0);
+
+  // ── Address Modal Handlers ───────────────────────────────────────────────────
+  const openAddressModal = (target) => {
+    setAddressModalTarget(target);
+    setAddressModalOpen(true);
+  };
+
+  const closeAddressModal = () => {
+    setAddressModalOpen(false);
+    setAddressModalTarget(null);
+  };
+
+  const handleAddressConfirm = (addressData) => {
+    const structured = {
+      addressCountry: addressData.addressCountry,
+      addressRegion: addressData.addressRegion,
+      addressRegionCode: addressData.addressRegionCode,
+      addressProvince: addressData.addressProvince,
+      addressProvinceCode: addressData.addressProvinceCode,
+      addressCity: addressData.addressCity,
+      addressCityCode: addressData.addressCityCode,
+      addressBarangay: addressData.addressBarangay,
+      addressBarangayCode: addressData.addressBarangayCode,
+      addressStreet: addressData.addressStreet,
+      addressZipCode: addressData.addressZipCode,
+    };
+
+    if (addressModalTarget === 'personal') {
+      setEditData(prev => ({
+        ...prev,
+        homeAddress: addressData.homeAddress,
+        ...structured,
+      }));
+    } else if (addressModalTarget === 'emergency') {
+      setEditData(prev => ({
+        ...prev,
+        emergencyContact: {
+          ...prev.emergencyContact,
+          address: addressData.homeAddress,
+          ...structured,
+        },
+      }));
+    }
+  };
+
+  // Prefill data passed into the modal so re-opening it shows the last selection
+  const addressInitialData = (() => {
+    if (addressModalTarget === 'personal') {
+      return {
+        addressCountry: editData.addressCountry,
+        addressRegion: editData.addressRegion,
+        addressRegionCode: editData.addressRegionCode,
+        addressProvince: editData.addressProvince,
+        addressProvinceCode: editData.addressProvinceCode,
+        addressCity: editData.addressCity,
+        addressCityCode: editData.addressCityCode,
+        addressBarangay: editData.addressBarangay,
+        addressBarangayCode: editData.addressBarangayCode,
+        addressStreet: editData.addressStreet,
+        addressZipCode: editData.addressZipCode,
+      };
+    }
+    if (addressModalTarget === 'emergency') {
+      return {
+        addressCountry: editData.emergencyContact?.addressCountry,
+        addressRegion: editData.emergencyContact?.addressRegion,
+        addressRegionCode: editData.emergencyContact?.addressRegionCode,
+        addressProvince: editData.emergencyContact?.addressProvince,
+        addressProvinceCode: editData.emergencyContact?.addressProvinceCode,
+        addressCity: editData.emergencyContact?.addressCity,
+        addressCityCode: editData.emergencyContact?.addressCityCode,
+        addressBarangay: editData.emergencyContact?.addressBarangay,
+        addressBarangayCode: editData.emergencyContact?.addressBarangayCode,
+        addressStreet: editData.emergencyContact?.addressStreet,
+        addressZipCode: editData.emergencyContact?.addressZipCode,
+      };
+    }
+    return {};
+  })();
 
   // ── Document Handlers ──────────────────────────────────────────────────────
   const handleDocumentUpload = async (e) => {
@@ -847,7 +976,15 @@ export default function ProfileUsers({ onLogout }) {
 
   const getSectionFields = (section, isStudentUser) => {
     const sectionFields = {
-      personal: ['firstName', 'middleName', 'lastName', 'suffix', 'birthday', 'age', 'sex', 'bloodType', 'civilStatus', 'religion', 'nationality', 'homeAddress'],
+      personal: [
+        'firstName', 'middleName', 'lastName', 'suffix', 'birthday', 'age', 'sex',
+        'bloodType', 'civilStatus', 'religion', 'nationality', 'homeAddress',
+        'addressCountry', 'addressRegion', 'addressRegionCode',
+        'addressProvince', 'addressProvinceCode',
+        'addressCity', 'addressCityCode',
+        'addressBarangay', 'addressBarangayCode',
+        'addressStreet', 'addressZipCode',
+      ],
       academic: isStudentUser
         ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification']
         : ['classification', 'department', 'jobTitle', 'licenseNumber'],
@@ -908,7 +1045,7 @@ export default function ProfileUsers({ onLogout }) {
     setIsSaving(false);
   };
 
-  if (loading && !profile.email) {
+  if ((loading || isConfigLoading) && !profile.email) {
     return (
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#466460', fontSize: 13, fontWeight: 600 }}>
         Loading profile...
@@ -1192,37 +1329,19 @@ export default function ProfileUsers({ onLogout }) {
         )}
       </div>
 
-      {/* ── Delete Document Confirmation Modal ── */}
-      {docToDelete && (
+      {/* ── Delete Document Confirmation Modal (portaled to <body>) ── */}
+      {docToDelete && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget && !isDeletingDoc) setDocToDelete(null);
           }}
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(26, 46, 34, 0.45)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 4500,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(26, 46, 34, 0.45)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+            zIndex: 99997, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
           }}
         >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 20,
-              width: '100%',
-              maxWidth: 380,
-              padding: 24,
-              boxShadow: '0 12px 35px rgba(0,0,0,0.12)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-            }}
-          >
+          <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 380, padding: 24, boxShadow: '0 12px 35px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <h3 style={{ margin: '0 0 6px 0', fontSize: 16, fontWeight: 800, color: '#1a2e22' }}>
                 Remove Document?
@@ -1234,50 +1353,26 @@ export default function ProfileUsers({ onLogout }) {
 
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
               <button
-                type="button"
-                disabled={isDeletingDoc}
-                onClick={() => setDocToDelete(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: '1px solid #c4dbd8',
-                  background: '#fbfcfc',
-                  color: '#6b8577',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: isDeletingDoc ? 'not-allowed' : 'pointer',
-                }}
+                type="button" disabled={isDeletingDoc} onClick={() => setDocToDelete(null)}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid #c4dbd8', background: '#fbfcfc', color: '#6b8577', fontSize: 12, fontWeight: 700, cursor: isDeletingDoc ? 'not-allowed' : 'pointer' }}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                disabled={isDeletingDoc}
-                onClick={handleConfirmDelete}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: '#e07a5f',
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: isDeletingDoc ? 'not-allowed' : 'pointer',
-                  opacity: isDeletingDoc ? 0.7 : 1,
-                }}
+                type="button" disabled={isDeletingDoc} onClick={handleConfirmDelete}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: 'none', background: '#e07a5f', color: '#fff', fontSize: 12, fontWeight: 700, cursor: isDeletingDoc ? 'not-allowed' : 'pointer', opacity: isDeletingDoc ? 0.7 : 1 }}
               >
                 {isDeletingDoc ? 'Removing...' : 'Remove'}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ── Edit Profile Modal ── */}
-      {editingSection && (
-        <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      {/* ── Edit Profile Modal (portaled to <body>) ── */}
+      {editingSection && createPortal(
+        <div onClick={e => e.target === e.currentTarget && closeEdit()} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26, 46, 34, 0.4)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 460, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
 
             <div style={{ background: '#fff', padding: '20px 24px', borderBottom: '1px solid #edf3f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1303,10 +1398,7 @@ export default function ProfileUsers({ onLogout }) {
                       <input style={{ ...inputStyle, flex: 1 }} value={editData.lastName} onChange={e => handleChange('lastName', toTitleCase(e.target.value))} onBlur={e => handleChange('lastName', toTitleCase(e.target.value))} />
                     </FormGroup>
                     <FormGroup label="Suffix">
-                      <select style={{ ...inputStyle, width: 80 }} value={editData.suffix} onChange={e => handleChange('suffix', e.target.value)}>
-                        <option value="">Select</option>
-                        {SUFFIXES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <CustomSelect style={{ width: 100 }} value={editData.suffix} onChange={val => handleChange('suffix', val)} options={SUFFIXES} />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
@@ -1316,49 +1408,46 @@ export default function ProfileUsers({ onLogout }) {
                       </FormGroup>
                     </div>
                     <FormGroup label="Age (Auto)">
-                      <input
-                        type="text"
-                        style={{ ...inputStyle, width: 80, backgroundColor: '#f4f7f5', cursor: 'not-allowed' }}
-                        value={editData.age}
-                        readOnly
-                      />
+                      <input type="text" style={{ ...inputStyle, width: 80, backgroundColor: '#f4f7f5', cursor: 'not-allowed' }} value={editData.age} readOnly />
                     </FormGroup>
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Sex">
-                      <select style={inputStyle} value={editData.sex} onChange={e => handleChange('sex', e.target.value)}>
-                        <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option>
-                      </select>
+                      <CustomSelect value={editData.sex} onChange={val => handleChange('sex', val)} options={SEX_OPTIONS} />
                     </FormGroup>
                     <FormGroup label="Blood Type">
-                      <select style={inputStyle} value={editData.bloodType} onChange={e => handleChange('bloodType', e.target.value)}>
-                        <option value="">Select</option><option value="A+">A+</option><option value="A-">A-</option>
-                        <option value="B+">B+</option><option value="B-">B-</option><option value="AB+">AB+</option>
-                        <option value="AB-">AB-</option><option value="O+">O+</option><option value="O-">O-</option>
-                        <option value="Unknown">Unknown</option>
-                      </select>
+                      <CustomSelect value={editData.bloodType} onChange={val => handleChange('bloodType', val)} options={BLOOD_TYPES} />
                     </FormGroup>
                   </div>
                   <FormGroup label="Civil Status">
-                    <select style={inputStyle} value={editData.civilStatus} onChange={e => handleChange('civilStatus', e.target.value)}>
-                      <option value="">Select</option>
-                      {CIVIL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <CustomSelect value={editData.civilStatus} onChange={val => handleChange('civilStatus', val)} options={CIVIL_STATUSES} />
                   </FormGroup>
                   <FormGroup label="Religion">
-                    <select style={inputStyle} value={editData.religion} onChange={e => handleChange('religion', e.target.value)}>
-                      <option value="">Select</option>
-                      {RELIGIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    <CustomSelect value={editData.religion} onChange={val => handleChange('religion', val)} options={RELIGIONS} />
                   </FormGroup>
                   <FormGroup label="Nationality">
-                    <select style={inputStyle} value={editData.nationality} onChange={e => handleChange('nationality', e.target.value)}>
-                      <option value="">Select</option>
-                      {NATIONALITIES.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                    <CustomSelect value={editData.nationality} onChange={val => handleChange('nationality', val)} options={NATIONALITIES} />
                   </FormGroup>
                   <FormGroup label="Home Address">
-                    <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }} value={editData.homeAddress} onChange={e => handleChange('homeAddress', e.target.value)} />
+                    <button
+                      type="button"
+                      onClick={() => openAddressModal('personal')}
+                      style={{
+                        ...inputStyle,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 8,
+                        color: editData.homeAddress ? '#1a2e22' : '#9bb5a5',
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {editData.homeAddress || 'Select address'}
+                      </span>
+                      <span style={{ flexShrink: 0, color: '#466460' }}><EditIcon /></span>
+                    </button>
                   </FormGroup>
                 </>
               )}
@@ -1370,29 +1459,33 @@ export default function ProfileUsers({ onLogout }) {
                     <input style={inputStyle} value={editData.universityId || editData.studentId} onChange={e => handleChange('universityId', e.target.value)} />
                   </FormGroup>
                   <FormGroup label="Department">
-                    <select style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)}>
-                      <option value="">Select</option>
-                      {DEPARTMENTS.map(d => <option key={d} value={DEPT_ABBR_TO_FULL[d]}>{DEPT_ABBR_TO_FULL[d]}</option>)}
-                    </select>
+                    <CustomSelect
+                      value={editData.department}
+                      onChange={val => {
+                        handleChange('department', val);
+                        handleChange('program', ''); // Reset program when dept changes
+                      }}
+                      options={departmentOptions}
+                    />
                   </FormGroup>
                   <FormGroup label="Program">
-                    <select style={inputStyle} value={editData.program} onChange={e => handleChange('program', e.target.value)}>
-                      <option value="">Select</option>
-                      {ALL_PROGRAMS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    <CustomSelect
+                      value={editData.program}
+                      onChange={val => handleChange('program', val)}
+                      options={availablePrograms}
+                    />
                   </FormGroup>
-                  <div style={{ display: 'gap', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
                     <FormGroup label="Year Level">
-                      <select style={inputStyle} value={editData.yearLevel} onChange={e => handleChange('yearLevel', e.target.value)}>
-                        <option value="">Select</option>
-                        {YEAR_LEVELS.map(y => <option key={y} value={y}>{y}</option>)}
-                      </select>
+                      <CustomSelect value={editData.yearLevel} onChange={val => handleChange('yearLevel', val)} options={YEAR_LEVELS} dropUp={true} />
                     </FormGroup>
                     <FormGroup label="Section">
-                      <select style={inputStyle} value={editData.section} onChange={e => handleChange('section', e.target.value)}>
-                        <option value="">Select</option>
-                        {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <CustomSelect
+                        value={editData.section}
+                        onChange={val => handleChange('section', val)}
+                        options={configData.sections || []}
+                        dropUp={true}
+                      />
                     </FormGroup>
                   </div>
                   <FormGroup label="Student Classification">
@@ -1402,15 +1495,12 @@ export default function ProfileUsers({ onLogout }) {
                         const colors = classificationColors[cls];
                         return (
                           <button
-                            key={cls}
-                            type="button"
-                            onClick={() => handleChange('studentClassification', cls)}
+                            key={cls} type="button" onClick={() => handleChange('studentClassification', cls)}
                             style={{
                               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 600,
                               border: `1px solid ${isActive ? colors.dot : '#c4dbd8'}`,
-                              background: isActive ? colors.bg : '#fbfcfc',
-                              color: isActive ? colors.text : '#94a3b8',
+                              background: isActive ? colors.bg : '#fbfcfc', color: isActive ? colors.text : '#94a3b8',
                               cursor: 'pointer', transition: 'all 0.15s',
                             }}
                           >
@@ -1428,22 +1518,13 @@ export default function ProfileUsers({ onLogout }) {
               {editingSection === 'academic' && !isStudent && (
                 <>
                   <FormGroup label="Classification">
-                    <select style={inputStyle} value={editData.classification} onChange={e => handleChange('classification', e.target.value)}>
-                      <option value="">Select</option>
-                      {CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <CustomSelect value={editData.classification} onChange={val => handleChange('classification', val)} options={uniqueClassifications} />
                   </FormGroup>
-                  <FormGroup label="Department">
-                    <select style={inputStyle} value={editData.department} onChange={e => handleChange('department', e.target.value)}>
-                      <option value="">Select</option>
-                      {NON_ACADEMIC_OFFICES.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
+                  <FormGroup label="Office / Department">
+                    <CustomSelect value={editData.department} onChange={val => handleChange('department', val)} options={configData.non_academic_offices} />
                   </FormGroup>
                   <FormGroup label="Job Title">
-                    <select style={inputStyle} value={editData.jobTitle} onChange={e => handleChange('jobTitle', e.target.value)}>
-                      <option value="">Select</option>
-                      {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
-                    </select>
+                    <CustomSelect value={editData.jobTitle} onChange={val => handleChange('jobTitle', val)} options={uniqueJobTitles} />
                   </FormGroup>
                   <FormGroup label="License Number">
                     <input style={inputStyle} value={editData.licenseNumber || ''} placeholder="e.g., PRC-123456" onChange={e => handleChange('licenseNumber', e.target.value.toUpperCase())} />
@@ -1459,16 +1540,13 @@ export default function ProfileUsers({ onLogout }) {
                   </FormGroup>
                   <FormGroup label="Phone Number (11 digits)">
                     <input
-                      style={inputStyle}
-                      value={editData.phoneNumber}
+                      style={inputStyle} value={editData.phoneNumber} placeholder="09123456789" maxLength={11}
                       onChange={e => handleChange('phoneNumber', formatPhoneNumber(e.target.value))}
                       onBlur={e => {
                         if (e.target.value && !isValidPhoneNumber(e.target.value)) {
                           alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
                         }
                       }}
-                      placeholder="09123456789"
-                      maxLength={11}
                     />
                     <span style={{ fontSize: 10, color: '#9bb5a5' }}>Format: 09XXXXXXXXX (11 digits)</span>
                   </FormGroup>
@@ -1483,27 +1561,39 @@ export default function ProfileUsers({ onLogout }) {
                     <input style={inputStyle} value={editData.emergencyContact.name} onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} />
                   </FormGroup>
                   <FormGroup label="Relationship">
-                    <select style={inputStyle} value={editData.emergencyContact.relationship} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)}>
-                      <option value="">Select</option>
-                      {EMERGENCY_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    <CustomSelect value={editData.emergencyContact.relationship} onChange={val => handleNestedChange('emergencyContact', 'relationship', val)} options={EMERGENCY_RELATIONSHIPS} />
                   </FormGroup>
                   <FormGroup label="Phone Number (11 digits)">
                     <input
-                      style={inputStyle}
-                      value={editData.emergencyContact.phone}
+                      style={inputStyle} value={editData.emergencyContact.phone} placeholder="09123456789" maxLength={11}
                       onChange={e => handleNestedChange('emergencyContact', 'phone', formatPhoneNumber(e.target.value))}
                       onBlur={e => {
                         if (e.target.value && !isValidPhoneNumber(e.target.value)) {
                           alert('Phone number must be exactly 11 digits (e.g., 09123456789)');
                         }
                       }}
-                      placeholder="09123456789"
-                      maxLength={11}
                     />
                   </FormGroup>
                   <FormGroup label="Address">
-                    <textarea style={{ ...inputStyle, minHeight: 80 }} value={editData.emergencyContact.address} onChange={e => handleNestedChange('emergencyContact', 'address', e.target.value)} />
+                    <button
+                      type="button"
+                      onClick={() => openAddressModal('emergency')}
+                      style={{
+                        ...inputStyle,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 8,
+                        color: editData.emergencyContact?.address ? '#1a2e22' : '#9bb5a5',
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {editData.emergencyContact?.address || 'Select address'}
+                      </span>
+                      <span style={{ flexShrink: 0, color: '#466460' }}><EditIcon /></span>
+                    </button>
                   </FormGroup>
                 </>
               )}
@@ -1527,27 +1617,20 @@ export default function ProfileUsers({ onLogout }) {
                               }}
                               style={{ accentColor: '#466460', width: 16, height: 16 }}
                             />
-                            <span style={{ fontSize: 11, fontWeight: 600, color: isDeclined ? '#92400e' : '#6b8577' }}>
-                              N/A
-                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: isDeclined ? '#92400e' : '#6b8577' }}>N/A</span>
                           </label>
                         </div>
                         {!isDeclined && (
                           <>
                             <FormGroup label="Vaccine Brand">
-                              <select style={{ ...inputStyle, backgroundColor: '#fff' }} value={editData.vaccinations[key]?.vaccineName || ''} onChange={e => handleVaxChange(key, 'vaccineName', e.target.value)}>
-                                <option value="">Select</option>
-                                {VACCINE_BRANDS.map(v => <option key={v} value={v}>{v}</option>)}
-                              </select>
+                              <CustomSelect style={{ backgroundColor: '#fff' }} value={editData.vaccinations[key]?.vaccineName || ''} onChange={val => handleVaxChange(key, 'vaccineName', val)} options={VACCINE_BRANDS} />
                             </FormGroup>
                             <FormGroup label="Date Given">
                               <DatePicker value={editData.vaccinations[key]?.date || ''} onChange={val => handleVaxChange(key, 'date', val)} />
                             </FormGroup>
                           </>
                         )}
-                        {isDeclined && (
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>Skipped / Not applicable</span>
-                        )}
+                        {isDeclined && <span style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>Skipped / Not applicable</span>}
                       </div>
                     );
                   })}
@@ -1565,9 +1648,7 @@ export default function ProfileUsers({ onLogout }) {
                           }}
                           style={{ accentColor: '#466460', width: 16, height: 16 }}
                         />
-                        <span style={{ fontSize: 11, fontWeight: 600, color: vaccinationsDeclined.history ? '#92400e' : '#6b8577' }}>
-                          N/A
-                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: vaccinationsDeclined.history ? '#92400e' : '#6b8577' }}>N/A</span>
                       </label>
                     </div>
                     {!vaccinationsDeclined.history ? (
@@ -1589,8 +1670,7 @@ export default function ProfileUsers({ onLogout }) {
                 <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: dentalDeclined ? '#fef3c7' : '#f4f7f5', borderRadius: 10, marginBottom: 16, cursor: 'pointer', border: dentalDeclined ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
                     <input
-                      type="checkbox"
-                      checked={dentalDeclined}
+                      type="checkbox" checked={dentalDeclined}
                       onChange={(e) => {
                         setDentalDeclined(e.target.checked);
                         setEditData(prev => ({ ...prev, dentalHistory: { ...prev.dentalHistory, declined: e.target.checked } }));
@@ -1638,8 +1718,7 @@ export default function ProfileUsers({ onLogout }) {
                 <>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: surgicalDeclined ? '#fef3c7' : '#f4f7f5', borderRadius: 10, marginBottom: 16, cursor: 'pointer', border: surgicalDeclined ? '1px solid #f59e0b' : '1px solid #edf3f0' }}>
                     <input
-                      type="checkbox"
-                      checked={surgicalDeclined}
+                      type="checkbox" checked={surgicalDeclined}
                       onChange={(e) => {
                         setSurgicalDeclined(e.target.checked);
                         setEditData(prev => ({ ...prev, surgicalHistory: { ...prev.surgicalHistory, declined: e.target.checked } }));
@@ -1658,8 +1737,7 @@ export default function ProfileUsers({ onLogout }) {
                       ) : editData.surgicalHistory.operations.map(op => (
                         <div key={op.id} style={{ position: 'relative', background: '#fbfcfc', border: '1px solid #edf3f0', borderRadius: 10, padding: 16, marginBottom: 12 }}>
                           <button
-                            type="button"
-                            onClick={() => handleRemoveOperation(op.id)}
+                            type="button" onClick={() => handleRemoveOperation(op.id)}
                             style={{ position: 'absolute', top: 10, right: 10, background: '#e07a5f', color: '#fff', border: 'none', width: 22, height: 22, borderRadius: 6, cursor: 'pointer', fontSize: 12, lineHeight: 1 }}
                           >×</button>
                           <FormGroup label="Operation Name">
@@ -1674,8 +1752,7 @@ export default function ProfileUsers({ onLogout }) {
                         </div>
                       ))}
                       <button
-                        type="button"
-                        onClick={handleAddOperation}
+                        type="button" onClick={handleAddOperation}
                         style={{ width: '100%', background: '#81b29a', color: '#fff', border: 'none', padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >+ Add Operation</button>
                     </>
@@ -1692,10 +1769,20 @@ export default function ProfileUsers({ onLogout }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ── In-App Document Preview Modal (Matches Records.jsx) ── */}
+      {/* ── Address Modal (used by both Personal Home Address and Emergency Contact Address) ── */}
+      <AddressModal
+        isOpen={addressModalOpen}
+        onClose={closeAddressModal}
+        onConfirm={handleAddressConfirm}
+        initialData={addressInitialData}
+        zIndex={100000}
+      />
+
+      {/* ── In-App Document Preview Modal ── */}
       <DocViewerModal
         isOpen={previewOpen}
         onClose={() => {

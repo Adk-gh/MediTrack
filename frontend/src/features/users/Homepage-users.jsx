@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Homepage-users.jsx
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import authService from '../../services/auth.service.js';
@@ -272,14 +273,17 @@ const PullIndicator = ({ indicatorRef, isRefreshing }) => (
 );
 
 // ── Announcement Detail Modal ──────────────────────────────────────────────
+// Rendered via createPortal to document.body so it always sits above the
+// bottom nav bar / any other stacking context set up by MobileShell,
+// regardless of where HomePageUsers is mounted in the tree.
 
 const AnnouncementModal = ({ item, onClose }) => {
   if (!item) return null;
   const catStyle = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.General;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center sm:items-center z-[1000] px-0"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center sm:items-center z-[9999] px-0"
       onClick={onClose}
     >
       <div
@@ -341,7 +345,8 @@ const AnnouncementModal = ({ item, onClose }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -697,7 +702,7 @@ const HomePageUsers = () => {
               <span className="icon-pop text-[#466460]">
                 <Activity size={11} strokeWidth={2.5} />
               </span>
-              Here is your health overview for today.
+              Here’s your health and clinic update for today.
             </p>
           </div>
 
@@ -908,7 +913,7 @@ const HomePageUsers = () => {
 
       </div>
 
-      {/* ── Announcement Modal ── */}
+      {/* ── Announcement Modal (portaled to document.body, see component above) ── */}
       {selectedAnn && (
         <AnnouncementModal item={selectedAnn} onClose={() => setSelectedAnn(null)} />
       )}

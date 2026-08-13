@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Appointment-users.jsx
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
@@ -35,6 +36,11 @@ const PURPOSES = [
   'Other'
 ];
 
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+];
+
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
   const startH = 7 + i;
   const endH   = startH + 1;
@@ -56,6 +62,60 @@ const PullIndicator = ({ indicatorRef }) => (
     <svg data-ptr-spin width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2.5" style={{ animation: 'ptr-spin 0.8s linear infinite' }}><circle cx="12" cy="12" r="9" strokeOpacity="0.2" /><path d="M12 3 a9 9 0 0 1 9 9" /></svg>
   </div>
 );
+
+// ── Custom Sort Dropdown (replaces native <select> so mobile doesn't fall back to the OS picker UI) ──
+const SortDropdown = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const currentLabel = SORT_OPTIONS.find(o => o.value === value)?.label || 'Sort';
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a', cursor: 'pointer', outline: 'none' }}
+        className="flex items-center gap-2"
+      >
+        {currentLabel}
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="3" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 mt-1.5 bg-white border border-[#ddeee5] rounded-xl shadow-lg overflow-hidden z-50"
+          style={{ minWidth: 140 }}
+        >
+          {SORT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3.5 py-2.5 text-[11px] font-semibold transition-colors ${
+                value === opt.value ? 'bg-[#eef3f2] text-[#466460]' : 'text-[#1a2e22] hover:bg-[#f7faf8]'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function useCurrentPatient() {
   return useMemo(() => {
@@ -389,14 +449,7 @@ export default function AppointmentUsers() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-[14px] font-bold text-[#1a2e22]">My Appointment Requests</div>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a', cursor: 'pointer', outline: 'none' }}
-                  >
-                    <option value="newest">Newest First</option>
-                    <option value="oldest">Oldest First</option>
-                  </select>
+                  <SortDropdown value={sortBy} onChange={setSortBy} />
                 </div>
               </div>
 
@@ -466,9 +519,9 @@ export default function AppointmentUsers() {
             </>
           )}
 
-          {/* ── REQUEST MODAL ── */}
-          {showModal && (
-            <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6" onClick={closeModal}>
+          {/* ── REQUEST MODAL (portaled to <body> so it renders above any transformed ancestor and the bottom nav) ── */}
+          {showModal && createPortal(
+            <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6" onClick={closeModal}>
               <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
                 <div className="bg-[#466460] px-6 py-5 text-white flex-shrink-0">
                   <h3 className="font-serif text-xl tracking-wide">Request Appointment</h3>
@@ -523,12 +576,13 @@ export default function AppointmentUsers() {
                   </button>
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
 
-          {/* ── APPOINTMENT DETAILS MODAL ── */}
-          {selectedAppt && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4" onClick={() => setSelectedAppt(null)}>
+          {/* ── APPOINTMENT DETAILS MODAL (portaled to <body> so it renders above any transformed ancestor and the bottom nav) ── */}
+          {selectedAppt && createPortal(
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4" onClick={() => setSelectedAppt(null)}>
               <div className="w-full max-w-[420px] bg-white rounded-[24px] overflow-hidden shadow-2xl animate-fadeIn" onClick={(e) => e.stopPropagation()}>
                 <div className="bg-[#f7faf8] px-5 py-4 border-b border-[#eef2f6]">
                   <div className="flex items-center justify-between">
@@ -586,7 +640,8 @@ export default function AppointmentUsers() {
                   <button onClick={() => setSelectedAppt(null)} className="w-full py-3 bg-white border border-[#e2e8f0] rounded-xl text-sm font-bold text-[#466460] hover:bg-[#E1F5EE] hover:border-[#466460] transition-colors">Close</button>
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
         </>
       )}

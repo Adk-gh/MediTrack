@@ -1,5 +1,6 @@
 //C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../supabase';
 import notificationsService from '../services/notifications.service.js';
 
@@ -271,16 +272,43 @@ export function UserNotificationPanel({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  return (
+  // Portaled to document.body so the panel always covers the true viewport —
+  // including the bottom nav bar — instead of stopping at a transformed
+  // ancestor further up the tree.
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[1999]"
+        className="fixed inset-0 z-[99998]"
         onClick={onClose}
       />
 
       {/* Panel */}
-      <div className="fixed top-0 right-0 sm:top-2 sm:right-2 z-[2000] w-full sm:w-[380px] h-full sm:h-[calc(100vh-16px)] sm:max-h-[600px] bg-white sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slideIn">
+      <div
+  className="
+    fixed
+    top-0
+    right-0
+    sm:top-2
+    sm:right-2
+    z-[99999]
+    w-full
+    sm:w-[380px]
+    h-full
+    sm:h-[calc(100vh-16px)]
+    sm:max-h-[600px]
+    bg-white
+    sm:rounded-2xl
+    shadow-2xl
+    flex
+    flex-col
+    overflow-hidden
+    animate-slideIn
+  "
+  style={{
+    paddingTop: 'env(safe-area-inset-top, 0px)',
+  }}
+>
         {/* Header */}
         <div className="bg-gradient-to-br from-[#466460] to-[#466048] px-4 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -419,7 +447,8 @@ export function UserNotificationPanel({ isOpen, onClose }) {
           overflow: hidden;
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }
 

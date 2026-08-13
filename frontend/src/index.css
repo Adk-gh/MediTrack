@@ -1,50 +1,157 @@
+/* ─── C:\Users\HP\MediTrack\frontend\src\index.css ───────────────────────── */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* You can add any custom global overrides here if needed */
+/* ─── Base / Android Edge-to-Edge ───────────────────────────────────────── */
+
+html {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
 body {
   margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  width: 100%;
+  min-height: 100%;
+  padding: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background-color: transparent;
 }
 
 #root {
+  width: 100%;
+  min-height: 100dvh;
   background-color: transparent;
 }
 
-@keyframes fadeInSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ─── Main Application Container ─────────────────────────────────────────── */
+
+.app {
+  width: 100%;
+  min-height: 100dvh;
+  box-sizing: border-box;
 }
 
-.animate-fade-in-slide {
-  animation: fadeInSlideUp 0.3s ease-in-out forwards;
+/* ─── Safe Area Helpers ──────────────────────────────────────────────────── */
+
+/*
+ * Android is configured for edge-to-edge.
+ *
+ * The WebView may extend behind the Android system bars.
+ * These helpers keep important UI content away from those areas.
+ *
+ * IMPORTANT:
+ * Do not rely exclusively on env(safe-area-inset-top), because some
+ * Android WebView configurations report 0px even when the status bar
+ * overlays the WebView.
+ */
+
+/* Top safe area */
+.safe-area-top {
+  padding-top: max(24px, env(safe-area-inset-top, 0px));
 }
+
+/* Bottom safe area */
+.safe-area-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Bottom navigation safe area */
+.safe-area-bottom-nav {
+  padding-bottom: max(
+    12px,
+    calc(12px + env(safe-area-inset-bottom, 0px))
+  );
+}
+
+/*
+ * Mobile header.
+ *
+ * The 24px minimum prevents the Android status bar from overlapping
+ * the header when safe-area-inset-top is reported as 0px.
+ */
+.mobile-header {
+  padding-top: max(24px, calc(env(safe-area-inset-top, 0px) + 12px));
+}
+
+/* ─── Mobile Page Helpers ────────────────────────────────────────────────── */
+
+.mobile-page {
+  width: 100%;
+  min-height: 100dvh;
+  box-sizing: border-box;
+}
+
+/*
+ * Keep page content below the Android status bar.
+ */
+.mobile-page-content {
+  padding-top: max(24px, env(safe-area-inset-top, 0px));
+}
+
+/*
+ * Bottom spacing for pages using the mobile navigation.
+ */
+.mobile-bottom-nav {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+/* ─── Modal / Overlay Helpers ────────────────────────────────────────────── */
+
+.mobile-modal-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  z-index: 9999;
+}
+
+/*
+ * Modal content also needs to stay clear of Android system bars.
+ */
+.mobile-modal-content {
+  padding-top: max(24px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+/* ─── Prevent Horizontal Overflow ────────────────────────────────────────── */
+
+html,
+body,
+#root {
+  overflow-x: hidden;
+}
+
+/* ─── MediTrack Colors ───────────────────────────────────────────────────── */
 
 :root {
   --meditrack-teal: #466460;
   --meditrack-teal-light: #5a7a76;
   --meditrack-teal-lighter: #8aacaa;
   --meditrack-teal-soft: #e0eceb;
+
   --accent-sunset: #e07a5f;
   --accent-gold: #e9c46a;
   --accent-sage: #81b29a;
 }
+
+/* ─── Glass Card ──────────────────────────────────────────────────────────── */
 
 .glass-card {
   background: white;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
+
+/* ─── Filter Pills ────────────────────────────────────────────────────────── */
 
 .filter-pill {
   display: inline-block;
@@ -56,19 +163,15 @@ body {
   background: #f1f5f9;
   color: #475569;
 }
+
 .filter-pill.active {
-  background: linear-gradient(135deg, var(--meditrack-teal), var(--meditrack-teal-light));
+  background: linear-gradient(
+    135deg,
+    var(--meditrack-teal),
+    var(--meditrack-teal-light)
+  );
   color: white;
 }
-
-@keyframes fadeInSlide {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-in {
-  animation: fadeInSlide 0.4s ease-out forwards;
-}
-
 
 /* ─── Datepicker Overrides ────────────────────────────────────────────────── */
 
@@ -76,33 +179,37 @@ body {
   width: 100%;
 }
 
-/* Sit on top of all modals */
 .react-datepicker-popper {
   z-index: 9999 !important;
 }
 
-/* Keep the popper inside the viewport */
 .react-datepicker-popper[data-placement^="bottom"] {
   margin-top: 4px !important;
 }
+
 .react-datepicker-popper[data-placement^="top"] {
   margin-bottom: 4px !important;
 }
 
-/* Hide triangle arrow */
 .react-datepicker__triangle {
   display: none !important;
 }
+
+/* ─── Datepicker ──────────────────────────────────────────────────────────── */
 
 .react-datepicker {
   font-family: inherit !important;
   font-size: 12px !important;
   border: 1px solid #e2f0ea !important;
   border-radius: 16px !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05) !important;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.15),
+    0 10px 25px -5px rgba(0, 0, 0, 0.05) !important;
   overflow: hidden;
   max-width: 280px !important;
 }
+
+/* ─── Datepicker Header ───────────────────────────────────────────────────── */
 
 .react-datepicker__header {
   background-color: #f4f7f5 !important;
@@ -111,12 +218,12 @@ body {
   padding-bottom: 10px !important;
 }
 
-/* Hide redundant "July 2005" text since dropdowns are shown */
 .react-datepicker__current-month {
   display: none !important;
 }
 
-/* Dropdown row — keep both selects on one line without overflow */
+/* ─── Datepicker Dropdown Row ─────────────────────────────────────────────── */
+
 .react-datepicker__header__dropdown {
   display: flex !important;
   justify-content: center !important;
@@ -132,7 +239,8 @@ body {
   flex-shrink: 0;
 }
 
-/* Month and Year <select> elements */
+/* ─── Month and Year Select Elements ──────────────────────────────────────── */
+
 .react-datepicker__month-select,
 .react-datepicker__year-select {
   padding: 5px 6px;
@@ -149,12 +257,10 @@ body {
   overflow-y: auto;
 }
 
-/* Month select — fixed width so it never wraps */
 .react-datepicker__month-select {
   width: 108px;
 }
 
-/* Year select — fixed width */
 .react-datepicker__year-select {
   width: 72px;
 }
@@ -164,7 +270,8 @@ body {
   border-color: #2d7a52;
 }
 
-/* Selected day */
+/* ─── Datepicker Days ─────────────────────────────────────────────────────── */
+
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
   background-color: #2d7a52 !important;
@@ -173,7 +280,6 @@ body {
   font-weight: bold;
 }
 
-/* Day hover */
 .react-datepicker__day:hover {
   background-color: #e2f0ea !important;
   color: #1a5c3a !important;
@@ -186,7 +292,6 @@ body {
   line-height: 1.7rem !important;
 }
 
-/* Day names row */
 .react-datepicker__day-name {
   width: 1.7rem !important;
   margin: 0.15rem !important;
@@ -195,7 +300,8 @@ body {
   font-weight: 600 !important;
 }
 
-/* Navigation arrows */
+/* ─── Datepicker Navigation ───────────────────────────────────────────────── */
+
 .react-datepicker__navigation {
   top: 14px !important;
 }
@@ -207,16 +313,84 @@ body {
   height: 7px !important;
 }
 
+/* ─── Custom Scrollbar ────────────────────────────────────────────────────── */
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
   border-radius: 10px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
+}
+
+/* ─── Animations ──────────────────────────────────────────────────────────── */
+
+@keyframes fadeInSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-slide {
+  animation: fadeInSlideUp 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeInSlide 0.4s ease-out forwards;
+}
+
+/* ─── Mobile Viewport ─────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100dvh;
+  }
+
+  /*
+   * Prevent the document itself from scrolling underneath the
+   * Android system bars.
+   */
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* ─── Respect Reduced Motion ──────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-slide,
+  .animate-in {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

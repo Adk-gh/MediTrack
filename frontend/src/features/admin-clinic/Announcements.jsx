@@ -8,88 +8,6 @@ import { supabase } from '../../supabase';
 // ============================================================
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const departmentsData = [
-  {
-    abbr: 'CCSE',
-    full: 'College of Computing Science and Engineering',
-    programs: [
-      'Bachelor of Science in Information Technology',
-      'Bachelor of Science in Information System',
-      'Bachelor of Science in Computer Engineering',
-      'Bachelor of Science in Industrial Engineering',
-    ],
-  },
-  {
-    abbr: 'CBAM',
-    full: 'College of Business Administration and Management',
-    programs: [
-      'Bachelor of Science in Entrepreneurship',
-      'Bachelor of Science in Public Administration',
-      'Bachelor of Science in Office Administration',
-      'Bachelor of Science in Business Administration Major in Human Resource Development Management',
-      'Bachelor of Science in Business Administration Major in Financial Management',
-      'Bachelor of Science in Business Administration Major in Marketing Management',
-    ],
-  },
-  {
-    abbr: 'CAS',
-    full: 'College of Art and Sciences',
-    programs: [
-      'Bachelor of Science in Economics',
-      'Bachelor of Arts in Communication',
-      'Bachelor of Science in Psychology',
-      'Bachelor of Arts in Political Science',
-    ],
-  },
-  {
-    abbr: 'CTHM',
-    full: 'College of Tourism and Hospitality Management',
-    programs: [
-      'Bachelor of Science in Tourism Management',
-      'Bachelor of Science in Hospitality Management',
-    ],
-  },
-  {
-    abbr: 'COA',
-    full: 'College of Accountancy',
-    programs: [
-      'Bachelor of Science in Accountancy',
-      'Bachelor of Science in Accountancy Information System',
-      'Bachelor of Science in Management Accounting',
-    ],
-  },
-  {
-    abbr: 'CTE',
-    full: 'College of Teacher Education',
-    programs: [
-      'Bachelor of Secondary Education Major in English',
-      'Bachelor of Secondary Education Major in Filipino',
-      'Bachelor of Secondary Education Major in Math',
-      'Bachelor of Secondary Education Major in Science',
-      'Bachelor of Secondary Education Major in Social Studies',
-      'Bachelor of Elementary Education',
-      'Bachelor of Technical-Vocational Teacher Education',
-      'Bachelor of Special Needs Education',
-    ],
-  },
-  {
-    abbr: 'CHK',
-    full: 'College of Human Kinetics',
-    programs: [
-      'Bachelor of Science in Physical Education',
-      'Bachelor of Science in Sports Science',
-    ],
-  },
-  {
-    abbr: 'CNAHS',
-    full: 'College of Nursing and Allied Health Sciences',
-    programs: [
-      'Bachelor of Science in Nursing',
-    ],
-  },
-];
-
-const DEPT_OPTIONS = departmentsData.map(d => d.full);
 const ALL_DEPT_LABEL = 'All Departments';
 const CATEGORIES = ['General', 'Vaccination', 'Screening', 'Dental', 'Mental Health', 'Emergency', 'Schedule', 'Event'];
 
@@ -139,7 +57,7 @@ const getRoleFromStorage = () => {
   return null;
 };
 
-const formatDeptDisplay = (deptValue) => {
+const formatDeptDisplay = (deptValue, deptOptions) => {
   let deptArray = [];
   if (!deptValue) return [ALL_DEPT_LABEL];
   if (Array.isArray(deptValue)) {
@@ -153,7 +71,7 @@ const formatDeptDisplay = (deptValue) => {
     }
   }
 
-  if (deptArray.length === DEPT_OPTIONS.length && DEPT_OPTIONS.every(d => deptArray.includes(d))) {
+  if (deptArray.length === deptOptions.length && deptOptions.every(d => deptArray.includes(d))) {
     return [ALL_DEPT_LABEL];
   }
 
@@ -231,7 +149,9 @@ const ImageDropZone = ({ value, onChange, onClear }) => {
 
 export const Announcements = () => {
   const [announcements, setAnnouncements] = useState([]);
+  const [configData, setConfigData]       = useState(null);
   const [loading, setLoading]             = useState(true);
+
   const [activeMenuId, setActiveMenuId]   = useState(null);
   const [filterCategory, setFilterCategory] = useState('All');
   const [filterPriority, setFilterPriority] = useState('All');
@@ -254,6 +174,15 @@ export const Announcements = () => {
   const snackbarTimer           = useRef(null);
 
   const [userRole, setUserRole] = useState('');
+
+  // Derived Department Options
+  const deptOptions = configData?.departments?.map(d => d.full) || [];
+
+  // Helper function to get the abbreviation from the full name
+  const getDeptAbbr = (fullName) => {
+    const dept = configData?.departments?.find(d => d.full === fullName);
+    return dept ? dept.abbr : fullName;
+  };
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -327,25 +256,34 @@ export const Announcements = () => {
   const viewDrawer = useDrawerDrag(() => setIsViewModalOpen(false));
 
   useEffect(() => {
-    const fetchAnnouncements = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        // Fetch announcements
+        const { data: annData, error: annError } = await supabase
           .from('announcements')
           .select('*')
           .eq('is_archived', false)
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        setAnnouncements(data || []);
+        if (annError) throw annError;
+        setAnnouncements(annData || []);
+
+        // Fetch System Configuration
+        const configRes = await fetch(`${API_URL}/system-config`);
+        const configResult = await configRes.json();
+
+        if (configResult.success) {
+          setConfigData(configResult.data);
+        }
       } catch (err) {
         console.error('[Announcements] Error fetching data:', err.message);
-        showSnackbar('Failed to load announcements', 'error');
+        showSnackbar('Failed to load required data', 'error');
       } finally {
         setLoading(false);
       }
     };
-    fetchAnnouncements();
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -387,8 +325,8 @@ export const Announcements = () => {
         }
       }
       setFormData({
-        title:         target.title         || '',
-        content:       target.content       || '',
+        title:         target.title        || '',
+        content:       target.content      || '',
         dept:          deptArray,
         category:      target.category      || 'General',
         priority:      target.priority      || 'normal',
@@ -471,7 +409,7 @@ export const Announcements = () => {
 
         // ── Broadcast Notification to Target Department Users ──
         try {
-          const isAllDepts = formData.dept.length === 0 || formData.dept.length === DEPT_OPTIONS.length;
+          const isAllDepts = formData.dept.length === 0 || formData.dept.length === deptOptions.length;
           let userQuery = supabase.from('users').select('id, department');
 
           if (!isAllDepts) {
@@ -592,6 +530,20 @@ export const Announcements = () => {
   const inputCls = 'w-full mt-1.5 px-4 py-3 sm:py-3 border border-[#e2e8f0] rounded-xl text-[13px] sm:text-[14px] outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white box-border';
   const labelCls = 'block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wide mt-5 sm:mt-6';
 
+  if (!configData && loading) {
+    return (
+      <div className="flex h-[calc(100vh-120px)] items-center justify-center bg-slate-50">
+        <div className="flex items-center gap-3 text-slate-500 font-semibold">
+          <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          Loading announcements & configurations...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white h-[calc(100vh-120px)] flex flex-col animate-[fadeInSlide_0.4s_ease-out_forwards]">
 
@@ -641,7 +593,7 @@ export const Announcements = () => {
               className="flex-1 xl:flex-none xl:w-[130px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">All Depts</option>
-              {DEPT_OPTIONS.map(d => <option key={d}>{d}</option>)}
+              {deptOptions.map(d => <option key={d} value={d}>{getDeptAbbr(d)}</option>)}
             </select>
           </div>
         </div>
@@ -712,8 +664,10 @@ export const Announcements = () => {
                       </span>
                     )}
                     <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${catCls}`}>{item.category || 'General'}</span>
-                    {formatDeptDisplay(item.dept).map((d, i) => (
-                      <span key={i} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
+                    {formatDeptDisplay(item.dept, deptOptions).map((d, i) => (
+                      <span key={i} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
+                        {d === ALL_DEPT_LABEL ? d : getDeptAbbr(d)}
+                      </span>
                     ))}
                   </div>
 
@@ -787,7 +741,7 @@ export const Announcements = () => {
                         ) : (
                           <>
                             <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[#e0eceb] text-[#466460] shrink-0">
-                              {formData.dept[0].length > 25 ? formData.dept[0].substring(0, 25) + '...' : formData.dept[0]}
+                              {getDeptAbbr(formData.dept[0])}
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); setField('dept', formData.dept.filter(x => x !== formData.dept[0])); }}
@@ -814,13 +768,13 @@ export const Announcements = () => {
                         >
                           <input
                             type="checkbox"
-                            checked={formData.dept.length === DEPT_OPTIONS.length}
+                            checked={formData.dept.length === deptOptions.length}
                             ref={(el) => {
-                              if (el) el.indeterminate = formData.dept.length > 0 && formData.dept.length < DEPT_OPTIONS.length;
+                              if (el) el.indeterminate = formData.dept.length > 0 && formData.dept.length < deptOptions.length;
                             }}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setField('dept', [...DEPT_OPTIONS]);
+                                setField('dept', [...deptOptions]);
                               } else {
                                 setField('dept', []);
                               }
@@ -829,7 +783,7 @@ export const Announcements = () => {
                           />
                           <span className="text-sm text-slate-700 truncate">Select All</span>
                         </label>
-                        {DEPT_OPTIONS.map(d => (
+                        {deptOptions.map(d => (
                           <label
                             key={d}
                             className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer"
@@ -847,7 +801,7 @@ export const Announcements = () => {
                               }}
                               className="w-4 h-4 text-[#466460] rounded border-slate-300 focus:ring-[#466460]"
                             />
-                            <span className="text-sm text-slate-600 truncate">{d}</span>
+                            <span className="text-sm text-slate-600 truncate">{getDeptAbbr(d)}</span>
                           </label>
                         ))}
                       </div>
@@ -961,8 +915,10 @@ export const Announcements = () => {
               <div className="flex flex-wrap gap-2 mb-3">
                 {viewData.priority && viewData.priority !== 'normal' && <span className={`text-xs font-bold px-3 py-1 rounded-full text-white ${PRIORITY_CONFIG[viewData.priority]?.color}`}><i className="fa-solid fa-circle-exclamation mr-1"></i>{PRIORITY_CONFIG[viewData.priority]?.label}</span>}
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${CATEGORY_COLORS[viewData.category] || CATEGORY_COLORS.General}`}>{viewData.category || 'General'}</span>
-                {formatDeptDisplay(viewData.dept).map((d, i) => (
-                  <span key={i} className="text-xs font-semibold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460]">{d}</span>
+                {formatDeptDisplay(viewData.dept, deptOptions).map((d, i) => (
+                  <span key={i} className="text-xs font-semibold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
+                    {d === ALL_DEPT_LABEL ? d : getDeptAbbr(d)}
+                  </span>
                 ))}
               </div>
               <h3 className="text-xl sm:text-2xl font-bold text-[#466460] mb-2 leading-snug">{viewData.title}</h3>

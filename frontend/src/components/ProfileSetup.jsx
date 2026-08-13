@@ -5,106 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import DatePicker from './Datepicker';
 import AddressModal from './AddressModal';
 
-// --- PLSP Department Data ---
-const departmentsData = [
-  {
-    abbr: 'CCSE',
-    full: 'College of Computing Science and Engineering',
-    programs: [
-      'Bachelor of Science in Information Technology',
-      'Bachelor of Science in Information System',
-      'Bachelor of Science in Computer Engineering',
-      'Bachelor of Science in Industrial Engineering',
-    ],
-  },
-  {
-    abbr: 'CBAM',
-    full: 'College of Business Administration and Management',
-    programs: [
-      'Bachelor of Science in Entrepreneurship',
-      'Bachelor of Science in Public Administration',
-      'Bachelor of Science in Office Administration',
-      'Bachelor of Science in Business Administration Major in Human Resource Development Management',
-      'Bachelor of Science in Business Administration Major in Financial Management',
-      'Bachelor of Science in Business Administration Major in Marketing Management',
-    ],
-  },
-  {
-    abbr: 'CAS',
-    full: 'College of Art and Sciences',
-    programs: [
-      'Bachelor of Science in Economics',
-      'Bachelor of Arts in Communication',
-      'Bachelor of Science in Psychology',
-      'Bachelor of Arts in Political Science',
-    ],
-  },
-  {
-    abbr: 'CTHM',
-    full: 'College of Tourism and Hospitality Management',
-    programs: [
-      'Bachelor of Science in Tourism Management',
-      'Bachelor of Science in Hospitality Management',
-    ],
-  },
-  {
-    abbr: 'COA',
-    full: 'College of Accountancy',
-    programs: [
-      'Bachelor of Science in Accountancy',
-      'Bachelor of Science in Accountancy Information System',
-      'Bachelor of Science in Management Accounting',
-    ],
-  },
-  {
-    abbr: 'CTE',
-    full: 'College of Teacher Education',
-    programs: [
-      'Bachelor of Secondary Education Major in English',
-      'Bachelor of Secondary Education Major in Filipino',
-      'Bachelor of Secondary Education Major in Math',
-      'Bachelor of Secondary Education Major in Science',
-      'Bachelor of Secondary Education Major in Social Studies',
-      'Bachelor of Elementary Education',
-      'Bachelor of Technical-Vocational Teacher Education',
-      'Bachelor of Special Needs Education',
-    ],
-  },
-  {
-    abbr: 'CHK',
-    full: 'College of Human Kinetics',
-    programs: [
-      'Bachelor of Science in Physical Education',
-      'Bachelor of Science in Sports Science',
-    ],
-  },
-  {
-    abbr: 'CNAHS',
-    full: 'College of Nursing and Allied Health Sciences',
-    programs: [
-      'Bachelor of Science in Nursing',
-    ],
-  },
-];
-
-const deptAbbrToFull      = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
-const programsByDeptAbbr  = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
-
-const NON_ACADEMIC_OFFICES = [
-  'Accounting Office',
-  'University Clinic',
-  'Human Resources',
-  'Library',
-  'Maintenance',
-  'Registrar Office',
-  'Security Services',
-];
-
-const PLSP_OFFICES_FOR_STAFF = [
-  ...departmentsData.map(d => ({ label: d.abbr, value: d.full })),
-  ...NON_ACADEMIC_OFFICES.map(o => ({ label: o, value: o })),
-];
-
+// ── Standard Constants (Kept hardcoded as they rarely change) ────────────────
 const SUFFIXES            = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 const RELIGIONS           = ['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'];
 const NATIONALITIES       = ['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'];
@@ -121,189 +22,24 @@ const VACCINE_DOSES = [
 ];
 
 // ── Name Normalization ────────────────────────────────────────────────────────
-// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
 const normalizeName = (name) => {
   if (!name) return '';
-  // Trim whitespace
   let trimmed = name.trim();
-  // Convert to lowercase first, then capitalize first letter
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-};
-
-// ── Philippines Address Data ─────────────────────────────────────────────────
-const PHILIPPINES_REGIONS = [
-  { code: 'NCR', name: 'National Capital Region' },
-  { code: 'CAR', name: 'Cordillera Administrative Region' },
-  { code: 'Region I', name: 'Ilocos Region' },
-  { code: 'Region II', name: 'Cagayan Valley' },
-  { code: 'Region III', name: 'Central Luzon' },
-  { code: 'Region IV-A', name: 'CALABARZON' },
-  { code: 'Region IV-B', name: 'MIMAROPA' },
-  { code: 'Region V', name: 'Bicol Region' },
-  { code: 'Region VI', name: 'Western Visayas' },
-  { code: 'Region VII', name: 'Central Visayas' },
-  { code: 'Region VIII', name: 'Eastern Visayas' },
-  { code: 'Region IX', name: 'Zamboanga Peninsula' },
-  { code: 'Region X', name: 'Northern Mindanao' },
-  { code: 'Region XI', name: 'Davao Region' },
-  { code: 'Region XII', name: 'SOCCSKSARGEN' },
-  { code: 'Region XIII', name: 'Caraga' },
-  { code: 'BARMM', name: 'Bangsamoro Autonomous Region in Muslim Mindanao' },
-];
-
-const PHILIPPINES_PROVINCES = {
-  'NCR': [
-    { name: 'Metro Manila', cities: ['Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Manila', 'Marikina', 'Muntinlupa', 'Navotas', 'Pasay', 'Pasig', 'Quezon City', 'San Juan', 'Taguig', 'Valenzuela'] }
-  ],
-  'Region III': [
-    { name: 'Aurora', cities: ['Baler', 'Dipaculao'] },
-    { name: 'Bataan', cities: ['Abucay', 'Bagac', 'Balanga', 'Dinalupihan', 'Hermosa', 'Limay', 'Lubao', 'Mariveles', 'Morong', 'Orani', 'Orion', 'Pilar', 'Samal'] },
-    { name: 'Bulacan', cities: ['Angat', 'Balagtas', 'Baliuag', 'Bocaue', 'Bulacan', 'Bustos', 'Calumpit', 'Guiguinto', 'Hagonoy', 'Malolos', 'Marilao', 'Meycauayan', 'Norzagaray', 'Obando', 'Pandi', 'Paombong', 'Plaridel', 'Pulilan', 'San Ildefonso', 'San Jose del Monte', 'San Miguel', 'San Rafael', 'Santa Maria', 'Doña Remedios Trinidad'] },
-    { name: 'Nueva Ecija', cities: ['Angeles', 'Cabanatuan', 'Gapan', 'Guimba', 'Laoang', 'Licab', 'Llanera', 'Lupao', 'San Antonio', 'San Jose', 'San Leonardo', 'Santo Domingo', 'Talavera', 'Zaragoza'] },
-    { name: 'Pampanga', cities: ['Angeles', 'Apalit', 'Arayat', 'Bacolor', 'Candaba', 'Floridablanca', 'Guagua', 'Lubao', 'Macabebe', 'Magalang', 'Masantol', 'Mexico', 'Minalin', 'Porac', 'San Fernando', 'San Luis', 'San Simon', 'Santa Ana', 'Santa Rita', 'Santo Tomas', 'Sasmuan'] },
-    { name: 'Tarlac', cities: ['Anao', 'Bamban', 'Camiling', 'Capas', 'Concepcion', 'Gerona', 'La Paz', 'Mayantoc', 'Moncada', 'Pancalan', 'Pilar', 'Ramos', 'San Carlos', 'San Clemente', 'San Manuel', 'Santa Rosa', 'Tarlac City', 'Victoria'] },
-    { name: 'Zambales', cities: ['Botolan', 'Cabangan', 'Candelaria', 'Castillejos', 'Iba', 'Masinloc', 'Olongapo', 'San Antonio', 'San Felipe', 'San Marcelino', 'San Narciso', 'Santa Cruz', 'Subic'] }
-  ],
-  'Region IV-A': [
-    { name: 'Batangas', cities: ['Agoncillo', 'Alitagtag', 'Balayan', 'Batangas City', 'Bauan', 'Calaca', 'Calatagan', 'Cuenca', 'Fernando', 'Ibaan', 'Jomalig', 'Lipa', 'Lobo', 'Mabini', 'Malvar', 'Mataasnakahoy', 'Nasugbu', 'Padre Garcia', 'Rosario', 'San Jose', 'San Juan', 'San Luis', 'San Nicolas', 'Santo Tomas', 'Taal', 'Talisay', 'Tanauan', 'Taysan', 'Tingloy', 'Tuy'] },
-    { name: 'Cavite', cities: ['Cavite City', 'Tagaytay', 'Trece Martires', 'Alfonso', 'Amadeo', 'Bacoor', 'Carmona', 'Dasmariñas', 'General Emilio Aguinaldo', 'General Mariano Alvarez', 'Imus', 'Indang', 'Kawit', 'Maragondon', 'Mendez', 'Naic', 'Noveleta', 'Rosario', 'Silang', 'Tanza', 'Ternate'] },
-    { name: 'Laguna', cities: ['San Pablo', 'Alaminos', 'Bay', 'Biñan', 'Cabuyao', 'Calamba', 'Calauan', 'Famy', 'Kalayaan', 'Liliw', 'Los Baños', 'Luisiana', 'Lumban', 'Mabitac', 'Magdalena', 'Majayjay', 'Nagcarlan', 'Paete', 'Pagsanjan', 'Pakil', 'Pangil', 'Pila', 'Rizal', 'San Pedro', 'Santa Cruz', 'Santa Maria', 'Siniloan', 'Victoria'] },
-    { name: 'Rizal', cities: ['Antipolo', 'Angono', 'Baras', 'Binangonan', 'Cainta', 'Cardona', 'Jalajala', 'Morong', 'Pililla', 'Rodriguez', 'San Mateo', 'Taytay'] }
-  ],
-  'Region V': [
-    { name: 'Albay', cities: ['Legazpi', 'Tabaco', 'Ligao', 'Camalig', 'Daraga', 'Guinobatan', 'Jovellar', 'Libon', 'Malilipot', 'Malinao', 'Oas', 'Pioduran', 'Rapu-Rapu', 'Santo Domingo', 'Tibiao'] },
-    { name: 'Camarines Norte', cities: ['Daet', 'Basud', 'Capalonga', 'Daet', 'Javier', 'Labo', 'Mercedes', 'Paracale', 'San Lorenzo Ruiz', 'San Vicente', 'Talisay', 'Vinzons'] },
-    { name: 'Camarines Sur', cities: ['Naga', 'Iriga', 'Baao', 'Balatan', 'Bato', 'Bombon', 'Buenavista', 'Buhi', 'Bula', 'Cabusao', 'Calabanga', 'Camaligan', 'Canaman', 'Caramoan', 'Del Gallego', 'Gainza', 'Garchitorena', 'Goa', 'Lagonoy', 'Libmanan', 'Ligid', 'Milaor', 'Minalabac', 'Nabua', 'Ocampo', 'Pamplona', 'Pasacao', 'Pili', 'Presentacion', 'Sagñay', 'San Andres', 'San Fernando', 'San Jose', 'Sipocot', 'Siruma', 'Tigaon', 'Tinambac'] },
-    { name: 'Catanduanes', cities: ['Virac', 'Bagamanoc', 'Baras', 'Bato', 'Caramoran', 'Gigmoto', 'Pandan', 'Panganiban', 'San Andres', 'San Miguel', 'Viga'] },
-    { name: 'Masbate', cities: ['Masbate City', 'Aroroy', 'Baleno', 'Balud', 'Batuan', 'Cataingan', 'Cawayan', 'Claveria', 'Dimasalang', 'Esperanza', 'Mandaon', 'Milagros', 'Mobo', 'Monreal', 'Palanas', 'Pio V. Corpuz', 'Placer', 'San Fernando', 'San Jacinto', 'San Pascual', 'Uson'] },
-    { name: 'Sorsogon', cities: ['Sorsogon City', 'Barcelona', 'Bulan', 'Bulusan', 'Casiguran', 'Castilla', 'Davao', 'Donsol', 'Gubat', 'Irosin', 'Juban', 'Magallanes', 'Matnog', 'Pilar', 'Prieto Diaz', 'Santa Magdalena'] }
-  ],
-  'Region VI': [
-    { name: 'Aklan', cities: ['Kalibo', 'Altavas', 'Balete', 'Banga', 'Batan', 'Buruanga', 'Ibajay', 'Lezo', 'Libacao', 'Madalag', 'Makato', 'Malay', 'Malinao', 'Nabas', 'New Washington', 'Tangalan'] },
-    { name: 'Antique', cities: ['San Jose', 'Anini-y', 'Barbaza', 'Belison', 'Bugasong', 'Caluya', 'Culasi', 'Hamtic', 'Laua-an', 'Libertad', 'Pandan', 'Patnongon', 'San Remigio', 'Sebaste', 'Sibalom', 'Tibiao', 'Valderrama'] },
-    { name: 'Capiz', cities: ['Roxas City', 'Cuartero', 'Dao', 'Dumalag', 'Dumarao', 'Ivisan', 'Jamindan', 'Maayon', 'Mambusao', 'Panitan', 'Pilar', 'Pontevedra', 'President Roxas', 'Sapi-an', 'Sigma', 'Tapaz'] },
-    { name: 'Iloilo', cities: ['Iloilo City', 'Passi City', 'Ajuy', 'Alimodian', 'Anilao', 'Badiangan', 'Balasan', 'Banate', 'Barotac Nuevo', 'Barotac Viejo', 'Batad', 'Bingawan', 'Culasi', 'Dingle', 'Duenas', 'Dumangas', 'Estancia', 'Guimbal', 'Igbaras', 'Iloilo City', 'Janiuay', 'Lambunao', 'Leganes', 'Lemery', 'Leon', 'Maasin', 'Miag-ao', 'Molo', 'Nabas', 'New Lucena', 'Oton', 'Pavia', 'Pototan', 'San Dionisio', 'San Enrique', 'San Joaquin', 'San Lorenzo', 'San Miguel', 'San Rafael', 'Santa Barbara', 'Santiago', 'Sara', 'Tigbauan', 'Tubungan', 'Zarraga'] },
-    { name: 'Negros Occidental', cities: ['Bacolod', 'Bago', 'Cadiz', 'Escalante', 'Himamaylan', 'Ilog', 'Kabankalan', 'La Carlota', 'Manapla', 'Murcia', 'Pontevedra', 'Pulupandan', 'Sagbayan', 'Salvador Benedicto', 'San Carlos', 'San Enrique', 'Silay', 'Sipalay', 'Talisay', 'Toboso', 'Valladolid', 'Victorias'] }
-  ],
-  'Region VII': [
-    { name: 'Bohol', cities: ['Tagbilaran', 'Albuera', 'Alicia', 'Anda', 'Antequera', 'Bacacay', 'Balilihan', 'Batuan', 'Bien Unido', 'Bilar', 'Buenavista', 'Calape', 'Candijay', 'Carmen', 'Catigbian', 'Clarin', 'Corella', 'Cortes', 'Daanbantayan', 'Danao', 'Datal Bat', 'Dimiao', 'Duero', 'Garcia Hernandez', 'Getafe', 'Guindulman', 'Inabanga', 'Jagna', 'Lila', 'Loay', 'Loboc', 'Mabini', 'Maribojoc', 'Panglao', 'Pilar', 'President Carlos P. Garcia', 'Sierra Bullones', 'Sikatuna', 'Tagbilaran', 'Talibon', 'Trinidad', 'Tubigon', 'Ubay', 'Valencia'] },
-    { name: 'Cebu', cities: ['Cebu City', 'Lapu-Lapu', 'Mandaue', 'Argao', 'Alcantara', 'Alcoy', 'Alegria', 'Aloguinsan', 'Argao', 'Asturias', 'Badian', 'Balamban', 'Bantayan', 'Barili', 'Batuan', 'Bogo', 'Boljoon', 'Borbon', 'Carcar', 'Carmen', 'Catmon', 'Cebu City', 'Compostela', 'Consolacion', 'Cordoba', 'Daanbantayan', 'Dalaguete', 'Danao', 'Dumanjug', 'El Salvador', 'Ginatilan', 'Lapu-Lapu', 'Liloan', 'Madridejos', 'Mandaue', 'Medellin', 'Minglanilla', 'Moalboal', 'Naga', 'Oslob', 'Pilar', 'Pinamalayan', 'Poro', 'Ronda', 'Samboan', 'San Fernando', 'San Francisco', 'San Remigio', 'Santander', 'Sibonga', 'Sogod', 'Tabogon', 'Tabuelan', 'Talisay', 'Toledo', 'Tuburan', 'Tudela'] },
-    { name: 'Negros Oriental', cities: ['Dumaguete', 'Amlan', 'Ayungon', 'Bacnotan', 'Bais', 'Basay', 'Bayawan', 'Bindoy', 'Canlaon', 'Dauin', 'Dumaguete', 'Guihulngan', 'Jimalalud', 'La Libertad', 'Mabinay', 'Manjuyod', 'Pamplona', 'San Jose', 'San Manuel', 'Santa Catalina', 'Siaton', 'Sibulan', 'Tanjay', 'Tayasan', 'Valencia', 'Vallehermoso', 'Zamboanguita'] }
-  ],
-  'Region VIII': [
-    { name: 'Biliran', cities: ['Naval', 'Almeria', 'Biliran', 'Cabucgayan', 'Culasi', 'Kawayan', 'Maripipi', 'Naval', 'Sohoton', 'Tubig', 'WITHOUT CITY'] },
-    { name: 'Eastern Samar', cities: ['Borongan', 'Arteche', 'Balangiga', 'Balangkayan', 'Borongan', 'Can-avid', 'Dolores', 'General MacArthur', 'Giporlos', 'Guiuan', 'Hernani', 'Jipapad', 'Llorente', 'Maslog', 'Maydolong', 'Mercedes', 'Oras', 'Quinapondan', 'Salcedo', 'San Julian', 'San Policarpo', 'Sulat', 'Taft'] },
-    { name: 'Leyte', cities: ['Tacloban', 'Ormoc', 'Abuyog', 'Alangalang', 'Albuera', 'Babatngon', 'Barugo', 'Bato', 'Baybay', 'Burauen', 'Calubian', 'Capoocan', 'Carigara', 'Dagami', 'Dulag', 'Hilongos', 'Hindang', 'Inopacan', 'Jaro', 'Javier', 'Julita', 'Kananga', 'La Paz', 'Leyte', 'Libong', 'Liloan', 'Limay', 'Matalom', 'Mayorga', 'Merida', 'Palo', 'Palompon', 'Pastrana', 'San Fernando', 'San Ricardo', 'Sohol', 'Tabango', 'Tabontanon', 'Tacloban', 'Talisayan', 'Tanauan', 'Tolosa', 'Tunga', 'Villaba'] },
-    { name: 'Northern Samar', cities: ['Catarman', 'Allen', 'Biri', 'Bobon', 'Calbayog', 'Catarman', 'Catubig', 'Claveria', 'Darag', 'Gamay', 'Laoang', 'Lapinig', 'Las Navas', 'Lope de Vega', 'Mapanas', 'Mondragon', 'Palapag', 'Pambujan', 'Mondragon', 'Rosario', 'San Antonio', 'San Jose', 'San Roque', 'San Vicente', 'Silvino Luyos', 'Tagbilaran', 'Victoria'] },
-    { name: 'Samar', cities: ['Catbalogan', 'Basey', 'Calbiga', 'Catbalogan', 'Daram', 'Gandara', 'Hinabangan', 'Jiabong', 'Marabut', 'Motion', 'Pinamalayan', 'San Jorge', 'San Jose de Buan', 'San Sebastian', 'Santo Niño', 'Tagas', 'Talalora', 'Tarangnan', 'Villareal', 'Zumarraga'] },
-    { name: 'Southern Leyte', cities: ['Maasin', 'Anahawan', 'Bontoc', 'Cabulijan', 'Hinunangan', 'Hinukay', 'Libagon', 'Liloan', 'Maasin', 'Macrohon', 'Malitbog', 'Padre Burgos', 'Pintuyan', 'Saint Bernard', 'San Francisco', 'San Juan', 'San Ricardo', 'Silago', 'Sogod', 'Tahusan', 'Tomas Oppus'] }
-  ],
-  'Region IX': [
-    { name: 'Zamboanga del Norte', cities: ['Dipolog', 'Dapitan', 'Katipunan', 'Labason', 'Liloy', 'Manukan', 'Mutia', 'Piñan', 'Polanco', 'Pres. Manuel A. Roxas', 'Rizal', 'Salug', 'Sergio Osmena Sr.', 'Sibuco', 'Sibutad', 'Siocon', 'Sirawai', 'Tampilisan'] },
-    { name: 'Zamboanga del Sur', cities: ['Pagadian', 'Aurora', 'Bayog', 'Dimataling', 'Dinas', 'Dumalinao', 'Gumangan', 'Josefina', 'Kumalarang', 'Labangan', 'Lakewood', 'Lapuyan', 'Mahayag', 'Magsaysay', 'Maitum', 'Malangas', 'Margosatubig', 'Meo', 'Midsalip', 'Molave', 'Naga', 'Pitogo', 'Ramon Magsaysay', 'San Miguel', 'San Pablo', 'Sominot', 'Tabina', 'Tambulig', 'Tukuran', 'Vincenzo A. Sagun'] },
-    { name: 'Zamboanga Sibugay', cities: ['Ipil', 'Buluan', 'Buug', 'Diplahan', 'Imelda', 'Ipil', 'Kabasalan', 'Kalawsan', 'Kumalarang', 'Mabuhay', 'Malangas', 'Naga', 'Olutanga', 'Payao', 'Roseller T. Lim', 'Siay', 'Sibugay', 'Talusan', 'Tungawan'] }
-  ],
-  'Region X': [
-    { name: 'Bukidnon', cities: ['Malaybalay', 'Valencia', 'Baungon', 'Cabanglasan', 'Damulog', 'Dangcagan', 'Don Carlos', 'Impasugong', 'Kadingilan', 'Kalilangan', 'Kibawe', 'Kitaotao', 'Lantapan', 'Libona', 'Malitbog', 'Manolo Fortich', 'Maramag', 'Pangantucan', 'Quezon', 'San Fernando', 'Sumilao', 'Talakag', 'Valladolid', 'Veruela'] },
-    { name: 'Camiguin', cities: ['Mambajao', 'Catarman', 'Guinsiliban', 'Mahinog', 'Sagbayan'] },
-    { name: 'Lanao del Norte', cities: ['Iligan', 'Bacolod', 'Baloi', 'Baroy', 'Damascus', 'Iligan', 'Kapatagan', 'Lala', 'Linamon', 'Magsaysay', 'Maigo', 'Matungao', 'Nunukan', 'Pandanan', 'Pantar', 'Poona Piagapo', 'Salvador', 'Sapiano', 'Tagoloan', 'Tubod'] },
-    { name: 'Misamis Occidental', cities: ['Oroquieta', 'Aloran', 'Baliangao', 'Bonifacio', 'Calamba', 'Clarin', 'Concepcion', 'Don Victoriano Chiongbian', 'Jasa', 'Lopez Jaena', 'Oroquieta', 'Ozamiz', 'Panaon', 'Plaridel', 'Sapang Dalaga', 'Sinacaban', 'Tudela'] },
-    { name: 'Misamis Oriental', cities: ['Cagayan de Oro', 'Alubijid', 'Balingasag', 'Balingoan', 'Binuangan', 'Cagayan de Oro', 'Claveria', 'El Salvador', 'Gingoog', 'Gitagum', 'Initao', 'Jasaan', 'Kinoguitan', 'Lagonglong', 'Laguindingan', 'Libertad', 'Lugait', 'Magsaysay', 'Manticao', 'Medina', 'Naawan', 'Opol', 'Oton', 'Tagoloan', 'Talusan', 'Villanueva'] }
-  ],
-  'Region XI': [
-    { name: 'Davao del Norte', cities: ['Tagum', 'Asuncion', 'Braulio E. Dujali', 'Carmen', 'Dapa', 'Don Marcelino', 'Kapalong', 'Mabini', 'Maco', 'Manat', 'Montevista', 'Nabunturan', 'New Bataan', 'Padre Burgos', 'Pantukan', 'San Francisco', 'Santo Tomas', 'Tagum', 'Talaingod'] },
-    { name: 'Davao del Sur', cities: ['Davao City', 'Bansalan', 'Davao City', 'Digos', 'Hagonoy', 'Koronadal', 'Magsaysay', 'Malalag', 'Matanao', 'Padada', 'Santa Cruz', 'Sulop'] },
-    { name: 'Davao Oriental', cities: ['Mati', 'Banaybanay', 'Boston', 'Cateel', 'Davao Oriental', 'Governor Generoso', 'Lupon', 'Manay', 'Mati', 'San Isidrio', 'Tarragona'] },
-    { name: 'South Cotabato', cities: ['Koronadal', 'Bangha', 'Banga', 'Koronadal', 'Lake Sebu', 'Norala', 'Polomolok', 'Santo Niño', 'Surallah', 'Tampakan', 'Tantangan', 'Tboli'] },
-    { name: 'Sultan Kudarat', cities: ['Isulan', 'Bagumbayan', 'Columbio', 'Esperanza', 'Isulan', 'Kalamansi', 'Lebak', 'Lutayan', 'Palimbang', 'President Quirino', 'Sen. Ninoy Aquino', 'Tacurong'] }
-  ],
-};
-
-// Get provinces by region name
-const getProvincesByRegion = (regionName) => {
-  // Find region code by name
-  const region = PHILIPPINES_REGIONS.find(r => r.name === regionName);
-  if (!region) return [];
-
-  // Check both code and name as keys
-  return PHILIPPINES_PROVINCES[region.code] || PHILIPPINES_PROVINCES[regionName] || [];
-};
-
-// Get cities by province
-const getCitiesByProvince = (regionName, provinceName) => {
-  const provinces = getProvincesByRegion(regionName);
-  const province = provinces.find(p => p.name === provinceName);
-  return province ? province.cities : [];
-};
-
-// Build full address
-const buildFullAddress = (formData) => {
-  const parts = [];
-  if (formData.addressStreet) parts.push(formData.addressStreet);
-  if (formData.addressBarangay) parts.push(formData.addressBarangay);
-  if (formData.addressCity) parts.push(formData.addressCity);
-  if (formData.addressProvince) parts.push(formData.addressProvince);
-  if (formData.addressRegion) parts.push(formData.addressRegion);
-  if (formData.addressCountry) parts.push(formData.addressCountry);
-  if (formData.addressZipCode) parts.push(formData.addressZipCode);
-  return parts.join(', ');
 };
 
 const API_URL     = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const TOTAL_STEPS = 3;
 
-function getDefaultClassification(role) {
-  const classMap = {
-    'administrator': 'System Administrator',
-    'admin':         'System Administrator',
-    'sysadmin':      'System Administrator',
-    'nurse':         'Nurse Personnel',
-    'doctor':        'Physician / Doctor',
-    'dentist':       'Dentist',
-    'staff':         'Non-Teaching Personnel',
-    'employee':      'Non-Teaching Personnel',
-    'guard':         'Security Personnel',
-    'technician':    'Non-Teaching Personnel',
-    'librarian':     'Non-Teaching Personnel',
-    'lecturer':      'Teaching Personnel',
-    'professor':     'Teaching Personnel',
-    'instructor':    'Teaching Personnel',
-  };
-  return classMap[role] || 'Teaching Personnel';
-}
-
-function getDefaultJobTitle(role) {
-  const titleMap = {
-    'nurse':         'Nurse',
-    'doctor':        'Physician',
-    'dentist':       'Dentist',
-    'admin':         'System Administrator',
-    'sysadmin':      'System Administrator',
-    'administrator': 'System Administrator',
-    'lecturer':      'Lecturer',
-    'professor':     'Professor',
-    'instructor':    'Instructor',
-    'librarian':     'Librarian',
-    'technician':    'Technician',
-    'guard':         'Security Guard',
-    'staff':         'Staff',
-  };
-  return titleMap[role] || '';
-}
-
-// ── Phone helpers ─────────────────────────────────────────────────────────────
 const sanitizePhone = (value) => value.replace(/\D/g, '').slice(0, 11);
-
 const validatePhone = (value) => {
   if (!value) return 'Phone number is required.';
   if (value.length !== 11) return 'Phone number must be exactly 11 digits.';
   if (!value.startsWith('09')) return 'Phone number must start with 09.';
   return '';
 };
-
 const isEmpty = (v) => !v || !String(v).trim();
 
-// ── Age calculator ────────────────────────────────────────────────────────────
 function calcAge(isoDate) {
   if (!isoDate) return '';
   const birth = new Date(isoDate);
@@ -311,10 +47,9 @@ function calcAge(isoDate) {
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age; // returns number
+  return age;
 }
 
-// Validate age is realistic
 function isValidAge(age) {
   if (age === '' || age === null || age === undefined) return false;
   const numAge = Number(age);
@@ -332,16 +67,121 @@ const ProfileSetup = ({ user, onComplete }) => {
 
   const rawRole  = user?.role || 'student';
   const userRole = rawRole.toLowerCase();
-
-  // Check if user is sysadmin - skip profile setup entirely for sysadmin
   const isSysAdmin = userRole === 'sysadmin' || userRole === 'administrator' || userRole === 'admin';
 
-  // Prevent infinite loop
+  // ── Dynamic System Configuration States ──
+  const [configData, setConfigData] = useState({
+    departments: [],
+    non_academic_offices: [],
+    classifications: {},
+    job_titles: {}
+  });
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+
+  const [formData, setFormData] = useState({
+    firstName:     user?.firstName    || '',
+    middleName:    user?.middleName   || '',
+    lastName:      user?.lastName     || '',
+    suffix:        user?.suffix       || '',
+    birthday:      '',
+    age:           '',
+    sex:           '',
+    bloodType:     '',
+    homeAddress:   '',
+    addressCountry:   'Philippines',
+    addressRegion:    '',
+    addressProvince:  '',
+    addressCity:      '',
+    addressBarangay:  '',
+    addressStreet:    '',
+    addressZipCode:   '',
+    religion:      '',
+    nationality:   'Filipino',
+    civilStatus:   'Single',
+    universityId:           user?.universityId || '',
+    departmentAbbr:         '',
+    department:             '',
+    program:                '',
+    yearLevel:              '1st Year',
+    section:                '',
+    studentClassification:  'Regular',
+    classification:         '',
+    jobTitle:               '',
+    email:       user?.email || '',
+    phoneNumber: '',
+    emergencyName:         '',
+    emergencyRelationship: '',
+    emergencyPhone:        '',
+    emergencyAddress:      '',
+    emergencyAddressCountry:   'Philippines',
+    emergencyAddressRegion:    '',
+    emergencyAddressProvince:  '',
+    emergencyAddressCity:      '',
+    emergencyAddressBarangay:  '',
+    emergencyAddressStreet:    '',
+    emergencyAddressZipCode:   '',
+    vaccinations: {
+      dose1:    { vaccineName: '', date: '' },
+      dose2:    { vaccineName: '', date: '' },
+      booster1: { vaccineName: '', date: '' },
+      booster2: { vaccineName: '', date: '' },
+    },
+  });
+
+  const [errors, setErrors] = useState({});
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showEmergencyAddressModal, setShowEmergencyAddressModal] = useState(false);
   const hasAttemptedAdminSetup = useRef(false);
+
+  // Auth Guard
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) navigate('/login');
+  }, [navigate]);
+
+  // Fetch System Configurations on Mount
+  useEffect(() => {
+    const fetchSystemConfig = async () => {
+      try {
+        const response = await fetch(`${API_URL}/system-config`);
+        const result = await response.json();
+
+        if (result.success) {
+          setConfigData(result.data);
+
+          // Pre-fill default classification and job title based on user role from DB data
+          setFormData(prev => ({
+            ...prev,
+            classification: result.data.classifications[userRole] || '',
+            jobTitle: result.data.job_titles[userRole] || ''
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch system configuration:', error);
+      } finally {
+        setIsConfigLoading(false);
+      }
+    };
+
+    fetchSystemConfig();
+  }, [userRole]);
+
+  // ── Derived Data Variables ──
+  const deptAbbrToFull = Object.fromEntries(configData.departments.map(d => [d.abbr, d.full]));
+  const programsByDeptAbbr = Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs]));
+
+  const PLSP_OFFICES_FOR_STAFF = [
+    ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
+    ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
+  ];
+
+  // Extract unique classifications and job titles for dropdown options
+  const uniqueClassifications = Array.from(new Set(Object.values(configData.classifications)));
+  const uniqueJobTitles = Array.from(new Set(Object.values(configData.job_titles)));
 
   // Auto-complete profile setup for sysadmin
   useEffect(() => {
-    if (isSysAdmin && !hasAttemptedAdminSetup.current) {
+    if (isSysAdmin && !hasAttemptedAdminSetup.current && !isConfigLoading) {
       hasAttemptedAdminSetup.current = true;
 
       const completeSysAdminProfile = async () => {
@@ -352,8 +192,6 @@ const ProfileSetup = ({ user, onComplete }) => {
         }
 
         try {
-          // 1. Include required fields using the 'user' prop to prevent the DB 500 error
-          // 2. Use camelCase because user.service.js maps it internally
           const payload = {
             firstName: user?.firstName || 'Admin',
             lastName: user?.lastName || 'Admin',
@@ -361,8 +199,8 @@ const ProfileSetup = ({ user, onComplete }) => {
             birthday: user?.birthday || '1990-01-01',
             age: user?.age ? Number(user.age) : 36,
             role: userRole,
-            classification: 'System Administrator',
-            jobTitle: 'System Administrator'
+            classification: configData.classifications[userRole] || 'System Administrator',
+            jobTitle: configData.job_titles[userRole] || 'System Administrator'
           };
 
           const response = await fetch(`${API_URL}/user/profile-setup`, {
@@ -375,16 +213,14 @@ const ProfileSetup = ({ user, onComplete }) => {
             const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
             localStorage.setItem('user', JSON.stringify({ ...storedUser, isProfileSetup: true, profileComplete: true }));
 
-            // ONLY navigate and reload if the backend successfully saved the data
             if (onComplete) {
               onComplete();
             } else {
               navigate('/dashboard');
-              window.location.reload(); // Safe to reload now
+              window.location.reload();
             }
           } else {
             console.error("Auto-setup failed with status:", response.status);
-            // If it fails, we DO NOT reload. We just unmount the modal to break the loop.
             if (onComplete) onComplete();
           }
         } catch (err) {
@@ -395,88 +231,22 @@ const ProfileSetup = ({ user, onComplete }) => {
 
       completeSysAdminProfile();
     }
-  }, [isSysAdmin, navigate, onComplete, userRole, user]); // Added 'user' to dependencies
+  }, [isSysAdmin, navigate, onComplete, userRole, user, isConfigLoading, configData]);
 
-  // If sysadmin, show a loading screen while rerouting
-  if (isSysAdmin) {
+
+  // Show loading screen while fetching initial API configuration or routing sysadmin
+  if (isSysAdmin || isConfigLoading) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
          <div className="flex flex-col items-center gap-3">
             <span className="w-8 h-8 border-4 border-white/40 border-t-white rounded-full animate-spin"></span>
-            <p className="text-white font-bold tracking-widest text-sm">ROUTING ADMIN...</p>
+            <p className="text-white font-bold tracking-widest text-sm">
+              {isSysAdmin ? 'ROUTING ADMIN...' : 'LOADING CONFIGURATION...'}
+            </p>
          </div>
       </div>
     );
   }
-
-  const [formData, setFormData] = useState({
-    // STEP 1 – Personal
-    firstName:     user?.firstName     || '',
-    middleName: user?.middleName || '',
-    lastName:      user?.lastName      || '',
-    suffix:        user?.suffix        || '',
-    birthday:      '',
-    age:           '',
-    sex:           '',
-    bloodType:     '',
-    homeAddress:   '',
-    // Address fields
-    addressCountry:   'Philippines',
-    addressRegion:    '',
-    addressProvince: '',
-    addressCity:      '',
-    addressBarangay:  '',
-    addressStreet:    '',
-    addressZipCode:   '',
-    religion:      '',
-    nationality:   'Filipino',
-    civilStatus:   'Single',
-
-    // STEP 2 – Academic / Work
-    universityId:           user?.universityId || '',
-    departmentAbbr:         '',
-    department:             '',
-    program:                '',
-    yearLevel:              '1st Year',
-    section:                '',
-    studentClassification:  'Regular',  // ← tracked here
-    classification:         getDefaultClassification(userRole),
-    jobTitle:               getDefaultJobTitle(userRole),
-
-    // STEP 3 – Contact & Emergency
-    email:       user?.email || '',
-    phoneNumber: '',
-
-    emergencyName:         '',
-    emergencyRelationship: '',
-    emergencyPhone:        '',
-    emergencyAddress:      '',
-    // Emergency Address fields
-    emergencyAddressCountry:   'Philippines',
-    emergencyAddressRegion:    '',
-    emergencyAddressProvince: '',
-    emergencyAddressCity:      '',
-    emergencyAddressBarangay:  '',
-    emergencyAddressStreet:    '',
-    emergencyAddressZipCode:   '',
-
-    vaccinations: {
-      dose1:    { vaccineName: '', date: '' },
-      dose2:    { vaccineName: '', date: '' },
-      booster1: { vaccineName: '', date: '' },
-      booster2: { vaccineName: '', date: '' },
-    },
-  });
-
-  const [errors, setErrors] = useState({});
-  const [showAddressModal, setShowAddressModal] = useState(false);
-  const [showEmergencyAddressModal, setShowEmergencyAddressModal] = useState(false);
-
-  // Auth Guard
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) navigate('/login');
-  }, [navigate]);
 
   // ── Field change handler ──────────────────────────────────────────────────
   const handleChange = (e) => {
@@ -508,60 +278,18 @@ const ProfileSetup = ({ user, onComplete }) => {
       return;
     }
 
-    // Handle address field changes
-    if (id.startsWith('address')) {
-      let updatedData = { [id]: value };
-
-      // When region changes, reset province, city, barangay
-      if (id === 'addressRegion') {
-        updatedData = {
-          ...updatedData,
-          addressProvince: '',
-          addressCity: '',
-          addressBarangay: '',
-        };
-      }
-      // When province changes, reset city, barangay
-      if (id === 'addressProvince') {
-        updatedData = {
-          ...updatedData,
-          addressCity: '',
-          addressBarangay: '',
-        };
-      }
-      // When city changes, reset barangay
-      if (id === 'addressCity') {
-        updatedData = {
-          ...updatedData,
-          addressBarangay: '',
-        };
-      }
-
-      setFormData(prev => {
-        const newData = { ...prev, ...updatedData };
-        // Update homeAddress with full address string
-        newData.homeAddress = buildFullAddress(newData);
-        return newData;
-      });
-      clearError(id);
-      return;
-    }
-
     setFormData(prev => ({ ...prev, [id]: value }));
     clearError(id);
   };
 
-  // ── Birthday change (from DatePicker) ────────────────────────────
   const handleBirthdayChange = (isoDate) => {
     const calculatedAge = calcAge(isoDate);
 
-    // Validate age is realistic
     if (isoDate && !isValidAge(calculatedAge)) {
       setError('birthday', calculatedAge < 1 ? 'Birthday cannot be in the future.' : 'Please enter a valid birthday.');
       return;
     }
 
-    // Store age as string to match the original behavior
     setFormData(prev => ({ ...prev, birthday: isoDate, age: String(calculatedAge) }));
     clearError('birthday');
   };
@@ -624,7 +352,6 @@ const ProfileSetup = ({ user, onComplete }) => {
     </div>
   );
 
-  // ── Step validation ───────────────────────────────────────────────────────
   const validateStep = (targetStep) => {
     const newErrors = {};
 
@@ -644,6 +371,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         if (isEmpty(formData.program))        newErrors.program        = 'Program is required.';
         if (isEmpty(formData.section))        newErrors.section        = 'Section is required.';
       } else {
+        if (isEmpty(formData.classification)) newErrors.classification = 'Classification is required.';
         if (isEmpty(formData.department)) newErrors.department = 'Office / Department is required.';
         if (isEmpty(formData.jobTitle))   newErrors.jobTitle   = 'Job title is required.';
       }
@@ -680,7 +408,6 @@ const ProfileSetup = ({ user, onComplete }) => {
 
   const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
 
-  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -698,6 +425,7 @@ const ProfileSetup = ({ user, onComplete }) => {
       if (isEmpty(formData.program))        allErrors.program        = 'Program is required.';
       if (isEmpty(formData.section))        allErrors.section        = 'Section is required.';
     } else {
+      if (isEmpty(formData.classification)) allErrors.classification = 'Classification is required.';
       if (isEmpty(formData.department)) allErrors.department = 'Office / Department is required.';
       if (isEmpty(formData.jobTitle))   allErrors.jobTitle   = 'Job title is required.';
     }
@@ -712,7 +440,7 @@ const ProfileSetup = ({ user, onComplete }) => {
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors);
       if (allErrors.firstName || allErrors.lastName || allErrors.birthday || allErrors.sex) { setStep(1); return; }
-      if (allErrors.universityId || allErrors.departmentAbbr || allErrors.department || allErrors.program || allErrors.section || allErrors.jobTitle) { setStep(2); return; }
+      if (allErrors.universityId || allErrors.departmentAbbr || allErrors.department || allErrors.program || allErrors.section || allErrors.jobTitle || allErrors.classification) { setStep(2); return; }
       if (allErrors.phoneNumber || allErrors.emergencyName || allErrors.emergencyRelationship || allErrors.emergencyPhone) { setStep(3); return; }
       return;
     }
@@ -727,9 +455,8 @@ const ProfileSetup = ({ user, onComplete }) => {
       }
 
       const payload = {
-        // Personal - normalize names (first letter capitalize, rest lowercase)
         firstName:     normalizeName(formData.firstName),
-        middleName: normalizeName(formData.middleName),
+        middleName:    normalizeName(formData.middleName),
         lastName:      normalizeName(formData.lastName),
         suffix:        formData.suffix,
         birthday:      formData.birthday,
@@ -741,33 +468,25 @@ const ProfileSetup = ({ user, onComplete }) => {
         nationality:   formData.nationality,
         civilStatus:   formData.civilStatus,
 
-        // Academic / Work
         universityId:  formData.universityId,
         department:    formData.department,
         program:       formData.program,
         yearLevel:     formData.yearLevel,
         section:       formData.section,
-        // ✅ FIX: studentClassification is now included in the payload
         studentClassification: userRole === 'student' ? formData.studentClassification : '',
         classification: formData.classification,
         jobTitle:      formData.jobTitle,
 
-        // Contact
         email:         formData.email,
         phoneNumber:   formData.phoneNumber,
-
-        // Emergency Contact
         emergencyContact: {
           name:         formData.emergencyName,
           relationship: formData.emergencyRelationship,
           phone:        formData.emergencyPhone,
           address:      formData.emergencyAddress,
         },
-
-        // Vaccinations
         vaccinations:    formData.vaccinations,
 
-        // Meta
         role:            userRole,
         is_profile_setup:  true,
         profile_complete: true,
@@ -811,7 +530,6 @@ const ProfileSetup = ({ user, onComplete }) => {
     }
   };
 
-  // ── Shared styles ─────────────────────────────────────────────────────────
   const STEP_LABELS = ['Personal', userRole === 'student' ? 'Academic' : 'Work', 'Contact & Emergency'];
 
   const tabClass = (tabNum) =>
@@ -845,18 +563,15 @@ const ProfileSetup = ({ user, onComplete }) => {
     Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[520px] p-8 overflow-hidden">
 
-        {/* Header */}
         <div className="mb-5 text-center">
           <h1 className="text-2xl font-black text-[#1a2e22]">Complete Your Profile</h1>
           <p className="text-sm text-[#6b8577] mt-1">Step {step} of {TOTAL_STEPS} — {STEP_LABELS[step - 1]}</p>
         </div>
 
-        {/* Progress Bar */}
         <div className="w-full h-1.5 bg-[#e2f0ea] rounded-full mb-5 overflow-hidden">
           <div
             className="h-full bg-[#2d7a52] rounded-full transition-all duration-500"
@@ -864,7 +579,6 @@ const ProfileSetup = ({ user, onComplete }) => {
           />
         </div>
 
-        {/* Step Tabs */}
         <div className="flex justify-between mb-5 px-1 gap-1">
           {STEP_LABELS.map((label, i) => (
             <div key={label} className={tabClass(i + 1)} onClick={() => setStep(i + 1)}>{label}</div>
@@ -910,7 +624,6 @@ const ProfileSetup = ({ user, onComplete }) => {
                 </div>
               </div>
 
-              {/* ── Birthday row: DatePicker + Age ── */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className={labelCls}>Birthday <span className="text-red-400">*</span></label>
@@ -1019,7 +732,7 @@ const ProfileSetup = ({ user, onComplete }) => {
                       <label className={labelCls}>Department <span className="text-red-400">*</span></label>
                       <select id="departmentAbbr" required className={`${selectCls} ${inputErrCls('departmentAbbr')}`} value={formData.departmentAbbr} onChange={handleChange}>
                         <option value="" disabled>Select Dept</option>
-                        {departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}
+                        {configData.departments.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}
                       </select>
                       {formData.departmentAbbr && (
                         <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">
@@ -1060,7 +773,6 @@ const ProfileSetup = ({ user, onComplete }) => {
                     </div>
                   </div>
 
-                  {/* Student Classification */}
                   <div>
                     <label className={labelCls}>Student Classification</label>
                     <div className="flex gap-2 mt-1">
@@ -1092,11 +804,13 @@ const ProfileSetup = ({ user, onComplete }) => {
                 <>
                   <div>
                     <label className={labelCls}>Classification <span className="text-red-400">*</span></label>
-                    <select id="classification" required className={selectCls} value={formData.classification} onChange={handleChange}>
-                      {['Teaching Personnel', 'Nurse Personnel', 'Dentist', 'Physician / Doctor', 'Non-Teaching Personnel', 'Security Personnel'].map(c => (
+                    <select id="classification" required className={`${selectCls} ${inputErrCls('classification')}`} value={formData.classification} onChange={handleChange}>
+                      <option value="" disabled>Select Classification</option>
+                      {uniqueClassifications.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
+                    {fieldError('classification')}
                   </div>
 
                   <div>
@@ -1105,7 +819,7 @@ const ProfileSetup = ({ user, onComplete }) => {
                       <option value="" disabled>Select Office</option>
                       {PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
-                    {formData.department && departmentsData.find(d => d.full === formData.department) && (
+                    {formData.department && configData.departments.find(d => d.full === formData.department) && (
                       <p className="text-[10px] text-[#6b8577] mt-1 ml-1 leading-tight">{formData.department}</p>
                     )}
                     {fieldError('department')}
@@ -1113,9 +827,12 @@ const ProfileSetup = ({ user, onComplete }) => {
 
                   <div>
                     <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
-                    <input id="jobTitle" type="text" placeholder="e.g. Associate Professor" required
-                      className={`${inputCls} ${inputErrCls('jobTitle')}`}
-                      value={formData.jobTitle} onChange={handleChange} />
+                    <select id="jobTitle" required className={`${selectCls} ${inputErrCls('jobTitle')}`} value={formData.jobTitle} onChange={handleChange}>
+                      <option value="" disabled>Select Job Title</option>
+                      {uniqueJobTitles.map(title => (
+                        <option key={title} value={title}>{title}</option>
+                      ))}
+                    </select>
                     {fieldError('jobTitle')}
                   </div>
                 </>
@@ -1221,20 +938,15 @@ const ProfileSetup = ({ user, onComplete }) => {
 
         </form>
 
-        {/* Address Modal - using reusable component */}
         <AddressModal
           isOpen={showAddressModal}
           onClose={() => setShowAddressModal(false)}
           onConfirm={(addressData) => {
-            setFormData(prev => ({
-              ...prev,
-              ...addressData
-            }));
+            setFormData(prev => ({ ...prev, ...addressData }));
           }}
           initialData={formData}
         />
 
-        {/* Emergency Address Modal */}
         <AddressModal
           isOpen={showEmergencyAddressModal}
           onClose={() => setShowEmergencyAddressModal(false)}

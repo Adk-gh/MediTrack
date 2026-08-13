@@ -117,6 +117,13 @@ const LoginForm = () => {
   return (
     <>
       <style>{`
+        /* Force the entire page to allow natural scrolling (overrides layout restrictions) */
+        html, body, #root {
+          height: auto !important;
+          min-height: 100vh;
+          overflow-y: auto !important;
+        }
+
         @keyframes lf-spin { to { transform: rotate(360deg); } }
         @keyframes m-fadeUp {
           from { opacity: 0; transform: translateY(24px); }
@@ -146,11 +153,14 @@ const LoginForm = () => {
           margin-right: 8px;
         }
 
-        .lf-desktop-wrapper { display: block; }
+        .lf-desktop-wrapper {
+          display: block;
+          padding-bottom: 60px; /* Ensures the bottom of the form doesn't hug the screen edge when scrolling */
+        }
         .lf-mobile-wrapper  { display: none; }
         @media (max-width: 640px) {
           .lf-desktop-wrapper { display: none !important; }
-          .lf-mobile-wrapper  { display: flex !important; }
+          .lf-mobile-wrapper  { display: flex !important; flex-direction: column; }
         }
 
         .lf-animate-loaded .lf-field {
@@ -247,11 +257,19 @@ const LoginForm = () => {
 
         @media (max-width: 640px) {
           .lf-mobile-wrapper {
-            position: fixed; inset: 0;
+            position: fixed; /* Lock to viewport */
+            top: 0; left: 0; right: 0; bottom: 0;
+            height: 100dvh; /* Dynamic viewport height for modern mobile browsers */
+            height: 100vh;  /* Fallback */
+            display: flex;
             flex-direction: column;
             background: #F2F4F3;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
+            overflow-y: auto; /* Enable vertical scrolling */
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+            width: 100%;
+            box-sizing: border-box;
+            z-index: 10;
           }
 
           .m-topbar {
@@ -292,7 +310,7 @@ const LoginForm = () => {
             background: #fff;
             border-radius: 28px 28px 0 0;
             padding: 32px 24px 52px;
-            flex: 1;
+            flex: 1 0 auto; /* Allow card to expand and fill remaining space */
             box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
             animation: m-fadeUp 0.5s ease 0.2s both;
           }
@@ -399,16 +417,16 @@ const LoginForm = () => {
           .m-loaded .m-topbar { animation: m-fadeIn 0.4s ease both; }
 
           /* Hide Microsoft Edge native password reveal and clear icons */
-input[type="password"]::-ms-reveal,
-input[type="password"]::-ms-clear {
-  display: none;
-}
+          input[type="password"]::-ms-reveal,
+          input[type="password"]::-ms-clear {
+            display: none;
+          }
 
-/* Hide native WebKit password reveal icons (just in case future Safari/Chrome updates add them) */
-input[type="password"]::-webkit-credentials-auto-fill-button {
-  visibility: hidden;
-  display: none !important;
-}
+          /* Hide native WebKit password reveal icons */
+          input[type="password"]::-webkit-credentials-auto-fill-button {
+            visibility: hidden;
+            display: none !important;
+          }
         }
       `}</style>
 

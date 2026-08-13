@@ -41,6 +41,7 @@ const TextInput = memo(({ value, onChange, placeholder, readOnly, width = '100%'
     readOnly={readOnly}
     style={{
       width: width,
+      maxWidth: '100%',
       boxSizing: 'border-box',
       border: 'none',
       borderBottom: '1px solid #cbd5e1',
@@ -51,6 +52,7 @@ const TextInput = memo(({ value, onChange, placeholder, readOnly, width = '100%'
       fontFamily: 'helvetica, sans-serif',
       padding: '2px 4px',
       marginLeft: 8,
+      minWidth: 0,
     }}
   />
 ));
@@ -795,7 +797,7 @@ ln(1, 5);
 
   return (
     <>
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '36px 42px', marginTop: 20, position: 'relative' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '36px 42px', marginTop: 20, position: 'relative', overflowX: 'hidden' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16, paddingBottom: 14 }}>
           <div style={{ width: 56, height: 56, flexShrink: 0 }}>
@@ -805,7 +807,7 @@ ln(1, 5);
               <div style={{ width: '100%', height: '100%', background: '#f1f5f9', borderRadius: '50%' }} />
             )}
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, fontFamily: 'helvetica, sans-serif', color: '#1a2e22', letterSpacing: 0.5 }}>PAMANTASAN NG LUNGSOD NG SAN PABLO</div>
             <div style={{ fontSize: 18, fontWeight: 900, fontFamily: 'helvetica, sans-serif', color: '#466460', lineHeight: 1.2 }}>HEALTH SERVICES OFFICE</div>
             <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'helvetica, sans-serif', marginTop: 3 }}>
@@ -828,7 +830,7 @@ ln(1, 5);
 
         {/* Greeting & Intro */}
         <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 13, color: '#334155', lineHeight: 2.0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
             <span style={{ fontWeight: 600, color: '#0f172a' }}>Dear Mr./Ms.</span>
             <TextInput value={patientFullName} readOnly={true} width="300px" style={{ fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #466460' }} />
           </div>
@@ -838,7 +840,7 @@ ln(1, 5);
         </div>
 
         {/* Findings Sections */}
-        <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
           <div>
             <p style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 13, color: '#0f172a', marginBottom: 8 }}>Needs Restoration (Filling):</p>
             <DentalNotesTextarea value={restoration} onChange={handleRestoration} readOnly={readOnly} rows={4} />
@@ -875,7 +877,7 @@ ln(1, 5);
 
         {/* School Dentist Signature */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 32 }}>
-          <div style={{ textAlign: 'center', minWidth: 200 }}>
+          <div style={{ textAlign: 'center', minWidth: 200, maxWidth: '100%' }}>
             <div style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, color: '#334155', marginBottom: 8 }}>Very Truly Yours,</div>
 
             {dentistInfo.signatureUrl && (
@@ -886,7 +888,7 @@ ln(1, 5);
               />
             )}
 
-            <div style={{ borderBottom: '1px solid #0f172a', paddingBottom: 4, marginBottom: 4, fontFamily: 'helvetica, sans-serif', fontWeight: 800, fontSize: 12, color: '#0f172a' }}>
+            <div style={{ borderBottom: '1px solid #0f172a', paddingBottom: 4, marginBottom: 4, fontFamily: 'helvetica, sans-serif', fontWeight: 800, fontSize: 12, color: '#0f172a', wordBreak: 'break-word' }}>
               {dentistInfo.name}
             </div>
             <div style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 11, color: '#475569' }}>{dentistInfo.title}</div>
@@ -894,59 +896,59 @@ ln(1, 5);
         </div>
 
         {/* Student Data Block */}
-        <div style={{ marginTop: 40, padding: '24px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120 }}>Name of Student</span>
-              <TextInput value={fullName} readOnly={readOnly} />
+        <div style={{ marginTop: 40, padding: '24px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', maxWidth: '100%', boxSizing: 'border-box' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120, flexShrink: 0 }}>Name of Student</span>
+              <TextInput value={fullName} readOnly={readOnly} width="100%" />
             </div>
             <div></div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120 }}>Course/Year/Section</span>
-              <TextInput value={courseYearSectionValue} readOnly={readOnly} />
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120, flexShrink: 0 }}>Course/Year/Section</span>
+              <TextInput value={courseYearSectionValue} readOnly={readOnly} width="100%" />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 80, marginLeft: 20 }}>Grade Level</span>
-              <TextInput value={gradeLevel} readOnly={readOnly} />
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 80, flexShrink: 0 }}>Grade Level</span>
+              <TextInput value={gradeLevel} readOnly={readOnly} width="100%" />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120 }}>Name of Family Dentist</span>
-              <TextInput value={familyDentist} onChange={setFamilyDentist} readOnly={readOnly} />
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 120, flexShrink: 0 }}>Name of Family Dentist</span>
+              <TextInput value={familyDentist} onChange={setFamilyDentist} readOnly={readOnly} width="100%" />
             </div>
           </div>
 
-          <div style={{ marginTop: 24, paddingLeft: 40, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 140 }}>Treatment Complete</span>
+          <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 140, flexShrink: 0 }}>Treatment Complete</span>
               <TextInput
                 value={status.complete ? '✓' : ''}
                 onChange={() => !readOnly && setStatus(s => ({ ...s, complete: !s.complete }))}
                 readOnly={readOnly}
-                width="200px"
+                width="100px"
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 140 }}>Not Completed</span>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 140, flexShrink: 0 }}>Not Completed</span>
               <TextInput
                 value={status.notCompleted ? '✓' : ''}
                 onChange={() => !readOnly && setStatus(s => ({ ...s, notCompleted: !s.notCompleted }))}
                 readOnly={readOnly}
-                width="200px"
+                width="100px"
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 140 }}>Follow-up</span>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
+              <span style={{ fontFamily: 'helvetica, sans-serif', fontSize: 12, minWidth: 140, flexShrink: 0 }}>Follow-up</span>
               <TextInput
                 value={status.followUp}
                 onChange={(v) => setStatus(s => ({ ...s, followUp: v }))}
                 readOnly={readOnly}
-                width="200px"
+                width="180px"
               />
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 30 }}>
-             <div style={{ textAlign: 'center', minWidth: 200 }}>
+             <div style={{ textAlign: 'center', minWidth: 200, maxWidth: '100%' }}>
               <div style={{ borderBottom: '1px solid #0f172a', paddingBottom: 4, marginBottom: 4, height: 20 }}></div>
               <div style={{ fontFamily: 'helvetica, sans-serif', fontWeight: 600, fontSize: 11, color: '#0f172a' }}>Signature of Family Dentist</div>
             </div>
@@ -964,7 +966,7 @@ ln(1, 5);
         </div>
 
         {/* Metadata table */}
-        <table style={{ width: '100%', marginTop: 24, fontSize: 9, color: '#94a3b8', borderCollapse: 'collapse', fontFamily: 'helvetica, sans-serif' }}>
+        <table style={{ width: '100%', marginTop: 24, fontSize: 9, color: '#94a3b8', borderCollapse: 'collapse', fontFamily: 'helvetica, sans-serif', tableLayout: 'fixed' }}>
           <tbody>
             <tr>
               <td style={{ border: '1px solid #e2e8f0', padding: '6px', textAlign: 'center', background: '#f8fafc', width: '20%' }}></td>

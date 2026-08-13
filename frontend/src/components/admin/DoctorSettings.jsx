@@ -1,15 +1,23 @@
-// frontend/src/components/admin/DoctorSettings.jsx
+// C:\Users\HP\MediTrack\frontend\src\components\admin\DoctorSettings.jsx
 import React, { useState, useEffect, useRef } from 'react';
 
-// ─── Snackbar Component ───────────────────────────────────────────────────────
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+
+// ─── Local UI Helpers (matches securitySettings.jsx) ─────────────────────────
 const Snackbar = ({ message, type, onClose }) => {
   if (!message) return null;
   return (
-    <div className={`fixed bottom-10 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-xl text-white text-sm font-semibold flex items-center gap-3 z-50 transition-all ${type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+    <div style={{
+      position: 'fixed', bottom: 40, left: '50%', transform: 'translateX(-50%)',
+      background: type === 'error' ? '#ef4444' : '#10b981', color: '#fff',
+      padding: '14px 24px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12,
+      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)', zIndex: 9999,
+      fontFamily: 'helvetica, sans-serif', fontSize: 14, fontWeight: 600,
+    }}>
       <span>{message}</span>
       <button
         onClick={onClose}
-        className="text-white hover:text-gray-200 text-xl leading-none px-1 outline-none"
+        style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 4px', fontSize: 20, lineHeight: 1 }}
       >
         &times;
       </button>
@@ -17,87 +25,88 @@ const Snackbar = ({ message, type, onClose }) => {
   );
 };
 
+const SectionCard = ({ children }) => (
+  <div style={{
+    background: '#fff',
+    borderRadius: 20,
+    border: '1px solid #e2ebe8',
+    overflow: 'hidden',
+  }}>
+    {children}
+  </div>
+);
+
+const SectionLabel = ({ children }) => (
+  <p style={{
+    fontSize: 11, fontWeight: 800, color: '#466460',
+    textTransform: 'uppercase', letterSpacing: 1,
+    margin: '0 0 8px 4px',
+  }}>
+    {children}
+  </p>
+);
+
+const Row = ({ label, sub, right, last }) => (
+  <div style={{
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20,
+    padding: '14px 18px',
+    borderBottom: last ? 'none' : '1px solid #eef3f1',
+  }}>
+    <div style={{ flex: 1, paddingRight: 12 }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#1a2e22', margin: 0 }}>{label}</p>
+      {sub && <p style={{ fontSize: 12, color: '#7a9e8e', margin: '3px 0 0' }}>{sub}</p>}
+    </div>
+    {right}
+  </div>
+);
+
+const fieldInputStyle = {
+  width: 260, border: '1px solid #cbd5e1', borderRadius: 8,
+  padding: '9px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+};
+
+const halfFieldInputStyle = {
+  ...fieldInputStyle, width: 160,
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const DoctorSettings = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    title: '',
-    licenseNo: '',
-    ptrNo: '',
-    signatureUrl: ''
+export const DoctorSettings = ({ isMobile }) => {
+  const [config, setConfig] = useState({
+    name: '', title: '', licenseNo: '', ptrNo: '', signatureUrl: ''
   });
-  const [isLoading, setIsLoading] = useState(false);
-  const [isUploadingSig, setIsUploadingSig] = useState(false);
-  const [sigPreview, setSigPreview] = useState(null); // local preview before the upload completes
-  const fileInputRef = useRef(null);
-
-  // Replaced static message state with a toast state
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [signatureFile, setSignatureFile] = useState(null);
+  const [sigPreview, setSigPreview] = useState(null);
   const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
+  const hasFetched = useRef(false);
+  const sigFileInputRef = useRef(null);
 
-  // Helper to show and auto-hide the snackbar
   const showToast = (text, type = 'success') => {
     setToast({ show: true, text, type });
     setTimeout(() => setToast({ show: false, text: '', type: 'success' }), 3500);
   };
 
-  // Fetch existing settings on mount
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('/api/settings/doctor');
-        if (response.ok) {
-          const data = await response.json();
-          setFormData(prev => ({ ...prev, ...data }));
-        }
-      } catch (error) {
-        console.error('Failed to fetch doctor settings:', error);
-      }
-    };
-
-    fetchSettings();
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    fetchConfig();
   }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
+  const fetchConfig = async () => {
     try {
-      const response = await fetch('/api/settings/doctor', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          // 'Authorization': `Bearer ${token}` // If you are using JWT auth
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          title: formData.title,
-          licenseNo: formData.licenseNo,
-          ptrNo: formData.ptrNo
-        })
-      });
-
-      if (response.ok) {
-        showToast('Medical Officer configuration saved successfully!', 'success');
-      } else {
-        throw new Error('Failed to update settings');
+      const res = await fetch(`${API_URL}/settings/doctor`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfig(prev => ({ ...prev, ...data }));
       }
     } catch (error) {
-      console.error('Update error:', error);
-      showToast('An error occurred while saving the details.', 'error');
+      console.error("Failed to fetch doctor config:", error);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // ── Digital signature upload ──────────────────────────────────────────
   const handleSignatureFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -111,40 +120,63 @@ export const DoctorSettings = () => {
       return;
     }
 
+    setSignatureFile(file);
     setSigPreview(URL.createObjectURL(file));
-    uploadSignature(file);
   };
 
-  const uploadSignature = async (file) => {
-    setIsUploadingSig(true);
+  const handleSave = async () => {
+    setSaving(true);
     try {
-      const body = new FormData();
-      body.append('signature', file);
-
-      const response = await fetch('/api/settings/doctor/signature', {
-        method: 'POST',
-        body
+      const res = await fetch(`${API_URL}/settings/doctor`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: config.name,
+          title: config.title,
+          licenseNo: config.licenseNo,
+          ptrNo: config.ptrNo
+        })
       });
+      if (!res.ok) throw new Error('Server error saving details');
 
-      if (!response.ok) throw new Error('Upload failed');
-      const result = await response.json();
+      if (signatureFile) {
+        const body = new FormData();
+        body.append('signature', signatureFile);
 
-      setFormData(prev => ({ ...prev, signatureUrl: result.signatureUrl }));
-      showToast('Signature uploaded successfully!', 'success');
+        const sigRes = await fetch(`${API_URL}/settings/doctor/signature`, {
+          method: 'POST',
+          body
+        });
+        if (!sigRes.ok) throw new Error('Server error uploading signature');
+        const sigResult = await sigRes.json();
+
+        setConfig(prev => ({ ...prev, signatureUrl: sigResult.signatureUrl }));
+        setSignatureFile(null);
+        setSigPreview(null);
+      }
+
+      showToast('Medical Officer configuration saved successfully!', 'success');
     } catch (error) {
-      console.error('Signature upload error:', error);
-      showToast('Failed to upload signature. Please try again.', 'error');
-    } finally {
-      setIsUploadingSig(false);
+      console.error('Save error:', error);
+      showToast('Failed to save config. Make sure your server is running.', 'error');
     }
+    setSaving(false);
   };
 
-  const currentSigSrc = sigPreview || formData.signatureUrl;
+  const currentSigSrc = sigPreview || config.signatureUrl;
+  const containerStyle = { padding: isMobile ? '16px 12px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 };
+
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <SectionLabel>Doctor Settings</SectionLabel>
+        <p style={{ fontSize: 13, color: '#7a9e8e' }}>Loading settings...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-sm border border-slate-200 relative">
-
-      {/* Floating Snackbar rendered when toast.show is true */}
+    <div style={{ ...containerStyle, position: 'relative' }}>
       {toast.show && (
         <Snackbar
           message={toast.text}
@@ -153,145 +185,124 @@ export const DoctorSettings = () => {
         />
       )}
 
-      <div className="mb-6 border-b border-slate-200 pb-4">
-        <h2 className="text-2xl font-bold text-slate-800">Medical Officer Details</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Update the doctor information that appears on the generated Medical Certificates.
-        </p>
+      {/* Header row: label left, Save Changes right — mirrors Security pattern */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <SectionLabel>Doctor Settings</SectionLabel>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            background: '#466460', color: '#fff', border: 'none',
+            padding: '8px 20px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+            cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
+          }}
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label htmlFor="name" className="block text-sm font-semibold text-slate-700 mb-1">
-            Full Name (with Title)
-          </label>
-          <input
-            type="text"
-            id="name"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            placeholder="e.g. CAREN NAVATA JOSE M.D."
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-teal-600 outline-none transition-colors uppercase"
-            required
-          />
-        </div>
-
-        <div>
-          <label htmlFor="title" className="block text-sm font-semibold text-slate-700 mb-1">
-            Position / Title
-          </label>
-          <input
-            type="text"
-            id="title"
-            name="title"
-            value={formData.title}
-            onChange={handleChange}
-            placeholder="e.g. Medical Officer III"
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-teal-600 outline-none transition-colors"
-            required
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label htmlFor="licenseNo" className="block text-sm font-semibold text-slate-700 mb-1">
-              License Number
-            </label>
+      <SectionCard>
+        <Row
+          label="Full Name (with Title)"
+          sub="Shown above the signature on every generated certificate"
+          right={
             <input
               type="text"
-              id="licenseNo"
-              name="licenseNo"
-              value={formData.licenseNo}
-              onChange={handleChange}
+              value={config.name}
+              onChange={e => setConfig({ ...config, name: e.target.value })}
+              placeholder="e.g. CAREN NAVATA JOSE M.D."
+              style={{ ...fieldInputStyle, textTransform: 'uppercase' }}
+            />
+          }
+        />
+        <Row
+          label="Position / Title"
+          sub="Displayed directly under the name"
+          right={
+            <input
+              type="text"
+              value={config.title}
+              onChange={e => setConfig({ ...config, title: e.target.value })}
+              placeholder="e.g. Medical Officer III"
+              style={fieldInputStyle}
+            />
+          }
+        />
+        <Row
+          label="License Number"
+          sub="Professional Regulation Commission license"
+          right={
+            <input
+              type="text"
+              value={config.licenseNo}
+              onChange={e => setConfig({ ...config, licenseNo: e.target.value })}
               placeholder="e.g. 0114665"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-teal-600 outline-none transition-colors"
-              required
+              style={halfFieldInputStyle}
             />
-          </div>
-
-          <div>
-            <label htmlFor="ptrNo" className="block text-sm font-semibold text-slate-700 mb-1">
-              PTR Number
-            </label>
+          }
+        />
+        <Row
+          label="PTR Number"
+          sub="Professional Tax Receipt number"
+          right={
             <input
               type="text"
-              id="ptrNo"
-              name="ptrNo"
-              value={formData.ptrNo}
-              onChange={handleChange}
+              value={config.ptrNo}
+              onChange={e => setConfig({ ...config, ptrNo: e.target.value })}
               placeholder="e.g. 9978569"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-teal-600 outline-none transition-colors"
-              required
+              style={halfFieldInputStyle}
             />
-          </div>
-        </div>
-
-        {/* ── Digital Signature Upload ── */}
-        <div className="pt-2">
-          <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Digital Signature
-          </label>
-          <p className="text-xs text-slate-500 mb-3">
-            Upload a transparent PNG of the doctor's signature. This appears above the name on every generated certificate.
-          </p>
-
-          <div className="flex items-center gap-5">
-            <div className="w-40 h-20 border border-dashed border-slate-300 rounded-lg flex items-center justify-center bg-slate-50 overflow-hidden">
-              {currentSigSrc ? (
-                <img src={currentSigSrc} alt="Signature preview" className="max-w-full max-h-full object-contain" />
-              ) : (
-                <span className="text-xs text-slate-400">No signature yet</span>
+          }
+        />
+        <Row
+          label="Digital Signature"
+          sub={
+            <>
+              Transparent PNG shown above the name on certificates
+              {signatureFile && (
+                <span style={{ color: '#b45309', fontWeight: 600 }}> — not saved yet</span>
               )}
-            </div>
+            </>
+          }
+          last
+          right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 140, height: 64, border: '1px dashed #cbd5e1', borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: '#f8fafc', overflow: 'hidden', flexShrink: 0,
+              }}>
+                {currentSigSrc ? (
+                  <img src={currentSigSrc} alt="Signature preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                ) : (
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>No signature</span>
+                )}
+              </div>
 
-            <div>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                ref={fileInputRef}
+                ref={sigFileInputRef}
                 onChange={handleSignatureFileChange}
-                className="hidden"
-                id="signatureFile"
+                style={{ display: 'none' }}
               />
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingSig}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60 flex items-center gap-2"
+                onClick={() => sigFileInputRef.current?.click()}
+                disabled={saving}
+                style={{
+                  background: '#fff', color: '#475569', border: '1px solid #cbd5e1',
+                  padding: '8px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                  cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
+                  whiteSpace: 'nowrap',
+                }}
               >
-                {isUploadingSig ? (
-                  <>
-                    <i className="fa-solid fa-spinner fa-spin"></i> Uploading...
-                  </>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-upload"></i> {formData.signatureUrl ? 'Replace signature' : 'Upload signature'}
-                  </>
-                )}
+                {signatureFile ? 'Choose different' : (config.signatureUrl ? 'Replace' : 'Upload')}
               </button>
             </div>
-          </div>
-        </div>
-
-        <div className="pt-4 flex justify-end">
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="px-6 py-2.5 bg-slate-800 text-white font-semibold rounded-lg hover:bg-slate-700 focus:ring-4 focus:ring-slate-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <i className="fa-solid fa-spinner fa-spin"></i> Saving...
-              </>
-            ) : (
-              <>
-                <i className="fa-solid fa-floppy-disk"></i> Save Changes
-              </>
-            )}
-          </button>
-        </div>
-      </form>
+          }
+        />
+      </SectionCard>
     </div>
   );
 };

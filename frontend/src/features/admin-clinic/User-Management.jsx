@@ -36,48 +36,11 @@ const validateEmailWithEasyEmail = async (email) => {
   }
 };
 
-// ── Department data (mirrors ProfileSetup) ────────────────────────────────────
-const departmentsData = [
-  { abbr: 'CCSE', full: 'College of Computing Science and Engineering', programs: ['Bachelor of Science in Information Technology','Bachelor of Science in Information System','Bachelor of Science in Computer Engineering','Bachelor of Science in Industrial Engineering'] },
-  { abbr: 'CBAM', full: 'College of Business Administration and Management', programs: ['Bachelor of Science in Entrepreneurship','Bachelor of Science in Public Administration','Bachelor of Science in Office Administration','Bachelor of Science in Business Administration Major in Human Resource Development Management','Bachelor of Science in Business Administration Major in Financial Management','Bachelor of Science in Business Administration Major in Marketing Management'] },
-  { abbr: 'CAS',  full: 'College of Art and Sciences', programs: ['Bachelor of Science in Economics','Bachelor of Arts in Communication','Bachelor of Science in Psychology','Bachelor of Arts in Political Science'] },
-  { abbr: 'CTHM', full: 'College of Tourism and Hospitality Management', programs: ['Bachelor of Science in Tourism Management','Bachelor of Science in Hospitality Management'] },
-  { abbr: 'COA',  full: 'College of Accountancy', programs: ['Bachelor of Science in Accountancy','Bachelor of Science in Accountancy Information System','Bachelor of Science in Management Accounting'] },
-  { abbr: 'CTE',  full: 'College of Teacher Education', programs: ['Bachelor of Secondary Education Major in English','Bachelor of Secondary Education Major in Filipino','Bachelor of Secondary Education Major in Math','Bachelor of Secondary Education Major in Science','Bachelor of Secondary Education Major in Social Studies','Bachelor of Elementary Education','Bachelor of Technical-Vocational Teacher Education','Bachelor of Special Needs Education'] },
-  { abbr: 'CHK',  full: 'College of Human Kinetics', programs: ['Bachelor of Science in Physical Education','Bachelor of Science in Sports Science'] },
-  { abbr: 'CNAHS',full: 'College of Nursing and Allied Health Sciences', programs: ['Bachelor of Science in Nursing'] },
-];
-const deptAbbrToFull      = Object.fromEntries(departmentsData.map(d => [d.abbr, d.full]));
-const programsByDeptAbbr = Object.fromEntries(departmentsData.map(d => [d.abbr, d.programs]));
-
-const NON_ACADEMIC_OFFICES = ['Accounting Office','University Clinic','Human Resources','Library','Maintenance','Registrar Office','Security Services'];
-const PLSP_OFFICES_FOR_STAFF = [
-  ...departmentsData.map(d => ({ label: d.abbr, value: d.full })),
-  ...NON_ACADEMIC_OFFICES.map(o => ({ label: o, value: o })),
-];
-
-const CLINIC_ROLES = new Set(['doctor','nurse','dentist','staff','employee','clinic staff']);
-const FACULTY_ROLES = new Set(['instructor','lecturer','teacher','professor','dean','department head','program chair','coordinator','faculty','registrar','guidance counselor','counselor','librarian']);
-const isClinicStaff = r => CLINIC_ROLES.has(r?.toLowerCase());
-const isFaculty     = r => FACULTY_ROLES.has(r?.toLowerCase());
-const isStudent     = r => r?.toLowerCase() === 'student';
-const isAdmin       = r => ['sysadmin','administrator','admin'].includes(r?.toLowerCase());
-
-const CLASSIFICATION_MAP = {
-  sysadmin:'System Administrator', admin:'System Administrator', administrator:'System Administrator',
-  doctor:'Physician / Doctor', dentist:'Dentist', nurse:'Nurse Personnel',
-  staff:'Non-Teaching Personnel', employee:'Non-Teaching Personnel',
-  librarian:'Non-Teaching Personnel', technician:'Non-Teaching Personnel',
-  lecturer:'Teaching Personnel', professor:'Teaching Personnel',
-  instructor:'Teaching Personnel', teacher:'Teaching Personnel', faculty:'Teaching Personnel',
-  student:'Student',
-};
-const JOB_TITLE_MAP = {
-  sysadmin:'System Administrator', admin:'SysAdmin', administrator:'SysAdmin',
-  doctor:'Physician', dentist:'Dentist', nurse:'Nurse',
-  lecturer:'Lecturer', professor:'Professor', instructor:'Instructor', teacher:'Teacher',
-  librarian:'Librarian', staff:'Staff', employee:'Employee',
-};
+// ── Helper Functions ──────────────────────────────────────────────────────────
+const isClinicStaff = (r, config) => config?.clinic_roles?.includes(r?.toLowerCase());
+const isFaculty     = (r, config) => config?.faculty_roles?.includes(r?.toLowerCase());
+const isStudent     = (r) => r?.toLowerCase() === 'student';
+const isAdmin       = (r, config) => config?.admin_roles?.includes(r?.toLowerCase());
 
 const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
 const classificationColors = {
@@ -93,6 +56,11 @@ const normalizeName = (name) => {
   if (!name) return '';
   let trimmed = name.trim();
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
+const capitalizeWords = (str) => {
+  if (!str) return '';
+  return str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 };
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -154,49 +122,36 @@ const getCurrentUser = () => {
 const currentUser = getCurrentUser();
 const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(currentUser?.role?.toLowerCase());
 
-// Admin identity used for audit logging. Falls back through id -> uid ->
-// 'system' so a log entry is still written even if the stored user object
-// is incomplete. Kept consistent with the other admin-clinic screens.
+// Admin identity used for audit logging.
 const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RoleOptions
+// Dynamic RoleOptions Component
 // ─────────────────────────────────────────────────────────────────────────────
-const RoleOptions = () => (
-  <>
-    {isCurrentUserSysAdmin && (
-      <optgroup label="System Administration"><option value="sysadmin">System Administrator</option></optgroup>
-    )}
-    <optgroup label="Clinic Staff">
-      <option value="doctor">Doctor</option>
-      <option value="dentist">Dentist</option>
-      <option value="nurse">Nurse</option>
-      <option value="clinic staff">Clinic Staff (General)</option>
-    </optgroup>
-    <optgroup label="Faculty">
-      <option value="lecturer">Lecturer</option>
-      <option value="instructor">Instructor</option>
-      <option value="teacher">Teacher</option>
-      <option value="professor">Professor</option>
-      <option value="faculty">Faculty</option>
-      <option value="assistant professor">Assistant Professor</option>
-      <option value="associate professor">Associate Professor</option>
-      <option value="dean">Dean</option>
-      <option value="department head">Department Head</option>
-      <option value="program chair">Program Chair</option>
-      <option value="registrar">Registrar</option>
-      <option value="guidance counselor">Guidance Counselor</option>
-      <option value="counselor">Counselor</option>
-      <option value="librarian">Librarian</option>
-    </optgroup>
-    <optgroup label="Student"><option value="student">Student</option></optgroup>
-  </>
-);
+const RoleOptions = ({ configData }) => {
+  if (!configData) return null;
+  return (
+    <>
+      {isCurrentUserSysAdmin && (
+        <optgroup label="System Administration">
+          {configData.admin_roles?.map(r => <option key={r} value={r}>{capitalizeWords(r)}</option>)}
+        </optgroup>
+      )}
+      <optgroup label="Clinic Staff">
+        {configData.clinic_roles?.map(r => <option key={r} value={r}>{capitalizeWords(r)}</option>)}
+      </optgroup>
+      <optgroup label="Faculty">
+        {configData.faculty_roles?.map(r => <option key={r} value={r}>{capitalizeWords(r)}</option>)}
+      </optgroup>
+      <optgroup label="Student"><option value="student">Student</option></optgroup>
+    </>
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CreateUserModal
 // ─────────────────────────────────────────────────────────────────────────────
-const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
+const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [form, setForm] = useState({
@@ -204,19 +159,27 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
     university_id: '', email: '', phone_number: '', password: '',
     role: 'student',
     department: '', departmentAbbr: '', program: '',
-    job_title: '', classification: 'Teaching Personnel',
+    job_title: '', classification: 'Student',
     birthday: '', age: '', sex: '', blood_type: '', civil_status: 'Single',
     religion: '', nationality: 'Filipino', home_address: '',
     year_level: '1st Year', section: '', student_classification: 'Regular',
     is_verified: true, profile_complete: false,
   });
 
+  const deptAbbrToFull = Object.fromEntries(configData.departments.map(d => [d.abbr, d.full]));
+  const programsByDeptAbbr = Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs]));
+  const PLSP_OFFICES_FOR_STAFF = [
+    ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
+    ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
+  ];
+  const uniqueClassifications = Array.from(new Set(Object.values(configData.classifications || {})));
+
   const cf = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const handleRoleChange = (val) => {
     setForm(f => ({
-      ...f, role: val, classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
-      job_title: JOB_TITLE_MAP[val?.toLowerCase()] || '', department: '', departmentAbbr: '', program: '',
+      ...f, role: val, classification: configData.classifications[val?.toLowerCase()] || '',
+      job_title: configData.job_titles[val?.toLowerCase()] || capitalizeWords(val), department: '', departmentAbbr: '', program: '',
       year_level: '1st Year', section: '', student_classification: 'Regular',
     }));
   };
@@ -312,9 +275,9 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
   };
 
   const isStudentRole = isStudent(form.role);
-  const isFacultyRole = isFaculty(form.role);
-  const isClinicRole  = isClinicStaff(form.role);
-  const isAdminRole   = isAdmin(form.role);
+  const isFacultyRole = isFaculty(form.role, configData);
+  const isClinicRole  = isClinicStaff(form.role, configData);
+  const isAdminRole   = isAdmin(form.role, configData);
   const secHead = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
 
   return createPortal(
@@ -362,15 +325,15 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
               <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
 
               <div className={secHead}>Role &amp; Work</div>
-              <div><label className={labelCls}>Role <span className="text-red-400">*</span></label><select className={selectCls} value={form.role} onChange={e => handleRoleChange(e.target.value)}><RoleOptions /></select></div>
+              <div><label className={labelCls}>Role <span className="text-red-400">*</span></label><select className={selectCls} value={form.role} onChange={e => handleRoleChange(e.target.value)}><RoleOptions configData={configData} /></select></div>
               <div><label className={labelCls}>University ID <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
 
               {isStudentRole && (
                 <>
-                  <div><label className={labelCls}>Department <span className="text-red-400">*</span></label><select className={selectCls} value={form.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}><option value="">— Select —</option>{departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}</select>{form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}</div>
+                  <div><label className={labelCls}>Department <span className="text-red-400">*</span></label><select className={selectCls} value={form.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}><option value="">— Select —</option>{configData.departments.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}</select>{form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}</div>
                   <div><label className={labelCls}>Program <span className="text-red-400">*</span></label><select className={`${selectCls} disabled:opacity-50`} value={form.program} disabled={!form.departmentAbbr} onChange={e => cf('program', e.target.value)}><option value="">— Select —</option>{availablePrograms.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                   <div><label className={labelCls}>Year Level</label><select className={selectCls} value={form.year_level} onChange={e => cf('year_level', e.target.value)}>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
-                  <div><label className={labelCls}>Section</label><select className={selectCls} value={form.section} onChange={e => cf('section', e.target.value)}><option value="">— Select —</option>{['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                  <div><label className={labelCls}>Section</label><select className={selectCls} value={form.section} onChange={e => cf('section', e.target.value)}><option value="">— Select —</option>{(configData.sections || []).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
                   <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={form.student_classification} onChange={e => cf('student_classification', e.target.value)}>{['Regular','Irregular','Returning'].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                 </>
               )}
@@ -380,7 +343,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
                   <div><label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label><select className={selectCls} value={form.department} onChange={e => cf('department', e.target.value)}><option value="">— Select Office —</option>{PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
                   <div><label className={labelCls}>Job Title <span className="text-red-400">*</span></label><input className={inputCls} value={form.job_title} onChange={e => cf('job_title', e.target.value)} placeholder="e.g. Nurse, Professor" /></div>
                   {!isAdminRole && (
-                    <div><label className={labelCls}>Classification</label><select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>{['Teaching Personnel','Non-Teaching Personnel','Nurse Personnel','Dentist','Physician / Doctor'].map(c => <option key={c} value={c}>{c}</option>)}{isCurrentUserSysAdmin && <option value="System Administrator">System Administrator</option>}</select></div>
+                    <div><label className={labelCls}>Classification</label><select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>{uniqueClassifications.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                   )}
                 </>
               )}
@@ -421,7 +384,9 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar }) => {
 export const UserManagement = () => {
   const [users, setUsers]               = useState([]);
   const [loading, setLoading]           = useState(true);
-  const [resendingId, setResendingId]   = useState(null); // Track which user email is being resent
+  const [configData, setConfigData]     = useState(null);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+  const [resendingId, setResendingId]   = useState(null);
 
   // Search & Filters
   const [currentFilter, setCurrentFilter] = useState('all');
@@ -431,7 +396,7 @@ export const UserManagement = () => {
   const [currentPage, setCurrentPage]   = useState(1);
 
   const [message, setMessage]           = useState(null);
-  const [editSaving, setEditSaving]     = useState(false); // Track save edit state
+  const [editSaving, setEditSaving]     = useState(false);
 
   const [showEditModal, setShowEditModal]     = useState(false);
   const [editTarget, setEditTarget]           = useState(null);
@@ -453,7 +418,10 @@ export const UserManagement = () => {
   };
   const [editForm, setEditForm] = useState(EMPTY_FORM);
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    fetchUsers();
+    fetchConfig();
+  }, []);
 
   // Reset pagination when search or filter changes
   useEffect(() => {
@@ -474,38 +442,40 @@ export const UserManagement = () => {
     }
   };
 
+  const fetchConfig = async () => {
+    try {
+      setIsConfigLoading(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
+      const result = await res.json();
+      if (result.success) setConfigData(result.data);
+    } catch(e) {
+      console.error("Failed to load config:", e);
+    } finally {
+      setIsConfigLoading(false);
+    }
+  };
+
   const getFullName = (user) =>
     [user.first_name, user.middle_name || '', user.last_name, user.suffix || ''].filter(Boolean).join(' ') || '—';
 
   const getInitials = (user) =>
     ((user.first_name?.[0] || '') + (user.last_name?.[0] || '')).toUpperCase() || 'U';
 
-  const getRoleLabel = (role) => {
-    const map = {
-      admin:'Admin', administrator:'Admin', doctor:'Doctor', nurse:'Nurse',
-      staff:'Staff', employee:'Staff', dentist:'Dentist', midwife:'Midwife',
-      'clinic staff':'Clinic Staff', student:'Student', instructor:'Instructor',
-      lecturer:'Lecturer', teacher:'Teacher', professor:'Professor', dean:'Dean',
-      'department head':'Dept. Head', 'program chair':'Program Chair',
-      coordinator:'Coordinator', registrar:'Registrar',
-      'guidance counselor':'Guidance Counselor', counselor:'Counselor', librarian:'Librarian',
-    };
-    return map[role?.toLowerCase()] || (role || '—');
-  };
+  const getRoleLabel = (role) => capitalizeWords(role) || '—';
 
   const getRoleBadgeStyle = (role) => {
     const r = role?.toLowerCase();
-    if (['sysadmin','administrator'].includes(r)) return { background: '#fef9c3', color: '#854d0e' };
-    if (isClinicStaff(r)) return { background: '#dbeafe', color: '#1d4ed8' };
-    if (r === 'student') return { background: '#f3e8ff', color: '#6b21a8' };
-    if (isFaculty(r)) return { background: '#fff7ed', color: '#9a3412' };
+    if (isAdmin(r, configData)) return { background: '#fef9c3', color: '#854d0e' };
+    if (isClinicStaff(r, configData)) return { background: '#dbeafe', color: '#1d4ed8' };
+    if (isStudent(r)) return { background: '#f3e8ff', color: '#6b21a8' };
+    if (isFaculty(r, configData)) return { background: '#fff7ed', color: '#9a3412' };
     return { background: '#f1f5f9', color: '#475569' };
   };
 
   const filteredUsers = users.filter(user => {
     const role = user.role?.toLowerCase();
-    if (currentFilter === 'faculty') { if (!isFaculty(role)) return false; }
-    else if (currentFilter === 'clinic_staff') { if (!isClinicStaff(role)) return false; }
+    if (currentFilter === 'faculty') { if (!isFaculty(role, configData)) return false; }
+    else if (currentFilter === 'clinic_staff') { if (!isClinicStaff(role, configData)) return false; }
     else if (currentFilter !== 'all') { if (role !== currentFilter) return false; }
     if (searchInput) {
       const s = searchInput.toLowerCase();
@@ -518,11 +488,23 @@ export const UserManagement = () => {
   const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
+  // Derive dynamic configuration options safely
+  const deptAbbrToFull = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.full])) : {};
+  const programsByDeptAbbr = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs])) : {};
+  const PLSP_OFFICES_FOR_STAFF = configData ? [
+    ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
+    ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
+  ] : [];
+  const uniqueClassifications = configData ? Array.from(new Set(Object.values(configData.classifications || {}))) : [];
+  const uniqueJobTitles = configData ? Array.from(new Set(Object.values(configData.job_titles || {}))) : [];
+
   // ── Edit ──────────────────────────────────────────────────────────────────
   const openEditModal = (user) => {
     let foundDeptAbbr = '';
-    for (const d of departmentsData) {
-      if (d.full === user.department) { foundDeptAbbr = d.abbr; break; }
+    if (configData) {
+      for (const d of configData.departments) {
+        if (d.full === user.department) { foundDeptAbbr = d.abbr; break; }
+      }
     }
     setEditTarget(user);
     setEditForm({
@@ -581,17 +563,13 @@ export const UserManagement = () => {
 
   const handleRoleEditChange = (val) => {
     setEditForm(f => ({
-      ...f, role: val, classification: CLASSIFICATION_MAP[val?.toLowerCase()] || '',
-      job_title: JOB_TITLE_MAP[val?.toLowerCase()] || '',
+      ...f, role: val, classification: configData.classifications[val?.toLowerCase()] || '',
+      job_title: configData.job_titles[val?.toLowerCase()] || capitalizeWords(val),
     }));
   };
 
   const field = (key, value) => setEditForm(f => ({ ...f, [key]: value }));
 
-  // Profile Complete and Profile Setup are kept in lockstep: turning the
-  // "Profile Complete" toggle off should also mark the profile as not set
-  // up (and vice versa), so the two columns can't drift apart like in the
-  // legacy data (is_profile_setup = TRUE while profile_complete = FALSE).
   const toggleProfileComplete = () => {
     setEditForm(f => {
       const next = !f.profile_complete;
@@ -755,18 +733,32 @@ export const UserManagement = () => {
 
   const showSnackbar = (msg, type = 'success') => {
     setMessage({ text: msg, type });
-    setTimeout(() => setMessage(null), 4000); // 4 seconds so they can read the full error
+    setTimeout(() => setMessage(null), 4000);
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const statTotal       = users.length;
-  const statAdmin       = users.filter(u => ['sysadmin','administrator'].includes(u.role?.toLowerCase())).length;
-  const statClinicStaff = users.filter(u => isClinicStaff(u.role)).length;
-  const statStudent     = users.filter(u => u.role?.toLowerCase() === 'student').length;
-  const statFaculty     = users.filter(u => isFaculty(u.role)).length;
+  const statAdmin       = users.filter(u => isAdmin(u.role, configData)).length;
+  const statClinicStaff = users.filter(u => isClinicStaff(u.role, configData)).length;
+  const statStudent     = users.filter(u => isStudent(u.role)).length;
+  const statFaculty     = users.filter(u => isFaculty(u.role, configData)).length;
 
   const sectionHeadCls = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
   const COL_COUNT = 9;
+
+  if (isConfigLoading) {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50">
+        <div className="flex items-center gap-3 text-slate-500 font-semibold">
+          <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          Loading system configurations...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
@@ -819,20 +811,20 @@ export const UserManagement = () => {
 
           </div>
            <button onClick={() => setShowCreateWizard(true)}
-              className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              <span className="hidden sm:inline">Add User</span>
-            </button>
+             className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+             </svg>
+             <span className="hidden sm:inline">Add User</span>
+           </button>
 
-            <button onClick={fetchUsers}
-              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
+           <button onClick={fetchUsers}
+             className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+               <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+             </svg>
+             <span className="hidden sm:inline">Refresh</span>
+           </button>
         </div>
 
         {/* Table Area */}
@@ -972,11 +964,12 @@ export const UserManagement = () => {
       </div>
 
       {/* Create Wizard */}
-      {showCreateWizard && (
+      {showCreateWizard && configData && (
         <CreateUserModal
           onClose={() => setShowCreateWizard(false)}
           onCreated={user => setUsers(prev => [user, ...prev])}
           showSnackbar={showSnackbar}
+          configData={configData}
         />
       )}
 
@@ -1039,14 +1032,14 @@ export const UserManagement = () => {
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Role &amp; Work Information</div>
                   </div>
-                  <div><label className={labelCls}>Role</label><select className={selectCls} value={editForm.role} onChange={e => handleRoleEditChange(e.target.value)}><RoleOptions /></select></div>
+                  <div><label className={labelCls}>Role</label><select className={selectCls} value={editForm.role} onChange={e => handleRoleEditChange(e.target.value)}><RoleOptions configData={configData} /></select></div>
                   <div><label className={labelCls}>Job Title</label><input className={inputCls} value={editForm.job_title} onChange={e => field('job_title', e.target.value)} /></div>
                   <div><label className={labelCls}>Classification</label><input className={inputCls} value={editForm.classification} onChange={e => field('classification', e.target.value)} /></div>
                   <div><label className={labelCls}>Department / Office</label>
                     <select className={selectCls} value={editForm.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}>
                       <option value="">— Select —</option>
-                      {departmentsData.map(d => <option key={d.abbr} value={d.abbr}>{d.full}</option>)}
-                      {NON_ACADEMIC_OFFICES.map(o => <option key={o} value={o}>{o}</option>)}
+                      {configData.departments.map(d => <option key={d.abbr} value={d.abbr}>{d.full}</option>)}
+                      {configData.non_academic_offices.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                   <div><label className={labelCls}>Program / Unit</label>
@@ -1090,7 +1083,7 @@ export const UserManagement = () => {
                         <div className={sectionHeadCls}>Academic Information</div>
                       </div>
                       <div><label className={labelCls}>Year Level</label><select className={selectCls} value={editForm.year_level} onChange={e => field('year_level', e.target.value)}><option value="">— Select —</option>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
-                      <div><label className={labelCls}>Section</label><select className={selectCls} value={editForm.section} onChange={e => field('section', e.target.value)}><option value="">— Select —</option>{['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                      <div><label className={labelCls}>Section</label><select className={selectCls} value={editForm.section} onChange={e => field('section', e.target.value)}><option value="">— Select —</option>{(configData?.sections || []).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
                       <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={editForm.student_classification} onChange={e => field('student_classification', e.target.value)}><option value="">— Select —</option>{STUDENT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                     </>
                   )}

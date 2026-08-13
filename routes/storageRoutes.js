@@ -1,176 +1,542 @@
 // C:\Users\HP\MediTrack\routes\storageRoutes.js
+
 const express = require('express');
 const supabase = require('../configs/database');
 
 const router = express.Router();
 
 // ==========================================
+// HELPERS
+// ==========================================
+
+/**
+ * Prevent Supabase requests from hanging indefinitely.
+ */
+const withTimeout = (promise, ms = 10000) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Supabase request timed out after ${ms}ms`));
+      }, ms);
+    })
+  ]);
+};
+
+/**
+ * Safely return a useful error message.
+ */
+const getErrorMessage = (error) => {
+  if (!error) return 'Unknown error';
+
+  return (
+    error.message ||
+    error.error_description ||
+    error.details ||
+    error.hint ||
+    'Unknown Supabase error'
+  );
+};
+
+// ==========================================
 // STORAGE MANAGER ROUTES
 // ==========================================
-// Uses the same `supabase` client as settingsRoutes.js, which already
-// uploads signatures to the "MediStorage" bucket — so it's already
-// running with enough privilege (service role) to list/delete freely
-// across buckets, bypassing storage RLS.
+//
+// This router uses the server-side Supabase client
+// from ../configs/database.
+//
+// Make sure that database.js is configured with:
+//   SUPABASE_URL
+//   SUPABASE_SERVICE_KEY
+//
+// NEVER expose SUPABASE_SERVICE_KEY to the frontend.
+// ==========================================
 
-// GET: List every bucket in the project
+
+// ==========================================
+// GET: LIST ALL STORAGE BUCKETS
+// ==========================================
+
 router.get('/buckets', async (req, res, next) => {
   try {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    // Prevent browser/proxy caching.
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
 
-    let bucketsData = [];
-    let fetchError = null;
+    console.log('[Storage] Loading Supabase storage buckets...');
 
-    // Try up to 3 times to get the buckets to handle Supabase cold-start glitches
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const { data, error } = await supabase.storage.listBuckets();
+    // Check server configuration without exposing the actual secret.
+    if (!process.env.SUPABASE_URL) {
+      console.error('[Storage] SUPABASE_URL is not configured.');
 
-      fetchError = error;
-      bucketsData = data || [];
-
-      // If we got buckets, break out of the loop immediately!
-      if (!error && bucketsData.length > 0) {
-        break;
-      }
-
-      // If it returned an empty array (and we know MediStorage should exist),
-      // wait 1 second before trying again.
-      if (attempt < 3) {
-        console.warn(`Supabase returned empty buckets on attempt ${attempt}, waiting for DB to wake up...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      return res.status(500).json({
+        success: false,
+        error: 'Supabase URL is not configured on the backend.'
+      });
     }
 
-    if (fetchError) {
-      console.error('Supabase listBuckets error:', fetchError);
-      return res.status(500).json({ error: 'Failed to list buckets' });
+    if (!process.env.SUPABASE_SERVICE_KEY) {
+      console.error('[Storage] SUPABASE_SERVICE_KEY is not configured.');
+
+      return res.status(500).json({
+        success: false,
+        error: 'Supabase service key is not configured on the backend.'
+      });
     }
 
-    res.status(200).json({ buckets: bucketsData });
+    const { data, error } = await withTimeout(
+      supabase.storage.listBuckets(),
+      10000
+    );
+
+    // ------------------------------------------
+    // SUPABASE ERROR
+    // ------------------------------------------
+
+    if (error) {
+      console.error('[Storage] Supabase listBuckets error:', {
+        message: getErrorMessage(error),
+        status: error.status || null,
+        name: error.name || null
+      });
+
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to retrieve storage buckets from Supabase.',
+        details: getErrorMessage(error)
+      });
+    }
+
+    // ------------------------------------------
+    // NORMALIZE RESULT
+    // ------------------------------------------
+
+    const buckets = Array.isArray(data) ? data : [];
+
+    console.log(
+      `[Storage] Successfully loaded ${buckets.length} bucket(s):`,
+      buckets.map(bucket => bucket.name)
+    );
+
+    // ------------------------------------------
+    // SUCCESS
+    // ------------------------------------------
+
+    return res.status(200).json({
+      success: true,
+      buckets
+    });
+
   } catch (error) {
-    next(error);
+    console.error('[Storage] Unexpected error while loading buckets:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: 'Unexpected error while loading storage buckets.',
+      details: error.message
+    });
   }
 });
 
-// GET: List folders/files one level deep at a given path inside a bucket
-// Query: ?prefix=some/folder
+
+// ==========================================
+// GET: LIST FOLDERS / FILES
+// ==========================================
+// Query:
+//   ?prefix=some/folder
+//
+// Returns only one level deep.
+// ==========================================
+
 router.get('/buckets/:bucketId/list', async (req, res, next) => {
   try {
     const { bucketId } = req.params;
     const prefix = req.query.prefix || '';
 
-    const { data, error } = await supabase.storage.from(bucketId).list(prefix, {
-      limit: 1000,
-      sortBy: { column: 'name', order: 'asc' }
-    });
+    if (!bucketId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bucket ID is required.'
+      });
+    }
+
+    console.log(
+      `[Storage] Listing bucket "${bucketId}" with prefix "${prefix}"`
+    );
+
+    const { data, error } = await withTimeout(
+      supabase.storage.from(bucketId).list(prefix, {
+        limit: 1000,
+        sortBy: {
+          column: 'name',
+          order: 'asc'
+        }
+      }),
+      10000
+    );
 
     if (error) {
-      console.error('Supabase list error:', error);
-      return res.status(500).json({ error: 'Failed to list objects' });
+      console.error('[Storage] Supabase list error:', {
+        bucket: bucketId,
+        prefix,
+        message: getErrorMessage(error),
+        status: error.status || null
+      });
+
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to list objects from Supabase Storage.',
+        details: getErrorMessage(error)
+      });
     }
 
     const items = (data || [])
-      // Supabase creates this placeholder to represent an otherwise-empty folder
-      .filter((item) => item.name !== '.emptyFolderPlaceholder')
-      .map((item) => {
-        const isFolder = item.id === null; // Supabase's convention for "virtual" folders
+      // Supabase creates this placeholder for an otherwise-empty folder.
+      .filter(
+        item => item.name !== '.emptyFolderPlaceholder'
+      )
+      .map(item => {
+        // Supabase uses id === null for virtual folders.
+        const isFolder = item.id === null;
+
         return {
           name: item.name,
-          path: prefix ? `${prefix}/${item.name}` : item.name,
+          path: prefix
+            ? `${prefix}/${item.name}`
+            : item.name,
           type: isFolder ? 'folder' : 'file',
           size: item.metadata?.size ?? null,
-          updated_at: item.updated_at || item.created_at || null,
-          mime_type: item.metadata?.mimetype || null
+          updated_at:
+            item.updated_at ||
+            item.created_at ||
+            null,
+          mime_type:
+            item.metadata?.mimetype ||
+            null
         };
       });
 
-    res.status(200).json({ items, prefix });
+    console.log(
+      `[Storage] Returned ${items.length} item(s) from "${bucketId}/${prefix}"`
+    );
+
+    return res.status(200).json({
+      success: true,
+      items,
+      prefix
+    });
+
   } catch (error) {
-    next(error);
+    console.error('[Storage] Unexpected list error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: 'Unexpected error while listing storage objects.',
+      details: error.message
+    });
   }
 });
 
-// Helper: recursively collect every real file path under a prefix.
-// Supabase Storage has no real "folders" — a folder is just a shared
-// prefix — so deleting one means walking it and collecting every leaf
-// file path first.
+
+// ==========================================
+// HELPER:
+// RECURSIVELY COLLECT FILE PATHS
+// ==========================================
+//
+// Supabase Storage does not have real folders.
+// Folders are represented by object path prefixes.
+//
+// Example:
+//
+// documents/
+//   2026/
+//     report.pdf
+//
+// To delete "documents", we must first collect:
+//
+// documents/2026/report.pdf
+// ==========================================
+
 async function collectFilePaths(bucketId, prefix) {
-  const { data, error } = await supabase.storage.from(bucketId).list(prefix, { limit: 1000 });
-  if (error) throw error;
+  const { data, error } = await withTimeout(
+    supabase.storage.from(bucketId).list(prefix, {
+      limit: 1000
+    }),
+    10000
+  );
+
+  if (error) {
+    throw error;
+  }
 
   let paths = [];
-  for (const item of data || []) {
-    if (item.name === '.emptyFolderPlaceholder') continue;
-    const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
 
+  for (const item of data || []) {
+    // Ignore Supabase's empty-folder placeholder.
+    if (item.name === '.emptyFolderPlaceholder') {
+      continue;
+    }
+
+    const itemPath = prefix
+      ? `${prefix}/${item.name}`
+      : item.name;
+
+    // Virtual folder.
     if (item.id === null) {
-      const nested = await collectFilePaths(bucketId, itemPath);
-      paths = paths.concat(nested);
+      const nestedPaths = await collectFilePaths(
+        bucketId,
+        itemPath
+      );
+
+      paths = paths.concat(nestedPaths);
     } else {
+      // Real file.
       paths.push(itemPath);
     }
   }
+
   return paths;
 }
 
-// DELETE: Remove one or more specific files
-// Body: { paths: string[] }
+
+// ==========================================
+// DELETE: REMOVE SPECIFIC FILES
+// ==========================================
+// Body:
+//
+// {
+//   "paths": [
+//     "folder/file1.jpg",
+//     "folder/file2.jpg"
+//   ]
+// }
+// ==========================================
+
 router.delete('/buckets/:bucketId/objects', async (req, res, next) => {
   try {
     const { bucketId } = req.params;
     const { paths } = req.body;
 
-    if (!Array.isArray(paths) || paths.length === 0) {
-      return res.status(400).json({ error: 'paths must be a non-empty array' });
+    if (!bucketId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bucket ID is required.'
+      });
     }
 
-    const { data, error } = await supabase.storage.from(bucketId).remove(paths);
+    if (!Array.isArray(paths) || paths.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'paths must be a non-empty array.'
+      });
+    }
+
+    // Remove invalid values.
+    const validPaths = paths.filter(
+      path => typeof path === 'string' && path.trim().length > 0
+    );
+
+    if (validPaths.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid file paths were provided.'
+      });
+    }
+
+    console.log(
+      `[Storage] Deleting ${validPaths.length} object(s) from "${bucketId}"`
+    );
+
+    const { data, error } = await withTimeout(
+      supabase.storage
+        .from(bucketId)
+        .remove(validPaths),
+      15000
+    );
 
     if (error) {
-      console.error('Supabase delete objects error:', error);
-      return res.status(500).json({ error: 'Failed to delete objects' });
+      console.error('[Storage] Supabase delete objects error:', {
+        bucket: bucketId,
+        paths: validPaths,
+        message: getErrorMessage(error),
+        status: error.status || null
+      });
+
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to delete storage objects.',
+        details: getErrorMessage(error)
+      });
     }
 
-    res.status(200).json({ message: 'Objects deleted successfully', deleted: data });
+    console.log(
+      `[Storage] Successfully deleted ${validPaths.length} object(s)`
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Objects deleted successfully.',
+      deleted: data || [],
+      deletedCount: validPaths.length
+    });
+
   } catch (error) {
-    next(error);
+    console.error('[Storage] Unexpected delete error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: 'Unexpected error while deleting storage objects.',
+      details: error.message
+    });
   }
 });
 
-// DELETE: Recursively remove every file under a folder prefix
-// Body: { prefix: string }
+
+// ==========================================
+// DELETE: REMOVE ENTIRE FOLDER
+// ==========================================
+// Body:
+//
+// {
+//   "prefix": "some/folder"
+// }
+// ==========================================
+
 router.delete('/buckets/:bucketId/folder', async (req, res, next) => {
   try {
     const { bucketId } = req.params;
     const { prefix } = req.body;
 
-    if (!prefix) {
-      return res.status(400).json({ error: 'prefix is required' });
+    if (!bucketId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bucket ID is required.'
+      });
     }
 
-    const allPaths = await collectFilePaths(bucketId, prefix);
+    if (
+      typeof prefix !== 'string' ||
+      !prefix.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'prefix is required.'
+      });
+    }
 
+    const cleanPrefix = prefix.trim();
+
+    console.log(
+      `[Storage] Collecting files for folder deletion: "${bucketId}/${cleanPrefix}"`
+    );
+
+    const allPaths = await collectFilePaths(
+      bucketId,
+      cleanPrefix
+    );
+
+    // Folder contains no actual files.
     if (allPaths.length === 0) {
-      return res.status(200).json({ deletedCount: 0, message: 'Folder was already empty' });
+      console.log(
+        `[Storage] Folder "${cleanPrefix}" is already empty.`
+      );
+
+      return res.status(200).json({
+        success: true,
+        deletedCount: 0,
+        message: 'Folder was already empty.'
+      });
     }
 
-    // Chunk deletes to stay well under any request-size limits
+    // ------------------------------------------
+    // DELETE IN CHUNKS
+    // ------------------------------------------
+
     const chunkSize = 500;
     let deletedCount = 0;
-    for (let i = 0; i < allPaths.length; i += chunkSize) {
-      const chunk = allPaths.slice(i, i + chunkSize);
-      const { error } = await supabase.storage.from(bucketId).remove(chunk);
+
+    for (
+      let i = 0;
+      i < allPaths.length;
+      i += chunkSize
+    ) {
+      const chunk = allPaths.slice(
+        i,
+        i + chunkSize
+      );
+
+      console.log(
+        `[Storage] Deleting folder chunk ${Math.floor(i / chunkSize) + 1} ` +
+        `(${chunk.length} file(s))`
+      );
+
+      const { error } = await withTimeout(
+        supabase.storage
+          .from(bucketId)
+          .remove(chunk),
+        15000
+      );
+
       if (error) {
-        console.error('Supabase delete folder error:', error);
-        return res.status(500).json({ error: 'Failed to delete folder' });
+        console.error(
+          '[Storage] Supabase delete folder error:',
+          {
+            bucket: bucketId,
+            prefix: cleanPrefix,
+            message: getErrorMessage(error),
+            status: error.status || null
+          }
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: 'Failed to delete folder contents.',
+          details: getErrorMessage(error),
+          deletedCount
+        });
       }
+
       deletedCount += chunk.length;
     }
 
-    res.status(200).json({ message: 'Folder deleted successfully', deletedCount });
+    console.log(
+      `[Storage] Successfully deleted folder "${cleanPrefix}" ` +
+      `(${deletedCount} file(s))`
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Folder deleted successfully.',
+      deletedCount
+    });
+
   } catch (error) {
-    next(error);
+    console.error('[Storage] Unexpected folder deletion error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: 'Unexpected error while deleting folder.',
+      details: error.message
+    });
   }
 });
+
+
+// ==========================================
+// EXPORT ROUTER
+// ==========================================
 
 module.exports = router;

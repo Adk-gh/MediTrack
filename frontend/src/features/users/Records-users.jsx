@@ -1,5 +1,5 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Records-users.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../supabase';
 import { MedicalCertificate } from '../../components/MedicalCertificate';
 import { DentalExaminationReport } from '../../components/DentalExaminationReport';
@@ -145,6 +145,76 @@ const PullIndicator = ({ indicatorRef }) => (
     </svg>
   </div>
 );
+
+// ── Sort options for the custom dropdown ──────────────────────────────────────
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+];
+
+// ── Custom Sort Dropdown (replaces native <select> so mobile doesn't fall back to the OS picker UI) ──
+const SortDropdown = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const currentLabel = SORT_OPTIONS.find(o => o.value === value)?.label || 'Sort';
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          padding: '6px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+          border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a',
+          cursor: 'pointer', outline: 'none',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        {currentLabel}
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1a5c3a" strokeWidth="3" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute', right: 0, top: 'calc(100% + 6px)', minWidth: 140,
+            background: '#fff', border: '1px solid #ddeee5', borderRadius: 12,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden', zIndex: 50,
+          }}
+        >
+          {SORT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px',
+                fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background: value === opt.value ? '#e8f5ee' : 'transparent',
+                color: value === opt.value ? '#1a5c3a' : '#1a2e22',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 const InfoRow = ({ label, value }) => (
@@ -603,18 +673,7 @@ export default function RecordsUsers() {
               </button>
             ))}
           </div>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            style={{
-              padding: '6px 12px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-              border: '1px solid #ddeee5', background: '#fff', color: '#1a5c3a',
-              cursor: 'pointer', outline: 'none',
-            }}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-          </select>
+          <SortDropdown value={sortBy} onChange={setSortBy} />
         </div>
       </div>
 

@@ -1,21 +1,40 @@
-// C:\Users\HP\MediTrack\frontend\src\layouts/UserDashboardLayout.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserNotificationBell, UserNotificationPanel } from "../components/UserNotifications.jsx";
+import {
+  UserNotificationBell,
+  UserNotificationPanel,
+} from "../components/UserNotifications.jsx";
 import { supabase } from "../supabase";
 import notificationsService from "../services/notifications.service.js";
 import { createPortal } from "react-dom";
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
+
 const HomeIcon = ({ active }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={active ? "2" : "1.5"}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="w-full h-full"
+  >
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
     <polyline points="9 22 9 12 15 12 15 22" />
   </svg>
 );
 
 const CalendarIcon = ({ active }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={active ? "2" : "1.5"}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="w-full h-full"
+  >
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
     <line x1="16" y1="2" x2="16" y2="6" />
     <line x1="8" y1="2" x2="8" y2="6" />
@@ -24,7 +43,15 @@ const CalendarIcon = ({ active }) => (
 );
 
 const ConsultIcon = ({ active }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={active ? "2" : "1.5"}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="w-full h-full"
+  >
     <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4z" />
     <path d="M18 21v-2a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v2" />
     <path d="M12 12v3" />
@@ -33,7 +60,15 @@ const ConsultIcon = ({ active }) => (
 );
 
 const RecordsIcon = ({ active }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={active ? "2" : "1.5"}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="w-full h-full"
+  >
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
     <line x1="16" y1="13" x2="8" y2="13" />
@@ -43,7 +78,15 @@ const RecordsIcon = ({ active }) => (
 );
 
 const ProfileIcon = ({ active }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? "2" : "1.5"} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={active ? "2" : "1.5"}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="w-full h-full"
+  >
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
     <circle cx="12" cy="7" r="4" />
   </svg>
@@ -51,7 +94,15 @@ const ProfileIcon = ({ active }) => (
 
 function DocumentPreviewIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="#557a5b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 mx-auto">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#557a5b"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-12 h-12 mx-auto"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
       <line x1="16" y1="13" x2="8" y2="13" />
@@ -62,26 +113,42 @@ function DocumentPreviewIcon() {
 }
 
 // ─── Nav configs ──────────────────────────────────────────────────────────────
+
 const DESKTOP_NAV = [
-  { id: "home",     label: "Home",    Icon: HomeIcon },
-  { id: "booking",  label: "Booking", Icon: CalendarIcon },
-  { id: "consult",  label: "Consult", Icon: ConsultIcon },
-  { id: "records",  label: "Records", Icon: RecordsIcon },
-  { id: "profile",  label: "Profile", Icon: ProfileIcon },
+  { id: "home", label: "Home", Icon: HomeIcon },
+  { id: "booking", label: "Booking", Icon: CalendarIcon },
+  { id: "consult", label: "Consult", Icon: ConsultIcon },
+  { id: "records", label: "Records", Icon: RecordsIcon },
+  { id: "profile", label: "Profile", Icon: ProfileIcon },
 ];
 
 // ─── Mobile pill nav icons ────────────────────────────────────────────────────
+
 const NavHomeIcon = ({ size }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ width: size, height: size }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: size, height: size }}
+  >
     <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
     <path d="M9 21V12h6v9" />
   </svg>
 );
 
 const NavBookIcon = ({ size }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ width: size, height: size }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: size, height: size }}
+  >
     <rect x="3" y="4" width="18" height="18" rx="2" />
     <line x1="16" y1="2" x2="16" y2="6" />
     <line x1="8" y1="2" x2="8" y2="6" />
@@ -90,15 +157,29 @@ const NavBookIcon = ({ size }) => (
 );
 
 const NavConsultIcon = ({ size }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ width: size, height: size }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: size, height: size }}
+  >
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
 
 const NavRecordsIcon = ({ size }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ width: size, height: size }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: size, height: size }}
+  >
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
     <line x1="9" y1="13" x2="15" y2="13" />
@@ -107,54 +188,73 @@ const NavRecordsIcon = ({ size }) => (
 );
 
 const NavProfileIcon = ({ size }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    style={{ width: size, height: size }}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ width: size, height: size }}
+  >
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
     <circle cx="12" cy="7" r="4" />
   </svg>
 );
 
 const MOBILE_NAV = [
-  { id: "home",     label: "Home",    Icon: NavHomeIcon },
-  { id: "booking",  label: "Book",    Icon: NavBookIcon },
-  { id: "consult",  label: "Consult", Icon: NavConsultIcon },
-  { id: "records",  label: "Records", Icon: NavRecordsIcon },
-  { id: "profile",  label: "Profile", Icon: NavProfileIcon },
+  { id: "home", label: "Home", Icon: NavHomeIcon },
+  { id: "booking", label: "Book", Icon: NavBookIcon },
+  { id: "consult", label: "Consult", Icon: NavConsultIcon },
+  { id: "records", label: "Records", Icon: NavRecordsIcon },
+  { id: "profile", label: "Profile", Icon: NavProfileIcon },
 ];
 
 // ─── Header Profile Dropdown ──────────────────────────────────────────────────
+
 function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
   const [isOpen, setIsOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
 
-  // Notify parent whenever modal visibility changes
   useEffect(() => {
-    if (onLogoutModalChange) onLogoutModalChange(showLogoutModal);
-  }, [showLogoutModal]);
+    if (onLogoutModalChange) {
+      onLogoutModalChange(showLogoutModal);
+    }
+  }, [showLogoutModal, onLogoutModalChange]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target)
+      ) {
         setIsOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   return (
     <>
       <div className="relative" ref={dropdownRef}>
-        {/* Sleek downward chevron button */}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none flex items-center justify-center"
           aria-label="Profile Menu"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
             <path d="M7 10l5 5 5-5z" />
           </svg>
         </button>
@@ -162,23 +262,38 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
         {isOpen && (
           <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 py-2 z-[10000] animate-[fadeIn_0.15s_ease-out]">
             <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Signed in as</p>
-              <p className="text-xs font-bold text-slate-800 truncate">{userName || 'Student'}</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">
+                Signed in as
+              </p>
+
+              <p className="text-xs font-bold text-slate-800 truncate">
+                {userName || "Student"}
+              </p>
             </div>
 
-            {/* Settings Button */}
             <button
               onClick={() => {
                 setIsOpen(false);
-                navigate('/student/settings');
+                navigate("/student/settings");
               }}
               className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
               Settings
             </button>
 
-            {/* Sign Out Button — opens confirmation modal */}
             <button
               onClick={() => {
                 setIsOpen(false);
@@ -186,121 +301,157 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
               }}
               className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
               Sign Out
             </button>
           </div>
         )}
       </div>
 
-        {showLogoutModal && createPortal(
+      {showLogoutModal &&
+        createPortal(
           <div
-            onClick={(e) => e.target === e.currentTarget && setShowLogoutModal(false)}
+            onClick={(e) =>
+              e.target === e.currentTarget && setShowLogoutModal(false)
+            }
             style={{
-              position: 'fixed',
+              position: "fixed",
               inset: 0,
-              background: 'rgba(0, 0, 0, 0.55)',
-              backdropFilter: 'blur(3px)',
+              background: "rgba(0, 0, 0, 0.55)",
+              backdropFilter: "blur(3px)",
               zIndex: 999999,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 16
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
             }}
           >
             <div
               style={{
-                background: '#fff',
-                padding: '36px 32px',
+                background: "#fff",
+                padding: "36px 32px",
                 borderRadius: 20,
-                width: '100%',
+                width: "100%",
                 maxWidth: 320,
-                textAlign: 'center',
-                boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+                textAlign: "center",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
               }}
             >
-            <h3 style={{ margin: '0 0 8px', color: '#1a1a1a', fontSize: 20, fontWeight: 800 }}>
-              Confirm Sign Out
-            </h3>
-            <p style={{ margin: '0 0 28px', color: '#6b7280', fontSize: 14 }}>
-              Are you sure you want to log out?
-            </p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={() => setShowLogoutModal(false)}
+              <h3
                 style={{
-                  flex: 1,
-                  padding: '13px',
-                  borderRadius: 12,
-                  border: 'none',
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                  fontSize: 14,
-                  transition: 'background 0.15s',
+                  margin: "0 0 8px",
+                  color: "#1a1a1a",
+                  fontSize: 20,
+                  fontWeight: 800,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                onMouseLeave={e => e.currentTarget.style.background = '#f1f5f9'}
               >
-                Cancel
-              </button>
-              <button
-                onClick={() => { setShowLogoutModal(false); onLogout(); }}
+                Confirm Sign Out
+              </h3>
+
+              <p
                 style={{
-                  flex: 1,
-                  padding: '13px',
-                  borderRadius: 12,
-                  border: 'none',
-                  background: '#e53e3e',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontWeight: 700,
+                  margin: "0 0 28px",
+                  color: "#6b7280",
                   fontSize: 14,
-                  transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#c53030'}
-                onMouseLeave={e => e.currentTarget.style.background = '#e53e3e'}
               >
-                Sign Out
-              </button>
+                Are you sure you want to log out?
+              </p>
+
+              <div style={{ display: "flex", gap: 12 }}>
+                <button
+                  onClick={() => setShowLogoutModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "13px",
+                    borderRadius: 12,
+                    border: "none",
+                    background: "#f1f5f9",
+                    color: "#475569",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontSize: 14,
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowLogoutModal(false);
+                    onLogout();
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "13px",
+                    borderRadius: 12,
+                    border: "none",
+                    background: "#e53e3e",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontSize: 14,
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-  document.body
-)}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
 
 // ─── Floating Pill Nav ────────────────────────────────────────────────────────
-function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 }) {
+
+function MobilePillNav({
+  activeTab,
+  onTabChange,
+  hidden,
+  consultUnreadCount = 0,
+}) {
   const [vw, setVw] = useState(window.innerWidth);
 
   useEffect(() => {
     const onResize = () => setVw(window.innerWidth);
+
     window.addEventListener("resize", onResize);
+
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const pillW  = Math.min(480, Math.max(280, vw * 0.88));
-  const scale  = pillW / 360;
-  const pillH  = Math.round(56 * scale);
+  const pillW = Math.min(480, Math.max(280, vw * 0.88));
+  const scale = pillW / 360;
+  const pillH = Math.round(56 * scale);
   const bubble = Math.round(48 * scale);
   const iconSm = Math.round(18 * scale);
   const iconLg = Math.round(20 * scale);
-  const labelSz= Math.max(9, Math.round(10 * scale));
-  const popUp  = Math.round(24 * scale);
+  const labelSz = Math.max(9, Math.round(10 * scale));
+  const popUp = Math.round(24 * scale);
   const bottomOffset = Math.round(20 * scale);
 
-  // When a modal is open, render nothing so the nav doesn't bleed through
   if (hidden) return null;
 
   return (
     <nav
       style={{
         position: "fixed",
-        bottom: bottomOffset,
+        bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 9999,
@@ -322,7 +473,9 @@ function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 
       >
         {MOBILE_NAV.map(({ id, label, Icon }) => {
           const isActive = activeTab === id;
-          const showUnreadBadge = id === 'consult' && consultUnreadCount > 0;
+          const showUnreadBadge =
+            id === "consult" && consultUnreadCount > 0;
+
           return (
             <button
               key={id}
@@ -351,7 +504,9 @@ function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 
                   alignItems: "center",
                   justifyContent: "center",
                   marginTop: isActive ? -popUp : 0,
-                  boxShadow: isActive ? "0 6px 20px rgba(5,150,105,0.40)" : "none",
+                  boxShadow: isActive
+                    ? "0 6px 20px rgba(5,150,105,0.40)"
+                    : "none",
                   color: isActive ? "#ffffff" : "#94a3b8",
                   transition: "all 0.28s cubic-bezier(.34,1.56,.64,1)",
                   flexShrink: 0,
@@ -359,6 +514,7 @@ function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 
                 }}
               >
                 <Icon size={isActive ? iconLg : iconSm} />
+
                 {showUnreadBadge && (
                   <span
                     style={{
@@ -374,13 +530,16 @@ function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 
                   />
                 )}
               </div>
+
               <span
                 style={{
                   fontSize: labelSz,
                   fontWeight: 700,
                   letterSpacing: "0.04em",
                   color: isActive ? "#059669" : "#94a3b8",
-                  marginTop: isActive ? Math.round(5 * scale) : Math.round(3 * scale),
+                  marginTop: isActive
+                    ? Math.round(5 * scale)
+                    : Math.round(3 * scale),
                   lineHeight: 1,
                   transition: "color 0.2s",
                   whiteSpace: "nowrap",
@@ -396,38 +555,81 @@ function MobilePillNav({ activeTab, onTabChange, hidden, consultUnreadCount = 0 
   );
 }
 
-// ─── Preview Modal ─────────────────────────────────────────────────────────────
+// ─── Preview Modal ────────────────────────────────────────────────────────────
+
 export function PreviewModal({ record, onClose, isDesktop }) {
   if (!record) return null;
 
   if (isDesktop) {
     return (
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8" onClick={onClose}>
-        <div className="bg-transparent rounded-3xl overflow-hidden flex flex-col" style={{ maxHeight: "80vh" }} onClick={(e) => e.stopPropagation()}>
+      <div
+        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8"
+        onClick={onClose}
+      >
+        <div
+          className="bg-transparent rounded-3xl overflow-hidden flex flex-col"
+          style={{ maxHeight: "80vh" }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
-            <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.12em]">Medical Document Preview</span>
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 text-xl transition-colors">✕</button>
+            <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.12em]">
+              Medical Document Preview
+            </span>
+
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 text-xl transition-colors"
+            >
+              ✕
+            </button>
           </div>
+
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
             <div className="bg-slate-50 rounded-3xl p-6 text-center">
-              <div className="mb-3"><DocumentPreviewIcon /></div>
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">{record.title}</h3>
-              <p className="text-[9px] font-bold text-slate-400 mt-0.5 mb-5">{record.date}</p>
+              <div className="mb-3">
+                <DocumentPreviewIcon />
+              </div>
+
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                {record.title}
+              </h3>
+
+              <p className="text-[9px] font-bold text-slate-400 mt-0.5 mb-5">
+                {record.date}
+              </p>
+
               <div className="space-y-3 text-left">
                 <div className="bg-white p-4 rounded-2xl shadow-sm">
-                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1.5">Clinical Assessment</p>
-                  <p className="text-xs text-slate-600 leading-relaxed italic">{record.desc}</p>
+                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1.5">
+                    Clinical Assessment
+                  </p>
+
+                  <p className="text-xs text-slate-600 leading-relaxed italic">
+                    {record.desc}
+                  </p>
                 </div>
+
                 <div className="bg-white p-4 rounded-2xl shadow-sm">
-                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">Physician in Charge</p>
-                  <p className="text-xs font-bold text-slate-700">{record.doc}</p>
+                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">
+                    Physician in Charge
+                  </p>
+
+                  <p className="text-xs font-bold text-slate-700">
+                    {record.doc}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
+
           <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex gap-3">
-            <button className="flex-1 py-3 bg-[#557a5b] text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 hover:bg-[#4a6b4f] transition-colors">Download PDF</button>
-            <button className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors">Print</button>
+            <button className="flex-1 py-3 bg-[#557a5b] text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 hover:bg-[#4a6b4f] transition-colors">
+              Download PDF
+            </button>
+
+            <button className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors">
+              Print
+            </button>
           </div>
         </div>
       </div>
@@ -436,44 +638,111 @@ export function PreviewModal({ record, onClose, isDesktop }) {
 
   return (
     <div className="absolute inset-0 bg-white z-50 flex flex-col animate-slideUp">
-      <div className="flex justify-between items-center px-5 pt-12 pb-4 border-b border-slate-100 flex-shrink-0">
-        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center text-slate-400 text-2xl leading-none">‹</button>
-        <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.12em]">Medical Document Preview</span>
+      <div
+        className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 flex-shrink-0"
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+        }}
+      >
+        <button
+          onClick={onClose}
+          className="w-8 h-8 flex items-center justify-center text-slate-400 text-2xl leading-none"
+        >
+          ‹
+        </button>
+
+        <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.12em]">
+          Medical Document Preview
+        </span>
+
         <div className="w-8" />
       </div>
+
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
         <div className="bg-slate-50 rounded-3xl p-5 text-center">
-          <div className="mb-3"><DocumentPreviewIcon /></div>
-          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">{record.title}</h3>
-          <p className="text-[9px] font-bold text-slate-400 mt-0.5 mb-5">{record.date}</p>
+          <div className="mb-3">
+            <DocumentPreviewIcon />
+          </div>
+
+          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+            {record.title}
+          </h3>
+
+          <p className="text-[9px] font-bold text-slate-400 mt-0.5 mb-5">
+            {record.date}
+          </p>
+
           <div className="space-y-3 text-left">
             <div className="bg-white p-4 rounded-2xl shadow-sm">
-              <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1.5">Clinical Assessment</p>
-              <p className="text-xs text-slate-600 leading-relaxed italic">{record.desc}</p>
+              <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1.5">
+                Clinical Assessment
+              </p>
+
+              <p className="text-xs text-slate-600 leading-relaxed italic">
+                {record.desc}
+              </p>
             </div>
+
             <div className="bg-white p-4 rounded-2xl shadow-sm">
-              <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">Physician in Charge</p>
-              <p className="text-xs font-bold text-slate-700">{record.doc}</p>
+              <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">
+                Physician in Charge
+              </p>
+
+              <p className="text-xs font-bold text-slate-700">
+                {record.doc}
+              </p>
             </div>
           </div>
         </div>
       </div>
-      <div className="px-5 pb-10 pt-4 border-t border-slate-100 space-y-3 flex-shrink-0">
-        <button className="w-full py-4 bg-[#557a5b] text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-center gap-2">Download as PDF</button>
-        <button className="w-full py-4 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-2xl flex items-center justify-center gap-2">Print Record</button>
+
+      <div
+        className="px-5 pt-4 border-t border-slate-100 space-y-3 flex-shrink-0"
+        style={{
+          paddingBottom: "calc(40px + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
+        <button className="w-full py-4 bg-[#557a5b] text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-center gap-2">
+          Download as PDF
+        </button>
+
+        <button className="w-full py-4 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-2xl flex items-center justify-center gap-2">
+          Print Record
+        </button>
       </div>
     </div>
   );
 }
 
-// ─── Desktop shell ─────────────────────────────────────────────────────────────
-function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout, consultUnreadCount }) {
+// ─── Desktop shell ────────────────────────────────────────────────────────────
+
+function DesktopShell({
+  activeTab,
+  onTabChange,
+  preview,
+  onClosePreview,
+  children,
+  notificationCount,
+  onNotificationClick,
+  userName,
+  onLogout,
+  consultUnreadCount,
+}) {
   return (
     <div className="min-h-screen bg-transparent flex flex-col">
-      <header className="bg-transparent px-5 py-3 flex items-center justify-between sticky top-0 z-10">
-        <img src="../logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
+      <header className="bg-transparent px-5 pb-3 flex items-center justify-between sticky top-0 z-10">
+        <img
+          src="../logo.jpg"
+          alt="MediTrack Logo"
+          className="h-10 object-contain rounded-xl"
+        />
+
         <div className="flex items-center gap-1 sm:gap-2">
-          <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
+          <UserNotificationBell
+            onClick={onNotificationClick}
+            count={notificationCount}
+          />
+
           <ProfileDropdown userName={userName} onLogout={onLogout} />
         </div>
       </header>
@@ -483,7 +752,9 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
           <nav className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3 sticky top-24">
             {DESKTOP_NAV.map(({ id, label, Icon }) => {
               const isActive = activeTab === id;
-              const showUnreadBadge = id === 'consult' && consultUnreadCount > 0;
+              const showUnreadBadge =
+                id === "consult" && consultUnreadCount > 0;
+
               return (
                 <button
                   key={id}
@@ -496,11 +767,14 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
                 >
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 relative">
                     <Icon active={isActive} />
+
                     {showUnreadBadge && (
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
                     )}
                   </div>
+
                   <span className="text-[12px] font-bold">{label}</span>
+
                   {showUnreadBadge && (
                     <span className="ml-auto text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">
                       {consultUnreadCount}
@@ -515,31 +789,49 @@ function DesktopShell({ activeTab, onTabChange, preview, onClosePreview, childre
         <main className="flex-1 w-full max-w-4xl">
           <div
             className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col"
-            style={{ height: "calc(100vh - 140px)", minHeight: "600px" }}
+            style={{
+              height: "calc(100vh - 140px)",
+              minHeight: "600px",
+            }}
           >
             <div
               className="overflow-y-auto flex-1 flex flex-col"
               style={{
-                WebkitOverflowScrolling: 'touch',
-                touchAction: 'pan-y'
+                WebkitOverflowScrolling: "touch",
+                touchAction: "pan-y",
               }}
-            >{children}</div>
+            >
+              {children}
+            </div>
           </div>
         </main>
       </div>
 
-      {preview && <PreviewModal record={preview} onClose={onClosePreview} isDesktop />}
+      {preview && (
+        <PreviewModal
+          record={preview}
+          onClose={onClosePreview}
+          isDesktop
+        />
+      )}
     </div>
   );
 }
 
 // ─── Mobile shell ─────────────────────────────────────────────────────────────
-// FIX: this wrapper no longer scrolls itself. It's now a fixed-size flex column
-// (overflow: hidden) so it can never grow taller than its content and become a
-// second competing scroll container. Each page's own root (e.g. Profile-users.jsx,
-// Appointment-users.jsx) fills this space exactly and owns its own scrolling —
-// so there is only ever ONE scrollable element for touch/PTR handlers to control.
-function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children, notificationCount, onNotificationClick, userName, onLogout, consultUnreadCount }) {
+
+function MobileShell({
+  activeTab,
+  onTabChange,
+  preview,
+  onClosePreview,
+  children,
+  notificationCount,
+  onNotificationClick,
+  userName,
+  onLogout,
+  consultUnreadCount,
+}) {
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
   return (
@@ -553,10 +845,30 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
         fontFamily: "sans-serif",
       }}
     >
-      <header className="bg-transparent px-5 py-3 flex items-center justify-between relative z-[1000] flex-shrink-0">
-        <img src="../logo.jpg" alt="MediTrack Logo" className="h-10 object-contain rounded-xl" />
+      {/*
+        Android edge-to-edge:
+        The WebView is allowed behind the status bar.
+        We therefore explicitly add the safe-area inset here.
+      */}
+      <header
+        className="bg-transparent px-5 flex items-center justify-between relative z-[1000] flex-shrink-0"
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+          paddingBottom: "12px",
+        }}
+      >
+        <img
+          src="../logo.jpg"
+          alt="MediTrack Logo"
+          className="h-10 object-contain rounded-xl"
+        />
+
         <div className="flex items-center gap-1">
-          <UserNotificationBell onClick={onNotificationClick} count={notificationCount} />
+          <UserNotificationBell
+            onClick={onNotificationClick}
+            count={notificationCount}
+          />
+
           <ProfileDropdown
             userName={userName}
             onLogout={onLogout}
@@ -569,18 +881,23 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: "hidden",       // was: overflowY: "auto" — no longer a scroll container
-          display: "flex",          // ADDED — real flex column so children can fill it
-          flexDirection: "column",  // ADDED
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
           position: "relative",
-          paddingBottom: "88px",
+          paddingBottom:
+            "calc(88px + env(safe-area-inset-bottom, 0px))",
         }}
       >
         {children}
-        <PreviewModal record={preview} onClose={onClosePreview} isDesktop={false} />
+
+        <PreviewModal
+          record={preview}
+          onClose={onClosePreview}
+          isDesktop={false}
+        />
       </div>
 
-      {/* hidden prop unmounts the pill nav while the logout modal is open */}
       <MobilePillNav
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -592,6 +909,7 @@ function MobileShell({ activeTab, onTabChange, preview, onClosePreview, children
 }
 
 // ─── Main Export ───────────────────────────────────────────────────────────────
+
 export default function UserDashboardLayout({
   activeTab,
   onTabChange,
@@ -607,8 +925,15 @@ export default function UserDashboardLayout({
   const [notificationCount, setNotificationCount] = useState(0);
   const [consultUnreadCount, setConsultUnreadCount] = useState(0);
 
-  const handleNotificationClick = () => setShowNotifications(true);
-  const handleCloseNotifications = () => setShowNotifications(false);
+  const handleNotificationClick = () => {
+    setShowNotifications(true);
+  };
+
+  const handleCloseNotifications = () => {
+    setShowNotifications(false);
+  };
+
+  // ─── Notification unread count ───────────────────────────────────────────
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -619,42 +944,47 @@ export default function UserDashboardLayout({
         console.error("Error fetching unread count:", err);
       }
     };
+
     fetchUnreadCount();
+
     const interval = setInterval(fetchUnreadCount, 30000);
+
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch consult unread count from localStorage (set by Consultation-users.jsx)
-  // Also query database for accurate count in case user hasn't visited consult page yet
+  // ─── Consultation unread count ───────────────────────────────────────────
+
   useEffect(() => {
     const updateConsultUnreadCount = async () => {
       try {
-        // First check localStorage (set by active consultation page)
-        let count = parseInt(localStorage.getItem('consultUnreadCount') || '0', 10);
+        let count = parseInt(
+          localStorage.getItem("consultUnreadCount") || "0",
+          10
+        );
 
-        // Also try to get from database for more accurate count
         try {
-          const profileCache = JSON.parse(sessionStorage.getItem('meditrack_user_profile') || 'null');
+          const profileCache = JSON.parse(
+            sessionStorage.getItem("meditrack_user_profile") || "null"
+          );
+
           const internalUserId = profileCache?.internalUserId;
 
           if (internalUserId) {
-            // Get only ACTIVE consultations for this patient
             const { data: consultations } = await supabase
-              .from('consultations')
-              .select('id')
-              .eq('patient_id', internalUserId)
-              .eq('status', 'active');
+              .from("consultations")
+              .select("id")
+              .eq("patient_id", internalUserId)
+              .eq("status", "active");
 
             if (consultations && consultations.length > 0) {
-              const consultIds = consultations.map(c => c.id);
+              const consultIds = consultations.map((c) => c.id);
 
-              // Get all messages from clinic (not from patient) that are unread
               const { data: unreadMsgs } = await supabase
-                .from('consultation_messages')
-                .select('id')
-                .in('consultation_id', consultIds)
-                .neq('sender_id', internalUserId)
-                .is('read_at', null);
+                .from("consultation_messages")
+                .select("id")
+                .in("consultation_id", consultIds)
+                .neq("sender_id", internalUserId)
+                .is("read_at", null);
 
               if (unreadMsgs) {
                 count = unreadMsgs.length;
@@ -666,46 +996,71 @@ export default function UserDashboardLayout({
             }
           }
         } catch (dbErr) {
-          // Database query failed, use localStorage value
+          // Database query failed; use localStorage value.
         }
 
         setConsultUnreadCount(count);
-      } catch {}
+      } catch {
+        // Ignore errors.
+      }
     };
+
     updateConsultUnreadCount();
-    // Poll more frequently since messages come in via realtime
+
     const interval = setInterval(updateConsultUnreadCount, 5000);
+
     return () => clearInterval(interval);
   }, []);
 
-  // Real-time subscription for notification count updates
+  // ─── Real-time notification updates ─────────────────────────────────────
+
   useEffect(() => {
     const getUserId = () => {
       try {
-        // Use auth UID for notifications
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const user = JSON.parse(
+          localStorage.getItem("user") || "{}"
+        );
+
         return user?.uid || null;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     };
 
-    const userId = getUserId();
-    if (!userId) return;
+    const authUserId = getUserId();
+
+    if (!authUserId) return;
 
     const channel = supabase
-      .channel('layout-notif-count')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+      .channel("layout-notif-count")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${authUserId}`,
+        },
         () => {
-          setNotificationCount(prev => prev + 1);
-          sessionStorage.removeItem('meditrack_notif_count');
+          setNotificationCount((prev) => prev + 1);
+          sessionStorage.removeItem("meditrack_notif_count");
         }
       )
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${authUserId}`,
+        },
         async () => {
-          const count = await notificationsService.getUnreadCount();
+          const count =
+            await notificationsService.getUnreadCount();
+
           setNotificationCount(count);
-          sessionStorage.removeItem('meditrack_notif_count');
+
+          sessionStorage.removeItem("meditrack_notif_count");
         }
       )
       .subscribe();
@@ -715,10 +1070,18 @@ export default function UserDashboardLayout({
     };
   }, []);
 
+  // ─── Responsive breakpoint ───────────────────────────────────────────────
+
   useEffect(() => {
-    const handleResize = () => setIsDesktop(window.innerWidth >= 641);
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 641);
+    };
+
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   const sharedProps = {
@@ -737,9 +1100,12 @@ export default function UserDashboardLayout({
 
   return (
     <>
-      {isDesktop
-        ? <DesktopShell {...sharedProps} />
-        : <MobileShell  {...sharedProps} />}
+      {isDesktop ? (
+        <DesktopShell {...sharedProps} />
+      ) : (
+        <MobileShell {...sharedProps} />
+      )}
+
       <UserNotificationPanel
         isOpen={showNotifications}
         onClose={handleCloseNotifications}
