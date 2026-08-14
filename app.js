@@ -19,15 +19,26 @@ const app = express();
 // 2. TRUST PROXY
 
 //
-// Important when deployed behind Render, Railway,
-// Cloudflare, Nginx, or another reverse proxy.
+// Render is forwarding the client IP through multiple proxy
+// hops. Your current X-Forwarded-For looked like:
 //
-// This allows Express to determine the real client IP
-// from the proxy headers.
+//   client IP,
+//   Render/proxy IP,
+//   Render internal IP
+//
+// With trust proxy = 1, Express was using:
+//
+//   10.196.227.102
+//
+// as req.ip, which can cause multiple users to share the
+// same rate-limit bucket.
+//
+// Trust 3 proxy hops so Express resolves the original
+// client IP.
 //
 
 
-app.set('trust proxy', 1);
+app.set('trust proxy', 3);
 
 
 // 3. SECURITY AND CORS
@@ -74,34 +85,33 @@ app.post('/test', (req, res) => {
 // 6. IP DEBUG ROUTE
 
 //
-// TEMPORARY:
-// Use this to verify whether you and your friend are
-// being detected as different IP addresses.
+// TEMPORARY DEBUG ROUTE.
 //
-// Open:
+// After deploying, open:
 //
-// https://YOUR-BACKEND-DOMAIN/test-ip
+// https://meditrack-1-pq7i.onrender.com/test-ip
 //
 // from your computer and your friend's computer.
+//
+// The "ip" value should now represent the original client
+// IP rather than:
+//
+//   10.196.227.102
 //
 
 
 app.get('/test-ip', (req, res) => {
-  const clientIp = req.ip;
-  const proxyIps = req.ips;
-  const forwardedFor = req.headers['x-forwarded-for'];
-
   console.log('=========================================');
   console.log('IP DEBUG');
-  console.log('Client IP:', clientIp);
-  console.log('Proxy IPs:', proxyIps);
-  console.log('X-Forwarded-For:', forwardedFor);
+  console.log('Client IP:', req.ip);
+  console.log('Proxy IPs:', req.ips);
+  console.log('X-Forwarded-For:', req.headers['x-forwarded-for']);
   console.log('=========================================');
 
   res.json({
-    ip: clientIp,
-    ips: proxyIps,
-    forwardedFor: forwardedFor || null,
+    ip: req.ip,
+    ips: req.ips,
+    forwardedFor: req.headers['x-forwarded-for'] || null,
   });
 });
 
@@ -115,7 +125,7 @@ app.use('/api', routes);
 // 8. GLOBAL ERROR HANDLER
 
 //
-// Must remain AFTER all routes.
+// This MUST remain after all routes.
 //
 
 
@@ -133,7 +143,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   MediTrack Node Server Running
   Port: ${PORT}
   Database: Supabase Connected
-  Proxy Trust: Enabled
+  Proxy Trust: 3 Hops
 =========================================
   `);
 
