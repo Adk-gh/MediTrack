@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // ─── Imported Admin Components ────────────────────────────────────────────────
-import SystemConfigSettings from './admin/SystemConfig';
+import SystemConfigSettings from './admin/systemConfig';
 import StorageManager from './admin/storageManager';
 import SecuritySettings from './admin/securitySettings';
 import OcrSettings from '../features/admin-clinic/OcrSettings'; // Updated Path
