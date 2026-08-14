@@ -255,43 +255,74 @@ const LoginForm = () => {
           transform: translateY(-2px);
         }
 
-        @media (max-width: 640px) {
-          .lf-mobile-wrapper {
-            position: fixed; /* Lock to viewport */
-            top: 0; left: 0; right: 0; bottom: 0;
-            height: 100dvh; /* Dynamic viewport height for modern mobile browsers */
-            height: 100vh;  /* Fallback */
-            display: flex;
-            flex-direction: column;
-            background: #F2F4F3;
-            overflow-y: auto; /* Enable vertical scrolling */
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-            width: 100%;
-            box-sizing: border-box;
-            z-index: 10;
-          }
+@media (max-width: 640px) {
+  .lf-mobile-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
 
-          .m-topbar {
-            display: flex; align-items: center; justify-content: center;
-            padding: 20px 24px 0;
-            flex-shrink: 0;
-          }
-          .m-logo-wrap {
-            display: flex; align-items: center; gap: 10px;
-            animation: m-fadeIn 0.5s ease both;
-          }
-          .m-logo-img { height: 32px; border-radius: 8px; }
-          .m-logo-name {
-            font-size: 17px; font-weight: 700;
-            color: #2D4744; letter-spacing: -0.3px;
-          }
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
 
-          .m-hero {
-            padding: 36px 28px 28px;
-            flex-shrink: 0;
-            animation: m-fadeUp 0.5s ease 0.1s both;
-          }
+    display: flex;
+    flex-direction: column;
+
+    background: #F2F4F3;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+
+    box-sizing: border-box;
+    z-index: 10;
+
+    /* Android/iOS safe area */
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .m-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* Extra spacing below the status bar */
+    padding: 18px 24px 0;
+
+    min-height: 50px;
+    box-sizing: border-box;
+
+    flex-shrink: 0;
+  }
+
+  .m-logo-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    animation: m-fadeIn 0.5s ease both;
+  }
+
+  .m-logo-img {
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .m-logo-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #2D4744;
+    letter-spacing: -0.3px;
+  }
+
+  .m-hero {
+    padding: 36px 28px 28px;
+    flex-shrink: 0;
+
+    animation: m-fadeUp 0.5s ease 0.1s both;
+  }
           .m-eyebrow {
             font-size: 12px; font-weight: 600;
             color: #4A8C82; letter-spacing: 1.2px;

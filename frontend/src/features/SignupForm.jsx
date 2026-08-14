@@ -589,22 +589,56 @@ const SignupForm = () => {
 
         /* --- Mobile Specifics --- */
         @media (max-width: 640px) {
-          .lf-mobile-wrapper {
-            position: fixed; /* Lock to viewport */
-            top: 0; left: 0; right: 0; bottom: 0;
-            height: 100dvh; /* Dynamic viewport height for modern mobile browsers */
-            height: 100vh;  /* Fallback */
-            background: #F2F4F3;
-            overflow-y: auto; /* Enable vertical scrolling */
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-            width: 100%;
-            box-sizing: border-box;
-            z-index: 10;
-          }
+        .lf-mobile-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 
-          /* Mobile top bar */
-          .m-topbar { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 0; flex-shrink: 0; animation: m-fadeIn 0.4s ease both; }
+  /* Use the real dynamic viewport when supported */
+  height: 100dvh;
+
+  /* Fallback for older browsers */
+  min-height: 100vh;
+
+  background: #F2F4F3;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  -webkit-overflow-scrolling: touch;
+
+  width: 100%;
+  box-sizing: border-box;
+  z-index: 10;
+
+  /*
+   * Safe-area-aware scrolling container.
+   * Devices without a notch return 0px.
+   * Devices with a notch/status bar add the required inset.
+   */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Mobile top bar */
+.m-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  /*
+   * The wrapper already accounts for the safe area.
+   * Keep the normal visual spacing here.
+   */
+  padding: 20px 24px 0;
+
+  flex-shrink: 0;
+  animation: m-fadeIn 0.4s ease both;
+
+  box-sizing: border-box;
+}
           .m-logo-wrap { display: flex; align-items: center; gap: 10px; }
           .m-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
           .m-step-badge { background: #E4EFED; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: #3D7A6F; }

@@ -1423,10 +1423,10 @@ export default function ProfileUsers({ onLogout }) {
                     <CustomSelect value={editData.civilStatus} onChange={val => handleChange('civilStatus', val)} options={CIVIL_STATUSES} />
                   </FormGroup>
                   <FormGroup label="Religion">
-                    <CustomSelect value={editData.religion} onChange={val => handleChange('religion', val)} options={RELIGIONS} />
+                    <CustomSelect value={editData.religion} onChange={val => handleChange('religion', val)} options={RELIGIONS} dropUp={true} />
                   </FormGroup>
                   <FormGroup label="Nationality">
-                    <CustomSelect value={editData.nationality} onChange={val => handleChange('nationality', val)} options={NATIONALITIES} />
+                    <CustomSelect value={editData.nationality} onChange={val => handleChange('nationality', val)} options={NATIONALITIES} dropUp={true} />
                   </FormGroup>
                   <FormGroup label="Home Address">
                     <button
