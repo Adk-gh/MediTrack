@@ -1,6 +1,6 @@
 // C:\Users\HP\MediTrack\services\systemConfig.service.js
 
-const supabase = require('../configs/supabase');
+const supabase = require('../configs/database');
 
 /**
  * Fetch the global MediTrack system configuration.

@@ -1,5 +1,5 @@
 const userService = require('../features/user/user.service');
-const supabase = require('../configs/supabase');
+const supabase = require('../configs/database');
 const { sendEmail } = require('../configs/email');
 const crypto = require('crypto');
 

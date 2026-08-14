@@ -1,17 +1,23 @@
-  // C:\Users\HP\MediTrack\configs/database.js
-  require('dotenv').config();
-  const { createClient } = require('@supabase/supabase-js');
+//C:\Users\HP\MediTrack\configs\database.js
+require('dotenv').config();
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.supabaseUrl;
-  const supabaserviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const { createClient } = require('@supabase/supabase-js');
 
-  if (!supabaseUrl || !supabaserviceKey) {
-    console.error('Missing Supabase configuration: SUPABASE_URL or SUPABASE_SERVICE_KEY');
-    process.exit(1);
-  }
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
-  const supabase = createClient(supabaseUrl, supabaserviceKey);
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error(
+    'Missing Supabase configuration: SUPABASE_URL or SUPABASE_SERVICE_KEY'
+  );
+  process.exit(1);
+}
 
-  console.log('📂 Supabase client initialized...');
+const supabase = createClient(
+  supabaseUrl,
+  supabaseServiceKey
+);
 
-  module.exports = supabase;
+console.log('📂 Supabase client initialized...');
+
+module.exports = supabase;

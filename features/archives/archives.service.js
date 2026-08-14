@@ -1,6 +1,6 @@
 // features/archives/archives.service.js
 const supabase = require('../../configs/database');
-const supabaseAuth = require('../../configs/supabase');
+const supabaseAuth = require('../../configs/database');
 
 const ARCHIVE_TABLE = 'archives';
 
