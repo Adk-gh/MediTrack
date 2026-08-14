@@ -5,6 +5,9 @@ const authController = require('../controllers/auth.controller');
 const upload = require('../middleware/upload');
 const rateLimit = require('express-rate-limit');
 
+// Handles IPv4 + IPv6 safely for rate-limit keys
+const { ipKeyGenerator } = require('express-rate-limit');
+
 // Authentication / Authorization middleware
 const { authorized } = require('../middleware/authorized');
 const { requireSysadmin } = require('../middleware/roleBasedAccess');
@@ -15,6 +18,30 @@ const { auditLog } = require('../middleware/auditLogger');
 const supabase = require('../configs/database');
 
 // ---------------------------------------------------------
+// RATE-LIMIT KEY GENERATOR
+// ---------------------------------------------------------
+//
+// Uses the IP address that Express resolved after processing
+// the proxy headers.
+//
+// This means:
+//
+// User A → IP A → rate-limit bucket A
+// User B → IP B → rate-limit bucket B
+//
+// IPv6 addresses are normalized safely using
+// express-rate-limit's ipKeyGenerator helper.
+//
+// ---------------------------------------------------------
+
+const clientIpKey = (req) => {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  return ipKeyGenerator(ip);
+};
+
+
+// ---------------------------------------------------------
 // RATE LIMITERS
 // ---------------------------------------------------------
 
@@ -22,10 +49,16 @@ const supabase = require('../configs/database');
  * Login
  *
  * Maximum of 5 attempts per IP every 15 minutes.
+ *
+ * Different users with different IPs receive separate
+ * rate-limit buckets.
  */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
+
   max: 5,
+
+  keyGenerator: clientIpKey,
 
   message: {
     success: false,
@@ -48,7 +81,10 @@ const loginLimiter = rateLimit({
  */
 const emailLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
+
   max: 10,
+
+  keyGenerator: clientIpKey,
 
   message: {
     success: false,
@@ -69,7 +105,10 @@ const emailLimiter = rateLimit({
  */
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
+
   max: 50,
+
+  keyGenerator: clientIpKey,
 
   message: {
     success: false,
@@ -85,6 +124,7 @@ const registerLimiter = rateLimit({
 // ---------------------------------------------------------
 // PUBLIC AUTHENTICATION ROUTES
 // ---------------------------------------------------------
+
 
 /**
  * 1. REGISTER
@@ -201,8 +241,6 @@ router.post(
  * 3. FORGOT PASSWORD
  *
  * Public route.
- *
- * The user isn't authenticated.
  */
 router.post(
   '/forgot-password',
@@ -229,9 +267,6 @@ router.post(
  * 5. SEND EMAIL VERIFICATION
  *
  * Public route.
- *
- * Used when an unverified user needs another
- * verification email.
  */
 router.post(
   '/send-verification',
@@ -244,8 +279,6 @@ router.post(
  * 6. VERIFY EMAIL
  *
  * Public route.
- *
- * Verification is performed using the verification token.
  */
 router.post(
   '/verify-email',
@@ -257,22 +290,14 @@ router.post(
 // PROTECTED AUTHENTICATION ROUTES
 // ---------------------------------------------------------
 
+
 /**
  * 7. ADMIN RESEND VERIFICATION
  *
- * IMPORTANT:
+ * Requires:
  *
- * This endpoint previously had only:
- *
- *     emailLimiter
- *
- * That means anyone who knew a user ID could potentially
- * call the endpoint.
- *
- * It should now require:
- *
- *     1. Valid Supabase JWT
- *     2. Administrator role
+ * 1. Valid Supabase JWT
+ * 2. Sysadmin role
  */
 router.post(
   '/admin-resend-verification',

@@ -10,35 +10,37 @@ const globalErr = require('./middleware/global-err');
 const routes = require('./routes/index');
 
 
+
 // 1. INITIALIZE EXPRESS
 
 
 const app = express();
 
 
+
 // 2. TRUST PROXY
 
 //
-// Render is forwarding the client IP through multiple proxy
-// hops. Your current X-Forwarded-For looked like:
+// MediTrack is deployed behind Render's reverse proxy.
 //
-//   client IP,
-//   Render/proxy IP,
-//   Render internal IP
+// This is IMPORTANT for:
+//   - express-rate-limit
+//   - req.ip
+//   - authentication/security logging
+//   - identifying individual clients
 //
-// With trust proxy = 1, Express was using:
+// Render forwards the original client IP using
+// X-Forwarded-For.
 //
-//   10.196.227.102
+// `true` tells Express to trust the proxy chain and use
+// the forwarded client IP.
 //
-// as req.ip, which can cause multiple users to share the
-// same rate-limit bucket.
-//
-// Trust 3 proxy hops so Express resolves the original
-// client IP.
+// This prevents all users behind Render from being treated
+// as the same internal proxy IP.
 //
 
+app.set('trust proxy', true);
 
-app.set('trust proxy', 3);
 
 
 // 3. SECURITY AND CORS
@@ -55,7 +57,8 @@ app.use(
 app.use(corsMiddleware);
 
 
-// 4. PAYLOAD PARSING
+
+// 4. REQUEST BODY LIMITS
 
 
 app.use(
@@ -72,48 +75,51 @@ app.use(
 );
 
 
-// 5. DEBUG TEST ROUTE
+
+// 5. BASIC TEST ROUTE
 
 
 app.post('/test', (req, res) => {
   res.json({
+    success: true,
     received: req.body,
   });
 });
 
 
-// 6. IP DEBUG ROUTE
+
+// 6. TEMPORARY IP DEBUG ROUTE
 
 //
-// TEMPORARY DEBUG ROUTE.
+// KEEP THIS ONLY WHILE TESTING RATE LIMITING.
 //
-// After deploying, open:
-//
+// Test:
 // https://meditrack-1-pq7i.onrender.com/test-ip
 //
-// from your computer and your friend's computer.
+// After confirming that different devices show different
+// IP addresses, you can REMOVE this route.
 //
-// The "ip" value should now represent the original client
-// IP rather than:
-//
-//   10.196.227.102
-//
-
 
 app.get('/test-ip', (req, res) => {
   console.log('=========================================');
   console.log('IP DEBUG');
   console.log('Client IP:', req.ip);
   console.log('Proxy IPs:', req.ips);
-  console.log('X-Forwarded-For:', req.headers['x-forwarded-for']);
+  console.log(
+    'X-Forwarded-For:',
+    req.headers['x-forwarded-for']
+  );
   console.log('=========================================');
 
   res.json({
+    success: true,
     ip: req.ip,
     ips: req.ips,
-    forwardedFor: req.headers['x-forwarded-for'] || null,
+    forwardedFor:
+      req.headers['x-forwarded-for'] || null,
   });
 });
+
 
 
 // 7. API ROUTES
@@ -122,14 +128,15 @@ app.get('/test-ip', (req, res) => {
 app.use('/api', routes);
 
 
+
 // 8. GLOBAL ERROR HANDLER
 
 //
-// This MUST remain after all routes.
+// MUST remain AFTER all routes.
 //
 
-
 app.use(globalErr);
+
 
 
 // 9. START SERVER
@@ -143,23 +150,30 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   MediTrack Node Server Running
   Port: ${PORT}
   Database: Supabase Connected
-  Proxy Trust: 3 Hops
+  Trust Proxy: ENABLED
 =========================================
   `);
-
-  server.on('close', () => {
-    console.log('Server closed');
-  });
 });
 
 
-// 10. KEEP PROCESS ALIVE
+
+// 10. SERVER CLOSE
+
+
+server.on('close', () => {
+  console.log('Server closed');
+});
+
+
+
+// 11. KEEP PROCESS ALIVE
 
 
 process.stdin.resume();
 
 
-// 11. PROCESS ERROR HANDLERS
+
+// 12. PROCESS ERROR HANDLERS
 
 
 process.on('uncaughtException', (err) => {
@@ -176,7 +190,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 
-// 12. EXPORT APP
+
+// 13. EXPORT APP
 
 
 module.exports = app;
