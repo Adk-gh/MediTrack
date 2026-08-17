@@ -176,7 +176,18 @@ const ResetPassword = () => {
         @media (max-width: 480px) { .rp-container { padding: 30px 24px; } }
 
         @media (max-width: 640px) {
-          .lf-mobile-wrapper { position: fixed; inset: 0; flex-direction: column; background: #F2F4F3; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+          .lf-mobile-wrapper {
+            /* Removed position fixed and height/overflow restrictions */
+            width: 100%;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            background: #F2F4F3;
+            box-sizing: border-box;
+            z-index: 10;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+          }
           .m-topbar { display: flex; align-items: center; justify-content: center; padding: 20px 24px 0; flex-shrink: 0; animation: m-fadeIn 0.4s ease both; }
           .m-logo-wrap { display: flex; align-items: center; gap: 10px; }
           .m-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
@@ -242,7 +253,7 @@ const ResetPassword = () => {
               <form onSubmit={handleSubmit}>
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, fontSize: 14, color: '#374151' }}>New Password</label>
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter new password" className="rp-input" required minLength={passwordRules.minLength} autoComplete="new-password" />
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter new password" className="rp-input" required minLength={passwordRules.minLength} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                 </div>
 
                 <div style={{ marginBottom: 20, padding: '12px 14px', background: '#f4f8f6', border: '1px solid #e2ebe8', borderRadius: 10 }}>
@@ -256,7 +267,7 @@ const ResetPassword = () => {
 
                 <div style={{ marginBottom: 20 }}>
                   <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, fontSize: 14, color: '#374151' }}>Confirm Password</label>
-                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="rp-input" required minLength={passwordRules.minLength} autoComplete="new-password" />
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="rp-input" required minLength={passwordRules.minLength} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                 </div>
 
                 {error && <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 20, color: '#dc2626', fontSize: 14 }}>{error}</div>}
@@ -321,7 +332,7 @@ const ResetPassword = () => {
               <div className="m-field">
                 <label className="m-field-label">New password</label>
                 <div className="m-input-pill">
-                  <input type={showPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Enter new password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={passwordRules.minLength} autoComplete="new-password" />
+                  <input type={showPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Enter new password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={passwordRules.minLength} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                   <button type="button" className="m-pill-btn" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                     {showPassword ? eyeClosedIcon : eyeOpenIcon}
                   </button>
@@ -340,7 +351,7 @@ const ResetPassword = () => {
               <div className="m-field">
                 <label className="m-field-label">Confirm password</label>
                 <div className="m-input-pill">
-                  <input type={showConfirmPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={passwordRules.minLength} autoComplete="new-password" />
+                  <input type={showConfirmPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={passwordRules.minLength} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                   <button type="button" className="m-pill-btn" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
                     {showConfirmPassword ? eyeClosedIcon : eyeOpenIcon}
                   </button>

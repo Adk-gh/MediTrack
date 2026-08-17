@@ -7,6 +7,7 @@ import {
 import { supabase } from "../supabase";
 import notificationsService from "../services/notifications.service.js";
 import { createPortal } from "react-dom";
+import logo from '../assets/logo.jpg';
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
 
@@ -732,7 +733,7 @@ function DesktopShell({
     <div className="min-h-screen bg-transparent flex flex-col">
       <header className="bg-transparent px-5 pb-3 flex items-center justify-between sticky top-0 z-10">
         <img
-          src="../logo.jpg"
+          src={logo}
           alt="MediTrack Logo"
           className="h-10 object-contain rounded-xl"
         />
@@ -858,7 +859,7 @@ function MobileShell({
         }}
       >
         <img
-          src="../logo.jpg"
+          src={logo}
           alt="MediTrack Logo"
           className="h-10 object-contain rounded-xl"
         />

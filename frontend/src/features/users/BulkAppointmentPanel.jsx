@@ -293,7 +293,15 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                   })}
                 </div>
                 {selectedPurposes.includes('Other') && (
-                  <textarea placeholder="Please specify the purpose..." value={otherPurpose} onChange={(e) => setOtherPurpose(e.target.value)} disabled={submitting} className="mt-2 border border-[#ddeee5] rounded-2xl px-4 py-3 text-[13px] bg-white outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors" rows="2" />
+                  <textarea
+                    placeholder="Please specify the purpose..."
+                    value={otherPurpose}
+                    onChange={(e) => setOtherPurpose(e.target.value)}
+                    onPaste={(e) => e.preventDefault()}
+                    disabled={submitting}
+                    className="mt-2 border border-[#ddeee5] rounded-2xl px-4 py-3 text-[13px] bg-white outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors"
+                    rows="2"
+                  />
                 )}
               </div>
 

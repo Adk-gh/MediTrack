@@ -1957,7 +1957,7 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
       sm:px-6 sm:min-h-[70px]
     ">
       <img
-        src="./logo1.png"
+        src={logo1}
         alt="MediTrack Logo"
         className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
         style={{ mixBlendMode: 'multiply' }}

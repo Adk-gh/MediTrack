@@ -6,7 +6,6 @@ const router = express.Router();
 const examinationsController = require("./examinations.controller");
 
 const { authorized } = require("../../middleware/authorized");
-const { requireRole } = require("../../middleware/roleBasedAccess");
 
 const validateData = require("../../validation/validate-data");
 
@@ -16,6 +15,76 @@ const {
 } = require("./examinations.validation");
 
 const { auditLog } = require("../../middleware/auditLogger");
+const { getSystemConfig } = require("../../services/systemConfig.service");
+
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles + Clinic Staffs (for creating/updating examinations)
+const allowDynamicClinicStaffs = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Safety net: Keep core clinical roles and sysadmin as hardcoded fallbacks
+    const allowedRoles = [
+      ...clinicRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Clinic staff or Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
+// Allows Admin Roles ONLY (for deleting/archiving examinations)
+const allowDynamicAdmin = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Keep "sysadmin" as a hardcoded fallback
+    const allowedRoles = [...adminRoles, "sysadmin"];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Admin verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
 
 
 // =========================================================
@@ -71,11 +140,11 @@ router.get(
 // =========================================================
 
 // Create a new examination
-// ADMIN + STAFF
+// ADMIN + CLINIC STAFFS (Dynamic)
 router.post(
   "/",
   authorized,
-  requireRole("sysadmin", "staff"),
+  allowDynamicClinicStaffs,
 
   auditLog(
     "create",
@@ -97,11 +166,11 @@ router.post(
 // =========================================================
 
 // Update an examination
-// ADMIN + STAFF
+// ADMIN + CLINIC STAFFS (Dynamic)
 router.put(
   "/:id",
   authorized,
-  requireRole("sysadmin", "staff"),
+  allowDynamicClinicStaffs,
 
   auditLog(
     "update",
@@ -121,11 +190,11 @@ router.put(
 // =========================================================
 
 // Archive/delete an examination
-// ADMIN ONLY
+// ADMIN ONLY (Dynamic)
 router.delete(
   "/:id",
   authorized,
-  requireRole("sysadmin"),
+  allowDynamicAdmin,
 
   auditLog(
     "delete",

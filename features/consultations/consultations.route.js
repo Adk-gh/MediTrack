@@ -6,16 +6,137 @@ const router = express.Router();
 const consultationsController = require("./consultations.controller");
 
 const { authorized: authorize } = require("../../middleware/authorized");
-const { requireRole } = require("../../middleware/roleBasedAccess");
 
 const { auditLog } = require("../../middleware/auditLogger");
+const { getSystemConfig } = require("../../services/systemConfig.service");
+
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Students + Dynamic Database Roles + Core Clinical Fallbacks
+const allowDynamicPatients = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    // "student" is a static role. Let them through immediately.
+    if (userRole === "student") {
+      return next();
+    }
+
+    // Fetch the JSONB arrays from system_config
+    const config = await getSystemConfig();
+
+    // Safely extract and format arrays from the database configuration
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const facultyRoles = (config.faculty_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Combine database configuration arrays with core master safety nets
+    const allowedRoles = [
+      ...clinicRoles,
+      ...facultyRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse",
+      "faculty"
+    ];
+
+    // Check if the user's role exists in the allowed dynamic lists
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. You do not have permission to perform this action."
+    });
+
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Failed to verify role:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
+// Allows Admin Roles + Clinic Staffs (for ending consultations)
+const allowDynamicClinicStaffs = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    const allowedRoles = [
+      ...clinicRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Clinic staff or Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
+// Allows Admin Roles ONLY (for archiving consultations)
+const allowDynamicAdmin = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    const allowedRoles = [
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Admin verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
 
 
 // =========================================================
 // AUTHENTICATION
 // =========================================================
 
-// Every consultation route requires authentication
 router.use(authorize);
 
 
@@ -23,24 +144,16 @@ router.use(authorize);
 // PRESENCE
 // =========================================================
 
-// Set current user's online/offline presence
-// Any authenticated user
 router.post(
   "/presence",
   consultationsController.setPresence
 );
 
-
-// Get currently online users
-// Any authenticated user
 router.get(
   "/presence/online",
   consultationsController.getOnlineUsers
 );
 
-
-// Get presence information
-// Any authenticated user
 router.get(
   "/presence",
   consultationsController.getPresence
@@ -51,35 +164,19 @@ router.get(
 // CONSULTATIONS
 // =========================================================
 
-// Get all consultations
-// Authenticated users
-//
-// IMPORTANT:
-// The controller should restrict the results according
-// to the user's role/ownership.
 router.get(
   "/",
   consultationsController.getAllConsultations
 );
 
-
-// Get consultations for a patient
-// Authenticated users
-//
-// The controller should verify that the requester
-// is allowed to access the requested patient.
 router.get(
   "/patient",
   consultationsController.getConsultationsByPatient
 );
 
-
-// Create consultation
-// ADMIN + STAFF
 router.post(
   "/",
-  requireRole("sysadmin", "staff"),
-
+  allowDynamicPatients,
   auditLog(
     "create",
     "consultation",
@@ -88,102 +185,71 @@ router.post(
         req.body.consultation_type || "Unknown"
       }`
   ),
-
   consultationsController.createConsultation
 );
 
-
-// Get single consultation
-// Authenticated users
-//
-// Ownership/access should be checked by the controller.
 router.get(
   "/:id",
   consultationsController.getConsultationById
 );
 
-
-// Update consultation
-// ADMIN + STAFF
 router.put(
   "/:id",
-  requireRole("sysadmin", "staff"),
-
+  allowDynamicPatients,
   auditLog(
     "update",
     "consultation",
     (req) =>
       `Updated consultation ID: ${req.params.id}`
   ),
-
   consultationsController.updateConsultation
 );
 
-
-// Reactivate consultation
-// ADMIN + STAFF
 router.put(
   "/:id/reactivate",
-  requireRole("sysadmin", "staff"),
-
+  allowDynamicPatients,
   auditLog(
     "update",
     "consultation",
     (req) =>
       `Reactivated consultation ID: ${req.params.id}`
   ),
-
   consultationsController.reactivateConsultation
 );
 
-
-// End consultation
-// ADMIN + STAFF
 router.put(
   "/:id/end",
-  requireRole("sysadmin", "staff"),
-
+  allowDynamicClinicStaffs,
   auditLog(
     "end",
     "consultation",
     (req) =>
       `Ended consultation ID: ${req.params.id}`
   ),
-
   consultationsController.endConsultation
 );
 
-
-// PATCH alternative for ending consultation
-// ADMIN + STAFF
 router.patch(
   "/:id/end",
-  requireRole("sysadmin", "staff"),
-
+  allowDynamicClinicStaffs,
   auditLog(
     "end",
     "consultation",
     (req) =>
       `Ended consultation ID: ${req.params.id}`
   ),
-
   consultationsController.endConsultation
 );
 
-
-// Archive consultation
-// ADMIN ONLY
 router.delete(
   "/:id",
-  requireRole("sysadmin"),
-
+  allowDynamicAdmin,
   auditLog(
     "delete",
     "consultation",
     (req) =>
       `Archived consultation ID: ${req.params.id}`
   ),
-
   consultationsController.deleteConsultation
 );
 
@@ -192,24 +258,13 @@ router.delete(
 // CONSULTATION MESSAGES
 // =========================================================
 
-// Get messages
-// Authenticated users
-//
-// Controller should verify that the user belongs to
-// or is authorized to access this consultation.
 router.get(
   "/:consultationId/messages",
   consultationsController.getMessages
 );
 
-
-// Send message
-// Authenticated users
-//
-// Controller should verify consultation access.
 router.post(
   "/:consultationId/messages",
-
   auditLog(
     "create",
     "message",
@@ -218,13 +273,9 @@ router.post(
         req.params.consultationId
       }`
   ),
-
   consultationsController.sendMessage
 );
 
-
-// Mark messages as read
-// Authenticated users
 router.post(
   "/:consultationId/messages/read",
   consultationsController.markMessagesAsRead

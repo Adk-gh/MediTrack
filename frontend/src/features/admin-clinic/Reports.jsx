@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement,
@@ -211,6 +212,37 @@ function addDataRow(ws, row, values, { zebra = false, boldFirst = false } = {}) 
 function pctOf(part, total) { return total > 0 ? part / total : 0; }
 function applyPercentFormat(ws, row, col) { ws.getCell(row, col).numFmt = '0%'; }
 
+// ─── CSV export helpers ────────────────────────────────────────────────────
+const escapeCsvValue = (value) => {
+  if (value === null || value === undefined) return '';
+  let str;
+  if (typeof value === 'object') {
+    try { str = JSON.stringify(value); } catch { str = String(value); }
+  } else {
+    str = String(value);
+  }
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+// Turns a percentage (0-1) into a plain "NN%" string for CSV, since CSV has no cell number formats.
+const pctLabel = (part, total) => `${Math.round(pctOf(part, total) * 100)}%`;
+
+const pushSection = (lines, title, headers, rows) => {
+  lines.push(escapeCsvValue(title));
+  if (headers) lines.push(headers.map(escapeCsvValue).join(','));
+  rows.forEach(r => lines.push(r.map(escapeCsvValue).join(',')));
+  lines.push('');
+};
+
+const downloadCsvLines = (lines, filename) => {
+  const csvContent = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  saveAs(blob, filename);
+};
+
 // ─── Helper: range year calculation ───────────────────────────────────────
 function getSchoolYear(dateInput) {
   if (!dateInput) return null;
@@ -225,6 +257,18 @@ function getSchoolYear(dateInput) {
   }
 }
 
+// ─── Export scope labels (used by the export modal) ────────────────────────
+const EXPORT_SCOPES = {
+  full: { label: 'Full Report', hint: 'All sections in one workbook' },
+  summary: { label: 'Key Insights', hint: 'Summary report' },
+  appointments: { label: 'Appointments', hint: 'Status, monthly trend & duration' },
+  medical: { label: 'Medical Exams', hint: 'Fitness & findings summary' },
+  dental: { label: 'Dental', hint: 'Dental summary & conditions' },
+  conditions: { label: 'Health Conditions', hint: 'Full condition breakdown' },
+  demographics: { label: 'Demographics', hint: 'Patients by role' },
+  monthly: { label: 'Monthly Comparison', hint: 'Medical vs dental by month' },
+};
+
 // ─── Main component ───────────────────────────────────────────────────────
 export const Reports = () => {
   const [loading, setLoading] = useState(true);
@@ -237,6 +281,12 @@ export const Reports = () => {
   const [dateRange, setDateRange] = useState('all');
   const [schoolYear, setSchoolYear] = useState('all');
   const [specificMonth, setSpecificMonth] = useState('all');
+
+  // ─── Export modal state ───────────────────────────────────────────────
+  // confirmExport = { scope: 'full' | 'summary' | 'appointments' | ... }
+  const [confirmExport, setConfirmExport] = useState(null);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -258,7 +308,7 @@ export const Reports = () => {
       };
 
       // ---- Users -----------------------------------------------------------
-      const usersRes = await fetch(`${import.meta.env.VITE_API_URL}/records`, { headers }).catch(() => null);
+      const usersRes = await fetch(`${import.meta.env.VITE_API_URL}/user/users`, { headers }).catch(() => null);
       let usersData = [];
       if (usersRes && usersRes.ok) {
         const json = await usersRes.json();
@@ -555,17 +605,25 @@ export const Reports = () => {
   }, [processedData.appointments]);
 
   // ------------------------------------------------------------------------
-  //  Export helpers
+  //  Shared subtitle / label helpers for exports
   // ------------------------------------------------------------------------
-  const exportToCSV = async () => {
+  const getFilterLabels = useCallback(() => {
+    const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const rangeLabel = dateRange === 'all' ? 'All Time' : dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year';
+    const syLabel = schoolYear === 'all' ? 'All SY' : `SY ${schoolYear}`;
+    const monthLabel = specificMonth === 'all' ? '' : MONTHS_FULL[parseInt(specificMonth)];
+    return { todayLabel, rangeLabel, syLabel, monthLabel };
+  }, [dateRange, schoolYear, specificMonth]);
+
+  // ------------------------------------------------------------------------
+  //  Export helpers — XLSX (full report)
+  // ------------------------------------------------------------------------
+  const exportFullReportXlsx = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
       workbook.created = new Date();
-      const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const rangeLabel = dateRange === 'all' ? 'All Time' : dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year';
-      const syLabel = schoolYear === 'all' ? 'All SY' : `SY ${schoolYear}`;
-      const monthLabel = specificMonth === 'all' ? '' : MONTHS_FULL[parseInt(specificMonth)];
+      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
       const subtitle = [`Generated: ${todayLabel}`, `Date Range: ${rangeLabel}`, `School Year: ${syLabel}`];
       if (monthLabel) subtitle.push(`Month: ${monthLabel}`);
 
@@ -675,7 +733,7 @@ export const Reports = () => {
           ['Pending', pendingDen, pctOf(pendingDen, processedData.totalDen)]
         ].sort((a, b) => b[1] - a[1]);
         r = addDataRow(ws, r, ['Total Dental Exams', processedData.totalDen, null, ''], { zebra: false });
-        approvedDen && pendingDen.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 }); if (row[2] !== null) applyPercentFormat(ws, r - 1, 3); });
+        denRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 }); if (row[2] !== null) applyPercentFormat(ws, r - 1, 3); });
         r += 1;
         r = addSectionHeader(ws, r, 'Dental Conditions', 4);
         const dentalHeaderRow = addTableHeader(ws, r, ['Condition', 'Category', 'Count', '']);
@@ -750,7 +808,7 @@ export const Reports = () => {
       // ---- AUDIT LOG ----
       logAdminAction({
         action: 'report_exported',
-        details: { scope: 'full', dateRange, schoolYear, specificMonth },
+        details: { scope: 'full', format: 'xlsx', dateRange, schoolYear, specificMonth },
         adminUid,
       });
     } catch (err) {
@@ -758,15 +816,142 @@ export const Reports = () => {
     }
   };
 
+  // ------------------------------------------------------------------------
+  //  Export helpers — CSV (full report, one file, sections stacked)
+  // ------------------------------------------------------------------------
+  const exportFullReportCsv = async () => {
+    try {
+      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
+      const lines = [];
+      lines.push(escapeCsvValue('MediTrack Health Report'));
+      lines.push(escapeCsvValue(`Generated: ${todayLabel}`));
+      lines.push(escapeCsvValue(`Date Range: ${rangeLabel}`));
+      lines.push(escapeCsvValue(`School Year: ${syLabel}`));
+      if (monthLabel) lines.push(escapeCsvValue(`Month: ${monthLabel}`));
+      lines.push('');
+
+      // Overview
+      pushSection(lines, 'Overview Statistics', ['Category', 'Metric', 'Count'], [
+        ['Overview', 'Total Medical Exams', processedData.totalMed],
+        ['Overview', 'Total Dental Exams', processedData.totalDen],
+        ['Overview', 'Total Appointments', processedData.totalAppts],
+        ['Overview', 'Total Patients', processedData.totalUsers],
+        ['Overview', 'Total Clinic Staff', processedData.clinicStaffCount],
+      ].sort((a, b) => b[2] - a[2]));
+
+      // Appointments
+      pushSection(lines, 'Appointments — Status Breakdown', ['Status', 'Count', 'Percentage'], [
+        ['Completed', processedData.completedAppts],
+        ['Pending', processedData.pendingAppts],
+        ['Approved', processedData.approvedAppts],
+        ['Missed', processedData.missedAppts],
+        ['Rejected', processedData.rejectedAppts]
+      ].sort((a, b) => b[1] - a[1]).map(([label, count]) => [label, count, pctLabel(count, processedData.totalAppts)]));
+
+      pushSection(lines, 'Appointments — Monthly', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyAppts[idx]]));
+
+      pushSection(lines, 'Appointments — Duration Summary', ['Metric', 'Value'], [
+        ['Average Duration (hrs)', appointmentDurationSummary.overallAvg.toFixed(1)],
+        ['Fastest (hrs)', appointmentDurationSummary.overallMin.toFixed(1)],
+        ['Slowest (hrs)', appointmentDurationSummary.overallMax.toFixed(1)],
+        ['Tracked / Total', `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`],
+      ]);
+
+      pushSection(lines, 'Appointments — Average Duration by Status', ['Status', 'Count', 'Average Duration (hrs)'],
+        appointmentDurationSummary.statusBreakdown.map(row => [row.status, row.count, row.avg.toFixed(1)]));
+
+      // Medical
+      pushSection(lines, 'Medical Exams — Summary', ['Metric', 'Count', 'Percentage'], [
+        ['Total Medical Exams', processedData.totalMed, ''],
+        ...[
+          ['Fit', processedData.fitCount],
+          ['Not Fit', processedData.notFitCount],
+          ['Normal Findings', processedData.normalFindingsCount],
+          ['Abnormal Findings', processedData.abnormalFindingsCount],
+          ['Approved', processedData.medApprovedCount],
+          ['Pending', processedData.medPendingCount]
+        ].sort((a, b) => b[1] - a[1]).map(([label, count]) => [label, count, pctLabel(count, processedData.totalMed)])
+      ]);
+
+      pushSection(lines, 'Medical Exams — Monthly', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx]]));
+
+      // Health Conditions
+      const sortedMedConditions = [...MEDICAL_CONDITIONS]
+        .map(cond => ({ ...cond, count: processedData.conditionCounts[cond.id] }))
+        .sort((a, b) => b.count - a.count);
+      pushSection(lines, 'Health Conditions Breakdown', ['Condition', 'Category', 'Cases', '% of Total'],
+        sortedMedConditions.map(cond => [cond.name, cond.category, cond.count, pctLabel(cond.count, processedData.totalMed)]));
+
+      // Dental
+      const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
+      const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
+      pushSection(lines, 'Dental — Summary', ['Metric', 'Count', 'Percentage'], [
+        ['Total Dental Exams', processedData.totalDen, ''],
+        ...[['Approved', approvedDen], ['Pending', pendingDen]]
+          .sort((a, b) => b[1] - a[1])
+          .map(([label, count]) => [label, count, pctLabel(count, processedData.totalDen)])
+      ]);
+      const sortedDentalConditions = [...DENTAL_CONDITIONS]
+        .map(cond => ({ ...cond, count: processedData.dentalConditionCounts[cond.id] }))
+        .sort((a, b) => b.count - a.count);
+      pushSection(lines, 'Dental Conditions', ['Condition', 'Category', 'Count'],
+        sortedDentalConditions.map(cond => [cond.name, cond.category, cond.count]));
+
+      // Demographics
+      const typeCounts = { student: 0, faculty: 0 };
+      processedData.users.forEach(u => {
+        const role = (u.role || '').toLowerCase();
+        if (role.includes('student')) typeCounts.student++;
+        else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
+      });
+      pushSection(lines, 'Patient Demographics — By Role', ['Type', 'Count', 'Percentage'], [
+        ['Total Patients (Students + Faculty)', processedData.totalUsers, ''],
+        ...[
+          ['Students', typeCounts.student],
+          ['Faculty', typeCounts.faculty],
+          ['Clinic Staff', processedData.clinicStaffCount]
+        ].sort((a, b) => b[1] - a[1]).map(([label, count]) => [label, count, pctLabel(count, processedData.totalUsers)])
+      ]);
+
+      // Monthly Comparison
+      pushSection(lines, 'Monthly Consultations Comparison', ['Month', 'Medical', 'Dental', 'Total'],
+        MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx], processedData.monthlyDen[idx], processedData.monthlyMed[idx] + processedData.monthlyDen[idx]]));
+
+      // Summary
+      pushSection(lines, 'Summary Report', ['Category', 'Metric', 'Count'], [
+        ['Patients', 'Total Registered', processedData.totalUsers],
+        ['Consultations', 'Medical', processedData.totalMed],
+        ['Consultations', 'Dental', processedData.totalDen],
+        ['Appointments', 'Completed', processedData.completedAppts],
+        ['Appointments', 'Pending', processedData.pendingAppts],
+        ['Medical Records', 'Approved', processedData.medApprovedCount],
+        ['Medical Records', 'Pending', processedData.medPendingCount],
+        ['Fitness Status', 'Fit', processedData.fitCount],
+        ['Fitness Status', 'Not Fit', processedData.notFitCount],
+        ['Findings', 'Normal', processedData.normalFindingsCount]
+      ].sort((a, b) => b[2] - a[2]));
+
+      downloadCsvLines(lines, `MediTrack_${Date.now()}_Report.csv`);
+
+      logAdminAction({
+        action: 'report_exported',
+        details: { scope: 'full', format: 'csv', dateRange, schoolYear, specificMonth },
+        adminUid,
+      });
+    } catch (err) {
+      console.error('Error exporting CSV report:', err);
+    }
+  };
+
+  // ------------------------------------------------------------------------
+  //  Export helpers — XLSX (single category)
+  // ------------------------------------------------------------------------
   const exportCategoryToCSV = async (category) => {
     try {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
       workbook.created = new Date();
-      const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const rangeLabel = dateRange === 'all' ? 'All Time' : dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year';
-      const syLabel = schoolYear === 'all' ? 'All SY' : `SY ${schoolYear}`;
-      const monthLabel = specificMonth === 'all' ? '' : MONTHS_FULL[parseInt(specificMonth)];
+      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
       const subtitle = [`Generated: ${todayLabel}`, `Date Range: ${rangeLabel}`, `School Year: ${syLabel}`];
       if (monthLabel) subtitle.push(`Month: ${monthLabel}`);
 
@@ -868,18 +1053,19 @@ export const Reports = () => {
             r = addDataRow(ws, r, [cond.name, cond.category, cond.count, pctOf(cond.count, processedData.totalMed)], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 4);
           });
           ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 4 } };
+          ws.views = [{ state: 'frozen', ySplit: headerRow }];
           break;
         }
         case 'demographics': {
           r = addSectionHeader(ws, r, 'By Role', 4);
           r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
+          r = addDataRow(ws, r, ['Total Patients (Students + Faculty)', processedData.totalUsers, '', ''], { zebra: false });
           const typeCounts = { student: 0, faculty: 0 };
           processedData.users.forEach(u => {
             const role = (u.role || '').toLowerCase();
             if (role.includes('student')) typeCounts.student++;
             else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
           });
-          r = addDataRow(ws, r, ['Total Patients (Students + Faculty)', processedData.totalUsers, '', ''], { zebra: false });
           const demoRows = [
             ['Students', typeCounts.student],
             ['Faculty', typeCounts.faculty],
@@ -927,11 +1113,176 @@ export const Reports = () => {
       // ---- AUDIT LOG ----
       logAdminAction({
         action: 'report_exported',
-        details: { scope: category, dateRange, schoolYear, specificMonth },
+        details: { scope: category, format: 'xlsx', dateRange, schoolYear, specificMonth },
         adminUid,
       });
     } catch (err) {
       console.error('Error exporting category report:', err);
+    }
+  };
+
+  // ------------------------------------------------------------------------
+  //  Export helpers — CSV (single category)
+  // ------------------------------------------------------------------------
+  const exportCategoryToCsvFile = async (category) => {
+    try {
+      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
+      const titles = {
+        appointments: 'Appointments Analysis',
+        medical: 'Medical Examinations',
+        dental: 'Dental Examinations',
+        conditions: 'Health Conditions Breakdown',
+        demographics: 'Patient Demographics',
+        monthly: 'Monthly Consultations Comparison',
+        summary: 'Summary Report'
+      };
+
+      const lines = [];
+      lines.push(escapeCsvValue(`MediTrack — ${titles[category] || 'Report'}`));
+      lines.push(escapeCsvValue(`Generated: ${todayLabel}`));
+      lines.push(escapeCsvValue(`Date Range: ${rangeLabel}`));
+      lines.push(escapeCsvValue(`School Year: ${syLabel}`));
+      if (monthLabel) lines.push(escapeCsvValue(`Month: ${monthLabel}`));
+      lines.push('');
+
+      switch (category) {
+        case 'appointments': {
+          const rows = [
+            ['Completed', processedData.completedAppts],
+            ['Pending', processedData.pendingAppts],
+            ['Approved', processedData.approvedAppts],
+            ['Missed', processedData.missedAppts],
+            ['Rejected', processedData.rejectedAppts]
+          ].sort((a, b) => b[1] - a[1]);
+          pushSection(lines, 'Status Breakdown', ['Status', 'Count', 'Percentage'], [
+            ['Total', processedData.totalAppts, ''],
+            ...rows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalAppts)])
+          ]);
+          pushSection(lines, 'Monthly Appointments', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyAppts[idx]]));
+          pushSection(lines, 'Duration Summary', ['Metric', 'Value'], [
+            ['Average Duration (hrs)', appointmentDurationSummary.overallAvg.toFixed(1)],
+            ['Fastest (hrs)', appointmentDurationSummary.overallMin.toFixed(1)],
+            ['Slowest (hrs)', appointmentDurationSummary.overallMax.toFixed(1)],
+            ['Tracked / Total', `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`],
+          ]);
+          pushSection(lines, 'Average Duration by Status', ['Status', 'Count', 'Average Duration (hrs)'],
+            appointmentDurationSummary.statusBreakdown.map(row => [row.status, row.count, row.avg.toFixed(1)]));
+          break;
+        }
+        case 'medical': {
+          const rows = [
+            ['Fit', processedData.fitCount],
+            ['Not Fit', processedData.notFitCount],
+            ['Normal Findings', processedData.normalFindingsCount],
+            ['Abnormal Findings', processedData.abnormalFindingsCount],
+            ['Approved', processedData.medApprovedCount],
+            ['Pending', processedData.medPendingCount]
+          ].sort((a, b) => b[1] - a[1]);
+          pushSection(lines, 'Summary', ['Metric', 'Count', 'Percentage'], [
+            ['Total Medical Exams', processedData.totalMed, ''],
+            ...rows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalMed)])
+          ]);
+          pushSection(lines, 'Monthly Medical Exams', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx]]));
+          break;
+        }
+        case 'dental': {
+          const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
+          const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
+          const rows = [['Approved', approvedDen], ['Pending', pendingDen]].sort((a, b) => b[1] - a[1]);
+          pushSection(lines, 'Summary', ['Metric', 'Count', 'Percentage'], [
+            ['Total Dental Exams', processedData.totalDen, ''],
+            ...rows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalDen)])
+          ]);
+          const sortedDentalConditions = [...DENTAL_CONDITIONS]
+            .map(cond => ({ ...cond, count: processedData.dentalConditionCounts[cond.id] }))
+            .sort((a, b) => b.count - a.count);
+          pushSection(lines, 'Dental Conditions', ['Condition', 'Category', 'Count'],
+            sortedDentalConditions.map(cond => [cond.name, cond.category, cond.count]));
+          break;
+        }
+        case 'conditions': {
+          const sortedMedConditions = [...MEDICAL_CONDITIONS]
+            .map(cond => ({ ...cond, count: processedData.conditionCounts[cond.id] }))
+            .sort((a, b) => b.count - a.count);
+          pushSection(lines, 'All Conditions', ['Condition', 'Category', 'Cases', '% of Total'],
+            sortedMedConditions.map(cond => [cond.name, cond.category, cond.count, pctLabel(cond.count, processedData.totalMed)]));
+          break;
+        }
+        case 'demographics': {
+          const typeCounts = { student: 0, faculty: 0 };
+          processedData.users.forEach(u => {
+            const role = (u.role || '').toLowerCase();
+            if (role.includes('student')) typeCounts.student++;
+            else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
+          });
+          const demoRows = [
+            ['Students', typeCounts.student],
+            ['Faculty', typeCounts.faculty],
+            ['Clinic Staff', processedData.clinicStaffCount]
+          ].sort((a, b) => b[1] - a[1]);
+          pushSection(lines, 'By Role', ['Type', 'Count', 'Percentage'], [
+            ['Total Patients (Students + Faculty)', processedData.totalUsers, ''],
+            ...demoRows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalUsers)])
+          ]);
+          break;
+        }
+        case 'monthly': {
+          pushSection(lines, 'Monthly Consultations Comparison', ['Month', 'Medical Exams', 'Dental Exams', 'Total'],
+            MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx], processedData.monthlyDen[idx], processedData.monthlyMed[idx] + processedData.monthlyDen[idx]]));
+          break;
+        }
+        case 'summary':
+        default: {
+          const rows = [
+            ['Patients', 'Total Registered', processedData.totalUsers],
+            ['Consultations', 'Medical', processedData.totalMed],
+            ['Consultations', 'Dental', processedData.totalDen],
+            ['Appointments', 'Completed', processedData.completedAppts],
+            ['Appointments', 'Pending', processedData.pendingAppts],
+            ['Medical Records', 'Approved', processedData.medApprovedCount],
+            ['Medical Records', 'Pending', processedData.medPendingCount],
+            ['Fitness Status', 'Fit', processedData.fitCount],
+            ['Fitness Status', 'Not Fit', processedData.notFitCount],
+            ['Findings', 'Normal', processedData.normalFindingsCount]
+          ].sort((a, b) => b[2] - a[2]);
+          pushSection(lines, 'Summary Report', ['Category', 'Metric', 'Count'], rows);
+          break;
+        }
+      }
+
+      downloadCsvLines(lines, `${category}_${Date.now()}.csv`);
+
+      logAdminAction({
+        action: 'report_exported',
+        details: { scope: category, format: 'csv', dateRange, schoolYear, specificMonth },
+        adminUid,
+      });
+    } catch (err) {
+      console.error('Error exporting category CSV:', err);
+    }
+  };
+
+  // ------------------------------------------------------------------------
+  //  Export modal orchestration
+  // ------------------------------------------------------------------------
+  const openExportModal = (scope) => {
+    setExportFormat('xlsx');
+    setConfirmExport({ scope });
+  };
+
+  const handleConfirmExport = async () => {
+    if (!confirmExport) return;
+    const { scope } = confirmExport;
+    setExporting(true);
+    try {
+      if (scope === 'full') {
+        await (exportFormat === 'xlsx' ? exportFullReportXlsx() : exportFullReportCsv());
+      } else {
+        await (exportFormat === 'xlsx' ? exportCategoryToCSV(scope) : exportCategoryToCsvFile(scope));
+      }
+    } finally {
+      setExporting(false);
+      setConfirmExport(null);
     }
   };
 
@@ -1037,11 +1388,11 @@ export const Reports = () => {
 
           {/* Export Button */}
           <button
-            onClick={exportToCSV}
+            onClick={() => openExportModal('full')}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#466460] text-white text-sm font-semibold rounded-lg hover:bg-[#3a524f] transition-colors shadow-sm ml-1"
           >
             <IconFileText size={16} />
-            Excel
+            Export
           </button>
         </div>
       </div>
@@ -1067,7 +1418,7 @@ export const Reports = () => {
                   <i className="fa-solid fa-lightbulb text-[#466460] mr-2"></i>Key Insights
                 </h3>
                 <button
-                  onClick={() => exportCategoryToCSV('summary')}
+                  onClick={() => openExportModal('summary')}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
                 >
                   <IconDownload size={14} /> Download
@@ -1114,7 +1465,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-virus mr-2"></i>Health Conditions Distribution
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('conditions')}
+                onClick={() => openExportModal('conditions')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1145,7 +1496,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-chart-column mr-2"></i>Health Issues by Category
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('conditions')}
+                onClick={() => openExportModal('conditions')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1178,7 +1529,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-chart-line mr-2"></i>Appointment Visit Trends
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('appointments')}
+                onClick={() => openExportModal('appointments')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1208,7 +1559,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-chart-pie mr-2"></i>Medical vs Dental Consultations
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('monthly')}
+                onClick={() => openExportModal('monthly')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1241,7 +1592,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-clipboard-check mr-2"></i>Appointment Status
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('appointments')}
+                onClick={() => openExportModal('appointments')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1271,7 +1622,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-users mr-2"></i>Patient Demographics
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('demographics')}
+                onClick={() => openExportModal('demographics')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1304,7 +1655,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-chart-bar mr-2"></i>Monthly Consultations Comparison
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('monthly')}
+                onClick={() => openExportModal('monthly')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1334,7 +1685,7 @@ export const Reports = () => {
                 <i className="fa-solid fa-tooth mr-2"></i>Dental Conditions
               </h3>
               <button
-                onClick={() => exportCategoryToCSV('dental')}
+                onClick={() => openExportModal('dental')}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -1366,7 +1717,7 @@ export const Reports = () => {
               <IconTable size={18} className="mr-2" /> Appointment Duration Summary
             </h3>
             <button
-              onClick={() => exportCategoryToCSV('appointments')}
+              onClick={() => openExportModal('appointments')}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
             >
               <IconDownload size={14} /> Download
@@ -1439,6 +1790,124 @@ export const Reports = () => {
         {/* ── Spacer for bottom padding ── */}
         <div className="h-6"></div>
       </div>
+
+      {/* ─────────────────────────────────────────────────────────────────────
+          EXPORT CONFIRMATION MODAL
+      ───────────────────────────────────────────────────────────────────── */}
+      {confirmExport &&
+        createPortal(
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] px-4"
+            onClick={() => { if (!exporting) setConfirmExport(null); }}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 bg-blue-100">
+                  <i className="fa-solid fa-file-export text-blue-600 text-lg"></i>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Export report</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Export all matching records</p>
+                </div>
+              </div>
+
+              {/* Export summary */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-medium text-slate-500">Records to export</span>
+                  <span className="text-sm font-bold text-[#466460]">ALL MATCHING</span>
+                </div>
+                <div className="mt-2 text-xs text-slate-500">
+                  {EXPORT_SCOPES[confirmExport.scope]?.label || 'Report'}
+                  {' • '}
+                  {EXPORT_SCOPES[confirmExport.scope]?.hint || ''}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {dateRange === 'all' ? 'All Time' : dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year'}
+                  {schoolYear !== 'all' && ` • SY ${schoolYear}`}
+                  {specificMonth !== 'all' && ` • ${MONTHS_FULL[parseInt(specificMonth)]}`}
+                </div>
+              </div>
+
+              {/* Format */}
+              <div className="mb-5">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">
+                  Export Format
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Excel */}
+                  <button
+                    type="button"
+                    onClick={() => setExportFormat('xlsx')}
+                    className={`p-3 rounded-lg border-2 text-left transition ${
+                      exportFormat === 'xlsx'
+                        ? 'border-[#466460] bg-[#e0eceb]'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <i className="fa-solid fa-file-excel"></i>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-700">Excel</div>
+                        <div className="text-[10px] text-slate-400">.xlsx</div>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* CSV */}
+                  <button
+                    type="button"
+                    onClick={() => setExportFormat('csv')}
+                    className={`p-3 rounded-lg border-2 text-left transition ${
+                      exportFormat === 'csv'
+                        ? 'border-[#466460] bg-[#e0eceb]'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                        <i className="fa-solid fa-file-csv"></i>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-700">CSV</div>
+                        <div className="text-[10px] text-slate-400">.csv</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-400 mb-5">
+                The export includes <strong>all matching records</strong> for the current filters, not just what's visible on this page.
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmExport(null)}
+                  disabled={exporting}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmExport}
+                  disabled={exporting}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-white font-semibold text-sm transition-all bg-[#466460] hover:bg-[#3a524f] disabled:opacity-70"
+                >
+                  {exporting ? 'Exporting…' : `Export ${exportFormat === 'xlsx' ? 'Excel' : 'CSV'}`}
+                </button>
+              </div>
+
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

@@ -280,6 +280,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
                 className={inputCls}
                 value={formData.addressStreet}
                 onChange={handleChange}
+                onPaste={(e) => e.preventDefault()}
               />
             </div>
           )}
@@ -364,6 +365,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
               className={inputCls}
               value={formData.addressStreet}
               onChange={handleChange}
+              onPaste={(e) => e.preventDefault()}
             />
           </div>
 
@@ -377,6 +379,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
               className={inputCls}
               value={formData.addressZipCode}
               onChange={handleChange}
+              onPaste={(e) => e.preventDefault()}
             />
           </div>
 

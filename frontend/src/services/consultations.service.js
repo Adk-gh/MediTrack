@@ -41,7 +41,9 @@ const fetchApi = async (endpoint, options = {}) => {
 
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || result.message || 'API request failed');
-  return result.data; // Assumes your backend sends res.json({ success: true, data: ... })
+
+  // Safely return result.data if it exists, otherwise return the whole result
+  return result.data !== undefined ? result.data : result;
 };
 
 

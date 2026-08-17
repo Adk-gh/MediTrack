@@ -3,6 +3,9 @@ const express = require('express');
 const multer = require('multer');
 const supabase = require('../configs/database');
 
+const { authorized } = require('../middleware/authorized');
+const { getSystemConfig } = require('../services/systemConfig.service');
+
 const router = express.Router();
 
 // Multer memory storage for signature uploads (2MB limit)
@@ -17,12 +20,52 @@ const upload = multer({
   }
 });
 
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles + Clinic Staffs (for managing settings/signatures)
+const allowDynamicClinicStaffs = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Safety net: Keep core clinical roles and sysadmin as hardcoded fallbacks
+    const allowedRoles = [
+      ...clinicRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Clinic staff or Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
 // ==========================================
 // DOCTOR SETTINGS ROUTES
 // ==========================================
 
-// GET: Retrieve doctor settings
-router.get('/doctor', async (req, res, next) => {
+// GET: Retrieve doctor settings (Available to authenticated users for document generation)
+router.get('/doctor', authorized, async (req, res, next) => {
   try {
     const { data, error } = await supabase
       .from('doctor_settings')
@@ -41,8 +84,8 @@ router.get('/doctor', async (req, res, next) => {
   }
 });
 
-// PUT: Update doctor text fields
-router.put('/doctor', async (req, res, next) => {
+// PUT: Update doctor text fields (Restricted to Clinic Staff / Admins)
+router.put('/doctor', authorized, allowDynamicClinicStaffs, async (req, res, next) => {
   try {
     const { name, title, licenseNo, ptrNo } = req.body;
 
@@ -76,8 +119,8 @@ router.put('/doctor', async (req, res, next) => {
   }
 });
 
-// POST: Upload / update doctor signature image
-router.post('/doctor/signature', upload.single('signature'), async (req, res, next) => {
+// POST: Upload / update doctor signature image (Restricted to Clinic Staff / Admins)
+router.post('/doctor/signature', authorized, allowDynamicClinicStaffs, upload.single('signature'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded.' });
@@ -159,8 +202,8 @@ router.post('/doctor/signature', upload.single('signature'), async (req, res, ne
 // DENTIST SETTINGS ROUTES
 // ==========================================
 
-// GET: Retrieve dentist settings
-router.get('/dentist', async (req, res, next) => {
+// GET: Retrieve dentist settings (Available to authenticated users for document generation)
+router.get('/dentist', authorized, async (req, res, next) => {
   try {
     const { data, error } = await supabase
       .from('dentist_settings')
@@ -179,8 +222,8 @@ router.get('/dentist', async (req, res, next) => {
   }
 });
 
-// PUT: Update dentist text fields
-router.put('/dentist', async (req, res, next) => {
+// PUT: Update dentist text fields (Restricted to Clinic Staff / Admins)
+router.put('/dentist', authorized, allowDynamicClinicStaffs, async (req, res, next) => {
   try {
     const { name, title } = req.body;
 
@@ -212,8 +255,8 @@ router.put('/dentist', async (req, res, next) => {
   }
 });
 
-// POST: Upload / update dentist signature image
-router.post('/dentist/signature', upload.single('signature'), async (req, res, next) => {
+// POST: Upload / update dentist signature image (Restricted to Clinic Staff / Admins)
+router.post('/dentist/signature', authorized, allowDynamicClinicStaffs, upload.single('signature'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded.' });

@@ -3,6 +3,9 @@
 const express = require('express');
 const supabase = require('../configs/database');
 
+const { authorized } = require('../middleware/authorized');
+const { getSystemConfig } = require('../services/systemConfig.service');
+
 const router = express.Router();
 
 // ==========================================
@@ -38,6 +41,46 @@ const getErrorMessage = (error) => {
   );
 };
 
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles ONLY (for managing raw storage buckets)
+const allowDynamicAdmin = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Safety net: Keep sysadmin and core clinical roles as hardcoded fallbacks
+    const allowedRoles = [
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Admin verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
+
 // ==========================================
 // STORAGE MANAGER ROUTES
 // ==========================================
@@ -57,7 +100,7 @@ const getErrorMessage = (error) => {
 // GET: LIST ALL STORAGE BUCKETS
 // ==========================================
 
-router.get('/buckets', async (req, res, next) => {
+router.get('/buckets', authorized, allowDynamicAdmin, async (req, res, next) => {
   try {
     // Prevent browser/proxy caching.
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -152,7 +195,7 @@ router.get('/buckets', async (req, res, next) => {
 // Returns only one level deep.
 // ==========================================
 
-router.get('/buckets/:bucketId/list', async (req, res, next) => {
+router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req, res, next) => {
   try {
     const { bucketId } = req.params;
     const prefix = req.query.prefix || '';
@@ -319,7 +362,7 @@ async function collectFilePaths(bucketId, prefix) {
 // }
 // ==========================================
 
-router.delete('/buckets/:bucketId/objects', async (req, res, next) => {
+router.delete('/buckets/:bucketId/objects', authorized, allowDynamicAdmin, async (req, res, next) => {
   try {
     const { bucketId } = req.params;
     const { paths } = req.body;
@@ -412,7 +455,7 @@ router.delete('/buckets/:bucketId/objects', async (req, res, next) => {
 // }
 // ==========================================
 
-router.delete('/buckets/:bucketId/folder', async (req, res, next) => {
+router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async (req, res, next) => {
   try {
     const { bucketId } = req.params;
     const { prefix } = req.body;

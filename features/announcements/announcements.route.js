@@ -5,7 +5,7 @@ const router = express.Router();
 
 const announcementsController = require("./announcements.controller");
 const { authorized } = require("../../middleware/authorized");
-const { requireRole } = require("../../middleware/roleBasedAccess");
+const { getSystemConfig } = require("../../services/systemConfig.service");
 
 const validateData = require("../../validation/validate-data");
 
@@ -15,6 +15,46 @@ const {
 } = require("./announcements.validation");
 
 const { auditLog } = require("../../middleware/auditLogger");
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles + Clinic Staffs (for managing announcements)
+const allowDynamicClinicStaffs = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Safety net: Keep core clinical roles and sysadmin as hardcoded fallbacks
+    const allowedRoles = [
+      ...clinicRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Clinic staff or Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
 
 // ─────────────────────────────────────────────────────────────
 // READ ANNOUNCEMENTS
@@ -38,11 +78,11 @@ router.get(
 // CREATE ANNOUNCEMENT
 // ─────────────────────────────────────────────────────────────
 
-// Only sysadmin/staff can create announcements
+// Only sysadmin/clinic staffs can create announcements
 router.post(
   "/",
   authorized,
-  requireRole(["sysadmin", "staff"]),
+  allowDynamicClinicStaffs,
   auditLog(
     "create",
     "announcement",
@@ -57,11 +97,11 @@ router.post(
 // UPDATE ANNOUNCEMENT
 // ─────────────────────────────────────────────────────────────
 
-// Only sysadmin/staff can update announcements
+// Only sysadmin/clinic staffs can update announcements
 router.put(
   "/:id",
   authorized,
-  requireRole(["sysadmin", "staff"]),
+  allowDynamicClinicStaffs,
   auditLog(
     "update",
     "announcement",
@@ -76,11 +116,11 @@ router.put(
 // DELETE / ARCHIVE ANNOUNCEMENT
 // ─────────────────────────────────────────────────────────────
 
-// Only sysadmin/staff can archive announcements
+// Only sysadmin/clinic staffs can archive announcements
 router.delete(
   "/:id",
   authorized,
-  requireRole(["sysadmin", "staff"]),
+  allowDynamicClinicStaffs,
   auditLog(
     "delete",
     "announcement",

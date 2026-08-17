@@ -1,5 +1,6 @@
 // frontend/src/features/admin-clinic/ConsultationManagement.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
 import { logAdminAction } from '../../services/audit.service';
@@ -53,7 +54,7 @@ export const ConsultationManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  const [stats, setStats] = useState({ total: 0, active: 0, medical: 0, dental: 0 });
+  const [stats, setStats] = useState({ total: 0, active: 0, ended: 0, medical: 0, dental: 0 });
   const [message, setMessage] = useState(null);
 
   const snackbarTimer = useRef(null);
@@ -151,13 +152,14 @@ export const ConsultationManagement = () => {
         }
       });
 
-      // Calculate stats (based on non-searched, but type/status filtered data)
-      const total = allData?.length || 0;
-      const active = allData?.filter(c => c.status !== 'ended').length || 0;
-      const medical = allData?.filter(c => c.consultation_type === 'medical').length || 0;
-      const dental = allData?.filter(c => c.consultation_type === 'dental').length || 0;
+      // Calculate stats based on fully filtered data
+      const total = enriched.length;
+      const active = enriched.filter(c => c.status !== 'ended').length;
+      const ended = enriched.filter(c => c.status === 'ended').length;
+      const medical = enriched.filter(c => c.consultation_type === 'medical').length;
+      const dental = enriched.filter(c => c.consultation_type === 'dental').length;
 
-      setStats({ total, active, medical, dental });
+      setStats({ total, active, ended, medical, dental });
 
       setAllFiltered(enriched);
       setTotalRecords(enriched.length);
@@ -287,6 +289,7 @@ export const ConsultationManagement = () => {
   const summaryStats = [
     { label: 'Total',   count: stats.total,   color: 'text-slate-700'   },
     { label: 'Active',  count: stats.active,  color: 'text-emerald-700' },
+    { label: 'Ended',   count: stats.ended,   color: 'text-slate-500'   },
     { label: 'Medical', count: stats.medical, color: 'text-blue-700'    },
     { label: 'Dental',  count: stats.dental,  color: 'text-purple-700'  },
   ];
@@ -306,7 +309,7 @@ export const ConsultationManagement = () => {
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
       {/* Summary stats — its own row, separate from the toolbar, stretched full width */}
-      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
         {summaryStats.map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
@@ -525,10 +528,16 @@ export const ConsultationManagement = () => {
 
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Delete Confirmation Modal Using Portal */}
+      {showDeleteModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -577,13 +586,20 @@ export const ConsultationManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Edit Status Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Edit Status Modal Using Portal */}
+      {showEditModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
@@ -653,7 +669,8 @@ export const ConsultationManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Snackbar */}

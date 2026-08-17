@@ -52,7 +52,6 @@ const LoginForm = () => {
     try {
       const response = await authService.login({ email, password });
 
-      // Check if email needs verification
       if (response.needsVerification) {
         hideLoading();
         setLoading(false);
@@ -70,7 +69,6 @@ const LoginForm = () => {
         localStorage.setItem('name', `${user.firstName || ''} ${user.lastName || ''}`.trim());
         localStorage.setItem('user', JSON.stringify(user));
 
-        // 🟢 NEW: Start automatic token refresh to prevent logout on token expiry
         startTokenRefresh();
 
         const role = user.role?.toLowerCase().trim() || 'student';
@@ -137,10 +135,6 @@ const LoginForm = () => {
           from { opacity: 0; transform: translateY(-8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes m-shimmer {
-          0%   { background-position: -200% center; }
-          100% { background-position: 200% center; }
-        }
 
         .lf-spinner {
           display: inline-block;
@@ -155,7 +149,7 @@ const LoginForm = () => {
 
         .lf-desktop-wrapper {
           display: block;
-          padding-bottom: 60px; /* Ensures the bottom of the form doesn't hug the screen edge when scrolling */
+          padding-bottom: 60px;
         }
         .lf-mobile-wrapper  { display: none; }
         @media (max-width: 640px) {
@@ -255,74 +249,48 @@ const LoginForm = () => {
           transform: translateY(-2px);
         }
 
-@media (max-width: 640px) {
-  .lf-mobile-wrapper {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+        @media (max-width: 640px) {
+          .lf-mobile-wrapper {
+            /* Removed position fixed and height/overflow restrictions */
+            width: 100%;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            background: #F2F4F3;
+            box-sizing: border-box;
+            z-index: 10;
+            padding-top: env(safe-area-inset-top);
+          }
 
-    width: 100%;
-    height: 100dvh;
-    min-height: 100dvh;
+          .m-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px 24px 0;
+            min-height: 50px;
+            box-sizing: border-box;
+            flex-shrink: 0;
+          }
 
-    display: flex;
-    flex-direction: column;
+          .m-logo-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: m-fadeIn 0.5s ease both;
+          }
 
-    background: #F2F4F3;
+          .m-logo-name {
+            font-size: 17px;
+            font-weight: 700;
+            color: #2D4744;
+            letter-spacing: -0.3px;
+          }
 
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-
-    box-sizing: border-box;
-    z-index: 10;
-
-    /* Android/iOS safe area */
-    padding-top: env(safe-area-inset-top);
-  }
-
-  .m-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    /* Extra spacing below the status bar */
-    padding: 18px 24px 0;
-
-    min-height: 50px;
-    box-sizing: border-box;
-
-    flex-shrink: 0;
-  }
-
-  .m-logo-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-
-    animation: m-fadeIn 0.5s ease both;
-  }
-
-  .m-logo-img {
-    height: 32px;
-    border-radius: 8px;
-  }
-
-  .m-logo-name {
-    font-size: 17px;
-    font-weight: 700;
-    color: #2D4744;
-    letter-spacing: -0.3px;
-  }
-
-  .m-hero {
-    padding: 36px 28px 28px;
-    flex-shrink: 0;
-
-    animation: m-fadeUp 0.5s ease 0.1s both;
-  }
+          .m-hero {
+            padding: 36px 28px 28px;
+            flex-shrink: 0;
+            animation: m-fadeUp 0.5s ease 0.1s both;
+          }
           .m-eyebrow {
             font-size: 12px; font-weight: 600;
             color: #4A8C82; letter-spacing: 1.2px;
@@ -341,7 +309,7 @@ const LoginForm = () => {
             background: #fff;
             border-radius: 28px 28px 0 0;
             padding: 32px 24px 52px;
-            flex: 1 0 auto; /* Allow card to expand and fill remaining space */
+            flex: 1 0 auto;
             box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
             animation: m-fadeUp 0.5s ease 0.2s both;
           }
@@ -447,16 +415,10 @@ const LoginForm = () => {
           .m-loaded .m-card   { animation: m-fadeUp 0.5s ease 0.15s both; }
           .m-loaded .m-topbar { animation: m-fadeIn 0.4s ease both; }
 
-          /* Hide Microsoft Edge native password reveal and clear icons */
           input[type="password"]::-ms-reveal,
-          input[type="password"]::-ms-clear {
-            display: none;
-          }
-
-          /* Hide native WebKit password reveal icons */
+          input[type="password"]::-ms-clear { display: none; }
           input[type="password"]::-webkit-credentials-auto-fill-button {
-            visibility: hidden;
-            display: none !important;
+            visibility: hidden; display: none !important;
           }
         }
       `}</style>
@@ -483,6 +445,7 @@ const LoginForm = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onBlur={() => handleBlur('password')}
+                  onPaste={(e) => e.preventDefault()}
                 />
                 <button
                   type="button"
@@ -505,7 +468,6 @@ const LoginForm = () => {
             </div>
             <Link to="/forgot-password" className="lf-forgot-desktop">Forgot password?</Link>
 
-            {/* Resend Verification Section */}
             {showResendVerification && (
               <div style={{ marginTop: 16, padding: 12, background: '#fef3c7', borderRadius: 8, border: '1px solid #fcd34d' }}>
                 <p style={{ fontSize: 13, color: '#92400e', marginBottom: 8 }}>
@@ -595,7 +557,8 @@ const LoginForm = () => {
                 <input type={showPassword ? 'text' : 'password'} className="m-pill-input"
                   placeholder="••••••••" value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => handleBlur('password')} required autoComplete="current-password" />
+                  onBlur={() => handleBlur('password')} required autoComplete="current-password"
+                  onPaste={(e) => e.preventDefault()} />
                 <button type="button" className="m-pill-btn"
                   onClick={() => setShowPassword(v => !v)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}>
@@ -615,7 +578,6 @@ const LoginForm = () => {
 
             <Link to="/forgot-password" className="m-forgot">Forgot password?</Link>
 
-            {/* Resend Verification Section - Mobile */}
             {showResendVerification && (
               <div style={{ marginBottom: 16, padding: 12, background: '#fef3c7', borderRadius: 14, border: '1px solid #fcd34d' }}>
                 <p style={{ fontSize: 13, color: '#92400e', marginBottom: 8 }}>

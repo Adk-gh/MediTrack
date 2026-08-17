@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
+import DatePicker from '../../components/Datepicker';
 
 // ============================================================
 // CONFIG & CONSTANTS
@@ -156,11 +157,14 @@ export const Announcements = () => {
   const [filterCategory, setFilterCategory] = useState('All');
   const [filterPriority, setFilterPriority] = useState('All');
   const [filterDept, setFilterDept] = useState('All');
+  const [filterDate, setFilterDate] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [currentEditId, setCurrentEditId]     = useState(null);
+  const [showAllDepts, setShowAllDepts]       = useState(false); // New state for interactive departments
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState(null);
@@ -253,7 +257,10 @@ export const Announcements = () => {
   };
 
   const formDrawer = useDrawerDrag(() => setIsFormModalOpen(false));
-  const viewDrawer = useDrawerDrag(() => setIsViewModalOpen(false));
+  const viewDrawer = useDrawerDrag(() => {
+    setIsViewModalOpen(false);
+    setShowAllDepts(false);
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -489,6 +496,7 @@ export const Announcements = () => {
 
   const handleView = (item) => {
     setViewData(item);
+    setShowAllDepts(false); // Reset the department view mode
     setIsViewModalOpen(true);
   };
 
@@ -517,14 +525,29 @@ export const Announcements = () => {
         }
       }
     }
-    const deptOk = filterDept === 'All' || annDepts.includes(filterDept);
+
+    const deptOk = filterDept === 'All' ||
+                   annDepts.includes(filterDept) ||
+                   annDepts.includes(ALL_DEPT_LABEL) ||
+                   (annDepts.length > 0 && annDepts.length === deptOptions.length);
+
+    let dateOk = true;
+    if (filterDate) {
+      const annDate = (a.created_at || '').split('T')[0];
+      if (annDate !== filterDate) dateOk = false;
+    }
 
     const searchLower = searchTerm.toLowerCase();
     const searchOk = !searchTerm ||
       (a.title || '').toLowerCase().includes(searchLower) ||
       (a.content || '').toLowerCase().includes(searchLower) ||
       annCategory.toLowerCase().includes(searchLower);
-    return catOk && priOk && deptOk && searchOk;
+
+    return catOk && priOk && deptOk && dateOk && searchOk;
+  }).sort((a, b) => {
+    const da = new Date(a.created_at || 0).getTime();
+    const db = new Date(b.created_at || 0).getTime();
+    return sortOrder === 'desc' ? db - da : da - db;
   });
 
   const inputCls = 'w-full mt-1.5 px-4 py-3 sm:py-3 border border-[#e2e8f0] rounded-xl text-[13px] sm:text-[14px] outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white box-border';
@@ -562,11 +585,11 @@ export const Announcements = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search announcements..."
-              className="w-full h-[42px] text-sm border border-[#e2e8f0] rounded-full pl-11 pr-4 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
+              className="w-full h-[34px] xl:h-[42px] text-sm border border-[#e2e8f0] rounded-full pl-11 pr-4 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
             />
           </div>
 
-          <div className="flex gap-2 w-full xl:w-auto bg-slate-50 border border-[#e2e8f0] rounded-full p-1">
+          <div className="flex gap-2 w-full xl:w-auto flex-wrap xl:flex-nowrap bg-slate-50 border border-[#e2e8f0] rounded-xl sm:rounded-full p-1">
             <select
               value={filterCategory}
               onChange={e => setFilterCategory(e.target.value)}
@@ -594,6 +617,33 @@ export const Announcements = () => {
             >
               <option value="All">All Depts</option>
               {deptOptions.map(d => <option key={d} value={d}>{getDeptAbbr(d)}</option>)}
+            </select>
+
+            <div className="relative flex-1 xl:flex-none xl:w-[130px] h-[34px]">
+              <DatePicker
+                value={filterDate}
+                onChange={setFilterDate}
+                placeholder="All Dates"
+                className="w-full h-full text-xs font-medium border-none rounded-full px-3 pr-8 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+              />
+              {filterDate && (
+                <button
+                  onClick={() => setFilterDate('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-300 hover:bg-slate-500 text-white flex items-center justify-center transition-colors"
+                  title="Clear date filter"
+                >
+                  <i className="fa-solid fa-xmark text-[10px]"></i>
+                </button>
+              )}
+            </div>
+
+            <select
+              value={sortOrder}
+              onChange={e => setSortOrder(e.target.value)}
+              className="flex-1 xl:flex-none xl:w-[120px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
+            >
+              <option value="desc">Newest First</option>
+              <option value="asc">Oldest First</option>
             </select>
           </div>
         </div>
@@ -664,11 +714,28 @@ export const Announcements = () => {
                       </span>
                     )}
                     <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${catCls}`}>{item.category || 'General'}</span>
-                    {formatDeptDisplay(item.dept, deptOptions).map((d, i) => (
-                      <span key={i} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
-                        {d === ALL_DEPT_LABEL ? d : getDeptAbbr(d)}
-                      </span>
-                    ))}
+
+                    {/* Clustered Department Logic - List View (Static) */}
+                    {(() => {
+                      const displayDepts = formatDeptDisplay(item.dept, deptOptions);
+                      const firstDept = displayDepts[0];
+                      const extraCount = displayDepts.length - 1;
+
+                      if (!firstDept) return null;
+
+                      return (
+                        <>
+                          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
+                            {firstDept === ALL_DEPT_LABEL ? firstDept : getDeptAbbr(firstDept)}
+                          </span>
+                          {extraCount > 0 && (
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#466460] text-white">
+                              +{extraCount} more
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <h3 className="text-[#466460] font-bold text-[15px] sm:text-base mb-1.5 pr-8 leading-snug truncate sm:whitespace-normal sm:line-clamp-2">{item.title}</h3>
@@ -852,7 +919,7 @@ export const Announcements = () => {
 
       {/* View Modal */}
       {isViewModalOpen && viewData && createPortal(
-        <div className="fixed inset-0 z-[99999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => setIsViewModalOpen(false)}>
+        <div className="fixed inset-0 z-[99999] flex justify-center items-end sm:items-center p-0 sm:p-6" onClick={() => { setIsViewModalOpen(false); setShowAllDepts(false); }}>
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
             style={{ opacity: viewDrawer.isDragging ? Math.max(0, 1 - viewDrawer.dragY / 500) : 1 }}
@@ -879,7 +946,7 @@ export const Announcements = () => {
                 </div>
                 <img src={viewData.image_url} alt={viewData.title} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
-                <button onClick={() => setIsViewModalOpen(false)} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+                <button onClick={() => { setIsViewModalOpen(false); setShowAllDepts(false); }} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                     <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
                   </svg>
@@ -904,7 +971,7 @@ export const Announcements = () => {
                   onTouchEnd={viewDrawer.handleTouchEnd}
                 >
                   <h3 className="text-base font-bold text-[#466460]">View Announcement</h3>
-                  <button onClick={() => setIsViewModalOpen(false)} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+                  <button onClick={() => { setIsViewModalOpen(false); setShowAllDepts(false); }} className="hidden sm:flex w-7 h-7 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                     <i className="fa-solid fa-xmark text-sm"></i>
                   </button>
                 </div>
@@ -915,11 +982,45 @@ export const Announcements = () => {
               <div className="flex flex-wrap gap-2 mb-3">
                 {viewData.priority && viewData.priority !== 'normal' && <span className={`text-xs font-bold px-3 py-1 rounded-full text-white ${PRIORITY_CONFIG[viewData.priority]?.color}`}><i className="fa-solid fa-circle-exclamation mr-1"></i>{PRIORITY_CONFIG[viewData.priority]?.label}</span>}
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${CATEGORY_COLORS[viewData.category] || CATEGORY_COLORS.General}`}>{viewData.category || 'General'}</span>
-                {formatDeptDisplay(viewData.dept, deptOptions).map((d, i) => (
-                  <span key={i} className="text-xs font-semibold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
-                    {d === ALL_DEPT_LABEL ? d : getDeptAbbr(d)}
-                  </span>
-                ))}
+
+                {/* Clustered Department Logic - Modal View (Interactive) */}
+                {(() => {
+                  const displayDepts = formatDeptDisplay(viewData.dept, deptOptions);
+                  const firstDept = displayDepts[0];
+                  const extraCount = displayDepts.length - 1;
+
+                  if (displayDepts.length === 0 || !firstDept) return null;
+
+                  return showAllDepts ? (
+                    <>
+                      {displayDepts.map((d, i) => (
+                        <span key={i} className="text-xs font-semibold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
+                          {d === ALL_DEPT_LABEL ? d : getDeptAbbr(d)}
+                        </span>
+                      ))}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowAllDepts(false); }}
+                        className="text-xs font-bold px-3 py-1 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                      >
+                        Less
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460]">
+                        {firstDept === ALL_DEPT_LABEL ? firstDept : getDeptAbbr(firstDept)}
+                      </span>
+                      {extraCount > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowAllDepts(true); }}
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-[#466460] text-white hover:bg-[#38534f] transition-colors shadow-sm"
+                        >
+                          +{extraCount} more
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               <h3 className="text-xl sm:text-2xl font-bold text-[#466460] mb-2 leading-snug">{viewData.title}</h3>
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-y-2 sm:gap-y-1.5 gap-x-4 text-[13px] sm:text-sm text-slate-500 mb-4">
@@ -932,10 +1033,10 @@ export const Announcements = () => {
             </div>
 
             <div className="px-6 sm:px-8 py-5 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-3 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
-              <button onClick={() => setIsViewModalOpen(false)} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Close</button>
+              <button onClick={() => { setIsViewModalOpen(false); setShowAllDepts(false); }} className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors">Close</button>
               {canManage && (
                 <button
-                  onClick={() => { setIsViewModalOpen(false); handleOpenForm(viewData.id); }}
+                  onClick={() => { setIsViewModalOpen(false); setShowAllDepts(false); handleOpenForm(viewData.id); }}
                   className="w-full sm:w-auto sm:flex-1 bg-[#e0eceb] text-[#466460] py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5">
@@ -950,10 +1051,16 @@ export const Announcements = () => {
         document.body
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Delete Confirmation Modal Using Portal */}
+      {showDeleteModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowDeleteModal(false); setAnnouncementToDelete(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -999,7 +1106,8 @@ export const Announcements = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <Snackbar message={snackbar.message} type={snackbar.type} visible={snackbar.visible} />

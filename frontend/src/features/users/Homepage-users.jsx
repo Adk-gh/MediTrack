@@ -278,8 +278,24 @@ const PullIndicator = ({ indicatorRef, isRefreshing }) => (
 // regardless of where HomePageUsers is mounted in the tree.
 
 const AnnouncementModal = ({ item, onClose }) => {
+  const [showAllDepts, setShowAllDepts] = useState(false);
+
   if (!item) return null;
   const catStyle = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.General;
+
+  let depts = [];
+  try {
+    if (typeof item.dept === 'string') {
+      depts = JSON.parse(item.dept);
+      if (!Array.isArray(depts)) depts = [item.dept];
+    } else if (Array.isArray(item.dept)) {
+      depts = item.dept;
+    } else if (item.dept) {
+      depts = [item.dept];
+    }
+  } catch (e) {
+    depts = item.dept ? [item.dept] : [];
+  }
 
   return createPortal(
     <div
@@ -314,10 +330,37 @@ const AnnouncementModal = ({ item, onClose }) => {
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
                   {item.category || 'General'}
                 </span>
-                {item.dept && (
-                  <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#eef2f1] text-[#466460]">
-                    {item.dept}
-                  </span>
+
+                {depts.length > 0 && (
+                  showAllDepts ? (
+                    <>
+                      {depts.map((d, i) => (
+                        <span key={i} className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#eef2f1] text-[#466460]">
+                          {d}
+                        </span>
+                      ))}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowAllDepts(false); }}
+                        className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                      >
+                        Less
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#eef2f1] text-[#466460]">
+                        {depts[0]}
+                      </span>
+                      {depts.length > 1 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowAllDepts(true); }}
+                          className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#466460] text-white hover:bg-[#38534f] transition-colors shadow-sm"
+                        >
+                          +{depts.length - 1} more
+                        </button>
+                      )}
+                    </>
+                  )
                 )}
               </div>
 

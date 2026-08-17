@@ -268,6 +268,7 @@ export default function ConsultationUsers() {
   const profileCacheRef = useRef(readProfileCache());
   const profileCache    = profileCacheRef.current;
 
+  const [senderRoles, setSenderRoles] = useState({});
   const [messages,            setMessages]            = useState([]);
   const [inputValue,          setInputValue]          = useState('');
   const [isClinicOnline,      setIsClinicOnline]      = useState(false);
@@ -589,16 +590,7 @@ export default function ConsultationUsers() {
 
       await ensureValidSession();
 
-      if (profileCache?.internalUserId) {
-        try {
-          await supabase.from('presence').upsert(
-            { user_id: profileCache.internalUserId, status: 'online', last_seen: new Date().toISOString() },
-            { onConflict: 'user_id' }
-          );
-        } catch {}
-        return;
-      }
-
+      // ALWAYS fetch the correct internal user profile using the current Auth UID
       const { data: profiles, error } = await supabase
         .from('users')
         .select('id, first_name, last_name')
@@ -617,6 +609,9 @@ export default function ConsultationUsers() {
       setInternalUserId(profile.id);
       setInternalName(name);
       setSessionReady(true);
+
+      // Overwrite any stale cache with the correct data
+      writeProfileCache({ internalUserId: profile.id, internalName: name });
 
       try {
         await supabase.from('presence').upsert(
@@ -642,7 +637,7 @@ export default function ConsultationUsers() {
         );
       }
     };
-  }, [ensureValidSession, currentUser, profileCache?.internalUserId]);
+  }, [ensureValidSession, currentUser]);
 
   useEffect(() => {
     if (internalUserId) localStorage.setItem('_internalUserId', String(internalUserId));
@@ -1011,6 +1006,17 @@ export default function ConsultationUsers() {
     };
   }, []);
 
+  const scrollToBottom = useCallback((smooth = true) => {
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({
+          behavior: smooth ? 'smooth' : 'auto',
+          block: 'end'
+        });
+      }
+    }, 100);
+  }, []);
+
   useEffect(() => {
     const prev      = prevMsgCountRef.current;
     const prevFirst = prevFirstIdRef.current;
@@ -1021,12 +1027,17 @@ export default function ConsultationUsers() {
     prevFirstIdRef.current  = currFirst;
 
     if (currFirst !== prevFirst && prev > 0) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+
+    scrollToBottom(true);
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [isEnded]);
+    if (!isEnded && activeRoomId) {
+      scrollToBottom(false);
+    } else {
+      scrollToBottom(true);
+    }
+  }, [activeRoomId, isEnded, scrollToBottom]);
 
   const handleLoadMore = async () => {
     if (!activeRoomId || loadingMore || !hasMoreMessages) return;
@@ -1102,25 +1113,24 @@ export default function ConsultationUsers() {
           .eq('consultation_type', option.type)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
         if (dbCheck) existingEndedId = dbCheck.id;
       }
 
+      // 1. Reactivate existing session
       if (existingEndedId) {
         try {
-          const reactivateResult = await consultationsService.updateConsultation(existingEndedId, {
+          consultation = await consultationsService.updateConsultation(existingEndedId, {
             status: 'active',
             ended_at: null,
           });
-          if (reactivateResult?.id) {
-            roomId = reactivateResult.id;
-            consultation = reactivateResult;
-          }
+          roomId = consultation?.id || existingEndedId;
         } catch (err) {
           console.error('[Chat] Failed to reactivate consultation:', err);
         }
       }
 
+      // 2. Create new session
       if (!roomId) {
         consultation = await consultationsService.createConsultation({
           patient_id: internalUserId,
@@ -1128,7 +1138,13 @@ export default function ConsultationUsers() {
           patient_role: currentUser.role || 'student',
           consultation_type: option.type,
         });
-        roomId = consultation.id;
+
+        roomId = consultation?.id;
+
+        // Failsafe to catch backend disconnects
+        if (!roomId) {
+          throw new Error('Failed to retrieve room ID from server response.');
+        }
       }
 
       updateLastEndedByType({ ...lastEndedByTypeRef.current, [option.type]: null });
@@ -1143,6 +1159,7 @@ export default function ConsultationUsers() {
       setCachedConsultations(internalUserId, { activeConsult: consultation, lastEnded: null });
       setCachedMessages(roomId, null);
 
+      // 3. Send the user's initial choice as a message
       await consultationsService.sendMessage(roomId, {
         sender_id: internalUserId,
         sender_name: internalName,
@@ -1150,6 +1167,7 @@ export default function ConsultationUsers() {
         message: option.label,
       });
 
+      // 4. Inject system connecting message
       await supabase.from('consultation_messages').insert([
         {
           consultation_id: roomId,
@@ -1207,7 +1225,9 @@ export default function ConsultationUsers() {
           return acc;
         }, []);
         setMessages(uniqueMessages);
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+
+        scrollToBottom(true);
+
         setTimeout(async () => {
           await fetchMessages(activeRoomId, null, true);
         }, 2000);
@@ -1570,7 +1590,8 @@ export default function ConsultationUsers() {
                        const [h, m] = appt.time.split(':').map(Number);
                        const period = h >= 12 ? 'PM' : 'AM';
                        const hr = h % 12 || 12;
-                       timeText = `Unlocks at ${hr}:${String(m).padStart(2, '0')} ${period}`;
+                       const padM = String(m).padStart(2, '0');
+                       timeText = `Unlocks at ${hr}:${padM} ${period}`;
                     }
 
                     const isDisabled = !sessionReady || startingOption !== null || !isActiveNow;
@@ -1618,6 +1639,7 @@ export default function ConsultationUsers() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              onPaste={(e) => e.preventDefault()}
               placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
               disabled={isEnded || !sessionReady}
               className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"

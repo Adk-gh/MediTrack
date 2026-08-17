@@ -116,11 +116,16 @@ const ForgotPassword = () => {
         ════════════════════════════════════ */
         @media (max-width: 640px) {
           .lf-mobile-wrapper {
-            position: fixed; inset: 0;
+            /* Removed position fixed and height/overflow restrictions */
+            width: 100%;
+            min-height: 100dvh;
+            display: flex;
             flex-direction: column;
             background: #F2F4F3;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
+            box-sizing: border-box;
+            z-index: 10;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
           }
 
           .m-topbar {

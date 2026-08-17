@@ -1,12 +1,13 @@
 // frontend/src/features/admin-clinic/Archives.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 import { logAdminAction } from '../../services/audit.service';
+import DatePicker from '../../components/Datepicker';
 
 const ITEMS_PER_PAGE = 100;
 
-// Archive type labels - maps to actual table names
+// Archive type labels - maps to actual table names without underscores
 const ARCHIVE_TYPE_LABELS = {
   all: 'All Types',
   user: 'User',
@@ -18,27 +19,33 @@ const ARCHIVE_TYPE_LABELS = {
   notification: 'Notification',
 };
 
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'name_asc', label: 'Name (A-Z)' },
+  { value: 'name_desc', label: 'Name (Z-A)' },
+];
+
 export default function Archives() {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
   // Admin identity used for audit logging. Falls back through id -> uid ->
   // 'system' so a log entry is still written even if the stored user object
-  // is incomplete. Kept consistent with AppointmentManagement.jsx and
-  // ApprovalManagement.jsx.
+  // is incomplete. Kept consistent with other management screens.
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
   const [archives, setArchives] = useState([]);
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Search & Filters
   const [filterType, setFilterType] = useState('all');
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState(''); // For instant search input
+  const [filterDate, setFilterDate] = useState(''); // 'YYYY-MM-DD'
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Pagination
   const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
 
   // Modal states
   const [selectedArchive, setSelectedArchive] = useState(null);
@@ -57,7 +64,7 @@ export default function Archives() {
   };
 
   // Fetch archives from all tables using is_archived flag
-  const fetchArchives = async (isRefresh = false) => {
+  const fetchArchives = async () => {
     setLoading(true);
     try {
       // Set Supabase session for authenticated fetch
@@ -85,7 +92,7 @@ export default function Archives() {
       ]);
 
       // Combine all archived items with type labels
-      let allArchives = [
+      const allArchives = [
         ...(usersData.data || []).map(r => ({
           ...r,
           archiveType: 'user',
@@ -151,95 +158,85 @@ export default function Archives() {
             displayName: r.title || 'Notification',
             detail: `To: ${recipientName} | ${r.message || ''}`,
             deletedBy: 'System',
-            updated_at: r.created_at // fallback for the date column
+            updated_at: r.created_at || r.updated_at // fallback for the date column
           };
         }),
       ];
 
-      // Filter by type
-      if (filterType !== 'all') {
-        allArchives = allArchives.filter(a => a.archiveType === filterType);
-      }
-
-      // Filter by search
-      if (search) {
-        const s = search.toLowerCase();
-        allArchives = allArchives.filter(a => {
-          const searchable = `${a.displayName} ${a.detail} ${a.deletedBy} ${a.archiveType}`.toLowerCase();
-          return searchable.includes(s);
-        });
-      }
-
-      // Re-sort the combined array
-      allArchives.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
-
       setArchives(allArchives);
-      setTotalCount(allArchives.length);
-
-      if (isRefresh) setPage(1);
 
     } catch (error) {
       console.error('Error fetching archives:', error);
+      showSnackbar('Failed to load archives', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch stats
-  const fetchStats = async () => {
-    try {
-      const accessToken = localStorage.getItem('token');
-      const refreshToken = localStorage.getItem('refresh_token') || '';
-      if (accessToken) {
-        await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-      }
-
-      const [usersCount, announcementsCount, appointmentsCount, consultationsCount, medicalCount, dentalCount, notificationsCount] = await Promise.all([
-        supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-        supabase.from('announcements').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-        supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-        supabase.from('consultations').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-        supabase.from('medical_records').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-        supabase.from('dental_records').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('is_archived', true),
-      ]);
-
-      setStats({
-        total: (usersCount.count || 0) + (announcementsCount.count || 0) + (appointmentsCount.count || 0) +
-               (consultationsCount.count || 0) + (medicalCount.count || 0) + (dentalCount.count || 0) + (notificationsCount.count || 0),
-        users: usersCount.count || 0,
-        announcements: announcementsCount.count || 0,
-        appointments: appointmentsCount.count || 0,
-        consultations: consultationsCount.count || 0,
-        records: (medicalCount.count || 0) + (dentalCount.count || 0),
-        notifications: notificationsCount.count || 0,
-      });
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  };
-
+  // Initial Fetch
   useEffect(() => {
     fetchArchives();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterType, search]);
+  }, []);
 
   // Debounced search
   useEffect(() => {
     const handler = setTimeout(() => {
-      setSearch(searchInput);
-      setPage(1);
+      setDebouncedSearch(searchInput);
     }, 300);
     return () => clearTimeout(handler);
   }, [searchInput]);
 
+  // Reset page when filters change
   useEffect(() => {
-    fetchStats();
-  }, []);
+    setPage(1);
+  }, [filterType, filterDate, sortOrder, debouncedSearch]);
 
-  const handleRefresh = () => {
-    fetchStats();
-    fetchArchives(true);
+  // Date formatter helper
+  const toLocalYMD = (dateString) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // ── Derived & Filtered Data ──────────────────────────────────────────────
+  const filteredArchives = archives
+    .filter(a => {
+      if (filterType !== 'all' && a.archiveType !== filterType) return false;
+      if (filterDate) {
+        const itemDate = toLocalYMD(a.updated_at || a.created_at);
+        if (itemDate !== filterDate) return false;
+      }
+      if (debouncedSearch) {
+        const s = debouncedSearch.toLowerCase();
+        const searchable = `${a.displayName} ${a.detail} ${a.deletedBy} ${ARCHIVE_TYPE_LABELS[a.archiveType] || a.archiveType}`.toLowerCase();
+        if (!searchable.includes(s)) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.updated_at || a.created_at || 0);
+      const dateB = new Date(b.updated_at || b.created_at || 0);
+      const nameA = (a.displayName || '').toLowerCase();
+      const nameB = (b.displayName || '').toLowerCase();
+
+      if (sortOrder === 'newest') return dateB - dateA;
+      if (sortOrder === 'oldest') return dateA - dateB;
+      if (sortOrder === 'name_asc') return nameA.localeCompare(nameB);
+      if (sortOrder === 'name_desc') return nameB.localeCompare(nameA);
+      return 0;
+    });
+
+  // ── Dynamic Stats ────────────────────────────────────────────────────────
+  const stats = {
+    total: filteredArchives.length,
+    records: filteredArchives.filter(a => a.archiveType === 'medical_record' || a.archiveType === 'dental_record').length,
+    announcements: filteredArchives.filter(a => a.archiveType === 'announcement').length,
+    appointments: filteredArchives.filter(a => a.archiveType === 'appointment').length,
+    consultations: filteredArchives.filter(a => a.archiveType === 'consultation').length,
+    users: filteredArchives.filter(a => a.archiveType === 'user').length,
+    notifications: filteredArchives.filter(a => a.archiveType === 'notification').length,
   };
 
   // View archive details
@@ -300,7 +297,6 @@ export default function Archives() {
       setShowRestoreModal(false);
       setShowViewModal(false);
       fetchArchives();
-      fetchStats();
     } catch (error) {
       console.error('Error restoring:', error);
       showSnackbar('Error restoring item: ' + error.message, 'error');
@@ -359,7 +355,6 @@ export default function Archives() {
       showSnackbar('Item permanently deleted!', 'success');
       setShowDeleteModal(false);
       fetchArchives();
-      fetchStats();
     } catch (error) {
       console.error('Error deleting:', error);
       showSnackbar('Error deleting item: ' + error.message, 'error');
@@ -377,24 +372,24 @@ export default function Archives() {
     });
   };
 
-  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
-  const paginatedArchives = archives.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredArchives.length / ITEMS_PER_PAGE);
+  const paginatedArchives = filteredArchives.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 6;
+  const COL_COUNT = 7;
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4 shrink-0">
         {[
-          { label: 'Total', count: stats?.total || 0, color: 'text-slate-800' },
-          { label: 'Records', count: stats?.records || 0, color: 'text-blue-600' },
-          { label: 'Announcements', count: stats?.announcements || 0, color: 'text-green-600' },
-          { label: 'Appointments', count: stats?.appointments || 0, color: 'text-pink-600' },
-          { label: 'Consultations', count: stats?.consultations || 0, color: 'text-orange-600' },
-          { label: 'Users', count: stats?.users || 0, color: 'text-purple-600' },
-          { label: 'Notifications', count: stats?.notifications || 0, color: 'text-indigo-600' },
+          { label: 'Total', count: stats.total, color: 'text-slate-800' },
+          { label: 'Records', count: stats.records, color: 'text-blue-600' },
+          { label: 'Announcements', count: stats.announcements, color: 'text-green-600' },
+          { label: 'Appointments', count: stats.appointments, color: 'text-pink-600' },
+          { label: 'Consultations', count: stats.consultations, color: 'text-orange-600' },
+          { label: 'Users', count: stats.users, color: 'text-purple-600' },
+          { label: 'Notifications', count: stats.notifications, color: 'text-indigo-600' },
         ].map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
@@ -437,21 +432,49 @@ export default function Archives() {
 
             <select
               value={filterType}
-              onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+              onChange={(e) => setFilterType(e.target.value)}
               className={`${filterSelectCls} w-full sm:w-40`}
             >
               {Object.entries(ARCHIVE_TYPE_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
+
+            <div className="relative w-full sm:w-40">
+              <DatePicker
+                value={filterDate}
+                onChange={setFilterDate}
+                placeholder="All Dates"
+                className={`${filterSelectCls} w-full pr-8`}
+              />
+              {filterDate && (
+                <button
+                  onClick={() => setFilterDate('')}
+                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  title="Clear date filter"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            <select
+              value={sortOrder}
+              onChange={e => setSortOrder(e.target.value)}
+              className={`${filterSelectCls} w-full sm:w-36`}
+            >
+              {SORT_OPTIONS.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Right side: Inline Stats */}
+          {/* Right side: Refresh Action */}
           <div className="flex gap-2 flex-wrap items-center justify-end">
-
-          </div>
-          <button
-              onClick={handleRefresh}
+            <button
+              onClick={fetchArchives}
               className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -459,6 +482,7 @@ export default function Archives() {
               </svg>
               <span className="hidden sm:inline">Refresh</span>
             </button>
+          </div>
         </div>
 
         {/* Archives Table */}
@@ -537,27 +561,37 @@ export default function Archives() {
                       </span>
                     </td>
                     <td className="p-3 whitespace-nowrap">
-                      <div className="text-sm text-slate-600">{formatDate(archive.updated_at)}</div>
+                      <div className="text-sm text-slate-600">{formatDate(archive.updated_at || archive.created_at)}</div>
                     </td>
                     <td className="p-3 pr-6 text-right">
                       <div className="flex justify-end gap-1">
                         <button
                           onClick={() => handleView(archive)}
-                          className="px-2 py-1.5 text-sm text-[#466460] hover:bg-[#466460]/10 rounded-lg transition font-medium"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
+                          title="View Details"
                         >
-                          View
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
                         </button>
                         <button
                           onClick={() => handleRestoreClick(archive)}
-                          className="px-2 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition font-medium"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-emerald-600 hover:bg-emerald-50 transition-all"
+                          title="Restore Item"
                         >
-                          Restore
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                          </svg>
                         </button>
                         <button
                           onClick={() => handlePermanentDelete(archive)}
-                          className="px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition font-medium"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all"
+                          title="Permanently Delete"
                         >
-                          Delete
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
                         </button>
                       </div>
                     </td>
@@ -572,7 +606,7 @@ export default function Archives() {
         {totalPages > 1 && (
           <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
             <div>
-              Showing <span className="font-semibold">{totalCount === 0 ? 0 : ((page - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(page * ITEMS_PER_PAGE, totalCount)}</span> of <span className="font-semibold">{totalCount}</span> items
+              Showing <span className="font-semibold">{filteredArchives.length === 0 ? 0 : ((page - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(page * ITEMS_PER_PAGE, filteredArchives.length)}</span> of <span className="font-semibold">{filteredArchives.length}</span> items
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -600,8 +634,14 @@ export default function Archives() {
 
       {/* View Modal */}
       {showViewModal && selectedArchive && createPortal(
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-auto">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          onClick={() => setShowViewModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
@@ -639,7 +679,7 @@ export default function Archives() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase">Archived Date</label>
-                  <p className="text-sm text-slate-700">{formatDate(selectedArchive.updated_at)}</p>
+                  <p className="text-sm text-slate-700">{formatDate(selectedArchive.updated_at || selectedArchive.created_at)}</p>
                 </div>
               </div>
 
@@ -681,10 +721,16 @@ export default function Archives() {
         document.body
       )}
 
-      {/* Restore Confirmation Modal */}
+      {/* Restore Confirmation Modal Using Portal */}
       {showRestoreModal && selectedArchive && createPortal(
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          onClick={() => setShowRestoreModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -717,10 +763,16 @@ export default function Archives() {
         document.body
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal Using Portal */}
       {showDeleteModal && selectedArchive && createPortal(
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          onClick={() => { setShowDeleteModal(false); setSelectedArchive(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -735,7 +787,7 @@ export default function Archives() {
             </div>
             <div className="p-6 pt-0 flex gap-3">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => { setShowDeleteModal(false); setSelectedArchive(null); }}
                 className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition"
               >
                 Cancel
@@ -755,7 +807,7 @@ export default function Archives() {
 
       {/* Snackbar Notification */}
       {snackbar && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl ${
           snackbar.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {snackbar.type === 'success' ? (

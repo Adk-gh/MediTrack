@@ -97,15 +97,36 @@ function DrumColumn({ items, selectedIndex, onSelect, width }) {
   );
 }
 
-// ─── Pure String Parser ───────────────────────────────────────────────────────
+// ─── Date Value Parser ─────────────────────────────────────────────────────────
+// Accepts whatever shape a caller/API happens to hand us: a plain "YYYY-MM-DD"
+// string (Postgres/Supabase date columns), a full ISO timestamp
+// ("1998-05-14T00:00:00.000Z"), a "MM/DD/YYYY" string, a native JS Date
+// object, a unix timestamp (ms), or other date-ish strings the browser's
+// Date parser can make sense of. Returns null (never throws) if nothing
+// usable is found, so the caller can safely fall back to a placeholder.
 const parseDateValue = (v) => {
-  if (!v) return null;
+  if (v === null || v === undefined || v === '') return null;
 
   try {
-    // Force the value to a flat string immediately
-    const text = typeof v === 'string' ? v : String(v);
+    // Native Date object — read the fields directly instead of stringifying,
+    // since String(date) produces a format ("Wed May 14 1998 ...") that none
+    // of the regexes below can match.
+    if (v instanceof Date) {
+      if (isNaN(v.getTime())) return null;
+      return { y: v.getFullYear(), m: v.getMonth() + 1, d: v.getDate() };
+    }
 
-    // 1. Look for YYYY-MM-DD
+    // Unix timestamp (ms), e.g. from a raw API payload that serialized a Date.
+    if (typeof v === 'number') {
+      const fromNum = new Date(v);
+      if (isNaN(fromNum.getTime())) return null;
+      return { y: fromNum.getFullYear(), m: fromNum.getMonth() + 1, d: fromNum.getDate() };
+    }
+
+    const text = String(v).trim();
+    if (!text) return null;
+
+    // 1. YYYY-MM-DD (also matches ISO timestamps like 1998-05-14T00:00:00.000Z)
     let match = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (match) {
       const y = parseInt(match[1], 10);
@@ -114,13 +135,20 @@ const parseDateValue = (v) => {
       if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
     }
 
-    // 2. Look for MM/DD/YYYY
+    // 2. MM/DD/YYYY
     match = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (match) {
       const m = parseInt(match[1], 10);
       const d = parseInt(match[2], 10);
       const y = parseInt(match[3], 10);
       if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { y, m, d };
+    }
+
+    // 3. Fallback — let the browser's Date parser take a shot. Covers stray
+    // formats some APIs return (e.g. "May 14, 1998").
+    const parsed = new Date(text);
+    if (!isNaN(parsed.getTime())) {
+      return { y: parsed.getFullYear(), m: parsed.getMonth() + 1, d: parsed.getDate() };
     }
   } catch (err) {
     // Silently catch to prevent crashes
@@ -156,7 +184,8 @@ export default function DatePicker({ value, onChange, error, placeholder = 'Sele
     if (selDay > max) setSelDay(max);
   }, [selMonth, selYear]);
 
-  // Sync state when external prop changes
+  // Sync state when external prop changes (e.g. once an async fetch resolves
+  // and hands us the saved date for the first time).
   useEffect(() => {
     const p = parseDateValue(value);
     if (p) {

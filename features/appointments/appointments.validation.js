@@ -7,15 +7,15 @@ const createAppointmentSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be at most 100 characters"),
   type: z.enum(["student", "instructor", "staff"], { errorMap: () => ({ message: "Type must be student, instructor, or staff" }) }),
 
-  // Medical Fields (Added these to match your frontend payload)
+  // Medical Fields
   serviceType: z.string().min(1, "Service type is required"),
   reason: z.string().optional(),
 
-  // Scheduling Fields (Made optional because the clinic assigns them later)
-  year: z.coerce.number().int().min(2020).optional(),
-  month: z.coerce.number().int().min(1).max(12).optional(),
-  day: z.coerce.number().int().min(1).max(31).optional(),
-  time: z.string().optional(),
+  // Scheduling Fields
+  year: z.coerce.number().min(2020).nullable().optional(),
+  month: z.coerce.string().nullable().optional(),
+  day: z.coerce.string().nullable().optional(),
+  time: z.string().nullable().optional(),
 });
 
 const updateAppointmentSchema = z.object({
@@ -24,11 +24,11 @@ const updateAppointmentSchema = z.object({
   serviceType: z.string().optional(),
   reason: z.string().optional(),
 
-  // Coerce converts frontend strings like "08" into the number 8 safely
-  year: z.coerce.number().int().min(2020).optional(),
-  month: z.coerce.number().int().min(1).max(12).optional(),
-  day: z.coerce.number().int().min(1).max(31).optional(),
-  time: z.string().optional(),
+  // ADDED .nullable() to allow the frontend to clear dates by sending null
+  year: z.coerce.number().int().min(2020).nullable().optional(),
+  month: z.coerce.number().int().min(1).max(12).nullable().optional(),
+  day: z.coerce.number().int().min(1).max(31).nullable().optional(),
+  time: z.string().nullable().optional(),
 
   status: z.enum(["pending", "approved", "done", "missed", "rejected", "Pending", "Confirmed", "Completed", "Cancelled"]).optional(),
 });

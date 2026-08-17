@@ -10,12 +10,51 @@ const { ipKeyGenerator } = require('express-rate-limit');
 
 // Authentication / Authorization middleware
 const { authorized } = require('../middleware/authorized');
-const { requireSysadmin } = require('../middleware/roleBasedAccess');
 
 // Audit logger
 const { auditLog } = require('../middleware/auditLogger');
 
 const supabase = require('../configs/database');
+const { getSystemConfig } = require('../services/systemConfig.service');
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles ONLY (with clinical safety net)
+const allowDynamicAdmin = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Safety net: Keep sysadmin and core clinical roles as hardcoded fallbacks
+    const allowedRoles = [
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Admin verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
 
 // ---------------------------------------------------------
 // RATE-LIMIT KEY GENERATOR
@@ -297,7 +336,7 @@ router.post(
  * Requires:
  *
  * 1. Valid Supabase JWT
- * 2. Sysadmin role
+ * 2. Admin role
  */
 router.post(
   '/admin-resend-verification',
@@ -306,7 +345,7 @@ router.post(
 
   authorized,
 
-  requireSysadmin,
+  allowDynamicAdmin,
 
   auditLog(
     'resend_verification',

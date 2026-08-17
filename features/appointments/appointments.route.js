@@ -5,7 +5,7 @@ const router = express.Router();
 
 const appointmentsController = require("./appointments.controller");
 const { authorized } = require("../../middleware/authorized");
-const { requireRole } = require("../../middleware/roleBasedAccess");
+const { getSystemConfig } = require("../../services/systemConfig.service");
 
 const validateData = require("../../validation/validate-data");
 
@@ -17,29 +17,88 @@ const {
 
 const { auditLog } = require("../../middleware/auditLogger");
 
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Faculty Roles (Dynamic from system_config) + Sysadmin
+const allowDynamicFaculty = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+    const facultyRoles = (config.faculty_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    const allowedRoles = [...facultyRoles, ...adminRoles, "sysadmin"];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Faculty privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Faculty verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
+// Allows Admin Roles, Clinic Staffs, AND Faculty Roles (Fully Dynamic)
+const allowDynamicStaffAndFaculty = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const facultyRoles = (config.faculty_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Master safety net fallback for core roles
+    const allowedRoles = [
+      ...clinicRoles,
+      ...facultyRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse",
+      "faculty"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Faculty, Clinic Staff, or Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Staff/Faculty verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
 // ─────────────────────────────────────────────────────────────
 // APPOINTMENT ROUTES
 // ─────────────────────────────────────────────────────────────
 
 // Get current user's appointments
-// Available to authenticated users
 router.get(
   "/my-appointments",
   authorized,
   appointmentsController.getMyAppointments
 );
 
-// Instructor's bulk appointment history
-// Faculty only
-router.get(
-  "/bulk-history",
-  authorized,
-  requireRole("faculty"),
-  appointmentsController.getBulkHistory
-);
-
 // Get appointments by date
-// Available to authenticated users
 router.get(
   "/date/:date",
   authorized,
@@ -47,16 +106,14 @@ router.get(
 );
 
 // Get all appointments
-// Admin / faculty / staff
 router.get(
   "/",
   authorized,
-  requireRole(["sysadmin", "faculty", "staff"]),
+  allowDynamicStaffAndFaculty,
   appointmentsController.getAllAppointments
 );
 
 // Create a normal appointment
-// Authenticated users can request an appointment
 router.post(
   "/",
   authorized,
@@ -70,14 +127,22 @@ router.post(
 );
 
 // ─────────────────────────────────────────────────────────────
-// BULK APPOINTMENT
+// BULK APPOINTMENT ROUTES
 // ─────────────────────────────────────────────────────────────
 
-// Faculty-only bulk appointment request
+// Instructor's bulk appointment history
+router.get(
+  "/bulk-history",
+  authorized,
+  allowDynamicFaculty,
+  appointmentsController.getBulkHistory
+);
+
+// Faculty / Staff bulk appointment request
 router.post(
   "/bulk",
   authorized,
-  requireRole("faculty"),
+  allowDynamicStaffAndFaculty,
   auditLog(
     "create",
     "appointment",
@@ -94,12 +159,10 @@ router.post(
 // UPDATE / DELETE
 // ─────────────────────────────────────────────────────────────
 
-// Update appointment
-// Admin / faculty / staff
 router.put(
   "/:id",
   authorized,
-  requireRole(["sysadmin", "faculty", "staff"]),
+  allowDynamicStaffAndFaculty,
   auditLog(
     "update",
     "appointment",
@@ -109,12 +172,10 @@ router.put(
   appointmentsController.updateAppointment
 );
 
-// Archive appointment
-// Admin / faculty / staff
 router.delete(
   "/:id",
   authorized,
-  requireRole(["sysadmin", "faculty", "staff"]),
+  allowDynamicStaffAndFaculty,
   auditLog(
     "delete",
     "appointment",

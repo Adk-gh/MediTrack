@@ -1,4 +1,6 @@
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\ApprovalManagement.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { logAdminAction } from '../../services/audit.service';
@@ -15,7 +17,6 @@ const STATUS_OPTIONS = [
   { value: 'all', label: 'All Status' },
   { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
 ];
 
 const SORT_OPTIONS = [
@@ -63,7 +64,7 @@ export const ApprovalManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0 });
 
   // message now optionally carries a `link` ({ label, path }) so the
   // snackbar can offer a click-through action (e.g. "View in Archive").
@@ -137,14 +138,6 @@ export const ApprovalManagement = () => {
         new Date(b.created_at) - new Date(a.created_at)
       );
 
-      // Calculate stats from combined data (before filtering)
-      const total = combined.length;
-      const pending = combined.filter(r => (r.status || 'pending').toLowerCase() === 'pending').length;
-      const approved = combined.filter(r => (r.status || 'pending').toLowerCase() === 'approved' || r.status?.toLowerCase() === 'done').length;
-      const rejected = combined.filter(r => r.status?.toLowerCase() === 'rejected').length;
-
-      setStats({ total, pending, approved, rejected });
-
       // Apply filters
       let filtered = combined;
 
@@ -183,6 +176,13 @@ export const ApprovalManagement = () => {
             return new Date(b.created_at) - new Date(a.created_at);
         }
       });
+
+      // Calculate stats from filtered data
+      const total = filtered.length;
+      const pending = filtered.filter(r => (r.status || 'pending').toLowerCase() === 'pending').length;
+      const approved = filtered.filter(r => (r.status || 'pending').toLowerCase() === 'approved' || r.status?.toLowerCase() === 'done').length;
+
+      setStats({ total, pending, approved });
 
       setAllFiltered(filtered);
       setTotalRecords(filtered.length);
@@ -327,12 +327,11 @@ export const ApprovalManagement = () => {
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 shrink-0">
         {[
           { label: 'Total', count: stats.total, color: 'text-slate-800' },
           { label: 'Pending', count: stats.pending, color: 'text-amber-600' },
           { label: 'Approved', count: stats.approved, color: 'text-emerald-600' },
-          { label: 'Rejected', count: stats.rejected, color: 'text-red-600' },
         ].map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
@@ -540,10 +539,16 @@ export const ApprovalManagement = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+        {/* Delete Confirmation Modal Using Portal */}
+        {showDeleteModal && createPortal(
+          <div
+            className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+            onClick={() => { setShowDeleteModal(false); setRecordToDelete(null); }}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                   <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -592,13 +597,20 @@ export const ApprovalManagement = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
-        {/* Edit Record Modal */}
-        {showEditModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+        {/* Edit Record Modal Using Portal */}
+        {showEditModal && createPortal(
+          <div
+            className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+            onClick={() => { setShowEditModal(false); setEditRecord(null); }}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
@@ -735,7 +747,8 @@ export const ApprovalManagement = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 
@@ -744,6 +757,7 @@ export const ApprovalManagement = () => {
         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 max-w-[92vw] px-5 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-3 shadow-xl ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
+          {/* Snackbar content remains exactly the same */}
           <span className="shrink-0">
             {message.type === 'success' ? (
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">

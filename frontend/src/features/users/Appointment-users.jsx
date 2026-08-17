@@ -555,7 +555,15 @@ export default function AppointmentUsers() {
                       })}
                     </div>
                     {selectedPurposes.includes('Other') && (
-                      <textarea placeholder="Please elaborate here..." value={otherPurpose} onChange={e => setOtherPurpose(e.target.value)} disabled={submitting} className="mt-1 border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors" rows="2" />
+                      <textarea
+                        placeholder="Please elaborate here..."
+                        value={otherPurpose}
+                        onChange={e => setOtherPurpose(e.target.value)}
+                        onPaste={(e) => e.preventDefault()}
+                        disabled={submitting}
+                        className="mt-1 border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors"
+                        rows="2"
+                      />
                     )}
                   </div>
                   <div className="flex items-start gap-2.5 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">

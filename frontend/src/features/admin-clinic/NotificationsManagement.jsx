@@ -1,8 +1,10 @@
 // frontend/src/features/admin-clinic/NotificationsManagement.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { logAdminAction } from '../../services/audit.service';
+import DatePicker from '../../components/Datepicker';
 
 // ── Static config ────────────────────────────────────────────────────────
 const TYPE_OPTIONS = [
@@ -62,6 +64,16 @@ const getInitials = (name = '') => {
   return name.slice(0, 2).toUpperCase() || '?';
 };
 
+// Formats snake_case to Capitalized Words (e.g. "appointment_request" -> "Appointment Request")
+const formatTypeLabel = (type) => {
+  if (!type) return 'Unknown';
+  return type
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 const ReadPill = ({ isRead }) => {
   const s = isRead ? READ_STYLES.read : READ_STYLES.unread;
   return (
@@ -86,7 +98,7 @@ const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
       {/* Type */}
       <td className="p-3">
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${getTypeBadge(notification.type)}`}>
-          {notification.type || 'unknown'}
+          {formatTypeLabel(notification.type)}
         </span>
       </td>
 
@@ -149,7 +161,7 @@ const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
           <button
             onClick={() => onDelete(notification)}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all"
-            title="Delete Notification"
+            title="Archive Notification"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -167,19 +179,29 @@ export const NotificationsManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
+  const [configData, setConfigData] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Search & Filters
   const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterRead, setFilterRead] = useState('all'); // all | read | unread
+  const [filterDept, setFilterDept] = useState('all'); // all | department name
+  const [filterDate, setFilterDate] = useState(''); // 'YYYY-MM-DD' or ''
   const [sortOrder, setSortOrder] = useState('desc');
+
+  // Stats
+  const [globalStats, setGlobalStats] = useState({ total: 0, unread: 0, read: 0 });
 
   const [message, setMessage] = useState(null);
   const snackbarTimer = useRef(null);
   const SNACKBAR_DURATION_MS = 6000;
 
-  // Pagination
+  // Pagination (Server-Side)
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
   const ITEMS_PER_PAGE = 100;
 
   // Archive modal
@@ -217,18 +239,97 @@ export const NotificationsManagement = () => {
     createdAt: n.created_at ?? new Date().toISOString(),
   });
 
-  const fetchAllNotifications = async () => {
+  // Global Config fetch
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
+      const result = await res.json();
+      if (result.success) setConfigData(result.data);
+    } catch (e) {
+      console.error("Failed to load config:", e);
+    }
+  };
+
+  // Global Stats fetch
+  const fetchStats = async () => {
+    try {
+      const [totalRes, unreadRes, readRes] = await Promise.all([
+        supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('is_archived', false),
+        supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('is_archived', false).eq('is_read', false),
+        supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('is_archived', false).eq('is_read', true),
+      ]);
+      setGlobalStats({
+        total: totalRes.count || 0,
+        unread: unreadRes.count || 0,
+        read: readRes.count || 0,
+      });
+    } catch(e) {
+      console.error("Failed to load stats:", e);
+    }
+  };
+
+  // Server-Side Fetch
+  const fetchNotifications = async (page = 1) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*, _user:users!notifications_user_id_fkey(id, first_name, last_name, middle_name, email, role, department, university_id)')
-        .eq('is_archived', false) // Only fetch non-archived
-        .order('created_at', { ascending: false });
+      // Use standard join unless filtering by dept or searching by recipient
+      let selectStr = '*, _user:users(id, first_name, last_name, middle_name, email, role, department, university_id)';
+      if (filterDept !== 'all') {
+        selectStr = '*, _user:users!inner(id, first_name, last_name, middle_name, email, role, department, university_id)';
+      }
 
+      let query = supabase
+        .from('notifications')
+        .select(selectStr, { count: 'exact' })
+        .eq('is_archived', false);
+
+      if (filterType !== 'all') query = query.eq('type', filterType);
+      if (filterRead === 'read') query = query.eq('is_read', true);
+      if (filterRead === 'unread') query = query.eq('is_read', false);
+      if (filterDept !== 'all') query = query.eq('users.department', filterDept);
+
+      if (filterDate) {
+        query = query.gte('created_at', `${filterDate}T00:00:00.000Z`).lte('created_at', `${filterDate}T23:59:59.999Z`);
+      }
+
+      if (debouncedSearch) {
+        const s = debouncedSearch.toLowerCase();
+
+        // Step 1: Find matching users (capped at 100 to avoid URI overflow)
+        const { data: users } = await supabase
+          .from('users')
+          .select('id')
+          .or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,email.ilike.%${s}%,university_id.ilike.%${s}%`)
+          .limit(100);
+
+        const userIds = users?.map(u => u.id) || [];
+
+        // Step 2: Combine search conditions
+        let orString = `title.ilike.%${s}%,message.ilike.%${s}%`;
+        if (userIds.length > 0) {
+          orString += `,user_id.in.(${userIds.join(',')})`;
+        }
+        query = query.or(orString);
+      }
+
+      // Apply sorting
+      if (sortOrder === 'asc') {
+        query = query.order('created_at', { ascending: true });
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
+
+      // Apply pagination boundaries
+      const from = (page - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
       if (error) throw error;
 
       setNotifications((data || []).map(normalize));
+      setTotalRecords(count || 0);
+
     } catch (err) {
       console.error('Fetch error:', err);
       showSnackbar('Failed to load notifications', 'error');
@@ -237,11 +338,30 @@ export const NotificationsManagement = () => {
     }
   };
 
-  useEffect(() => { fetchAllNotifications(); }, []);
+  // Initial Data Load
+  useEffect(() => {
+    fetchConfig();
+    fetchStats();
+  }, []);
 
+  // Debounce search input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
+
+  // Refetch when dependencies change
+  useEffect(() => {
+    fetchNotifications(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, filterType, filterRead, filterDept, filterDate, sortOrder, debouncedSearch]);
+
+  // Reset to page 1 on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, filterType, filterRead, sortOrder]);
+  }, [filterType, filterRead, filterDept, filterDate, sortOrder, debouncedSearch]);
 
   // Clean up the snackbar timer on unmount
   useEffect(() => {
@@ -250,37 +370,11 @@ export const NotificationsManagement = () => {
     };
   }, []);
 
-  const typeOptions = ['all', ...new Set([
-    ...TYPE_OPTIONS,
-    ...notifications.map(n => n.type).filter(Boolean),
-  ])];
+  const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
 
-  const filtered = notifications
-    .filter(n => {
-      if (filterType !== 'all' && n.type !== filterType) return false;
-      if (filterRead === 'read' && !n.isRead) return false;
-      if (filterRead === 'unread' && n.isRead) return false;
-      if (searchInput) {
-        const s = searchInput.toLowerCase();
-        const name = getFullName(n._user).toLowerCase();
-        const email = (n._user?.email || '').toLowerCase();
-        const title = (n.title || '').toLowerCase();
-        const messageText = (n.message || '').toLowerCase();
-        return name.includes(s) || email.includes(s) || title.includes(s) || messageText.includes(s);
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const da = a.createdAt || '';
-      const db = b.createdAt || '';
-      return sortOrder === 'desc' ? db.localeCompare(da) : da.localeCompare(db);
-    });
-
-  const totalUnread = notifications.filter(n => !n.isRead).length;
-  const totalRead = notifications.filter(n => n.isRead).length;
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginatedNotifications = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  // Derive filter options
+  const typeOptions = ['all', ...TYPE_OPTIONS];
+  const deptOptions = configData ? configData.departments.map(d => d.full) : [];
 
   const handleToggleRead = async (notification, newIsRead) => {
     const { error } = await supabase
@@ -291,6 +385,9 @@ export const NotificationsManagement = () => {
     if (error) { showSnackbar('Failed to update notification', 'error'); throw error; }
 
     setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, isRead: newIsRead } : n));
+
+    // Refresh global stats silently
+    fetchStats();
 
     // Audit Log
     logAdminAction({
@@ -347,8 +444,9 @@ export const NotificationsManagement = () => {
 
       if (error) { showSnackbar('Failed to archive notification', 'error'); throw error; }
 
-      // Remove it from the local screen
+      // Remove it from the local screen & refresh stats
       setNotifications(prev => prev.filter(n => n.id !== notifToDelete.id));
+      fetchStats();
 
       // Audit Log
       logAdminAction({
@@ -376,9 +474,9 @@ export const NotificationsManagement = () => {
   const COL_COUNT = 8;
 
   const summaryStats = [
-    { label: 'Total',  count: notifications.length, color: 'text-slate-700'  },
-    { label: 'Unread', count: totalUnread,          color: 'text-amber-700' },
-    { label: 'Read',   count: totalRead,            color: 'text-emerald-700' },
+    { label: 'Total',  count: globalStats.total, color: 'text-slate-700'  },
+    { label: 'Unread', count: globalStats.unread,     color: 'text-amber-700' },
+    { label: 'Read',   count: globalStats.read,       color: 'text-emerald-700' },
   ];
 
   return (
@@ -417,7 +515,7 @@ export const NotificationsManagement = () => {
             <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} w-44`}>
               <option value="all">All types</option>
               {typeOptions.filter(t => t !== 'all').map(t => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>{formatTypeLabel(t)}</option>
               ))}
             </select>
 
@@ -426,6 +524,33 @@ export const NotificationsManagement = () => {
               <option value="unread">Unread</option>
               <option value="read">Read</option>
             </select>
+
+            <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className={`${selectCls} w-40 truncate`}>
+              <option value="all">All departments</option>
+              {deptOptions.map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+
+            <div className="relative w-full sm:w-40">
+              <DatePicker
+                value={filterDate}
+                onChange={setFilterDate}
+                placeholder="All Dates"
+                className={`${selectCls} w-full pr-8`}
+              />
+              {filterDate && (
+                <button
+                  onClick={() => setFilterDate('')}
+                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  title="Clear date filter"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              )}
+            </div>
 
             <button
               onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
@@ -439,7 +564,7 @@ export const NotificationsManagement = () => {
           </div>
 
           <button
-            onClick={fetchAllNotifications}
+            onClick={() => { fetchNotifications(currentPage); fetchStats(); }}
             className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -477,14 +602,14 @@ export const NotificationsManagement = () => {
                     </div>
                   </td>
                 </tr>
-              ) : paginatedNotifications.length === 0 ? (
+              ) : notifications.length === 0 ? (
                 <tr>
                   <td colSpan={COL_COUNT} className="text-center py-16">
                     <i className="fa-regular fa-bell-slash text-slate-200 text-4xl block mb-2"></i>
                     <p className="text-slate-400 text-sm">No notifications found</p>
                   </td>
                 </tr>
-              ) : paginatedNotifications.map((notification, index) => (
+              ) : notifications.map((notification, index) => (
                 <NotificationRow
                   key={notification.id}
                   index={(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
@@ -501,7 +626,7 @@ export const NotificationsManagement = () => {
         {totalPages > 1 && (
           <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
             <div>
-              Showing <span className="font-semibold">{((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</span> of <span className="font-semibold">{filtered.length}</span> notifications
+              Showing <span className="font-semibold">{totalRecords === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> notifications
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -527,10 +652,16 @@ export const NotificationsManagement = () => {
 
       </div>
 
-      {/* Edit (Change Read Status) Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Edit (Change Read Status) Modal Using Portal */}
+      {showEditModal && createPortal(
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999]"
+          onClick={closeEditModal}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
@@ -598,13 +729,20 @@ export const NotificationsManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Archive Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Archive Confirmation Modal Using Portal */}
+      {showDeleteModal && createPortal(
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999]"
+          onClick={() => { setShowDeleteModal(false); setNotifToDelete(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -652,12 +790,13 @@ export const NotificationsManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Snackbar */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 max-w-[92vw] px-5 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-3 shadow-xl transition-all ${
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 max-w-[92vw] px-5 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-3 shadow-xl transition-all ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           <span className="shrink-0">

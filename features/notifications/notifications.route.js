@@ -6,10 +6,43 @@ const router = express.Router();
 const notificationsController = require("./notifications.controller");
 
 const { authorized } = require("../../middleware/authorized");
-const { requireRole } = require("../../middleware/roleBasedAccess");
 
 // Audit logger
 const { auditLog } = require("../../middleware/auditLogger");
+const { getSystemConfig } = require("../../services/systemConfig.service");
+
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles ONLY (for test notifications)
+const allowDynamicAdmin = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Keep "sysadmin" as a hardcoded fallback
+    const allowedRoles = [...adminRoles, "sysadmin"];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Admin verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
 
 
 // =========================================================
@@ -39,14 +72,14 @@ router.get(
 // =========================================================
 
 // Test endpoint
-// ADMIN ONLY
+// ADMIN ONLY (Dynamic)
 //
 // Previously this endpoint had NO authentication.
 // Do not leave it publicly accessible in production.
 router.post(
   "/test",
   authorized,
-  requireRole("sysadmin"),
+  allowDynamicAdmin,
   auditLog(
     "create",
     "system",

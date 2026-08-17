@@ -8,7 +8,6 @@ import { logAdminAction } from '../../services/audit.service';
 
 // ── Frontend Email Validation Helper ──────────────────────────────────────────
 const validateEmailWithEasyEmail = async (email) => {
-  // Uses VITE_ prefix so the React frontend can read the environment variable
   const API_KEY = import.meta.env.VITE_EASY_EMAIL_API;
 
   if (!API_KEY) {
@@ -36,6 +35,53 @@ const validateEmailWithEasyEmail = async (email) => {
   }
 };
 
+// ── Password Validation Helpers ───────────────────────────────────────────────
+const getPasswordRequirements = (rules) => {
+  if (!rules) return [];
+  const requirements = [{ key: 'minLength', label: `At least ${rules.minLength} characters`, test: (p) => p.length >= Number(rules.minLength) }];
+  if (rules.requireUppercase) requirements.push({ key: 'uppercase', label: 'At least one uppercase letter (A-Z)', test: (p) => /[A-Z]/.test(p) });
+  if (rules.requireLowercase) requirements.push({ key: 'lowercase', label: 'At least one lowercase letter (a-z)', test: (p) => /[a-z]/.test(p) });
+  if (rules.requireNumber) requirements.push({ key: 'number', label: 'At least one number (0-9)', test: (p) => /[0-9]/.test(p) });
+  if (rules.requireSpecialCharacter) requirements.push({ key: 'specialCharacter', label: 'At least one special character', test: (p) => /[^A-Za-z0-9]/.test(p) });
+  return requirements;
+};
+
+const validatePassword = (password, rules) => {
+  if (!rules) return { valid: true, message: '' }; // Fallback
+  const requirements = getPasswordRequirements(rules);
+  const failedRequirements = requirements.filter((r) => !r.test(password));
+  if (failedRequirements.length > 0) {
+    return {
+      valid: false,
+      message: `Password must contain ${failedRequirements.map((r) => r.label.toLowerCase()).join(', ')}.`
+    };
+  }
+  return { valid: true, message: '' };
+};
+
+const PasswordRequirements = ({ password, rules }) => {
+  if (!rules || !password) return null;
+  const requirements = getPasswordRequirements(rules);
+  if (requirements.length === 0) return null;
+
+  return (
+    <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Password Requirements</div>
+      <div className="flex flex-col gap-1">
+        {requirements.map((req) => {
+          const satisfied = req.test(password);
+          return (
+            <div key={req.key} className={`flex items-center gap-1.5 text-[11px] font-medium transition-colors ${satisfied ? 'text-emerald-600' : 'text-slate-500'}`}>
+              <span className="w-3 h-3 flex items-center justify-center font-bold text-[10px]">{satisfied ? '✓' : '○'}</span>
+              <span>{req.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ── Helper Functions ──────────────────────────────────────────────────────────
 const isClinicStaff = (r, config) => config?.clinic_roles?.includes(r?.toLowerCase());
 const isFaculty     = (r, config) => config?.faculty_roles?.includes(r?.toLowerCase());
@@ -43,11 +89,6 @@ const isStudent     = (r) => r?.toLowerCase() === 'student';
 const isAdmin       = (r, config) => config?.admin_roles?.includes(r?.toLowerCase());
 
 const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
-const classificationColors = {
-  Regular:   { bg: '#e8f5ef', text: '#1a5c3a', dot: '#2d7a52' },
-  Irregular: { bg: '#fff7e6', text: '#92400e', dot: '#f59e0b' },
-  Returning: { bg: '#eff6ff', text: '#1e40af', dot: '#3b82f6' },
-};
 
 const ITEMS_PER_PAGE = 100;
 
@@ -204,12 +245,17 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
     if (!form.first_name || !form.last_name || !form.email || !form.password || !form.university_id) {
       showSnackbar('Please fill all required fields', 'error'); return;
     }
-    if (form.password.length < 6) { showSnackbar('Password must be at least 6 characters', 'error'); return; }
+
+    // Dynamic Password Validation Check
+    const pwCheck = validatePassword(form.password, configData.passwordRules);
+    if (!pwCheck.valid) {
+      showSnackbar(pwCheck.message, 'error');
+      return;
+    }
 
     setLoading(true);
 
     try {
-      // ── NEW: Validate email exists via Easy Email API before proceeding ──
       const validationResult = await validateEmailWithEasyEmail(form.email);
       if (!validationResult.isDeliverable) {
         showSnackbar(validationResult.message, 'error');
@@ -303,12 +349,13 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
               <div className={secHead}>Account</div>
               <div><label className={labelCls}>Email <span className="text-red-400">*</span></label><input className={inputCls} type="email" value={form.email} autoComplete="off" onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required /></div>
-              <div>
+              <div className="flex flex-col">
                 <label className={labelCls}>Password <span className="text-red-400">*</span></label>
                 <div className="relative">
-                  <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={e => cf('password', e.target.value)} placeholder="Min. 6 characters" required />
+                  <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={e => cf('password', e.target.value)} placeholder="Create a password" required />
                   <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"><EyeIcon open={showPwd} /></button>
                 </div>
+                <PasswordRequirements password={form.password} rules={configData?.passwordRules} />
               </div>
 
               <div className={secHead}>Identity</div>
@@ -390,6 +437,11 @@ export const UserManagement = () => {
 
   // Search & Filters
   const [currentFilter, setCurrentFilter] = useState('all');
+  const [profileFilter, setProfileFilter] = useState('all');
+  const [verifyFilter, setVerifyFilter]   = useState('all');
+  const [sexFilter, setSexFilter]         = useState('all');
+  const [deptFilter, setDeptFilter]       = useState('all');
+  const [sortOrder, setSortOrder]         = useState('asc'); // Name (A-Z) by default
   const [searchInput, setSearchInput]   = useState('');
 
   // Pagination
@@ -423,10 +475,10 @@ export const UserManagement = () => {
     fetchConfig();
   }, []);
 
-  // Reset pagination when search or filter changes
+  // Reset pagination when search or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, currentFilter]);
+  }, [searchInput, currentFilter, profileFilter, verifyFilter, sexFilter, deptFilter, sortOrder]);
 
   const fetchUsers = async () => {
     try {
@@ -447,7 +499,22 @@ export const UserManagement = () => {
       setIsConfigLoading(true);
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
       const result = await res.json();
-      if (result.success) setConfigData(result.data);
+      if (result.success) {
+        const data = result.data;
+        // Normalize dynamic password rules for use in User Management forms
+        if (data.password_rules) {
+          data.passwordRules = {
+            minLength: Number(data.password_rules.minLength) || 8,
+            requireUppercase: data.password_rules.requireUppercase === true,
+            requireLowercase: data.password_rules.requireLowercase === true,
+            requireNumber: data.password_rules.requireNumber === true,
+            requireSpecialCharacter: data.password_rules.requireSpecialCharacter === true,
+          };
+        } else {
+          data.passwordRules = { minLength: 8, requireUppercase: false, requireLowercase: false, requireNumber: false, requireSpecialCharacter: false };
+        }
+        setConfigData(data);
+      }
     } catch(e) {
       console.error("Failed to load config:", e);
     } finally {
@@ -472,23 +539,7 @@ export const UserManagement = () => {
     return { background: '#f1f5f9', color: '#475569' };
   };
 
-  const filteredUsers = users.filter(user => {
-    const role = user.role?.toLowerCase();
-    if (currentFilter === 'faculty') { if (!isFaculty(role, configData)) return false; }
-    else if (currentFilter === 'clinic_staff') { if (!isClinicStaff(role, configData)) return false; }
-    else if (currentFilter !== 'all') { if (role !== currentFilter) return false; }
-    if (searchInput) {
-      const s = searchInput.toLowerCase();
-      return getFullName(user).toLowerCase().includes(s) || user.email?.toLowerCase().includes(s) || user.university_id?.toLowerCase().includes(s);
-    }
-    return true;
-  });
-
-  // Derived paginated state
-  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
-  const paginatedUsers = filteredUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-
-  // Derive dynamic configuration options safely
+  // Derive dynamic configuration options safely for filters
   const deptAbbrToFull = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.full])) : {};
   const programsByDeptAbbr = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs])) : {};
   const PLSP_OFFICES_FOR_STAFF = configData ? [
@@ -496,7 +547,59 @@ export const UserManagement = () => {
     ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
   ] : [];
   const uniqueClassifications = configData ? Array.from(new Set(Object.values(configData.classifications || {}))) : [];
-  const uniqueJobTitles = configData ? Array.from(new Set(Object.values(configData.job_titles || {}))) : [];
+
+  let filteredUsers = users.filter(user => {
+    const role = user.role?.toLowerCase();
+
+    // Role Filter
+    if (currentFilter === 'faculty') { if (!isFaculty(role, configData)) return false; }
+    else if (currentFilter === 'clinic_staff') { if (!isClinicStaff(role, configData)) return false; }
+    else if (currentFilter !== 'all') { if (role !== currentFilter) return false; }
+
+    // Profile Filter
+    if (profileFilter !== 'all') {
+      const isComplete = !!user.profile_complete;
+      if (profileFilter === 'active' && !isComplete) return false;
+      if (profileFilter === 'pending' && isComplete) return false;
+    }
+
+    // Verification Filter
+    if (verifyFilter !== 'all') {
+      const isVer = !!user.is_verified;
+      if (verifyFilter === 'verified' && !isVer) return false;
+      if (verifyFilter === 'unverified' && isVer) return false;
+    }
+
+    // Sex Filter
+    if (sexFilter !== 'all') {
+      if (user.sex !== sexFilter) return false;
+    }
+
+    // Department Filter
+    if (deptFilter !== 'all') {
+      if (user.department !== deptFilter) return false;
+    }
+
+    // Search input
+    if (searchInput) {
+      const s = searchInput.toLowerCase();
+      if (!(getFullName(user).toLowerCase().includes(s) || user.email?.toLowerCase().includes(s) || user.university_id?.toLowerCase().includes(s))) return false;
+    }
+
+    return true;
+  });
+
+  // Sorting
+  filteredUsers.sort((a, b) => {
+    const nameA = getFullName(a).toLowerCase();
+    const nameB = getFullName(b).toLowerCase();
+    if (sortOrder === 'asc') return nameA.localeCompare(nameB);
+    return nameB.localeCompare(nameA);
+  });
+
+  // Derived paginated state
+  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   // ── Edit ──────────────────────────────────────────────────────────────────
   const openEditModal = (user) => {
@@ -585,10 +688,18 @@ export const UserManagement = () => {
       return;
     }
 
+    // Dynamic Password Validation Check for Edit User
+    if (editForm.password) {
+      const pwCheck = validatePassword(editForm.password, configData.passwordRules);
+      if (!pwCheck.valid) {
+        showSnackbar(pwCheck.message, 'error');
+        return;
+      }
+    }
+
     setEditSaving(true);
 
     try {
-      // ── NEW: Validate email if they changed it ──
       if (editForm.email !== editTarget?.email) {
         const validationResult = await validateEmailWithEasyEmail(editForm.email);
         if (!validationResult.isDeliverable) {
@@ -632,27 +743,9 @@ export const UserManagement = () => {
         adminUid,
       });
 
-      if (result.data) {
-        const updatedUser = {
-          ...result.data,
-          first_name: result.data.firstName, middle_name: result.data.middleName,
-          last_name: result.data.lastName, university_id: result.data.universityId,
-          phone_number: result.data.phoneNumber, job_title: result.data.jobTitle,
-          blood_type: result.data.bloodType, civil_status: result.data.civilStatus,
-          home_address: result.data.homeAddress, year_level: result.data.yearLevel,
-          student_classification: result.data.studentClassification,
-          is_verified: result.data.isVerified, profile_complete: result.data.profileComplete,
-          is_profile_setup: result.data.isProfileSetup,
-        };
-        setUsers(users.map(u => {
-          const userId = u.uid || u.id;
-          const targetId = editTarget?.uid || editTarget?.id;
-          return userId === targetId ? { ...u, ...updatedUser } : u;
-        }));
-      }
       showSnackbar('User updated successfully', 'success');
       setShowEditModal(false);
-      fetchUsers();
+      fetchUsers(); // Refresh Table
     } catch (err) {
       showSnackbar('Error updating user: ' + (err.message || ''), 'error');
     } finally {
@@ -667,7 +760,6 @@ export const UserManagement = () => {
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       const token = localStorage.getItem('token');
 
-      // We rely on the backend check we added to auth.controller.js for this!
       const response = await fetch(`${API_URL}/auth/admin-resend-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -676,7 +768,6 @@ export const UserManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        // ---- AUDIT LOG ----
         logAdminAction({
           action: 'verification_email_resent',
           details: { userId: targetId, email: user.email },
@@ -684,8 +775,8 @@ export const UserManagement = () => {
         });
 
         showSnackbar(`Verification email sent successfully to ${user.email}`, 'success');
+        setShowEditModal(false);
       } else {
-        // Provide contextual error so admin can verify if email is wrong/missing
         const errorMsg = data.message || 'Failed to send verification email.';
         showSnackbar(errorMsg, 'error');
       }
@@ -737,11 +828,11 @@ export const UserManagement = () => {
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  const statTotal       = users.length;
-  const statAdmin       = users.filter(u => isAdmin(u.role, configData)).length;
-  const statClinicStaff = users.filter(u => isClinicStaff(u.role, configData)).length;
-  const statStudent     = users.filter(u => isStudent(u.role)).length;
-  const statFaculty     = users.filter(u => isFaculty(u.role, configData)).length;
+  const statTotal       = filteredUsers.length;
+  const statAdmin       = filteredUsers.filter(u => isAdmin(u.role, configData)).length;
+  const statClinicStaff = filteredUsers.filter(u => isClinicStaff(u.role, configData)).length;
+  const statStudent     = filteredUsers.filter(u => isStudent(u.role)).length;
+  const statFaculty     = filteredUsers.filter(u => isFaculty(u.role, configData)).length;
 
   const sectionHeadCls = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
   const COL_COUNT = 9;
@@ -763,7 +854,7 @@ export const UserManagement = () => {
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-<div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
         {[
           { label: 'Total', count: statTotal, color: 'text-slate-800' },
           { label: 'Admins', count: statAdmin, color: 'text-amber-600' },
@@ -784,7 +875,7 @@ export const UserManagement = () => {
         {/* Unified Inline Toolbar */}
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
 
-          {/* Left side: Actions, Search & Filters */}
+          {/* Left side: Search & Filters */}
           <div className="flex flex-wrap gap-2 items-center flex-1 w-full xl:w-auto">
 
             <div className="relative w-full sm:w-60">
@@ -797,19 +888,45 @@ export const UserManagement = () => {
             </div>
 
             <select value={currentFilter} onChange={e => setCurrentFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-44`}>
+              className={`${filterSelectCls} w-full sm:w-auto`}>
               <option value="all">All Roles</option>
               <option value="sysadmin">System Administrators</option>
               <option value="clinic_staff">Clinic Staff</option>
               <option value="student">Students</option>
               <option value="faculty">Faculty</option>
             </select>
+
+            <select value={profileFilter} onChange={e => setProfileFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              <option value="all">All Profile Status</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending Setup</option>
+            </select>
+
+            <select value={verifyFilter} onChange={e => setVerifyFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              <option value="all">All Verification</option>
+              <option value="verified">Verified</option>
+              <option value="unverified">Unverified</option>
+            </select>
+
+            <select value={sexFilter} onChange={e => setSexFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              <option value="all">All Sex</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+
+            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              <option value="all">All Departments</option>
+              {PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+
+            <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              <option value="asc">Name (A-Z)</option>
+              <option value="desc">Name (Z-A)</option>
+            </select>
           </div>
 
-          {/* Right side: Inline Stats */}
-          <div className="flex gap-2 flex-wrap items-center justify-end">
-
-          </div>
+          {/* Right side: Actions */}
+          <div className="flex gap-2 flex-wrap items-center justify-end shrink-0">
            <button onClick={() => setShowCreateWizard(true)}
              className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -825,6 +942,7 @@ export const UserManagement = () => {
              </svg>
              <span className="hidden sm:inline">Refresh</span>
            </button>
+          </div>
         </div>
 
         {/* Table Area */}
@@ -967,7 +1085,7 @@ export const UserManagement = () => {
       {showCreateWizard && configData && (
         <CreateUserModal
           onClose={() => setShowCreateWizard(false)}
-          onCreated={user => setUsers(prev => [user, ...prev])}
+          onCreated={() => fetchUsers()} // Automatically refetch table data on success
           showSnackbar={showSnackbar}
           configData={configData}
         />
@@ -998,7 +1116,7 @@ export const UserManagement = () => {
                   </div>
                   <div><label className={labelCls}>University ID</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} required /></div>
                   <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
-                  <div>
+                  <div className="flex flex-col">
                     <label className={labelCls}>New Password <span className="text-slate-400 font-normal">(leave blank to keep)</span></label>
                     <div className="relative">
                       <input className={inputCls} type={editShowPwd ? 'text' : 'password'} value={editForm.password || ''} onChange={e => field('password', e.target.value)} placeholder="Enter new password" />
@@ -1006,6 +1124,8 @@ export const UserManagement = () => {
                         <EyeIcon open={editShowPwd} />
                       </button>
                     </div>
+                    {/* Render requirements block conditionally ONLY when text is present to save space on edits */}
+                    {editForm.password && <PasswordRequirements password={editForm.password} rules={configData.passwordRules} />}
                   </div>
 
                   {/* Identity Section */}
@@ -1038,8 +1158,8 @@ export const UserManagement = () => {
                   <div><label className={labelCls}>Department / Office</label>
                     <select className={selectCls} value={editForm.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}>
                       <option value="">— Select —</option>
-                      {configData.departments.map(d => <option key={d.abbr} value={d.abbr}>{d.full}</option>)}
-                      {configData.non_academic_offices.map(o => <option key={o} value={o}>{o}</option>)}
+                      {configData?.departments?.map(d => <option key={d.abbr} value={d.abbr}>{d.full}</option>)}
+                      {configData?.non_academic_offices?.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                   <div><label className={labelCls}>Program / Unit</label>
@@ -1150,10 +1270,16 @@ export const UserManagement = () => {
         />
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Delete Confirmation Modal Using Portal */}
+      {showDeleteModal && deleteTarget && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -1185,12 +1311,13 @@ export const UserManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Snackbar ── */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success'

@@ -589,56 +589,29 @@ const SignupForm = () => {
 
         /* --- Mobile Specifics --- */
         @media (max-width: 640px) {
-        .lf-mobile-wrapper {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+          .lf-mobile-wrapper {
+            /* Removed position fixed and height/overflow restrictions */
+            width: 100%;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            background: #F2F4F3;
+            box-sizing: border-box;
+            z-index: 10;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+          }
 
-  /* Use the real dynamic viewport when supported */
-  height: 100dvh;
-
-  /* Fallback for older browsers */
-  min-height: 100vh;
-
-  background: #F2F4F3;
-
-  overflow-y: auto;
-  overflow-x: hidden;
-
-  -webkit-overflow-scrolling: touch;
-
-  width: 100%;
-  box-sizing: border-box;
-  z-index: 10;
-
-  /*
-   * Safe-area-aware scrolling container.
-   * Devices without a notch return 0px.
-   * Devices with a notch/status bar add the required inset.
-   */
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-/* Mobile top bar */
-.m-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  /*
-   * The wrapper already accounts for the safe area.
-   * Keep the normal visual spacing here.
-   */
-  padding: 20px 24px 0;
-
-  flex-shrink: 0;
-  animation: m-fadeIn 0.4s ease both;
-
-  box-sizing: border-box;
-}
+          /* Mobile top bar */
+          .m-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px 0;
+            flex-shrink: 0;
+            animation: m-fadeIn 0.4s ease both;
+            box-sizing: border-box;
+          }
           .m-logo-wrap { display: flex; align-items: center; gap: 10px; }
           .m-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
           .m-step-badge { background: #E4EFED; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: #3D7A6F; }
@@ -793,7 +766,7 @@ const SignupForm = () => {
               <div className="lf-field" style={{ flex: 1 }}>
                 <label htmlFor="password" className="lf-desktop-label">Password<span className="lf-req">*</span></label>
                 <div className="lf-input-wrap-desktop">
-                  <input id="password" type={showPassword ? 'text' : 'password'} placeholder="Create a password" disabled={loading} className={`lf-desktop-input ${hasError('password') ? 'is-invalid' : ''}`} value={formData.password} onChange={handleChange} onBlur={() => handleBlur('password')} autoComplete="new-password" />
+                  <input id="password" type={showPassword ? 'text' : 'password'} placeholder="Create a password" disabled={loading} className={`lf-desktop-input ${hasError('password') ? 'is-invalid' : ''}`} value={formData.password} onChange={handleChange} onBlur={() => handleBlur('password')} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                   <button type="button" className="lf-eye-btn-desktop" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                     {showPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
                   </button>
@@ -803,7 +776,7 @@ const SignupForm = () => {
               <div className="lf-field" style={{ flex: 1 }}>
                 <label htmlFor="confirmPassword" className="lf-desktop-label">Confirm Password<span className="lf-req">*</span></label>
                 <div className="lf-input-wrap-desktop">
-                  <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} placeholder="Repeat password" disabled={loading} className={`lf-desktop-input ${hasError('confirmPassword') ? 'is-invalid' : ''}`} value={formData.confirmPassword} onChange={handleChange} onBlur={() => handleBlur('confirmPassword')} autoComplete="new-password" />
+                  <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} placeholder="Repeat password" disabled={loading} className={`lf-desktop-input ${hasError('confirmPassword') ? 'is-invalid' : ''}`} value={formData.confirmPassword} onChange={handleChange} onBlur={() => handleBlur('confirmPassword')} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                   <button type="button" className="lf-eye-btn-desktop" onClick={() => setShowConfirmPassword((v) => !v)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
                     {showConfirmPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
                   </button>
@@ -908,7 +881,7 @@ const SignupForm = () => {
             <div className="m-field">
               <label className="m-field-label">Password<span className="m-req">*</span></label>
               <div className={`m-input-pill ${hasError('password') ? 'is-invalid' : ''}`}>
-                <input id="password" type={showPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Create a password" value={formData.password} onChange={handleChange} onBlur={() => handleBlur('password')} autoComplete="new-password" />
+                <input id="password" type={showPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Create a password" value={formData.password} onChange={handleChange} onBlur={() => handleBlur('password')} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                 <button type="button" className="m-pill-btn" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                   {showPassword ? <EyeClosedIcon size={18} /> : <EyeOpenIcon size={18} />}
                 </button>
@@ -921,7 +894,7 @@ const SignupForm = () => {
             <div className="m-field">
               <label className="m-field-label">Confirm password<span className="m-req">*</span></label>
               <div className={`m-input-pill ${hasError('confirmPassword') ? 'is-invalid' : ''}`}>
-                <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Repeat your password" value={formData.confirmPassword} onChange={handleChange} onBlur={() => handleBlur('confirmPassword')} autoComplete="new-password" />
+                <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} className="m-pill-input" placeholder="Repeat your password" value={formData.confirmPassword} onChange={handleChange} onBlur={() => handleBlur('confirmPassword')} autoComplete="new-password" onPaste={(e) => e.preventDefault()} />
                 <button type="button" className="m-pill-btn" onClick={() => setShowConfirmPassword((v) => !v)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
                   {showConfirmPassword ? <EyeClosedIcon size={18} /> : <EyeOpenIcon size={18} />}
                 </button>

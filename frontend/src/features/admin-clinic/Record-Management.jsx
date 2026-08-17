@@ -1,11 +1,13 @@
 // frontend/src/features/admin-clinic/Record-Management.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { supabase } from '../../supabase';
 import { logAdminAction } from '../../services/audit.service';
+import DatePicker from '../../components/Datepicker';
 
-const STATUS_OPTIONS = ['pending', 'approved', 'done', 'rejected'];
+const STATUS_OPTIONS = ['pending', 'approved'];
 // 'done' is an appointment-only status — records only ever cycle through these
-const EDIT_STATUS_OPTIONS = ['pending', 'approved', 'rejected'];
+const EDIT_STATUS_OPTIONS = ['pending', 'approved'];
 const STATUS_STYLES = {
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   pending:  { bg: 'bg-amber-100',   text: 'text-amber-700',   dot: 'bg-amber-400'   },
@@ -168,6 +170,7 @@ export const RecordManagement = () => {
   const [filterType, setFilterType]     = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterDept, setFilterDept]     = useState('all');
+  const [filterDate, setFilterDate]     = useState(''); // 'YYYY-MM-DD' or ''
   const [sortOrder, setSortOrder]       = useState('desc');
   const [message, setMessage]           = useState(null);
 
@@ -233,7 +236,7 @@ export const RecordManagement = () => {
   // Reset pagination to page 1 whenever filters or search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, filterType, filterStatus, filterDept, sortOrder]);
+  }, [searchInput, filterType, filterStatus, filterDept, filterDate, sortOrder]);
 
   const deptOptions = ['all', ...new Set(
     records.map(r => r._user?.department).filter(Boolean)
@@ -244,6 +247,10 @@ export const RecordManagement = () => {
       if (filterType   !== 'all' && r._kind            !== filterType)   return false;
       if (filterStatus !== 'all' && r.status           !== filterStatus) return false;
       if (filterDept   !== 'all' && r._user?.department !== filterDept)   return false;
+      if (filterDate) {
+        const recDateStr = (r.exam_date || r.created_at || '').split('T')[0];
+        if (recDateStr !== filterDate) return false;
+      }
       if (searchInput) {
         const s    = searchInput.toLowerCase();
         const name = getFullName(r._user || r).toLowerCase();
@@ -259,9 +266,10 @@ export const RecordManagement = () => {
       return sortOrder === 'desc' ? db.localeCompare(da) : da.localeCompare(db);
     });
 
-  const totalMed     = records.filter(r => r._kind === 'medical').length;
-  const totalDen     = records.filter(r => r._kind === 'dental').length;
-  const totalPending = records.filter(r => r.status === 'pending').length;
+  // Calculate stats based on filtered results
+  const totalMed     = filtered.filter(r => r._kind === 'medical').length;
+  const totalDen     = filtered.filter(r => r._kind === 'dental').length;
+  const totalPending = filtered.filter(r => r.status === 'pending').length;
 
   // Pagination Logic
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
@@ -365,7 +373,7 @@ export const RecordManagement = () => {
   const COL_COUNT = 8; // Increased for the new "#" column
 
   const summaryStats = [
-    { label: 'Total',   count: records.length, color: 'text-slate-700'  },
+    { label: 'Total',   count: filtered.length, color: 'text-slate-700'  },
     { label: 'Medical', count: totalMed,       color: 'text-blue-700'    },
     { label: 'Dental',  count: totalDen,       color: 'text-purple-700'  },
     { label: 'Pending', count: totalPending,   color: 'text-amber-700'   },
@@ -391,7 +399,6 @@ export const RecordManagement = () => {
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
 
           <div className="flex flex-wrap gap-3 items-center flex-1">
-
 
             <div className="relative w-full sm:w-60">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -427,6 +434,26 @@ export const RecordManagement = () => {
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
+
+            <div className="relative w-full sm:w-40">
+              <DatePicker
+                value={filterDate}
+                onChange={setFilterDate}
+                placeholder="All Dates"
+                className={`${selectCls} w-full pr-8`}
+              />
+              {filterDate && (
+                <button
+                  onClick={() => setFilterDate('')}
+                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  title="Clear date filter"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              )}
+            </div>
 
             <button
               onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
@@ -528,10 +555,16 @@ export const RecordManagement = () => {
 
       </div>
 
-      {/* Edit (Change Status) Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Edit (Change Status) Modal using Portal */}
+      {showEditModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={closeEditModal}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
@@ -596,13 +629,20 @@ export const RecordManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Delete Confirmation Modal using Portal */}
+      {showDeleteModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowDeleteModal(false); setRecordToDelete(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -651,7 +691,8 @@ export const RecordManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Snackbar */}

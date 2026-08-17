@@ -1,5 +1,6 @@
 // frontend/src/features/admin-clinic/AppointmentManagement.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { supabase } from '../../supabase';
 import * as appointmentsService from '../../services/appointments.service';
 import DatePicker from '../../components/Datepicker';
@@ -9,8 +10,8 @@ const ITEMS_PER_PAGE = 100;
 
 // Standard clinic time slots for auto-assignment
 const CLINIC_SLOTS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'
+  '08:00', '09:00', '10:00', '11:00',
+  '13:00', '14:00', '15:00', '16:00', '17:00'
 ];
 
 // Adjust this number to match the clinic's actual capacity per time slot
@@ -33,12 +34,6 @@ const SORT_OPTIONS = [
   { value: 'name_asc', label: 'Patient Name (A-Z)' },
   { value: 'name_desc', label: 'Patient Name (Z-A)' },
 ];
-
-// Notification copy for status/reschedule changes now lives entirely on the
-// backend (backend/features/appointments/appointments.service.js), which
-// already runs on every PUT /appointments/:id — including calls that come
-// from this screen. Keeping a second copy here would just double-send
-// notifications, so it was removed from the frontend.
 
 const formatDate = (year, month, day) => {
   if (!year || !month || !day) return '—';
@@ -72,9 +67,6 @@ export const AppointmentManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = (currentUser.role || '').toLowerCase();
 
-  // Admin identity used for audit logging. Falls back through id -> uid ->
-  // 'system' so a log entry is still written even if the stored user object
-  // is incomplete.
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
   const adminEmail = currentUser?.email ?? null;
   const adminName = currentUser?.name
@@ -89,7 +81,7 @@ export const AppointmentManagement = () => {
   const [reasonFilter, setReasonFilter] = useState('all');
   const [reasonOptions, setReasonOptions] = useState([{ value: 'all', label: 'All Reasons' }]);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState(''); // 'YYYY-MM-DD' or '' for all dates
+  const [dateFilter, setDateFilter] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
   // Pagination
@@ -108,18 +100,10 @@ export const AppointmentManagement = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
-  // NOTE: Patient notifications are no longer created from this component.
-  // The backend's updateAppointment (backend/features/appointments/appointments.service.js)
-  // now sends both status-change and reschedule notifications on every
-  // PUT /appointments/:id — which is exactly what appointmentsService.updateAppointment
-  // below calls. Keeping a duplicate insert here would double-notify patients.
-
-  // Reset pagination to page 1 whenever filters or search change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchInput, reasonFilter, statusFilter, dateFilter, sortBy]);
 
-  // Shared filter/sort pipeline used by fetchAppointments
   const applyFiltersAndSort = useCallback((rawData, profileMap) => {
     let enriched = (rawData || []).map(apt => {
       const profile = profileMap[apt.user_id] || {};
@@ -135,7 +119,6 @@ export const AppointmentManagement = () => {
       };
     });
 
-    // Apply reason filter
     if (reasonFilter !== 'all') {
       enriched = enriched.filter(a =>
         (a.reason || '')
@@ -145,18 +128,15 @@ export const AppointmentManagement = () => {
       );
     }
 
-    // Apply status filter
     if (statusFilter !== 'all') {
       enriched = enriched.filter(a => a.status?.toLowerCase() === statusFilter);
     }
 
-    // Apply date filter — exact match on a specific calendar date
     if (dateFilter) {
       const { y: fy, m: fm, d: fd } = fromDateInputValue(dateFilter);
       enriched = enriched.filter(a => Number(a.year) === fy && Number(a.month) === fm && Number(a.day) === fd);
     }
 
-    // Apply search filter
     const term = searchInput.trim().toLowerCase();
     if (term) {
       enriched = enriched.filter(a => {
@@ -172,7 +152,6 @@ export const AppointmentManagement = () => {
       });
     }
 
-    // Sort results
     enriched.sort((a, b) => {
       switch (sortBy) {
         case 'oldest':
@@ -199,7 +178,6 @@ export const AppointmentManagement = () => {
   const fetchAppointments = useCallback(async (isRefresh = false) => {
     try {
       setLoading(true);
-
       const data = await appointmentsService.getAllAppointments(true);
 
       if (!data || data.length === 0) {
@@ -231,12 +209,12 @@ export const AppointmentManagement = () => {
 
       const enriched = applyFiltersAndSort(data, profileMap);
 
-      const total = data?.length || 0;
-      const pending = data?.filter(a => a.status?.toLowerCase() === 'pending').length || 0;
-      const approved = data?.filter(a => a.status?.toLowerCase() === 'approved').length || 0;
-      const done = data?.filter(a => a.status?.toLowerCase() === 'done').length || 0;
-      const missed = data?.filter(a => a.status?.toLowerCase() === 'missed').length || 0;
-      const rejected = data?.filter(a => a.status?.toLowerCase() === 'rejected').length || 0;
+      const total = enriched?.length || 0;
+      const pending = enriched?.filter(a => a.status?.toLowerCase() === 'pending').length || 0;
+      const approved = enriched?.filter(a => a.status?.toLowerCase() === 'approved').length || 0;
+      const done = enriched?.filter(a => a.status?.toLowerCase() === 'done').length || 0;
+      const missed = enriched?.filter(a => a.status?.toLowerCase() === 'missed').length || 0;
+      const rejected = enriched?.filter(a => a.status?.toLowerCase() === 'rejected').length || 0;
 
       setStats({ total, pending, approved, done, missed, rejected });
 
@@ -335,9 +313,11 @@ export const AppointmentManagement = () => {
     if (!appointmentToEdit) return;
 
     const isFinalStatus = ['done', 'missed', 'rejected'].includes(editForm.status);
+    const isApproved = editForm.status === 'approved';
+    const isPending = editForm.status === 'pending';
 
-    if (!isFinalStatus && (!editForm.year || !editForm.month || !editForm.day)) {
-      showSnackbar('Please select a valid date', 'error');
+    if (isApproved && (!editForm.year || !editForm.month || !editForm.day)) {
+      showSnackbar('Please select a valid date for approved appointments', 'error');
       return;
     }
 
@@ -347,7 +327,12 @@ export const AppointmentManagement = () => {
         status: editForm.status,
       };
 
-      if (!isFinalStatus) {
+      if (isPending) {
+        updates.year = null;
+        updates.month = null;
+        updates.day = null;
+        updates.time = null;
+      } else if (!isFinalStatus) {
         updates.year = String(editForm.year);
         updates.month = String(editForm.month).padStart(2, '0');
         updates.day = String(editForm.day).padStart(2, '0');
@@ -365,11 +350,6 @@ export const AppointmentManagement = () => {
       }
 
       const previousStatus = (appointmentToEdit.status || 'pending').toLowerCase();
-
-      // Notifications for both status changes and reschedules are now sent
-      // by the backend inside updateAppointment (see backend/features/
-      // appointments/appointments.service.js), which the call above already
-      // triggers via PUT /appointments/:id. No client-side insert needed here.
 
       logAdminAction({
         action: 'appointment_updated',
@@ -391,7 +371,7 @@ export const AppointmentManagement = () => {
       fetchAppointments(true);
     } catch (err) {
       console.error('Failed to update appointment:', err);
-      showSnackbar('Failed to update appointment', 'error');
+      showSnackbar('Failed to update appointment (ensure backend validation accepts null dates)', 'error');
     } finally {
       setSaving(false);
     }
@@ -498,7 +478,6 @@ export const AppointmentManagement = () => {
     try {
       const { y: ty, m: tm, d: td } = fromDateInputValue(bulkToDate);
 
-      // Assign available slots sequentially based on remaining capacity
       let currentSlotIdx = 0;
       const updates = bulkMatches.map((apt) => {
         const newTime = availableSlots[currentSlotIdx] || apt.time;
@@ -533,9 +512,6 @@ export const AppointmentManagement = () => {
 
       await Promise.all(promises);
 
-      // Notify every patient whose appointment moved. Batched as a single
-      // insert so a bulk move of many appointments doesn't fire one
-      // network request per patient.
       const notificationRows = updates
         .filter(u => u.user_id)
         .map(u => ({
@@ -549,20 +525,9 @@ export const AppointmentManagement = () => {
           created_at: new Date().toISOString(),
         }));
 
-      console.log('[handleBulkReschedule] prepared notification rows:', notificationRows.length, notificationRows);
-
       if (notificationRows.length > 0) {
-        const { error: notifyError } = await supabase
-          .from('notifications')
-          .insert(notificationRows);
-
-        if (notifyError) {
-          console.error('[handleBulkReschedule] Failed to create bulk notifications:', notifyError);
-        } else {
-          console.log('[handleBulkReschedule] bulk notifications created successfully');
-        }
-      } else {
-        console.warn('[handleBulkReschedule] no notification rows to insert — check that appointments have user_id set');
+        const { error: notifyError } = await supabase.from('notifications').insert(notificationRows);
+        if (notifyError) console.error('[handleBulkReschedule] Failed to create bulk notifications:', notifyError);
       }
 
       logAdminAction({
@@ -579,9 +544,7 @@ export const AppointmentManagement = () => {
         userName: adminName,
       });
 
-      showSnackbar(
-        `Rescheduled ${bulkMatches.length} approved appointment${bulkMatches.length !== 1 ? 's' : ''} to ${formatDate(ty, tm, td)}`
-      );
+      showSnackbar(`Rescheduled ${bulkMatches.length} approved appointment${bulkMatches.length !== 1 ? 's' : ''} to ${formatDate(ty, tm, td)}`);
       setShowBulkModal(false);
       setBulkFromDate('');
       setBulkToDate('');
@@ -729,8 +692,6 @@ export const AppointmentManagement = () => {
 
           {/* Right side: Inline Stats & Bulk Action */}
           <div className="flex gap-2 flex-wrap items-center justify-end">
-
-
             <button
               onClick={handleBulkClick}
               className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm ml-1"
@@ -878,10 +839,16 @@ export const AppointmentManagement = () => {
 
       </div>
 
-      {/* Edit Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Edit Modal Using Portal */}
+      {showEditModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowEditModal(false); setAppointmentToEdit(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
@@ -902,7 +869,19 @@ export const AppointmentManagement = () => {
                 </label>
                 <select
                   value={editForm.status}
-                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                  onChange={e => {
+                    const newStatus = e.target.value;
+                    setEditForm(f => {
+                      const updated = { ...f, status: newStatus };
+                      if (newStatus === 'pending') {
+                        updated.year = '';
+                        updated.month = '';
+                        updated.day = '';
+                        updated.time = '';
+                      }
+                      return updated;
+                    });
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
                 >
                   {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => (
@@ -914,28 +893,32 @@ export const AppointmentManagement = () => {
               {/* Date */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Date {['done', 'missed', 'rejected'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
+                  Date {['done', 'missed', 'rejected', 'pending'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
                 </label>
                 <DatePicker
                   value={toDateInputValue(editForm.year, editForm.month, editForm.day)}
                   onChange={handleEditDateChange}
                   placeholder="Select date"
-                  disabled={['done', 'missed', 'rejected'].includes(editForm.status)}
+                  disabled={['done', 'missed', 'rejected', 'pending'].includes(editForm.status)}
                 />
               </div>
 
               {/* Time */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Time {['done', 'missed', 'rejected'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
+                  Time {['done', 'missed', 'rejected', 'pending'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
                 </label>
-                <input
-                  type="time"
+                <select
                   value={editForm.time || ''}
                   onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
-                  disabled={['done', 'missed', 'rejected'].includes(editForm.status)}
-                />
+                  disabled={['done', 'missed', 'rejected', 'pending'].includes(editForm.status)}
+                >
+                  <option value="" disabled>Select time</option>
+                  {CLINIC_SLOTS.map(slot => (
+                    <option key={slot} value={slot}>{formatTime(slot)}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -966,13 +949,20 @@ export const AppointmentManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Bulk Reschedule Modal */}
-      {showBulkModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Bulk Reschedule Modal Using Portal */}
+      {showBulkModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowBulkModal(false); setBulkFromDate(''); setBulkToDate(''); setBulkMatches([]); setBulkTargetMatches([]); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                 <i className="fa-solid fa-calendar-days text-[#466460] text-xl"></i>
@@ -1117,13 +1107,20 @@ export const AppointmentManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+      {/* Delete Confirmation Modal Using Portal */}
+      {showDeleteModal && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          onClick={() => { setShowDeleteModal(false); setAppointmentToDelete(null); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -1172,12 +1169,13 @@ export const AppointmentManagement = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Snackbar */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl transition-all ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success' ? (

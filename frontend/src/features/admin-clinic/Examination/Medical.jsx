@@ -1406,8 +1406,17 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
       {showSummary && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-[740px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-7 py-5 text-white shrink-0">
-              <h3 className="text-lg font-extrabold flex items-center gap-3 mb-1">
+            <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-7 py-5 text-white shrink-0 relative">
+              <button
+                type="button"
+                onClick={() => !isSubmitting && setShowSummary(false)}
+                disabled={isSubmitting}
+                title="Close"
+                className="absolute top-4 right-5 w-8 h-8 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <i className="fa-solid fa-xmark text-lg"></i>
+              </button>
+              <h3 className="text-lg font-extrabold flex items-center gap-3 mb-1 pr-8">
                 <i className="fa-solid fa-clipboard-check"></i> Medical Examination Summary
               </h3>
               <p className="text-[11px] opacity-70">Review all entries carefully before final submission.</p>

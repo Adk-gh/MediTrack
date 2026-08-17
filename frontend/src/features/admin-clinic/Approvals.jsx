@@ -358,9 +358,17 @@ export const Approvals = () => {
   const [filterDept, setFilterDept] = useState('All');
   const [filterProgram, setFilterProgram] = useState('All');
   const [filterIssueCert, setFilterIssueCert] = useState('All');
+  const [filterRequested, setFilterRequested] = useState('All');
 
   const [snackbar, setSnackbar] = useState({ message: '', type: 'success', visible: false });
   const [loading, setLoading] = useState(true);
+
+  // Notification counters shown on the Pending and Approved tabs.
+  // Pending = records waiting for clinic approval.
+  // Requested = approved records where the patient requested a certificate/report
+  // but the clinic has not issued/sent it yet.
+  const [pendingCount, setPendingCount] = useState(0);
+  const [requestedCount, setRequestedCount] = useState(0);
 
   // State for Medical History
   const [consultationHistory, setConsultationHistory] = useState([]);
@@ -416,6 +424,38 @@ export const Approvals = () => {
     };
     fetchCurrentUser();
   }, []);
+
+  // Fetch the notification counts independently of the currently selected tab.
+  // The list fetch only loads the active tab, so counting from examinations/
+  // dentalExaminations alone would make the other tab's badge disappear.
+  const refreshNotificationCounts = async () => {
+    const table = examType === 'dental' ? 'dental_records' : 'medical_records';
+
+    try {
+      const [pendingResult, requestedResult] = await Promise.all([
+        supabase
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .eq('is_archived', false)
+          .ilike('status', 'pending'),
+        supabase
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .eq('is_archived', false)
+          .ilike('status', 'approved')
+          .eq('cert_requested', true)
+          .eq('issue_cert', false),
+      ]);
+
+      if (pendingResult.error) throw pendingResult.error;
+      if (requestedResult.error) throw requestedResult.error;
+
+      setPendingCount(pendingResult.count || 0);
+      setRequestedCount(requestedResult.count || 0);
+    } catch (error) {
+      console.error('[Approvals] Error fetching notification counts:', error);
+    }
+  };
 
   // Fetch records based on activeTab
   useEffect(() => {
@@ -512,6 +552,8 @@ export const Approvals = () => {
     isNormalFindings: record.is_normal_findings,
     certificateIssued,
     issue_cert: record.issue_cert ?? false,
+    certRequested: !!record.cert_requested,
+    certRequestedAt: record.cert_requested_at || null,
 
     // Patient profile info (now nested under patient_info)
     contactNo: patientInfo.contact_no || '',
@@ -653,6 +695,8 @@ export const Approvals = () => {
             patientSignature: '',
             reportForwarded,
             issue_cert: record.issue_cert ?? false,
+            certRequested: !!record.cert_requested,
+            certRequestedAt: record.cert_requested_at || null,
             age: record.age || userData.age || '',
             sex: record.sex || userData.sex || '',
             address: record.address || userData.address || '',
@@ -672,6 +716,7 @@ export const Approvals = () => {
 
     fetchExaminations();
     fetchDentalExaminations();
+    refreshNotificationCounts();
 
     // Clear selections and filters when switching tabs
     setSelectedExam(null);
@@ -682,6 +727,7 @@ export const Approvals = () => {
     setFilterDept('All');
     setFilterProgram('All');
     setFilterIssueCert('All');
+    setFilterRequested('All');
   }, [activeTab, examType]);
 
   // Fetch Past Medical/Dental Records when a patient is selected
@@ -787,9 +833,13 @@ export const Approvals = () => {
     const matchProgram = filterProgram === 'All' || exam.program === filterProgram;
     const matchIssueCert = filterIssueCert === 'All' ||
       (filterIssueCert === 'Issued' ? !!exam.issue_cert : !exam.issue_cert);
+    const matchRequested = filterRequested === 'All' ||
+      (filterRequested === 'Requested' ? !!exam.certRequested && !exam.issue_cert : true);
 
-    return matchSearch && matchRole && matchDept && matchProgram && matchIssueCert;
-  });
+    return matchSearch && matchRole && matchDept && matchProgram && matchIssueCert && matchRequested;
+  }).sort((a, b) =>
+    (b.certRequested && !b.issue_cert ? 1 : 0) - (a.certRequested && !a.issue_cert ? 1 : 0)
+  );
 
   // Apply Filters for Dental
   const filteredDentalExaminations = dentalExaminations.filter(exam => {
@@ -801,9 +851,13 @@ export const Approvals = () => {
     const matchProgram = filterProgram === 'All' || exam.program === filterProgram;
     const matchIssueCert = filterIssueCert === 'All' ||
       (filterIssueCert === 'Issued' ? !!exam.issue_cert : !exam.issue_cert);
+    const matchRequested = filterRequested === 'All' ||
+      (filterRequested === 'Requested' ? !!exam.certRequested && !exam.issue_cert : true);
 
-    return matchSearch && matchRole && matchDept && matchProgram && matchIssueCert;
-  });
+    return matchSearch && matchRole && matchDept && matchProgram && matchIssueCert && matchRequested;
+  }).sort((a, b) =>
+    (b.certRequested && !b.issue_cert ? 1 : 0) - (a.certRequested && !a.issue_cert ? 1 : 0)
+  );
 
   const showSnackbar = (message, type = 'success') => {
     setSnackbar({ message, type, visible: true });
@@ -990,6 +1044,7 @@ export const Approvals = () => {
         setSelectedExam(null);
       }
 
+      await refreshNotificationCounts();
       setShowCertForm(false);
       showSnackbar(`Examination for ${exam.patientName} has been approved!`, 'success');
     } catch (error) {
@@ -1017,6 +1072,7 @@ export const Approvals = () => {
         setSelectedExam(null);
       }
 
+      await refreshNotificationCounts();
       showSnackbar(`Dental examination for ${exam.patientName} has been approved!`, 'success');
     } catch (error) {
       console.error('Error approving dental examination:', error);
@@ -1102,6 +1158,7 @@ export const Approvals = () => {
         setDentalExaminations(dentalExaminations.map(e => e.id === selectedExam.id ? updatedExam : e));
         setSelectedExam(updatedExam);
       }
+      await refreshNotificationCounts();
       setShowReportForm(false);
       showSnackbar('Dental report saved and forwarded successfully!', 'success');
     } catch (err) {
@@ -1149,6 +1206,7 @@ export const Approvals = () => {
         setSelectedExam(updatedExam);
       }
 
+      await refreshNotificationCounts();
       setShowCertForm(false);
       showSnackbar(`Medical Certificate for ${data.patientName || selectedExam.patientName} has been issued!`, 'success');
     } catch (error) {
@@ -1411,9 +1469,14 @@ export const Approvals = () => {
       </p>
       <div className="flex justify-between items-center mt-1">
         <p className="text-[10px] text-slate-400">{formatDateTime(exam.examDate)}</p>
-        {exam.certificateIssued && (
-          <span className="text-[9px] font-bold text-[#466460] bg-[#e0eceb] px-1.5 py-0.5 rounded-sm">CERT SENT</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {exam.certificateIssued && (
+            <span className="text-[9px] font-bold text-[#466460] bg-[#e0eceb] px-1.5 py-0.5 rounded-sm">CERT SENT</span>
+          )}
+          {exam.certRequested && !exam.issue_cert && (
+            <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-sm">REQUESTED</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1440,9 +1503,14 @@ export const Approvals = () => {
       </p>
       <div className="flex justify-between items-center mt-1">
         <p className="text-[10px] text-slate-400">{formatDateTime(exam.examDate)}</p>
-        {exam.reportForwarded && (
-          <span className="text-[9px] font-bold text-[#466460] bg-[#e0eceb] px-1.5 py-0.5 rounded-sm">REPORT SENT</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {exam.reportForwarded && (
+            <span className="text-[9px] font-bold text-[#466460] bg-[#e0eceb] px-1.5 py-0.5 rounded-sm">REPORT SENT</span>
+          )}
+          {exam.certRequested && !exam.issue_cert && (
+            <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-sm">REQUESTED</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1545,6 +1613,18 @@ export const Approvals = () => {
             </div>
           </div>
         </div>
+
+        {exam.certRequested && !exam.issue_cert && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+            <i className="fa-solid fa-bell text-amber-500"></i>
+            <div>
+              <p className="text-sm font-bold text-amber-800">
+                Patient Requested Dental Report
+              </p>
+              <p className="text-xs text-amber-700">Requested on {formatDateTime(exam.certRequestedAt)}</p>
+            </div>
+          </div>
+        )}
 
         {/* Intraoral Examination */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
@@ -1845,6 +1925,18 @@ export const Approvals = () => {
             </div>
           </div>
         </div>
+
+        {exam.certRequested && !exam.issue_cert && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+            <i className="fa-solid fa-bell text-amber-500"></i>
+            <div>
+              <p className="text-sm font-bold text-amber-800">
+                Patient Requested Medical Certificate
+              </p>
+              <p className="text-xs text-amber-700">Requested on {formatDateTime(exam.certRequestedAt)}</p>
+            </div>
+          </div>
+        )}
 
         {/* Certificate Display (If Issued) */}
         {exam.certificateIssued && (
@@ -2228,7 +2320,16 @@ export const Approvals = () => {
                 ${activeTab === 'pending' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <div className="flex items-center justify-center gap-2">
-                <i className="fa-solid fa-clock"></i> Pending
+                <i className="fa-solid fa-clock"></i>
+                <span>Pending</span>
+                {pendingCount > 0 && (
+                  <span
+                    title={`${pendingCount} examination${pendingCount === 1 ? '' : 's'} waiting for approval`}
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[9px] font-extrabold leading-none shadow-sm"
+                  >
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                  </span>
+                )}
               </div>
               {activeTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
             </button>
@@ -2238,7 +2339,17 @@ export const Approvals = () => {
                 ${activeTab === 'approved' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <div className="flex items-center justify-center gap-2">
-                <i className="fa-solid fa-circle-check"></i> Approved
+                <i className="fa-solid fa-circle-check"></i>
+                <span>Approved</span>
+                {requestedCount > 0 && (
+                  <span
+                    title={`${requestedCount} patient certificate/report request${requestedCount === 1 ? '' : 's'} waiting to be sent`}
+                    className="inline-flex items-center gap-1 px-1.5 h-[18px] rounded-full bg-amber-500 text-white text-[9px] font-extrabold leading-none shadow-sm"
+                  >
+                    <i className="fa-solid fa-bell text-[8px]"></i>
+                    {requestedCount > 99 ? '99+' : requestedCount}
+                  </span>
+                )}
               </div>
               {activeTab === 'approved' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#466460] rounded-t-full"></div>}
             </button>
@@ -2305,6 +2416,14 @@ export const Approvals = () => {
                 <option value="All">{examType === 'dental' ? 'All Reports' : 'All Certificates'}</option>
                 <option value="Issued">{examType === 'dental' ? 'Report Sent' : 'Cert Issued'}</option>
                 <option value="Not Issued">{examType === 'dental' ? 'Report Not Sent' : 'Cert Not Issued'}</option>
+              </select>
+              <select
+                value={filterRequested}
+                onChange={e => setFilterRequested(e.target.value)}
+                className="w-full min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate mt-1.5"
+              >
+                <option value="All">All Requests</option>
+                <option value="Requested">Patient Requested</option>
               </select>
             </div>
           </div>

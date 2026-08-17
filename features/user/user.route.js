@@ -7,7 +7,6 @@ const multer = require("multer");
 const userController = require("./user.controller");
 
 const { authorized } = require("../../middleware/authorized");
-const { requireRole } = require("../../middleware/roleBasedAccess");
 
 const validateData = require("../../validation/validate-data");
 const supabase = require("../../configs/database");
@@ -20,7 +19,78 @@ const {
   loginSchema,
 } = require("./user.validation");
 
+const { getSystemConfig } = require("../../services/systemConfig.service");
+
 const upload = multer({ storage: multer.memoryStorage() });
+
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARES
+// =========================================================
+
+// Allows Admin Roles + Clinic Staffs (e.g., viewing user lists)
+const allowDynamicClinicStaffs = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Safety net: Keep core clinical roles and sysadmin as hardcoded fallbacks
+    const allowedRoles = [
+      ...clinicRoles,
+      ...adminRoles,
+      "sysadmin",
+      "doctor",
+      "dentist",
+      "nurse"
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Clinic staff or Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
+
+// Allows Admin Roles ONLY (e.g., deleting/updating user data)
+const allowDynamicAdmin = async (req, res, next) => {
+  try {
+    const userRole = req.user?.role?.toLowerCase();
+    if (!userRole) {
+      return res.status(403).json({ message: "Access denied. No role found." });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+
+    // Keep "sysadmin" as a hardcoded fallback
+    const allowedRoles = [...adminRoles, "sysadmin"];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required."
+    });
+  } catch (error) {
+    console.error("[DynamicRoleCheck] Admin verification failed:", error);
+    return res.status(500).json({ message: "Internal server error during role validation." });
+  }
+};
 
 
 // =========================================================
@@ -195,7 +265,7 @@ const getAllUsers = async (req, res) => {
     const { data, error } = await supabase
       .from("users")
       .select("*")
-      .order("createdAt", {
+      .order("created_at", {
         ascending: false,
       });
 
@@ -217,11 +287,11 @@ const getAllUsers = async (req, res) => {
 
 
 // Get all users
-// ADMIN + STAFF
+// ADMIN + CLINIC STAFFS (Dynamic)
 router.get(
   "/users",
   authorized,
-  requireRole("sysadmin", "staff"),
+  allowDynamicClinicStaffs,
   getAllUsers
 );
 
@@ -231,13 +301,13 @@ router.get(
 // =========================================================
 
 // Archive a user
-// ADMIN ONLY
+// ADMIN ONLY (Dynamic)
 router.delete(
   "/users/:userId",
 
   authorized,
 
-  requireRole("sysadmin"),
+  allowDynamicAdmin,
 
   async (req, res, next) => {
 
@@ -297,13 +367,13 @@ router.delete(
 // =========================================================
 
 // Update any user's information
-// ADMIN ONLY
+// ADMIN ONLY (Dynamic)
 router.put(
   "/admin-update",
 
   authorized,
 
-  requireRole("sysadmin"),
+  allowDynamicAdmin,
 
   auditLog(
     "update",
