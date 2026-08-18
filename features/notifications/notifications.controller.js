@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\features\notifications\notifications.controller.js
 const notificationsService = require('./notifications.service');
 
 const getNotifications = async (req, res, next) => {

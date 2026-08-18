@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\AuditLogs.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
@@ -290,7 +291,7 @@ export const AuditLogs = () => {
     return isArchived ? allRows.map(normalizeArchiveRow) : allRows;
   }, [buildQuery, cursorField, isArchived, normalizeArchiveRow]);
 
-  const exportComplianceReport = async (format = 'xlsx') => {
+const exportComplianceReport = async () => {
     try {
       showSnackbar(`Preparing all ${isArchived ? 'archived' : 'live'} audit logs...`);
       const exportLogs = await fetchAllAuditLogs();
@@ -299,13 +300,6 @@ export const AuditLogs = () => {
       const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const viewLabel = isArchived ? 'Archived Logs' : 'Live Logs';
       const typeLabel = ACTIVITY_TYPES.find(t => t.value === typeFilter)?.label || 'All Activities';
-
-      if (format === 'csv') {
-        const filename = `MediTrack_AuditLogs_${viewMode}_ALL_${new Date().toISOString().split('T')[0]}.csv`;
-        downloadCsv(exportLogs, filename, isArchived);
-        showSnackbar(`Exported ${exportLogs.length.toLocaleString()} audit logs as CSV`);
-        return;
-      }
 
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
@@ -345,14 +339,14 @@ export const AuditLogs = () => {
     }
   };
 
-  const handleArchiveClick = () => setConfirmAction('archive');
-  const handleExportClick = () => { setExportFormat('xlsx'); setConfirmAction('export'); };
+const handleArchiveClick = () => setConfirmAction('archive');
+  const handleExportClick = () => setConfirmAction('export');
 
   const handleConfirm = async () => {
     const action = confirmAction;
     setConfirmAction(null);
     if (action === 'archive') await runArchiveNow();
-    else if (action === 'export') await exportComplianceReport(exportFormat);
+    else if (action === 'export') await exportComplianceReport();
   };
 
   const selectCls = 'px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm';
@@ -600,19 +594,19 @@ export const AuditLogs = () => {
 
                 <div className="mb-5">
                   <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Export Format</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button type="button" onClick={() => setExportFormat('xlsx')} className={`p-3 rounded-lg border-2 text-left transition ${exportFormat === 'xlsx' ? 'border-[#466460] bg-[#e0eceb]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="p-3 rounded-lg border-2 border-[#466460] bg-[#e0eceb] text-left flex items-center justify-between cursor-default">
                       <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center"><i className="fa-solid fa-file-excel"></i></div>
-                        <div><div className="text-sm font-bold text-slate-700">Excel</div><div className="text-[10px] text-slate-400">.xlsx</div></div>
+                        <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                          <i className="fa-solid fa-file-excel"></i>
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-slate-700">Excel Document</div>
+                          <div className="text-[10px] text-slate-500">.xlsx</div>
+                        </div>
                       </div>
-                    </button>
-                    <button type="button" onClick={() => setExportFormat('csv')} className={`p-3 rounded-lg border-2 text-left transition ${exportFormat === 'csv' ? 'border-[#466460] bg-[#e0eceb]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center"><i className="fa-solid fa-file-csv"></i></div>
-                        <div><div className="text-sm font-bold text-slate-700">CSV</div><div className="text-[10px] text-slate-400">.csv</div></div>
-                      </div>
-                    </button>
+                      <i className="fa-solid fa-check text-[#466460]"></i>
+                    </div>
                   </div>
                 </div>
                 <div className="text-xs text-slate-400 mb-5">The export includes <strong>all matching audit logs</strong>, not only the records currently visible on this page.</div>

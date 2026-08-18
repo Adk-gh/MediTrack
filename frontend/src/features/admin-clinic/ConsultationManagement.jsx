@@ -210,10 +210,29 @@ export const ConsultationManagement = () => {
     if (!consultationToDelete) return;
     setDeleting(true);
     try {
-      // Use the consultations service which sets is_archived flag
+      // 1. ---- SYSTEM NOTIFICATION MESSAGE IN CHAT ----
+      await consultationsService.sendMessage(consultationToDelete.id, {
+        text: `This consultation has been archived by clinic administration.`,
+        sender_id: null,
+        sender_name: "System",
+        sender_role: "system",
+      });
+
+      // 2. ---- GLOBAL NOTIFICATION ----
+      await supabase.from('notifications').insert({
+        type: 'consultation_archived',
+        title: 'Consultation Archived',
+        message: 'Your consultation has been archived by the clinic administration.',
+        user_id: consultationToDelete.patient_id,
+        reference_id: consultationToDelete.id,
+        reference_type: 'consultation',
+        is_read: false
+      });
+
+      // 3. Archive the consultation
       await consultationsService.deleteConsultation(consultationToDelete.id);
 
-      // ---- AUDIT LOG ----
+      // 4. ---- AUDIT LOG ----
       logAdminAction({
         action: 'consultation_archived',
         details: {
@@ -252,6 +271,7 @@ export const ConsultationManagement = () => {
     if (!consultationToEdit) return;
     setSavingStatus(true);
     try {
+      // 1. Update status
       const { error } = await supabase
         .from('consultations')
         .update({ status: editStatus })
@@ -259,7 +279,26 @@ export const ConsultationManagement = () => {
 
       if (error) throw error;
 
-      // ---- AUDIT LOG ----
+      // 2. ---- SYSTEM NOTIFICATION MESSAGE IN CHAT ----
+      await consultationsService.sendMessage(consultationToEdit.id, {
+        text: `Consultation status was changed to ${editStatus} by clinic administration.`,
+        sender_id: null,
+        sender_name: "System",
+        sender_role: "system",
+      });
+
+      // 3. ---- GLOBAL NOTIFICATION ----
+      await supabase.from('notifications').insert({
+        type: 'consultation_status',
+        title: 'Consultation Status Updated',
+        message: `Your consultation status was changed to ${editStatus} by the clinic administration.`,
+        user_id: consultationToEdit.patient_id,
+        reference_id: consultationToEdit.id,
+        reference_type: 'consultation',
+        is_read: false
+      });
+
+      // 4. ---- AUDIT LOG ----
       logAdminAction({
         action: 'consultation_status_updated',
         details: {

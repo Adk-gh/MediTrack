@@ -1,4 +1,3 @@
-// C:\Users\HP\MediTrack\routes\index.js
 require('dotenv').config();
 const express = require('express');
 const router = express.Router();
@@ -6,7 +5,6 @@ const router = express.Router();
 // 1. Auth Routes
 const authRoutes = require('./auth.routes');
 router.use('/auth', authRoutes);
-
 
 // 2. Feature routes
 const userRoutes = require('../features/user/user.route');
@@ -21,6 +19,9 @@ const settingsRoutes = require('./settingsRoutes');
 const storageRoutes = require('./storageRoutes');
 const systemConfigRoutes = require('./systemConfig.routes');
 
+// 🟢 NEW: Webhook Routes (Must be imported and mounted)
+const webhookRoutes = require('./webhook.routes');
+router.use('/webhooks', webhookRoutes);
 
 // 🔴 FIX 1: Commented out the 'hijacker' route so it doesn't intercept our new code
 // const profileSetupRoutes = require('../features/user/profile-setup/profile-setup');

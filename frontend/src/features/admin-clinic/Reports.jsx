@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Chart as ChartJS,
@@ -28,9 +28,6 @@ const LIGHT_BG = 'F4F7F6';
 const BORDER_COLOR = 'D9E2E1';
 
 // ─── Admin identity (audit logging) ──────────────────────────────────────
-// Falls back through id -> uid -> 'system' so a log entry is still written
-// even if the stored user object is incomplete. Kept consistent with the
-// other admin-clinic screens (Record-Management.jsx, User-Management.jsx).
 const getCurrentUser = () => {
   try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
 };
@@ -83,15 +80,11 @@ const DENTAL_CONDITIONS = [
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const IconTable = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-    <line x1="3" y1="9" x2="21" y2="9"/>
-    <line x1="9" y1="21" x2="9" y2="9"/>
-  </svg>
-);
 
 // ─── Icons ────────────────────────────────────────────────────────────────
+const IconTable = ({ size = 16, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+);
 const IconDownload = ({ size = 16, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 );
@@ -212,37 +205,6 @@ function addDataRow(ws, row, values, { zebra = false, boldFirst = false } = {}) 
 function pctOf(part, total) { return total > 0 ? part / total : 0; }
 function applyPercentFormat(ws, row, col) { ws.getCell(row, col).numFmt = '0%'; }
 
-// ─── CSV export helpers ────────────────────────────────────────────────────
-const escapeCsvValue = (value) => {
-  if (value === null || value === undefined) return '';
-  let str;
-  if (typeof value === 'object') {
-    try { str = JSON.stringify(value); } catch { str = String(value); }
-  } else {
-    str = String(value);
-  }
-  if (/[",\n\r]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-};
-
-// Turns a percentage (0-1) into a plain "NN%" string for CSV, since CSV has no cell number formats.
-const pctLabel = (part, total) => `${Math.round(pctOf(part, total) * 100)}%`;
-
-const pushSection = (lines, title, headers, rows) => {
-  lines.push(escapeCsvValue(title));
-  if (headers) lines.push(headers.map(escapeCsvValue).join(','));
-  rows.forEach(r => lines.push(r.map(escapeCsvValue).join(',')));
-  lines.push('');
-};
-
-const downloadCsvLines = (lines, filename) => {
-  const csvContent = '\uFEFF' + lines.join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, filename);
-};
-
 // ─── Helper: range year calculation ───────────────────────────────────────
 function getSchoolYear(dateInput) {
   if (!dateInput) return null;
@@ -283,10 +245,16 @@ export const Reports = () => {
   const [specificMonth, setSpecificMonth] = useState('all');
 
   // ─── Export modal state ───────────────────────────────────────────────
-  // confirmExport = { scope: 'full' | 'summary' | 'appointments' | ... }
   const [confirmExport, setConfirmExport] = useState(null);
-  const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
+  const [message, setMessage] = useState(null);
+  const snackbarTimer = useRef(null);
+
+  const showSnackbar = (msg, type = 'success') => {
+    if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
+    setMessage({ text: msg, type });
+    snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -805,6 +773,8 @@ export const Reports = () => {
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       saveAs(blob, `MediTrack_${Date.now()}_Report.xlsx`);
 
+      showSnackbar('Full report exported successfully');
+
       // ---- AUDIT LOG ----
       logAdminAction({
         action: 'report_exported',
@@ -813,140 +783,14 @@ export const Reports = () => {
       });
     } catch (err) {
       console.error('Error exporting Excel report:', err);
-    }
-  };
-
-  // ------------------------------------------------------------------------
-  //  Export helpers — CSV (full report, one file, sections stacked)
-  // ------------------------------------------------------------------------
-  const exportFullReportCsv = async () => {
-    try {
-      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
-      const lines = [];
-      lines.push(escapeCsvValue('MediTrack Health Report'));
-      lines.push(escapeCsvValue(`Generated: ${todayLabel}`));
-      lines.push(escapeCsvValue(`Date Range: ${rangeLabel}`));
-      lines.push(escapeCsvValue(`School Year: ${syLabel}`));
-      if (monthLabel) lines.push(escapeCsvValue(`Month: ${monthLabel}`));
-      lines.push('');
-
-      // Overview
-      pushSection(lines, 'Overview Statistics', ['Category', 'Metric', 'Count'], [
-        ['Overview', 'Total Medical Exams', processedData.totalMed],
-        ['Overview', 'Total Dental Exams', processedData.totalDen],
-        ['Overview', 'Total Appointments', processedData.totalAppts],
-        ['Overview', 'Total Patients', processedData.totalUsers],
-        ['Overview', 'Total Clinic Staff', processedData.clinicStaffCount],
-      ].sort((a, b) => b[2] - a[2]));
-
-      // Appointments
-      pushSection(lines, 'Appointments — Status Breakdown', ['Status', 'Count', 'Percentage'], [
-        ['Completed', processedData.completedAppts],
-        ['Pending', processedData.pendingAppts],
-        ['Approved', processedData.approvedAppts],
-        ['Missed', processedData.missedAppts],
-        ['Rejected', processedData.rejectedAppts]
-      ].sort((a, b) => b[1] - a[1]).map(([label, count]) => [label, count, pctLabel(count, processedData.totalAppts)]));
-
-      pushSection(lines, 'Appointments — Monthly', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyAppts[idx]]));
-
-      pushSection(lines, 'Appointments — Duration Summary', ['Metric', 'Value'], [
-        ['Average Duration (hrs)', appointmentDurationSummary.overallAvg.toFixed(1)],
-        ['Fastest (hrs)', appointmentDurationSummary.overallMin.toFixed(1)],
-        ['Slowest (hrs)', appointmentDurationSummary.overallMax.toFixed(1)],
-        ['Tracked / Total', `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`],
-      ]);
-
-      pushSection(lines, 'Appointments — Average Duration by Status', ['Status', 'Count', 'Average Duration (hrs)'],
-        appointmentDurationSummary.statusBreakdown.map(row => [row.status, row.count, row.avg.toFixed(1)]));
-
-      // Medical
-      pushSection(lines, 'Medical Exams — Summary', ['Metric', 'Count', 'Percentage'], [
-        ['Total Medical Exams', processedData.totalMed, ''],
-        ...[
-          ['Fit', processedData.fitCount],
-          ['Not Fit', processedData.notFitCount],
-          ['Normal Findings', processedData.normalFindingsCount],
-          ['Abnormal Findings', processedData.abnormalFindingsCount],
-          ['Approved', processedData.medApprovedCount],
-          ['Pending', processedData.medPendingCount]
-        ].sort((a, b) => b[1] - a[1]).map(([label, count]) => [label, count, pctLabel(count, processedData.totalMed)])
-      ]);
-
-      pushSection(lines, 'Medical Exams — Monthly', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx]]));
-
-      // Health Conditions
-      const sortedMedConditions = [...MEDICAL_CONDITIONS]
-        .map(cond => ({ ...cond, count: processedData.conditionCounts[cond.id] }))
-        .sort((a, b) => b.count - a.count);
-      pushSection(lines, 'Health Conditions Breakdown', ['Condition', 'Category', 'Cases', '% of Total'],
-        sortedMedConditions.map(cond => [cond.name, cond.category, cond.count, pctLabel(cond.count, processedData.totalMed)]));
-
-      // Dental
-      const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
-      const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
-      pushSection(lines, 'Dental — Summary', ['Metric', 'Count', 'Percentage'], [
-        ['Total Dental Exams', processedData.totalDen, ''],
-        ...[['Approved', approvedDen], ['Pending', pendingDen]]
-          .sort((a, b) => b[1] - a[1])
-          .map(([label, count]) => [label, count, pctLabel(count, processedData.totalDen)])
-      ]);
-      const sortedDentalConditions = [...DENTAL_CONDITIONS]
-        .map(cond => ({ ...cond, count: processedData.dentalConditionCounts[cond.id] }))
-        .sort((a, b) => b.count - a.count);
-      pushSection(lines, 'Dental Conditions', ['Condition', 'Category', 'Count'],
-        sortedDentalConditions.map(cond => [cond.name, cond.category, cond.count]));
-
-      // Demographics
-      const typeCounts = { student: 0, faculty: 0 };
-      processedData.users.forEach(u => {
-        const role = (u.role || '').toLowerCase();
-        if (role.includes('student')) typeCounts.student++;
-        else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-      });
-      pushSection(lines, 'Patient Demographics — By Role', ['Type', 'Count', 'Percentage'], [
-        ['Total Patients (Students + Faculty)', processedData.totalUsers, ''],
-        ...[
-          ['Students', typeCounts.student],
-          ['Faculty', typeCounts.faculty],
-          ['Clinic Staff', processedData.clinicStaffCount]
-        ].sort((a, b) => b[1] - a[1]).map(([label, count]) => [label, count, pctLabel(count, processedData.totalUsers)])
-      ]);
-
-      // Monthly Comparison
-      pushSection(lines, 'Monthly Consultations Comparison', ['Month', 'Medical', 'Dental', 'Total'],
-        MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx], processedData.monthlyDen[idx], processedData.monthlyMed[idx] + processedData.monthlyDen[idx]]));
-
-      // Summary
-      pushSection(lines, 'Summary Report', ['Category', 'Metric', 'Count'], [
-        ['Patients', 'Total Registered', processedData.totalUsers],
-        ['Consultations', 'Medical', processedData.totalMed],
-        ['Consultations', 'Dental', processedData.totalDen],
-        ['Appointments', 'Completed', processedData.completedAppts],
-        ['Appointments', 'Pending', processedData.pendingAppts],
-        ['Medical Records', 'Approved', processedData.medApprovedCount],
-        ['Medical Records', 'Pending', processedData.medPendingCount],
-        ['Fitness Status', 'Fit', processedData.fitCount],
-        ['Fitness Status', 'Not Fit', processedData.notFitCount],
-        ['Findings', 'Normal', processedData.normalFindingsCount]
-      ].sort((a, b) => b[2] - a[2]));
-
-      downloadCsvLines(lines, `MediTrack_${Date.now()}_Report.csv`);
-
-      logAdminAction({
-        action: 'report_exported',
-        details: { scope: 'full', format: 'csv', dateRange, schoolYear, specificMonth },
-        adminUid,
-      });
-    } catch (err) {
-      console.error('Error exporting CSV report:', err);
+      showSnackbar('Failed to export report', 'error');
     }
   };
 
   // ------------------------------------------------------------------------
   //  Export helpers — XLSX (single category)
   // ------------------------------------------------------------------------
-  const exportCategoryToCSV = async (category) => {
+  const exportCategoryXlsx = async (category) => {
     try {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
@@ -1110,6 +954,8 @@ export const Reports = () => {
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       saveAs(blob, `${category}_${Date.now()}.xlsx`);
 
+      showSnackbar(`${titles[category] || 'Report'} exported successfully`);
+
       // ---- AUDIT LOG ----
       logAdminAction({
         action: 'report_exported',
@@ -1118,147 +964,7 @@ export const Reports = () => {
       });
     } catch (err) {
       console.error('Error exporting category report:', err);
-    }
-  };
-
-  // ------------------------------------------------------------------------
-  //  Export helpers — CSV (single category)
-  // ------------------------------------------------------------------------
-  const exportCategoryToCsvFile = async (category) => {
-    try {
-      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
-      const titles = {
-        appointments: 'Appointments Analysis',
-        medical: 'Medical Examinations',
-        dental: 'Dental Examinations',
-        conditions: 'Health Conditions Breakdown',
-        demographics: 'Patient Demographics',
-        monthly: 'Monthly Consultations Comparison',
-        summary: 'Summary Report'
-      };
-
-      const lines = [];
-      lines.push(escapeCsvValue(`MediTrack — ${titles[category] || 'Report'}`));
-      lines.push(escapeCsvValue(`Generated: ${todayLabel}`));
-      lines.push(escapeCsvValue(`Date Range: ${rangeLabel}`));
-      lines.push(escapeCsvValue(`School Year: ${syLabel}`));
-      if (monthLabel) lines.push(escapeCsvValue(`Month: ${monthLabel}`));
-      lines.push('');
-
-      switch (category) {
-        case 'appointments': {
-          const rows = [
-            ['Completed', processedData.completedAppts],
-            ['Pending', processedData.pendingAppts],
-            ['Approved', processedData.approvedAppts],
-            ['Missed', processedData.missedAppts],
-            ['Rejected', processedData.rejectedAppts]
-          ].sort((a, b) => b[1] - a[1]);
-          pushSection(lines, 'Status Breakdown', ['Status', 'Count', 'Percentage'], [
-            ['Total', processedData.totalAppts, ''],
-            ...rows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalAppts)])
-          ]);
-          pushSection(lines, 'Monthly Appointments', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyAppts[idx]]));
-          pushSection(lines, 'Duration Summary', ['Metric', 'Value'], [
-            ['Average Duration (hrs)', appointmentDurationSummary.overallAvg.toFixed(1)],
-            ['Fastest (hrs)', appointmentDurationSummary.overallMin.toFixed(1)],
-            ['Slowest (hrs)', appointmentDurationSummary.overallMax.toFixed(1)],
-            ['Tracked / Total', `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`],
-          ]);
-          pushSection(lines, 'Average Duration by Status', ['Status', 'Count', 'Average Duration (hrs)'],
-            appointmentDurationSummary.statusBreakdown.map(row => [row.status, row.count, row.avg.toFixed(1)]));
-          break;
-        }
-        case 'medical': {
-          const rows = [
-            ['Fit', processedData.fitCount],
-            ['Not Fit', processedData.notFitCount],
-            ['Normal Findings', processedData.normalFindingsCount],
-            ['Abnormal Findings', processedData.abnormalFindingsCount],
-            ['Approved', processedData.medApprovedCount],
-            ['Pending', processedData.medPendingCount]
-          ].sort((a, b) => b[1] - a[1]);
-          pushSection(lines, 'Summary', ['Metric', 'Count', 'Percentage'], [
-            ['Total Medical Exams', processedData.totalMed, ''],
-            ...rows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalMed)])
-          ]);
-          pushSection(lines, 'Monthly Medical Exams', ['Month', 'Count'], MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx]]));
-          break;
-        }
-        case 'dental': {
-          const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
-          const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
-          const rows = [['Approved', approvedDen], ['Pending', pendingDen]].sort((a, b) => b[1] - a[1]);
-          pushSection(lines, 'Summary', ['Metric', 'Count', 'Percentage'], [
-            ['Total Dental Exams', processedData.totalDen, ''],
-            ...rows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalDen)])
-          ]);
-          const sortedDentalConditions = [...DENTAL_CONDITIONS]
-            .map(cond => ({ ...cond, count: processedData.dentalConditionCounts[cond.id] }))
-            .sort((a, b) => b.count - a.count);
-          pushSection(lines, 'Dental Conditions', ['Condition', 'Category', 'Count'],
-            sortedDentalConditions.map(cond => [cond.name, cond.category, cond.count]));
-          break;
-        }
-        case 'conditions': {
-          const sortedMedConditions = [...MEDICAL_CONDITIONS]
-            .map(cond => ({ ...cond, count: processedData.conditionCounts[cond.id] }))
-            .sort((a, b) => b.count - a.count);
-          pushSection(lines, 'All Conditions', ['Condition', 'Category', 'Cases', '% of Total'],
-            sortedMedConditions.map(cond => [cond.name, cond.category, cond.count, pctLabel(cond.count, processedData.totalMed)]));
-          break;
-        }
-        case 'demographics': {
-          const typeCounts = { student: 0, faculty: 0 };
-          processedData.users.forEach(u => {
-            const role = (u.role || '').toLowerCase();
-            if (role.includes('student')) typeCounts.student++;
-            else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-          });
-          const demoRows = [
-            ['Students', typeCounts.student],
-            ['Faculty', typeCounts.faculty],
-            ['Clinic Staff', processedData.clinicStaffCount]
-          ].sort((a, b) => b[1] - a[1]);
-          pushSection(lines, 'By Role', ['Type', 'Count', 'Percentage'], [
-            ['Total Patients (Students + Faculty)', processedData.totalUsers, ''],
-            ...demoRows.map(([label, count]) => [label, count, pctLabel(count, processedData.totalUsers)])
-          ]);
-          break;
-        }
-        case 'monthly': {
-          pushSection(lines, 'Monthly Consultations Comparison', ['Month', 'Medical Exams', 'Dental Exams', 'Total'],
-            MONTHS.map((m, idx) => [m, processedData.monthlyMed[idx], processedData.monthlyDen[idx], processedData.monthlyMed[idx] + processedData.monthlyDen[idx]]));
-          break;
-        }
-        case 'summary':
-        default: {
-          const rows = [
-            ['Patients', 'Total Registered', processedData.totalUsers],
-            ['Consultations', 'Medical', processedData.totalMed],
-            ['Consultations', 'Dental', processedData.totalDen],
-            ['Appointments', 'Completed', processedData.completedAppts],
-            ['Appointments', 'Pending', processedData.pendingAppts],
-            ['Medical Records', 'Approved', processedData.medApprovedCount],
-            ['Medical Records', 'Pending', processedData.medPendingCount],
-            ['Fitness Status', 'Fit', processedData.fitCount],
-            ['Fitness Status', 'Not Fit', processedData.notFitCount],
-            ['Findings', 'Normal', processedData.normalFindingsCount]
-          ].sort((a, b) => b[2] - a[2]);
-          pushSection(lines, 'Summary Report', ['Category', 'Metric', 'Count'], rows);
-          break;
-        }
-      }
-
-      downloadCsvLines(lines, `${category}_${Date.now()}.csv`);
-
-      logAdminAction({
-        action: 'report_exported',
-        details: { scope: category, format: 'csv', dateRange, schoolYear, specificMonth },
-        adminUid,
-      });
-    } catch (err) {
-      console.error('Error exporting category CSV:', err);
+      showSnackbar('Failed to export category report', 'error');
     }
   };
 
@@ -1266,7 +972,6 @@ export const Reports = () => {
   //  Export modal orchestration
   // ------------------------------------------------------------------------
   const openExportModal = (scope) => {
-    setExportFormat('xlsx');
     setConfirmExport({ scope });
   };
 
@@ -1276,9 +981,9 @@ export const Reports = () => {
     setExporting(true);
     try {
       if (scope === 'full') {
-        await (exportFormat === 'xlsx' ? exportFullReportXlsx() : exportFullReportCsv());
+        await exportFullReportXlsx();
       } else {
-        await (exportFormat === 'xlsx' ? exportCategoryToCSV(scope) : exportCategoryToCsvFile(scope));
+        await exportCategoryXlsx(scope);
       }
     } finally {
       setExporting(false);
@@ -1838,48 +1543,20 @@ export const Reports = () => {
                 <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">
                   Export Format
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Excel */}
-                  <button
-                    type="button"
-                    onClick={() => setExportFormat('xlsx')}
-                    className={`p-3 rounded-lg border-2 text-left transition ${
-                      exportFormat === 'xlsx'
-                        ? 'border-[#466460] bg-[#e0eceb]'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
+                <div className="grid grid-cols-1 gap-3">
+                  {/* Excel (Only Option) */}
+                  <div className="p-3 rounded-lg border-2 border-[#466460] bg-[#e0eceb] text-left flex items-center justify-between cursor-default">
                     <div className="flex items-center gap-2">
                       <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
                         <i className="fa-solid fa-file-excel"></i>
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-slate-700">Excel</div>
-                        <div className="text-[10px] text-slate-400">.xlsx</div>
+                        <div className="text-sm font-bold text-slate-700">Excel Document</div>
+                        <div className="text-[10px] text-slate-500">.xlsx</div>
                       </div>
                     </div>
-                  </button>
-
-                  {/* CSV */}
-                  <button
-                    type="button"
-                    onClick={() => setExportFormat('csv')}
-                    className={`p-3 rounded-lg border-2 text-left transition ${
-                      exportFormat === 'csv'
-                        ? 'border-[#466460] bg-[#e0eceb]'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-                        <i className="fa-solid fa-file-csv"></i>
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-slate-700">CSV</div>
-                        <div className="text-[10px] text-slate-400">.csv</div>
-                      </div>
-                    </div>
-                  </button>
+                    <i className="fa-solid fa-check text-[#466460]"></i>
+                  </div>
                 </div>
               </div>
 
@@ -1900,7 +1577,7 @@ export const Reports = () => {
                   disabled={exporting}
                   className="flex-1 px-4 py-2.5 rounded-lg text-white font-semibold text-sm transition-all bg-[#466460] hover:bg-[#3a524f] disabled:opacity-70"
                 >
-                  {exporting ? 'Exporting…' : `Export ${exportFormat === 'xlsx' ? 'Excel' : 'CSV'}`}
+                  {exporting ? 'Exporting…' : 'Export Excel'}
                 </button>
               </div>
 
@@ -1908,6 +1585,29 @@ export const Reports = () => {
           </div>,
           document.body
         )}
+
+      {/* ─────────────────────────────────────────────────────────────────────
+          SNACKBAR NOTIFICATION
+      ───────────────────────────────────────────────────────────────────── */}
+      {message && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-3 shadow-xl transition-all ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+          <span className="shrink-0">
+            {message.type === 'success' ? (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            )}
+          </span>
+          <span className="whitespace-normal">{message.text}</span>
+          <button onClick={() => setMessage(null)} className="shrink-0 ml-1 w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition" title="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

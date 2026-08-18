@@ -1,4 +1,4 @@
-// backend/features/notifications/notifications.service.js
+//C:\Users\HP\MediTrack\features\notifications\notifications.service.js
 
 const supabase = require('../../configs/database');
 const { getSystemConfig } = require('../../services/systemConfig.service');

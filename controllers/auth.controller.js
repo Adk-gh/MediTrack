@@ -1,6 +1,6 @@
 const userService = require('../features/user/user.service');
 const supabase = require('../configs/database');
-const { sendEmail } = require('../configs/email');
+const { sendEmail } = require('../services/email.service');
 const crypto = require('crypto');
 
 // --- EMAIL VALIDATION HELPER ---
@@ -110,6 +110,7 @@ exports.forgotPassword = async (req, res) => {
 
       console.log('>>> [Forgot] Reset URL:', resetUrl);
 
+
       // Send custom email
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -166,13 +167,20 @@ exports.resetPassword = async (req, res) => {
     const { data: user, error: fetchError } = await supabase
       .from('users')
       .select('uid, reset_password_expires_at')
-      .eq('email', submittedEmail)
+      .ilike('email', email.trim())
       .eq('reset_password_token', token)
       .single();
 
-    if (fetchError || !user) {
-      return res.status(400).json({ success: false, message: 'Invalid reset token or email mismatch' });
-    }
+    if (fetchError) {
+  console.log('>>> [Supabase Fetch Error]:', fetchError);
+}
+if (!user) {
+  console.log('>>> [Missing User]: No user row matched this token/email combo.');
+}
+
+if (fetchError || !user) {
+  return res.status(400).json({ success: false, message: 'Invalid reset token or email mismatch' });
+}
 
     if (new Date(user.reset_password_expires_at) < new Date()) {
       // Optional: Clear expired token
@@ -380,7 +388,7 @@ exports.verifyEmail = async (req, res) => {
     const { data: user, error: fetchError } = await supabase
       .from('users')
       .select('uid, verification_token_expires_at, is_verified')
-      .eq('email', submittedEmail)
+      .ilike('email', email.trim())
       .eq('verification_token', token)
       .single();
 

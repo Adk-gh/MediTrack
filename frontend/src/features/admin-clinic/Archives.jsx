@@ -63,6 +63,23 @@ export default function Archives() {
     setTimeout(() => setSnackbar(null), 3000);
   };
 
+  // Helper function to extract the target user ID for notifications
+  const getTargetUserId = (archive) => {
+    switch (archive.table) {
+      case 'users':
+        return archive.id;
+      case 'appointments':
+      case 'medical_records':
+      case 'dental_records':
+        return archive.user_id;
+      case 'consultations':
+        return archive.patient_id;
+      // Announcements and Notifications generally do not notify a specific user upon archival actions
+      default:
+        return null;
+    }
+  };
+
   // Fetch archives from all tables using is_archived flag
   const fetchArchives = async () => {
     setLoading(true);
@@ -281,6 +298,20 @@ export default function Archives() {
         throw new Error(result?.message || result?.error || 'Failed to restore');
       }
 
+      // ---- GLOBAL NOTIFICATION FOR THE USER ----
+      const targetUserId = getTargetUserId(selectedArchive);
+      if (targetUserId) {
+        await supabase.from('notifications').insert({
+          type: 'archive_restored',
+          title: `${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'Item'} Restored`,
+          message: `Your ${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'item'} has been restored by the clinic administration.`,
+          user_id: targetUserId,
+          reference_id: idToUse,
+          reference_type: selectedArchive.archiveType,
+          is_read: false
+        });
+      }
+
       // ---- AUDIT LOG ----
       logAdminAction({
         action: 'archive_restored',
@@ -338,6 +369,20 @@ export default function Archives() {
 
       if (!response.ok) {
         throw new Error(result?.message || result?.error || 'Failed to delete');
+      }
+
+      // ---- GLOBAL NOTIFICATION FOR THE USER ----
+      const targetUserId = getTargetUserId(selectedArchive);
+      if (targetUserId) {
+        await supabase.from('notifications').insert({
+          type: 'archive_deleted',
+          title: `${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'Item'} Permanently Deleted`,
+          message: `Your ${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'item'} has been permanently deleted by the clinic administration.`,
+          user_id: targetUserId,
+          reference_id: idToUse,
+          reference_type: selectedArchive.archiveType,
+          is_read: false
+        });
       }
 
       // ---- AUDIT LOG ----

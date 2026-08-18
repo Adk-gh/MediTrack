@@ -220,14 +220,14 @@ function LinkifiedText({ text, isPatient = false }) {
 }
 
 const INITIAL_OPTIONS = [
-  { label: '🤒 Illness / Fever',           type: 'medical' },
-  { label: '🤕 Injury / Pain',             type: 'medical' },
-  { label: '💊 Prescription / Medicine',   type: 'medical' },
-  { label: '📄 Medical Certificate',       type: 'medical' },
-  { label: '🩺 Follow-up Check-up',        type: 'medical' },
-  { label: '🦷 Toothache / Pain',          type: 'dental'  },
-  { label: '🔍 Dental Check-up',           type: 'dental'  },
-  { label: '😬 Oral Health Concern',       type: 'dental'  },
+  { label: '🤒 Illness / Fever',            type: 'medical' },
+  { label: '🤕 Injury / Pain',              type: 'medical' },
+  { label: '💊 Prescription / Medicine',    type: 'medical' },
+  { label: '📄 Medical Certificate',        type: 'medical' },
+  { label: '🩺 Follow-up Check-up',         type: 'medical' },
+  { label: '🦷 Toothache / Pain',           type: 'dental'  },
+  { label: '🔍 Dental Check-up',            type: 'dental'  },
+  { label: '😬 Oral Health Concern',        type: 'dental'  },
 ];
 
 const MSG_PAGE_SIZE = 30;
@@ -475,7 +475,9 @@ export default function ConsultationUsers() {
   // ── Derived gating states ─────────────────────────────────────────────
   const hasApprovedOnline = onlineAppt.medical || onlineAppt.dental;
   const hasPendingOnline  = pendingAppt.medical || pendingAppt.dental;
-  const hasAnyActiveNow   = isApptActive('medical') || isApptActive('dental');
+
+  // If the consultation hasn't been ended and we have a room, it stays open regardless of time
+  const hasAnyActiveNow   = (!isEnded && !!activeRoomId) || isApptActive('medical') || isApptActive('dental');
 
   // Earliest upcoming approved-but-not-yet-open appointment, for the countdown screen
   const nextApptTarget = useMemo(() => {
