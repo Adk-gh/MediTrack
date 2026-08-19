@@ -7,6 +7,7 @@ import authService from '../../services/auth.service.js';
 import * as announcementsService from '../../services/announcements.service.js';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh.js';
 import { supabase } from '../../supabase.js';
+import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 // API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -35,12 +36,23 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  if (isNaN(Date.parse(dateStr))) return dateStr;
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
+const formatDisplayDateWithMonth = (raw, preferences) => {
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw);
+
+  const formatString = preferences?.dateFormat?.toUpperCase() || 'MM/DD/YYYY';
+  const monthStr = date.toLocaleDateString('en-US', { month: 'long' });
+  const dayStr = String(date.getDate()).padStart(2, '0');
+  const yearStr = date.getFullYear();
+
+  if (formatString.startsWith('DD')) {
+    return `${dayStr} ${monthStr} ${yearStr}`;
+  } else if (formatString.startsWith('YYYY')) {
+    return `${yearStr} ${monthStr} ${dayStr}`;
+  } else {
+    return `${monthStr} ${dayStr}, ${yearStr}`;
+  }
 };
 
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
@@ -80,12 +92,13 @@ const PRIORITY_STRIPE = {
   normal: 'bg-[#466460]',
 };
 
-const HEALTH_TIPS = [
-  { Icon: Droplets,  iconColor: 'text-sky-300',    tip: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
-  { Icon: Salad,     iconColor: 'text-emerald-300',tip: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
-  { Icon: Activity,  iconColor: 'text-lime-300',   tip: 'Aim for at least 30 minutes of physical activity most days of the week.' },
-  { Icon: Moon,      iconColor: 'text-indigo-300', tip: 'Get 7–9 hours of quality sleep each night to support your immune system.' },
-  { Icon: HandMetal, iconColor: 'text-teal-300',   tip: 'Wash your hands regularly for at least 20 seconds to prevent the spread of illness.' },
+// Extracted text out of HEALTH_TIPS to use translation keys instead
+const HEALTH_TIPS_KEYS = [
+  { Icon: Droplets,  iconColor: 'text-sky-300',   key: 'hydration', defaultText: 'Stay hydrated! Drink at least 8 glasses of water daily for optimal health.' },
+  { Icon: Salad,     iconColor: 'text-emerald-300',key: 'diet', defaultText: 'Eat a balanced diet rich in vegetables, fruits, and whole grains every day.' },
+  { Icon: Activity,  iconColor: 'text-lime-300',   key: 'activity', defaultText: 'Aim for at least 30 minutes of physical activity most days of the week.' },
+  { Icon: Moon,      iconColor: 'text-indigo-300', key: 'sleep', defaultText: 'Get 7–9 hours of quality sleep each night to support your immune system.' },
+  { Icon: HandMetal, iconColor: 'text-teal-300',   key: 'hygiene', defaultText: 'Wash your hands regularly for at least 20 seconds to prevent the spread of illness.' },
 ];
 
 const MONTHS_SHORT = [
@@ -277,7 +290,8 @@ const PullIndicator = ({ indicatorRef, isRefreshing }) => (
 // bottom nav bar / any other stacking context set up by MobileShell,
 // regardless of where HomePageUsers is mounted in the tree.
 
-const AnnouncementModal = ({ item, onClose }) => {
+const AnnouncementModal = ({ item, onClose, preferences }) => {
+  const { t } = useTranslation();
   const [showAllDepts, setShowAllDepts] = useState(false);
 
   if (!item) return null;
@@ -296,6 +310,10 @@ const AnnouncementModal = ({ item, onClose }) => {
   } catch (e) {
     depts = item.dept ? [item.dept] : [];
   }
+
+  // Handle dynamic translation of DB categories (removes spaces for key matching)
+  const categoryKey = item.category ? item.category.replace(/\s+/g, '') : 'General';
+  const displayCategory = t(`homepage.categories.${categoryKey}`, item.category || 'General');
 
   return createPortal(
     <div
@@ -323,12 +341,12 @@ const AnnouncementModal = ({ item, onClose }) => {
                 {item.priority && item.priority !== 'normal' && (
                   <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full text-white ${PRIORITY_STRIPE[item.priority]}`}>
                     {item.priority === 'urgent'
-                      ? <><Zap size={9} fill="white" /> Urgent</>
-                      : <><ShieldAlert size={9} /> High</>}
+                      ? <><Zap size={9} fill="white" /> {t('homepage.urgent', 'Urgent')}</>
+                      : <><ShieldAlert size={9} /> {t('homepage.high', 'High')}</>}
                   </span>
                 )}
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
-                  {item.category || 'General'}
+                  {displayCategory}
                 </span>
 
                 {depts.length > 0 && (
@@ -343,7 +361,7 @@ const AnnouncementModal = ({ item, onClose }) => {
                         onClick={(e) => { e.stopPropagation(); setShowAllDepts(false); }}
                         className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
                       >
-                        Less
+                        {t('common.less', 'Less')}
                       </button>
                     </>
                   ) : (
@@ -356,7 +374,7 @@ const AnnouncementModal = ({ item, onClose }) => {
                           onClick={(e) => { e.stopPropagation(); setShowAllDepts(true); }}
                           className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#466460] text-white hover:bg-[#38534f] transition-colors shadow-sm"
                         >
-                          +{depts.length - 1} more
+                          {t('common.xMore', '+{{count}} more', { count: depts.length - 1 })}
                         </button>
                       )}
                     </>
@@ -367,7 +385,7 @@ const AnnouncementModal = ({ item, onClose }) => {
               <h3 className="text-base font-bold text-[#1f2d2b] leading-snug mb-1">{item.title}</h3>
 
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[#98a8a5] mb-3">
-                <span className="inline-flex items-center gap-1"><CalendarDays size={10} /> {formatDate(item.date)}</span>
+                <span className="inline-flex items-center gap-1"><CalendarDays size={10} /> {formatDisplayDateWithMonth(item.date, preferences)}</span>
                 {item.location      && <span className="inline-flex items-center gap-1"><MapPin size={10} /> {item.location}</span>}
                 {item.contactPerson && <span className="inline-flex items-center gap-1"><User size={10} /> {item.contactPerson}</span>}
               </div>
@@ -383,7 +401,7 @@ const AnnouncementModal = ({ item, onClose }) => {
               onClick={onClose}
               className="w-full bg-[#eef2f1] text-[#466460] font-bold text-sm py-2.5 rounded-xl hover:bg-[#466460] hover:text-white transition-all mt-2"
             >
-              Close
+              {t('common.close', 'Close')}
             </button>
           </div>
         </div>
@@ -395,9 +413,13 @@ const AnnouncementModal = ({ item, onClose }) => {
 
 // ── Announcement Card ──────────────────────────────────────────────────────
 
-const AnnouncementCard = ({ item, onClick, index = 0 }) => {
+const AnnouncementCard = ({ item, onClick, index = 0, preferences }) => {
+  const { t } = useTranslation();
   const catStyle    = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.General;
   const stripeColor = PRIORITY_STRIPE[item.priority]  || PRIORITY_STRIPE.normal;
+
+  const categoryKey = item.category ? item.category.replace(/\s+/g, '') : 'General';
+  const displayCategory = t(`homepage.categories.${categoryKey}`, item.category || 'General');
 
   return (
     <div
@@ -418,12 +440,12 @@ const AnnouncementCard = ({ item, onClick, index = 0 }) => {
       <div className="px-3.5 pb-3.5">
         <div className="flex items-center gap-1.5 mb-2">
           <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${catStyle.bg} ${catStyle.text}`}>
-            {item.category || 'General'}
+            {displayCategory}
           </span>
           {item.priority && item.priority !== 'normal' && (
             <span className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full text-white ${stripeColor}`}>
               {item.priority === 'urgent' ? <Zap size={8} fill="white" /> : <ShieldAlert size={8} />}
-              {item.priority}
+              {t(`homepage.${item.priority}`, item.priority)}
             </span>
           )}
         </div>
@@ -431,7 +453,7 @@ const AnnouncementCard = ({ item, onClick, index = 0 }) => {
         <p className="text-xs font-bold text-[#1f2d2b] leading-snug line-clamp-2 mb-1">{item.title}</p>
         <p className="text-[10px] text-[#98a8a5] line-clamp-2 leading-relaxed">{item.content}</p>
         <p className="text-[9px] text-[#b8c9c6] mt-1.5 inline-flex items-center gap-1">
-          <CalendarDays size={9} />{formatDate(item.date)}
+          <CalendarDays size={9} />{formatDisplayDateWithMonth(item.date, preferences)}
         </p>
       </div>
     </div>
@@ -441,12 +463,24 @@ const AnnouncementCard = ({ item, onClick, index = 0 }) => {
 // ── Main Dashboard Component ───────────────────────────────────────────────
 
 const HomePageUsers = () => {
+  const { t, i18n } = useTranslation();
   const navigate    = useNavigate();
   const currentUser = authService.getCurrentUser();
   const userName    = currentUser?.firstName || currentUser?.name?.split(',')[0]?.trim() || 'Student';
 
   const [profileData, setProfileData] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
+
+  // Sync i18next with the user's database preference
+  useEffect(() => {
+    if (preferences?.language) {
+      const langCode = preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
+      if (i18n.language !== langCode) {
+        i18n.changeLanguage(langCode);
+      }
+    }
+  }, [preferences?.language, i18n]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -469,6 +503,12 @@ const HomePageUsers = () => {
 
         if (data && data[0]) {
           setProfileData(data[0]);
+          if (data[0].preferences) {
+            setPreferences({
+              language: data[0].preferences.language || 'English',
+              dateFormat: data[0].preferences.dateFormat || 'MM/DD/YYYY',
+            });
+          }
         }
       } catch (err) {
         console.error('[HomePage] Error fetching profile:', err);
@@ -586,49 +626,49 @@ const HomePageUsers = () => {
   let pendingAction = null;
   if (hasEmptyVaccinations) {
     pendingAction = {
-      title:     "Incomplete Profile",
-      desc:      "You have incomplete items (Vaccination History). Please complete your profile before going to the clinic for an f2f consultation.",
-      btnText:   "Update Profile",
+      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc:      t('homepage.pendingActions.vaccinationsDesc', "You have incomplete items (Vaccination History). Please complete your profile before going to the clinic for an f2f consultation."),
+      btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
       targetTab: "profile",
       scrollTo:  "vaccinations",
     };
   } else if (hasEmptyEmergency) {
     pendingAction = {
-      title:     "Incomplete Profile",
-      desc:      "You have incomplete items (Emergency Contact). Please complete your profile before going to the clinic for an f2f consultation.",
-      btnText:   "Add Contact",
+      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc:      t('homepage.pendingActions.emergencyDesc', "You have incomplete items (Emergency Contact). Please complete your profile before going to the clinic for an f2f consultation."),
+      btnText:   t('homepage.pendingActions.addContact', "Add Contact"),
       targetTab: "profile",
       scrollTo:  "emergency",
     };
   } else if (hasEmptyAcademic) {
     pendingAction = {
-      title:     "Incomplete Profile",
-      desc:      "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for an f2f consultation.",
-      btnText:   "Update Profile",
+      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc:      t('homepage.pendingActions.academicDesc', "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for an f2f consultation."),
+      btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
       targetTab: "profile",
       scrollTo:  "academic",
     };
   } else if (hasEmptyContact) {
     pendingAction = {
-      title:     "Incomplete Profile",
-      desc:      "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for an f2f consultation.",
-      btnText:   "Update Profile",
+      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc:      t('homepage.pendingActions.contactDesc', "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for an f2f consultation."),
+      btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
       targetTab: "profile",
       scrollTo:  "contact",
     };
   } else if (hasEmptyDental) {
     pendingAction = {
-      title:     "Incomplete Profile",
-      desc:      "You have incomplete items (Dental History). Please complete your profile before going to the clinic for an f2f consultation.",
-      btnText:   "Add Dental History",
+      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc:      t('homepage.pendingActions.dentalDesc', "You have incomplete items (Dental History). Please complete your profile before going to the clinic for an f2f consultation."),
+      btnText:   t('homepage.pendingActions.addDentalHistory', "Add Dental History"),
       targetTab: "profile",
       scrollTo:  "dental",
     };
   } else if (hasEmptySurgical) {
     pendingAction = {
-      title:     "Incomplete Profile",
-      desc:      "You have incomplete items (Surgical History). Please complete your profile before going to the clinic for an f2f consultation.",
-      btnText:   "Add Surgical History",
+      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc:      t('homepage.pendingActions.surgicalDesc', "You have incomplete items (Surgical History). Please complete your profile before going to the clinic for an f2f consultation."),
+      btnText:   t('homepage.pendingActions.addSurgicalHistory', "Add Surgical History"),
       targetTab: "profile",
       scrollTo:  "surgical",
     };
@@ -649,7 +689,6 @@ const HomePageUsers = () => {
           return;
         }
 
-        // FIX: Removed 'x-user-uid' header to prevent CORS preflight blocking
         const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -672,7 +711,7 @@ const HomePageUsers = () => {
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnn,    setLoadingAnn]    = useState(true);
   const [selectedAnn,   setSelectedAnn]   = useState(null);
-  const [tipIndex]                        = useState(() => Math.floor(Math.random() * HEALTH_TIPS.length));
+  const [tipIndex]                        = useState(() => Math.floor(Math.random() * HEALTH_TIPS_KEYS.length));
   const [isRefreshing, setIsRefreshing]   = useState(false);
 
   const loadAnnouncements = useCallback(async () => {
@@ -705,7 +744,7 @@ const HomePageUsers = () => {
                     || studentAppointments.find(a => a.status?.toLowerCase() === 'pending');
   const approvedAppts = studentAppointments.filter(a => a.status?.toLowerCase() === 'approved');
 
-  const tip       = HEALTH_TIPS[tipIndex];
+  const tipDef    = HEALTH_TIPS_KEYS[tipIndex];
   const urgentAnn = announcements.find(a => a.priority === 'urgent');
   const latestAnn = announcements[0];
   const pinnedAnn = urgentAnn || latestAnn;
@@ -736,7 +775,7 @@ const HomePageUsers = () => {
         <div className="flex items-start justify-between mt-2 animate-[slideUp_0.3s_ease_both]">
           <div>
             <h1 className="text-2xl font-bold text-[#1f2d2b] flex items-center gap-2">
-              Hello, {userName}
+              {t('homepage.hello', 'Hello, {{name}}', { name: userName })}
               <span className="icon-wave text-[#466460]" aria-hidden="true">
                 <Sparkles size={22} fill="#466460" strokeWidth={1.5} />
               </span>
@@ -745,7 +784,7 @@ const HomePageUsers = () => {
               <span className="icon-pop text-[#466460]">
                 <Activity size={11} strokeWidth={2.5} />
               </span>
-              Here’s your health and clinic update for today.
+              {t('homepage.subtitle', 'Here’s your health and clinic update for today.')}
             </p>
           </div>
 
@@ -754,7 +793,7 @@ const HomePageUsers = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
-            <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide">Clinic Open</span>
+            <span className="text-[9px] font-bold text-green-700 uppercase tracking-wide">{t('homepage.clinicOpen', 'Clinic Open')}</span>
           </div>
         </div>
 
@@ -782,13 +821,13 @@ const HomePageUsers = () => {
         {/* ── Upcoming Appointment ── */}
         <div className="animate-[slideUp_0.4s_ease_both]">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">Up Next</div>
+            <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">{t('homepage.upNext', 'Up Next')}</div>
             {approvedAppts.length > 0 && (
               <button
                 onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
                 className="text-[9px] font-bold text-[#466460] bg-[#eef2f1] px-2 py-1 rounded-full hover:bg-[#dde8e5] transition-colors"
               >
-                {approvedAppts.length} Approved {approvedAppts.length === 1 ? 'Appointment' : 'Appointments'}
+                {t('homepage.approvedAppointments', '{{count}} Approved Appointment(s)', { count: approvedAppts.length })}
               </button>
             )}
           </div>
@@ -801,9 +840,9 @@ const HomePageUsers = () => {
                 <CalendarX size={16} className="text-[#466460]" strokeWidth={1.8} />
               </div>
               <div className="flex-1">
-                <p className="text-[11px] font-bold text-[#1f2d2b] leading-tight">Visit the clinic first</p>
+                <p className="text-[11px] font-bold text-[#1f2d2b] leading-tight">{t('homepage.visitClinicFirst', 'Visit the clinic first')}</p>
                 <p className="text-[10px] text-[#98a8a5] leading-snug mt-0.5">
-                  A face-to-face visit creates your record before you can book online.
+                  {t('homepage.visitClinicDesc', 'A face-to-face visit creates your record before you can book online.')}
                 </p>
               </div>
             </div>
@@ -815,7 +854,7 @@ const HomePageUsers = () => {
               <div className="flex items-center gap-3">
                 <div className={`rounded-xl py-2 px-3 text-center min-w-[50px] ${upcomingAppt.status?.toLowerCase() === 'approved' ? 'bg-[#eef2f1] text-[#466460]' : 'bg-[#fffdf7] text-[#b07020]'}`}>
                   <div className="text-[9px] uppercase font-bold">
-                    {upcomingAppt.status?.toLowerCase() === 'approved' && upcomingAppt.month ? MONTHS_SHORT[upcomingAppt.month - 1] : 'TBD'}
+                    {upcomingAppt.status?.toLowerCase() === 'approved' && upcomingAppt.month ? MONTHS_SHORT[upcomingAppt.month - 1] : t('common.tbd', 'TBD')}
                   </div>
                   <div className="text-lg font-black leading-none mt-0.5">
                     {upcomingAppt.status?.toLowerCase() === 'approved' ? upcomingAppt.day : '—'}
@@ -825,16 +864,16 @@ const HomePageUsers = () => {
                   <h4 className="text-[13px] font-bold text-[#1f2d2b] line-clamp-1">{upcomingAppt.reason}</h4>
                   <p className="text-[10px] text-[#98a8a5] mt-0.5 flex items-center gap-1">
                     {upcomingAppt.status?.toLowerCase() === 'pending' ? (
-                      <><Clock size={11} className="text-[#f0c070]" strokeWidth={2} /> Awaiting Schedule</>
+                      <><Clock size={11} className="text-[#f0c070]" strokeWidth={2} /> {t('homepage.awaitingSchedule', 'Awaiting Schedule')}</>
                     ) : (
-                      <><Clock size={11} strokeWidth={2} /> {formatApptTime(upcomingAppt.time)} · University Clinic</>
+                      <><Clock size={11} strokeWidth={2} /> {formatApptTime(upcomingAppt.time)} · {t('homepage.universityClinic', 'University Clinic')}</>
                     )}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {upcomingAppt.status?.toLowerCase() === 'approved' && (
-                  <span className="text-[9px] font-bold text-[#466460] bg-[#eef2f1] px-2 py-1 rounded-full">VIEW</span>
+                  <span className="text-[9px] font-bold text-[#466460] bg-[#eef2f1] px-2 py-1 rounded-full">{t('common.view', 'VIEW')}</span>
                 )}
                 <div className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 transition-colors text-[#466460]">
                   <ArrowRight size={16} strokeWidth={2.5} />
@@ -844,12 +883,12 @@ const HomePageUsers = () => {
           ) : (
             <div className="bg-[#f7faf8] border border-dashed border-[#cdd6d5] rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2">
               <CalendarX size={20} className="text-[#cdd6d5]" strokeWidth={1.5} />
-              <span className="text-[11px] text-[#98a8a5]">No upcoming appointments</span>
+              <span className="text-[11px] text-[#98a8a5]">{t('homepage.noUpcomingAppts', 'No upcoming appointments')}</span>
               <button
                 onClick={() => navigate('/student/meditrack', { state: { activeTab: 'booking' } })}
                 className="text-[10px] font-bold bg-white border border-[#cdd6d5] text-[#466460] px-4 py-1.5 rounded-full hover:bg-[#eef2f1] transition-colors shadow-sm"
               >
-                Book Now
+                {t('homepage.bookNow', 'Book Now')}
               </button>
             </div>
           )}
@@ -857,7 +896,7 @@ const HomePageUsers = () => {
 
         {/* ── Notice Board ── */}
         <div className="animate-[slideUp_0.45s_ease_both]">
-          <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">Notice Board</div>
+          <div className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide mb-2">{t('homepage.noticeBoard', 'Notice Board')}</div>
           {loadingAnn ? (
             <div className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl p-4 animate-pulse">
               <div className="h-3 bg-[#cdd6d5] rounded w-32 mb-3"></div>
@@ -882,11 +921,11 @@ const HomePageUsers = () => {
                       : <Megaphone size={14} className="text-[#466460]" strokeWidth={2} />
                     }
                     <span className="text-[10px] font-bold uppercase tracking-widest text-[#466460]">
-                      {urgentAnn ? 'Urgent Notice' : 'Latest Announcement'}
+                      {urgentAnn ? t('homepage.urgentNotice', 'Urgent Notice') : t('homepage.latestAnnouncement', 'Latest Announcement')}
                     </span>
                   </div>
                   <span className="text-[9px] text-[#98a8a5] inline-flex items-center gap-1">
-                    <CalendarDays size={9} />{formatDate(pinnedAnn.date)}
+                    <CalendarDays size={9} />{formatDisplayDateWithMonth(pinnedAnn.date, preferences)}
                   </span>
                 </div>
 
@@ -902,17 +941,17 @@ const HomePageUsers = () => {
 
                 <div className="flex items-center justify-between mt-3">
                   <span className={`text-[8px] font-semibold px-2 py-0.5 rounded-full ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).bg} ${(CATEGORY_COLORS[pinnedAnn.category] || CATEGORY_COLORS.General).text}`}>
-                    {pinnedAnn.category || 'General'}
+                    {t(`homepage.categories.${(pinnedAnn.category || 'General').replace(/\s+/g, '')}`, pinnedAnn.category || 'General')}
                   </span>
                   <span className="text-[10px] text-[#466460] font-semibold inline-flex items-center gap-1">
-                    Tap to read more <ChevronRight size={11} strokeWidth={2.5} />
+                    {t('homepage.tapToReadMore', 'Tap to read more')} <ChevronRight size={11} strokeWidth={2.5} />
                   </span>
                 </div>
               </div>
             </div>
           ) : (
             <div className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl p-4">
-              <p className="text-xs text-[#98a8a5]">No announcements at the moment. Check back later.</p>
+              <p className="text-xs text-[#98a8a5]">{t('homepage.noAnnouncements', 'No announcements at the moment. Check back later.')}</p>
             </div>
           )}
         </div>
@@ -921,8 +960,8 @@ const HomePageUsers = () => {
         {!loadingAnn && announcements.length > 1 && (
           <div className="animate-[slideUp_0.5s_ease_both]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">All Announcements</span>
-              <span className="text-[10px] text-[#98a8a5]">{announcements.length} posts</span>
+              <span className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">{t('homepage.allAnnouncements', 'All Announcements')}</span>
+              <span className="text-[10px] text-[#98a8a5]">{announcements.length} {t('homepage.posts', 'posts')}</span>
             </div>
             <div
               className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1"
@@ -934,6 +973,7 @@ const HomePageUsers = () => {
                   item={item}
                   onClick={setSelectedAnn}
                   index={i}
+                  preferences={preferences}
                 />
               ))}
             </div>
@@ -943,14 +983,14 @@ const HomePageUsers = () => {
         {/* ── Health Tip Banner ── */}
         <div className="tip-banner bg-gradient-to-r from-[#2f4542] to-[#466460] rounded-2xl p-4 flex items-center gap-3.5 animate-[slideUp_0.55s_ease_both] mt-1">
           <span className="icon-heartbeat flex-shrink-0">
-            <tip.Icon size={26} className={tip.iconColor} strokeWidth={1.8} />
+            <tipDef.Icon size={26} className={tipDef.iconColor} strokeWidth={1.8} />
           </span>
           <div>
             <div className="shimmer-text text-[10px] font-bold uppercase tracking-[1px] mb-0.5 flex items-center gap-1">
               <HeartPulse size={10} strokeWidth={2.5} />
-              Health Tip
+              {t('homepage.healthTip', 'Health Tip')}
             </div>
-            <div className="text-[11px] text-white/90 leading-[1.45]">{tip.tip}</div>
+            <div className="text-[11px] text-white/90 leading-[1.45]">{t(`homepage.healthTips.${tipDef.key}`, tipDef.defaultText)}</div>
           </div>
         </div>
 
@@ -958,7 +998,7 @@ const HomePageUsers = () => {
 
       {/* ── Announcement Modal (portaled to document.body, see component above) ── */}
       {selectedAnn && (
-        <AnnouncementModal item={selectedAnn} onClose={() => setSelectedAnn(null)} />
+        <AnnouncementModal item={selectedAnn} onClose={() => setSelectedAnn(null)} preferences={preferences} />
       )}
 
     </div>

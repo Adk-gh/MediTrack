@@ -127,7 +127,7 @@ function DashboardContent() {
 
       // Fetch users (records), medical_records, dental_records in parallel
       const [usersRes, medRes, denRes] = await Promise.all([
-        fetch(`${API_URL}/records`, { headers }),
+       fetch(`${API_URL}/user/users`, { headers }),
         fetch(`${API_URL}/examinations/medical`, { headers }).catch(() => null),
         fetch(`${API_URL}/examinations/dental`, { headers }).catch(() => null),
       ]);

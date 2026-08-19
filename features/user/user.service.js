@@ -1,31 +1,54 @@
 // C:\Users\HP\MediTrack\features\user\user.service.js
+
 const supabase = require('../../configs/database');
 const axios = require('axios');
 const FormData = require('form-data');
+const { getSystemConfig } = require('../../services/systemConfig.service');
 
-// ── Name Normalization ──────────────────────────────────────────────────────
-// Normalize name: first letter capitalized, rest lowercase, no ALL CAPS
-function normalizeName(name) {
+// ── Defaults & Utilities ───────────────────────────────────────────────────
+const DEFAULT_USER_PREFERENCES = { language: 'English', dateFormat: 'MM/DD/YYYY' };
+
+const normalizeName = (name) => {
   if (!name) return '';
-  let trimmed = name.trim();
+  const trimmed = name.trim();
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-}
+};
 
-function resolveRole(parsedRole, rawText) {
+const normalizePreferences = (prefs) =>
+  (!prefs || typeof prefs !== 'object' || Array.isArray(prefs))
+    ? { ...DEFAULT_USER_PREFERENCES }
+    : { ...DEFAULT_USER_PREFERENCES, ...prefs };
+
+const formatUserResponse = (data) => ({
+  uid: data.uid, firstName: data.first_name, lastName: data.last_name, middleName: data.middle_name || '',
+  suffix: data.suffix || '', email: data.email, role: data.role, universityId: data.university_id,
+  department: data.department || '', program: data.program || '', isVerified: data.is_verified,
+  isProfileSetup: data.is_profile_setup || false, profileComplete: data.profile_complete || false,
+  birthday: data.birthday || '', age: data.age || '', sex: data.sex || '', bloodType: data.blood_type || '',
+  homeAddress: data.home_address || '', religion: data.religion || '', nationality: data.nationality || '',
+  civilStatus: data.civil_status || '', yearLevel: data.year_level || '', section: data.section || '',
+  academicInfoAcknowledgedVersion: Number(data.academic_info_acknowledged_version || 0),
+  studentClassification: data.student_classification || '', classification: data.classification || '',
+  jobTitle: data.job_title || '', licenseNumber: data.license_number || '', phoneNumber: data.phone_number || '',
+  emergencyContact: data.emergency_contact || {}, vaccinations: data.vaccinations || {},
+  dentalHistory: data.dental_history || {}, surgicalHistory: data.surgical_history || { operations: [], declined: false },
+  preferences: normalizePreferences(data.preferences)
+});
+
+const resolveRole = (parsedRole, rawText) => {
   const combined = `${parsedRole || ''} ${rawText || ''}`.toLowerCase();
   console.log(`>>> [Role] Combined text for detection:\n"${combined.substring(0, 300)}"\n`);
 
   const keywordMap = [
-    ['physician', 'doctor'], ['medical doctor', 'doctor'], ['doctor', 'doctor'],
-    [' md ', 'doctor'], ['dentist', 'dentist'], ['dental', 'dentist'], ['nurse', 'nurse'],
-    ['lecturer', 'lecturer'], ['professor', 'professor'], ['prof.', 'professor'],
-    ['instructor', 'instructor'], ['administrator', 'administrator'], [' admin ', 'administrator'],
-    ['librarian', 'librarian'], ['technician', 'technician'], ['security', 'guard'],
-    ['guard', 'guard'], ['maintenance', 'staff'], ['janitor', 'staff'], ['cleaner', 'staff'],
-    ['employee', 'staff'], ['faculty', 'staff'], ['staff', 'staff'],
-    ['bsit', 'student'], ['bsis', 'student'], ['bsba', 'student'], ['bsed', 'student'],
+    ['physician', 'doctor'], ['medical doctor', 'doctor'], ['doctor', 'doctor'], [' md ', 'doctor'],
+    ['dentist', 'dentist'], ['dental', 'dentist'], ['nurse', 'nurse'], ['lecturer', 'lecturer'],
+    ['professor', 'professor'], ['prof.', 'professor'], ['instructor', 'instructor'],
+    ['administrator', 'administrator'], [' admin ', 'administrator'], ['librarian', 'librarian'],
+    ['technician', 'technician'], ['security', 'guard'], ['guard', 'guard'], ['maintenance', 'staff'],
+    ['janitor', 'staff'], ['cleaner', 'staff'], ['employee', 'staff'], ['faculty', 'staff'],
+    ['staff', 'staff'], ['bsit', 'student'], ['bsis', 'student'], ['bsba', 'student'], ['bsed', 'student'],
     ['bscs', 'student'], ['bscrim', 'student'], ['bshm', 'student'], ['bsent', 'student'],
-    ['bsoa', 'student'], ['student', 'student'],
+    ['bsoa', 'student'], ['student', 'student']
   ];
 
   for (const [keyword, role] of keywordMap) {
@@ -34,891 +57,295 @@ function resolveRole(parsedRole, rawText) {
       return role;
     }
   }
-
   console.log('>>> [Role] No keyword matched — defaulting to "student"');
   return 'student';
-}
+};
 
+const throwError = (msg, code = 400) => { const e = new Error(msg); e.statusCode = code; throw e; };
+
+// ── Service Methods ────────────────────────────────────────────────────────
 exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, password, universityId }, idFile) => {
-  if (!firstName || !lastName || !email || !password || !universityId) {
-    const error = new Error('Missing required fields.');
-    error.statusCode = 400;
-    throw error;
-  }
+  if (!firstName || !lastName || !email || !password || !universityId) throwError('Missing required fields.', 400);
+  if (!idFile) throwError('Please upload your University ID image.', 400);
 
-  if (!idFile) {
-    const error = new Error('Please upload your University ID image.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // 1. Send image to OCR service
   const ocrForm = new FormData();
-  ocrForm.append('image', idFile.buffer, {
-    filename: idFile.originalname,
-    contentType: idFile.mimetype,
-  });
+  ocrForm.append('image', idFile.buffer, { filename: idFile.originalname, contentType: idFile.mimetype });
 
   let ocrResponse;
   try {
-    const baseUrl = process.env.OCR_SERVICE_URL || 'http://localhost:5001';
-    const ocrUrl = `${baseUrl}/ocr`;
-    ocrResponse = await axios.post(ocrUrl, ocrForm, {
-      headers: { ...ocrForm.getHeaders() },
-      timeout: 120000,
-    });
+    const ocrUrl = `${process.env.OCR_SERVICE_URL || 'http://localhost:5001'}/ocr`;
+    ocrResponse = await axios.post(ocrUrl, ocrForm, { headers: { ...ocrForm.getHeaders() }, timeout: 120000 });
   } catch (ocrErr) {
     console.error('OCR Service Connection Failed:', ocrErr.message);
-    const error = new Error('ID verification service is unavailable.');
-    error.statusCode = 502;
-    throw error;
+    throwError('ID verification service is unavailable.', 502);
   }
 
-  const ocrData = ocrResponse.data;
-  console.log('>>> [OCR] Full response:');
-  console.log(JSON.stringify(ocrData, null, 2));
+  const { parsed, raw_text, success, error: ocrErrorMsg } = ocrResponse.data;
+  console.log('>>> [OCR] Full response:\n', JSON.stringify(ocrResponse.data, null, 2));
+  if (!success) throwError(ocrErrorMsg || 'OCR Failed to process the image.', 400);
 
-  if (!ocrData.success) {
-    const error = new Error(ocrData.error || 'OCR Failed to process the image.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const { parsed, raw_text } = ocrData;
-
-  // 2. ID number matching
-  const normalize = (id) => (id || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
-  const normalizedInputId = normalize(universityId);
+  const normalizeId = (id) => (id || '').toString().replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const normalizedInputId = normalizeId(universityId);
   let ocrId = parsed?.id_number || null;
 
   if (!ocrId && raw_text) {
-    const normalizedRawText = normalize(raw_text);
-    if (normalizedRawText.includes(normalizedInputId)) {
-      ocrId = universityId;
-    } else {
+    const normalizedRawText = normalizeId(raw_text);
+    if (normalizedRawText.includes(normalizedInputId)) ocrId = universityId;
+    else {
       const match = raw_text.match(/\b([A-Z0-9]{2,}[\s\-]?[0-9]{2,})\b/i);
       if (match) ocrId = match[1];
     }
   }
 
-  console.log(`>>> [ID] Input: "${universityId}" | OCR detected: "${ocrId}"`);
-  console.log(`>>> [ID] Normalized input: "${normalizedInputId}" | Normalized OCR: "${normalize(ocrId)}"`);
+  console.log(`>>> [ID] Input: "${universityId}" | OCR detected: "${ocrId}"\n>>> [ID] Normalized input: "${normalizedInputId}" | Normalized OCR: "${normalizeId(ocrId)}"`);
+  if (!ocrId || normalizedInputId !== normalizeId(ocrId)) throwError(`Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.`, 400);
 
-  if (!ocrId || normalizedInputId !== normalize(ocrId)) {
-    const error = new Error(`Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.`);
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // 3. Role resolution
   const role = resolveRole(parsed?.role, raw_text);
   console.log(`>>> [Role] Final role saved to DB: "${role}"`);
 
-  // 4. Supabase duplicate check
-  const { data: existingUsers } = await supabase
-    .from('users')
-    .select('uid')
-    .eq('university_id', ocrId);
+  const { data: existingUsers } = await supabase.from('users').select('uid').eq('university_id', ocrId);
+  if (existingUsers?.length > 0) throwError('This University ID is already registered.', 400);
 
-  if (existingUsers && existingUsers.length > 0) {
-    const error = new Error('This University ID is already registered.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // 5. Create Supabase Auth account
   let userResponse;
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          firstName,
-          lastName,
-          display_name: `${firstName} ${lastName}`.trim(),
-        }
-      }
-    });
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { firstName, lastName, display_name: `${firstName} ${lastName}`.trim() } } });
     if (error) throw error;
     userResponse = data;
   } catch (supabaseErr) {
-    if (supabaseErr.message.includes('already been registered')) {
-      const error = new Error('That email is already in use.');
-      error.statusCode = 400;
-      throw error;
-    }
+    if (supabaseErr.message.includes('already been registered')) throwError('That email is already in use.', 400);
     throw supabaseErr;
   }
 
-  const user = userResponse.user;
-  console.log('>>> [Auth] userResponse:', JSON.stringify(userResponse));
-  console.log('>>> [Auth] user:', user);
-  console.log('>>> [Auth] user.id:', user?.id);
+  const user = userResponse?.user;
+  console.log('>>> [Auth] userResponse:', JSON.stringify(userResponse), '\n>>> [Auth] user.id:', user?.id);
+  if (!user?.id) throw new Error('Failed to create user account: No user/ID returned from Supabase Auth');
 
-  if (!user) {
-    console.error('>>> [Auth] FATAL: userResponse.user is null/undefined!');
-    console.error('>>> [Auth] Full response:', userResponse);
-    throw new Error('Failed to create user account: No user returned from Supabase Auth');
-  }
-
-  if (!user.id) {
-    console.error('>>> [Auth] FATAL: user.id is undefined!');
-    throw new Error('Failed to create user account: No user ID returned from Supabase Auth');
-  }
-
-  if (!user) {
-    throw new Error('Failed to create user account');
-  }
-
-  // 6. Save user to Supabase 'users' table - normalize names to Title Case
-  console.log('>>> [DB] Creating newUser with uid:', user.id);
   const newUser = {
-    uid:                    user.id,
-    first_name:             normalizeName(firstName),
-    last_name:              normalizeName(lastName),
-    middle_name:         normalizeName(middleName),
-    suffix:                 suffix || '',
-    email:                  email.toLowerCase(),
-    university_id:          ocrId,
-    is_verified:            false,
-    role,
-    is_profile_setup:       false,
-    student_classification: role === 'student' ? 'Regular' : '',
-    created_at:             new Date().toISOString(),
+    uid: user.id, first_name: normalizeName(firstName), last_name: normalizeName(lastName), middle_name: normalizeName(middleName),
+    suffix: suffix || '', email: email.toLowerCase(), university_id: ocrId, is_verified: false, role, is_profile_setup: false,
+    student_classification: role === 'student' ? 'Regular' : '', preferences: { ...DEFAULT_USER_PREFERENCES }, created_at: new Date().toISOString()
   };
 
-  // Check if user already exists by email (might have been created via different method)
-  console.log('>>> [DB] Checking for existing user with email:', email.toLowerCase());
-  const { data: existingByEmail } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .maybeSingle();
-
-  console.log('>>> [DB] Existing user by email:', existingByEmail ? `Found (id: ${existingByEmail.id}, uid: ${existingByEmail.uid})` : 'None');
-
+  const { data: existingByEmail } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).maybeSingle();
   if (existingByEmail) {
-    // Check if UID needs updating - handle null/undefined cases properly
-    const existingUid = existingByEmail.uid || null;
-    const newUid = user.id;
-    const uidNeedsUpdate = existingUid !== newUid;
-
-    console.log('>>> [DB] Comparing UIDs - existing:', existingUid, 'vs auth:', newUid, '| Needs update:', uidNeedsUpdate);
-
-    if (uidNeedsUpdate) {
-      console.log('>>> [DB] User exists with different/null UID, updating to match Auth UID');
-      console.log('>>> [DB] Old UID:', existingByEmail.uid, '| New Auth UID:', user.id);
-
-      const { data: updateData, error: updateError } = await supabase
-        .from('users')
-        .update({
-          uid: user.id,
-          first_name: normalizeName(firstName),
-          last_name: normalizeName(lastName),
-          middle_name: normalizeName(middleName),
-          university_id: ocrId,
-          role,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingByEmail.id)
-        .select();
-
-      if (updateError) {
-        console.error('>>> [DB] Update failed:', updateError);
-        throw new Error('Failed to update user UID: ' + updateError.message);
-      }
-
-      console.log('>>> [DB] Update result:', updateData);
-
-      return {
-        uid: user.id,
-        firstName,
-        lastName,
-        middleName: middleName || '',
-        suffix: suffix || '',
-        email: email.toLowerCase(),
-        universityId: ocrId,
-        isVerified: true,
-        role,
-        isProfileSetup: false,
-      };
+    if (existingByEmail.uid !== user.id) {
+      console.log(`>>> [DB] User exists with different UID. Updating ${existingByEmail.uid} to Auth UID ${user.id}`);
+      const { data: updateData, error: updateError } = await supabase.from('users').update({
+        uid: user.id, first_name: newUser.first_name, last_name: newUser.last_name, middle_name: newUser.middle_name,
+        university_id: ocrId, role, updated_at: new Date().toISOString()
+      }).eq('id', existingByEmail.id).select().single();
+      if (updateError) throw new Error('Failed to update user UID: ' + updateError.message);
+      return formatUserResponse(updateData);
     }
-
-    // User exists with same UID, return it
-    return {
-      uid: existingByEmail.uid,
-      firstName: existingByEmail.first_name,
-      lastName: existingByEmail.last_name,
-      middleName: existingByEmail.middle_name || '',
-      suffix: existingByEmail.suffix || '',
-      email: existingByEmail.email,
-      universityId: existingByEmail.university_id,
-      isVerified: existingByEmail.is_verified,
-      role: existingByEmail.role,
-      isProfileSetup: existingByEmail.is_profile_setup || false,
-    };
+    return formatUserResponse(existingByEmail);
   }
 
-  // Insert new user
-  const { data: insertData, error: insertError } = await supabase
-    .from('users')
-    .insert(newUser)
-    .select();
-
+  const { data: insertData, error: insertError } = await supabase.from('users').insert(newUser).select().single();
   if (insertError) {
-    console.error('>>> [DB] Insert error:', JSON.stringify(insertError));
+    console.error('>>> [DB] Insert error:', insertError);
     await supabase.auth.admin.deleteUser(user.id);
     throw new Error('Failed to save user profile: ' + insertError.message);
   }
 
-  console.log('>>> [DB] Insert result:', JSON.stringify(insertData));
-  console.log('>>> [DB] Inserted UID:', insertData?.[0]?.uid);
-  console.log(`>>> [DB] User saved with role: "${role}"`);
-
-  return {
-    uid:            user.id,
-    firstName,
-    lastName,
-    middleName:  middleName || '',
-    suffix:         suffix || '',
-    email:          email.toLowerCase(),
-    universityId:   ocrId,
-    isVerified:     true,
-    role,
-    isProfileSetup: false,
-  };
+  console.log(`>>> [DB] User saved with role: "${role}", UID: ${insertData?.uid}`);
+  return formatUserResponse(insertData);
 };
 
 exports.loginUser = async ({ email, password }) => {
-  // 1. Authenticate with Supabase Auth
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
   if (error) {
     console.error('>>> [Auth] signInWithPassword error:', error.message);
-    const e = new Error(error.message);
-    e.statusCode = 401;
-    throw e;
+    throwError(error.message, 401);
   }
 
   const { user, session } = data;
-  console.log("👉 Auth UID from Supabase:", user.id);
-  console.log("👉 Checking public.users table for uid =", user.id);
+  console.log(`👉 Auth UID from Supabase: ${user.id} | Checking public.users table...`);
 
-  // 2. Fetch full profile from users table
-  const { data: userData, error: profileError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('uid', user.id)
-    .eq('is_archived', false)
-    .maybeSingle(); // Use maybeSingle to handle no rows without throwing
+  const { data: userData } = await supabase.from('users').select('*').eq('uid', user.id).eq('is_archived', false).maybeSingle();
 
-  // If user not found in users table, auto-create from auth metadata
   if (!userData) {
     console.log('>>> [Profile] No user record found, auto-creating from auth...');
-
-    // Extract name from auth metadata
-    const firstName = user.user_metadata?.firstName || user.email?.split('@')[0] || 'User';
-    const lastName = user.user_metadata?.lastName || '';
-
     const newUser = {
-      uid: user.id,
-      email: user.email?.toLowerCase() || '',
-      first_name: firstName,
-      last_name: lastName,
-      middle_name: '',
-      suffix: '',
-      role: 'student', // Default role
-      is_verified: true,
-      is_profile_setup: false,
-      profile_complete: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      uid: user.id, email: user.email?.toLowerCase() || '', first_name: user.user_metadata?.firstName || user.email?.split('@')[0] || 'User',
+      last_name: user.user_metadata?.lastName || '', middle_name: '', suffix: '', role: 'student', is_verified: true, is_profile_setup: false,
+      profile_complete: false, preferences: { ...DEFAULT_USER_PREFERENCES }, created_at: new Date().toISOString(), updated_at: new Date().toISOString()
     };
 
-    const { data: createdUser, error: createError } = await supabase
-      .from('users')
-      .insert(newUser)
-      .select()
-      .single();
-
+    const { data: createdUser, error: createError } = await supabase.from('users').insert(newUser).select().single();
     if (createError) {
       console.error('>>> [Profile] Auto-create failed:', createError.message);
-      const e = new Error('Failed to create user profile.');
-      e.statusCode = 500;
-      throw e;
+      throwError('Failed to create user profile.', 500);
     }
-
-    console.log('>>> [Profile] Auto-created user record for:', user.id);
-    return {
-      token: session.access_token,
-      refreshToken: session.refresh_token,
-      uid: createdUser.uid,
-      firstName: createdUser.first_name,
-      lastName: createdUser.last_name,
-      middleName: createdUser.middle_name || '',
-      suffix: createdUser.suffix || '',
-      email: createdUser.email,
-      role: createdUser.role,
-      universityId: createdUser.university_id,
-      department: createdUser.department || '',
-      program: createdUser.program || '',
-      isVerified: createdUser.is_verified,
-      isProfileSetup: createdUser.is_profile_setup || false,
-      emergencyContact: createdUser.emergency_contact || {},
-      vaccinations: createdUser.vaccinations || {},
-      dentalHistory: createdUser.dental_history || {},
-      surgicalHistory: createdUser.surgical_history || { operations: [], declined: false },
-    };
+    return { token: session.access_token, refreshToken: session.refresh_token, ...formatUserResponse(createdUser) };
   }
-
-  // 3. Return camelCase shape — now includes refreshToken ✅
-  return {
-    token:          session.access_token,
-    refreshToken:   session.refresh_token,
-    uid:            userData.uid,
-    firstName:      userData.first_name,
-    lastName:       userData.last_name,
-    middleName:  userData.middle_name || '',
-    suffix:         userData.suffix || '',
-    email:          userData.email,
-    role:           userData.role,
-    universityId:   userData.university_id,
-    department:     userData.department || '',
-    program:        userData.program || '',
-    isVerified:     userData.is_verified,
-    isProfileSetup: userData.is_profile_setup || false,
-    emergencyContact: userData.emergency_contact || {},
-    vaccinations:   userData.vaccinations || {},
-    dentalHistory:  userData.dental_history || {},
-    surgicalHistory: userData.surgical_history || { operations: [], declined: false },
-  };
+  return { token: session.access_token, refreshToken: session.refresh_token, ...formatUserResponse(userData) };
 };
 
 exports.setupProfile = async (userId, profileData) => {
   if (!userId) throw new Error('userId is required for setupProfile');
-
-  const { data: existingUser } = await supabase
-    .from('users')
-    .select('email, role, university_id')
-    .eq('uid', userId)
-    .single();
-
-  const resolvedRole = (profileData.role || existingUser?.role || 'student').toLowerCase();
-  const isStudent = resolvedRole === 'student';
-
-  // Preserve existing email if not provided in profileData
-  const email = profileData.email || existingUser?.email || '';
-
-  // Preserve the existing university_id (set during OCR-verified registration)
-  // if the client didn't send one. Never write an empty string into this
-  // column — it has a unique constraint, and unlike NULL, multiple empty
-  // strings collide and throw a duplicate-key error (23505).
-  const universityId = profileData.universityId || existingUser?.university_id || null;
+  const { data: existingUser } = await supabase.from('users').select('email, role, university_id, preferences').eq('uid', userId).single();
+  const role = (profileData.role || existingUser?.role || 'student').toLowerCase();
 
   const sanitized = {
-    email:                  email,
-    first_name:             profileData.firstName ?? '',
-    middle_name:         profileData.middleName ?? '',
-    last_name:              profileData.lastName ?? '',
-    suffix:                 profileData.suffix ?? '',
-    birthday:               profileData.birthday ?? '',
-    age:                    profileData.age ?? '',
-    sex:                    profileData.sex ?? '',
-    blood_type:             profileData.bloodType ?? '',
-    home_address:           profileData.homeAddress ?? '',
-    religion:               profileData.religion ?? '',
-    nationality:            profileData.nationality ?? '',
-    civil_status:           profileData.civilStatus ?? '',
-    university_id:          universityId,
-    department:             profileData.department ?? '',
-    program:                profileData.program ?? '',
-    year_level:             profileData.yearLevel ?? '',
-    section:                profileData.section ?? '',
-    student_classification: isStudent ? (profileData.studentClassification ?? 'Regular') : '',
-    classification:         profileData.classification ?? '',
-    job_title:              profileData.jobTitle ?? '',
-    phone_number:           profileData.phoneNumber ?? '',
-    emergency_contact:      profileData.emergencyContact ?? {
-      name: '', relationship: '', phone: '', address: '',
-    },
-    vaccinations: profileData.vaccinations ?? {
-      dose1:    { vaccineName: '', date: '' },
-      dose2:    { vaccineName: '', date: '' },
-      booster1: { vaccineName: '', date: '' },
-      booster2: { vaccineName: '', date: '' },
-    },
-    dental_history: profileData.dentalHistory ?? {},
-    surgical_history: profileData.surgicalHistory ?? { operations: [], declined: false },
-    is_profile_setup: true,
-    profile_complete: true,
-    updated_at:       new Date().toISOString(),
+    email: profileData.email || existingUser?.email || '', first_name: profileData.firstName ?? '', last_name: profileData.lastName ?? '',
+    middle_name: profileData.middleName ?? '', suffix: profileData.suffix ?? '', birthday: profileData.birthday ?? '', age: profileData.age ?? '',
+    sex: profileData.sex ?? '', blood_type: profileData.bloodType ?? '', home_address: profileData.homeAddress ?? '', religion: profileData.religion ?? '',
+    nationality: profileData.nationality ?? '', civil_status: profileData.civilStatus ?? '', university_id: profileData.universityId || existingUser?.university_id || null,
+    department: profileData.department ?? '', program: profileData.program ?? '', year_level: profileData.yearLevel ?? '', section: profileData.section ?? '',
+    student_classification: role === 'student' ? (profileData.studentClassification ?? 'Regular') : '', classification: profileData.classification ?? '',
+    job_title: profileData.jobTitle ?? '', phone_number: profileData.phoneNumber ?? '', emergency_contact: profileData.emergencyContact ?? { name: '', relationship: '', phone: '', address: '' },
+    vaccinations: profileData.vaccinations ?? { dose1: { vaccineName: '', date: '' }, dose2: { vaccineName: '', date: '' }, booster1: { vaccineName: '', date: '' }, booster2: { vaccineName: '', date: '' } },
+    dental_history: profileData.dentalHistory ?? {}, surgical_history: profileData.surgicalHistory ?? { operations: [], declined: false },
+    preferences: normalizePreferences(profileData.preferences || existingUser?.preferences), is_profile_setup: true, profile_complete: true, updated_at: new Date().toISOString(),
   };
 
-  console.log(`[setupProfile] Saving profile for uid: ${userId}`);
-
-  const { data, error } = await supabase
-    .from('users')
-    .upsert({ uid: userId, ...sanitized }, { onConflict: 'uid' })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('>>> [DB] Upsert error:', error);
-    throw new Error('Failed to save profile');
-  }
-
-  return data;
+  const { data, error } = await supabase.from('users').upsert({ uid: userId, ...sanitized }, { onConflict: 'uid' }).select().single();
+  if (error) throw new Error('Failed to save profile: ' + error.message);
+  return formatUserResponse(data);
 };
 
 exports.getProfile = async (userId) => {
   if (!userId) throw new Error('userId is required for getProfile');
-
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('uid', userId)
-    .eq('is_archived', false)
-    .single();
-
-  if (error || !data) {
-    const e = new Error('User not found');
-    e.statusCode = 404;
-    throw e;
-  }
-
-  return {
-    uid:                  data.uid,
-    firstName:            data.first_name,
-    lastName:             data.last_name,
-    middleName:        data.middle_name || '',
-    suffix:               data.suffix || '',
-    email:                data.email,
-    role:                 data.role,
-    universityId:         data.university_id,
-    isVerified:           data.is_verified,
-    isProfileSetup:       data.is_profile_setup,
-    profileComplete:      data.profile_complete,
-    birthday:             data.birthday || '',
-    age:                  data.age || '',
-    sex:                  data.sex || '',
-    bloodType:            data.blood_type || '',
-    homeAddress:          data.home_address || '',
-    religion:             data.religion || '',
-    nationality:          data.nationality || '',
-    civilStatus:          data.civil_status || '',
-    department:           data.department || '',
-    program:              data.program || '',
-    yearLevel:            data.year_level || '',
-    section:              data.section || '',
-    studentClassification: data.student_classification || '',
-    classification:       data.classification || '',
-    jobTitle:             data.job_title || '',
-    licenseNumber:        data.license_number || '',
-    phoneNumber:          data.phone_number || '',
-    emergencyContact:     data.emergency_contact || {},
-    vaccinations:         data.vaccinations || {},
-    dentalHistory:        data.dental_history || {},
-    surgicalHistory:      data.surgical_history || { operations: [], declined: false },
-  };
+  const { data, error } = await supabase.from('users').select('*').eq('uid', userId).eq('is_archived', false).single();
+  if (error || !data) throwError('User not found', 404);
+  return formatUserResponse(data);
 };
 
 exports.deleteUser = async (userId, deletedByName) => {
-  // Instead of deleting, set is_archived to true
-  const { error } = await supabase
-    .from('users')
-    .update({
-      is_archived: true,
-      deleted_by: deletedByName || 'system',
-      updated_at: new Date().toISOString()
-    })
-    .eq('uid', userId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
+  const { error } = await supabase.from('users').update({ is_archived: true, deleted_by: deletedByName || 'system', updated_at: new Date().toISOString() }).eq('uid', userId);
+  if (error) throw new Error(error.message);
   return { uid: userId };
 };
 
-
-
 exports.checkUniversityId = async (universityId) => {
-  const { data } = await supabase
-    .from('users')
-    .select('uid')
-    .eq('university_id', universityId);
-
+  const { data } = await supabase.from('users').select('uid').eq('university_id', universityId);
   return data && data.length > 0;
 };
 
 exports.toggleProfileComplete = async (userId, profileComplete) => {
   if (!userId) throw new Error('userId is required for toggleProfileComplete');
+  let newValue = profileComplete;
 
-  // If profileComplete is not provided, toggle it (flip the current value)
-  let newValue;
-  if (profileComplete === undefined) {
-    // Get current value and toggle
-    const { data: currentUser } = await supabase
-      .from('users')
-      .select('profile_complete')
-      .eq('uid', userId)
-      .single();
-
+  if (newValue === undefined) {
+    const { data: currentUser } = await supabase.from('users').select('profile_complete').eq('uid', userId).single();
     newValue = !currentUser?.profile_complete;
-  } else {
-    newValue = profileComplete;
   }
 
-  const { data, error } = await supabase
-    .from('users')
-    .update({
-      profile_complete: newValue,
-      updated_at: new Date().toISOString()
-    })
-    .eq('uid', userId)
-    .select('profile_complete')
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return {
-    profileComplete: data.profile_complete
-  };
+  const { data, error } = await supabase.from('users').update({ profile_complete: newValue, updated_at: new Date().toISOString() }).eq('uid', userId).select('profile_complete').single();
+  if (error) throw new Error(error.message);
+  return { profileComplete: data.profile_complete };
 };
 
 exports.updateProfile = async (userId, updates) => {
   if (!userId) throw new Error('userId is required for updateProfile');
 
-  console.log('[updateProfile] userId:', userId);
-  console.log('[updateProfile] updates:', JSON.stringify(updates));
+  const { data: currentUser, error: currentUserError } = await supabase.from('users')
+    .select(`uid, role, year_level, section, academic_info_acknowledged_version, preferences`)
+    .eq('uid', userId).eq('is_archived', false).single();
+  if (currentUserError || !currentUser) throw new Error(currentUserError?.message || 'User not found');
 
-  // Map camelCase to snake_case for database - normalize names to Title Case
   const dbUpdates = {};
-  if (updates.firstName !== undefined) dbUpdates.first_name = normalizeName(updates.firstName);
-  if (updates.lastName !== undefined) dbUpdates.last_name = normalizeName(updates.lastName);
-  if (updates.middleName !== undefined) dbUpdates.middle_name = normalizeName(updates.middleName);
-  if (updates.suffix !== undefined) dbUpdates.suffix = normalizeName(updates.suffix);
-  if (updates.birthday !== undefined) dbUpdates.birthday = updates.birthday;
-  if (updates.age !== undefined) dbUpdates.age = updates.age;
-  if (updates.sex !== undefined) dbUpdates.sex = updates.sex;
-  if (updates.bloodType !== undefined) dbUpdates.blood_type = updates.bloodType;
-  if (updates.homeAddress !== undefined) dbUpdates.home_address = updates.homeAddress;
-  if (updates.religion !== undefined) dbUpdates.religion = updates.religion;
-  if (updates.nationality !== undefined) dbUpdates.nationality = updates.nationality;
-  if (updates.civilStatus !== undefined) dbUpdates.civil_status = updates.civilStatus;
-  if (updates.department !== undefined) dbUpdates.department = updates.department;
-  if (updates.program !== undefined) dbUpdates.program = updates.program;
-  if (updates.yearLevel !== undefined) dbUpdates.year_level = updates.yearLevel;
-  if (updates.section !== undefined) dbUpdates.section = updates.section;
-  if (updates.studentClassification !== undefined) dbUpdates.student_classification = updates.studentClassification;
-  if (updates.classification !== undefined) dbUpdates.classification = updates.classification;
-  if (updates.jobTitle !== undefined) dbUpdates.job_title = updates.jobTitle;
-  if (updates.licenseNumber !== undefined) dbUpdates.license_number = updates.licenseNumber;
-  if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
-  if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
-  if (updates.vaccinations !== undefined) dbUpdates.vaccinations = updates.vaccinations;
-  if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
-  if (updates.surgicalHistory !== undefined) dbUpdates.surgical_history = updates.surgicalHistory;
-  if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
+  const normFields = { firstName: 'first_name', lastName: 'last_name', middleName: 'middle_name', suffix: 'suffix' };
+  const directFields = {
+    birthday: 'birthday', age: 'age', sex: 'sex', bloodType: 'blood_type', homeAddress: 'home_address', religion: 'religion',
+    nationality: 'nationality', civilStatus: 'civil_status', department: 'department', program: 'program', yearLevel: 'year_level',
+    section: 'section', studentClassification: 'student_classification', classification: 'classification', jobTitle: 'job_title',
+    licenseNumber: 'license_number', phoneNumber: 'phone_number', emergencyContact: 'emergency_contact', vaccinations: 'vaccinations',
+    dentalHistory: 'dental_history', surgicalHistory: 'surgical_history', profileComplete: 'profile_complete'
+  };
 
-  // If no updates, return current profile
-  if (Object.keys(dbUpdates).length === 0) {
-    const { data: existing, error: fetchError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('uid', userId)
-      .single();
-    if (fetchError) throw new Error(fetchError.message);
-    return {
-      uid:                  existing.uid,
-      firstName:            existing.first_name,
-      lastName:             existing.last_name,
-      middleName:        existing.middle_name || '',
-      suffix:               existing.suffix || '',
-      email:                existing.email,
-      role:                 existing.role,
-      universityId:         existing.university_id,
-      isVerified:           existing.is_verified,
-      isProfileSetup:       existing.is_profile_setup,
-      profileComplete:      existing.profile_complete,
-      birthday:             existing.birthday || '',
-      age:                  existing.age || '',
-      sex:                  existing.sex || '',
-      bloodType:            existing.blood_type || '',
-      homeAddress:          existing.home_address || '',
-      religion:             existing.religion || '',
-      nationality:           existing.nationality || '',
-      civilStatus:           existing.civil_status || '',
-      department:           existing.department || '',
-      program:              existing.program || '',
-      yearLevel:            existing.year_level || '',
-      section:              existing.section || '',
-      studentClassification: existing.student_classification || '',
-      classification:       existing.classification || '',
-      jobTitle:             existing.job_title || '',
-      licenseNumber:        existing.license_number || '',
-      phoneNumber:          existing.phone_number || '',
-      emergencyContact:     existing.emergency_contact || {},
-      vaccinations:         existing.vaccinations || {},
-      dentalHistory:        existing.dental_history || {},
-      surgicalHistory:      existing.surgical_history || { operations: [], declined: false },
-    };
+  Object.entries(normFields).forEach(([k, dbKey]) => { if (updates[k] !== undefined) dbUpdates[dbKey] = normalizeName(updates[k]); });
+  Object.entries(directFields).forEach(([k, dbKey]) => { if (updates[k] !== undefined) dbUpdates[dbKey] = updates[k]; });
+
+  if (updates.preferences !== undefined) {
+    const p = updates.preferences;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) throwError('Invalid preferences.', 400);
+    if (p.language !== undefined && !['English', 'Filipino'].includes(p.language)) throwError('Invalid language preference.', 400);
+    if (p.dateFormat !== undefined && !['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'].includes(p.dateFormat)) throwError('Invalid date format preference.', 400);
+    dbUpdates.preferences = { ...DEFAULT_USER_PREFERENCES, ...normalizePreferences(currentUser.preferences), ...p };
   }
+
+  if (currentUser.role?.toLowerCase() === 'student' && (updates.yearLevel !== undefined || updates.section !== undefined)) {
+    const finalYearLevel = updates.yearLevel !== undefined ? updates.yearLevel : currentUser.year_level;
+    const finalSection = updates.section !== undefined ? updates.section : currentUser.section;
+
+    if (String(finalYearLevel || '').trim() && String(finalSection || '').trim()) {
+      try {
+        const sysConf = await getSystemConfig();
+        if (sysConf?.prompt_student_academic_update === true && sysConf?.academic_update_version != null) {
+          dbUpdates.academic_info_acknowledged_version = Number(sysConf.academic_update_version);
+        }
+      } catch (err) { console.error('[updateProfile] Academic acknowledgement config fetch failed:', err); }
+    }
+  }
+
+  delete dbUpdates.academic_info_acknowledged_version; // Security wipe fallback
+  // Re-assign correctly according to the strict order defined in your original file
+  if (currentUser.role?.toLowerCase() === 'student' && (updates.yearLevel !== undefined || updates.section !== undefined)) {
+    const finalYearLevel = updates.yearLevel !== undefined ? updates.yearLevel : currentUser.year_level;
+    const finalSection = updates.section !== undefined ? updates.section : currentUser.section;
+    if (String(finalYearLevel || '').trim() && String(finalSection || '').trim()) {
+      try {
+        const sysConf = await getSystemConfig();
+        if (sysConf?.prompt_student_academic_update === true) {
+          dbUpdates.academic_info_acknowledged_version = Number(sysConf?.academic_update_version) || 1;
+        }
+      } catch (err) { console.error('[updateProfile] Academic acknowledgement config fetch failed:', err); }
+    }
+  }
+
+  if (Object.keys(dbUpdates).length === 0) return exports.getProfile(userId);
 
   dbUpdates.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from('users').update(dbUpdates).eq('uid', userId).select().single();
+  if (error || !data) throw new Error(error?.message || 'No data returned from database');
 
-  console.log('[updateProfile] dbUpdates:', JSON.stringify(dbUpdates));
-
-  const { data, error } = await supabase
-    .from('users')
-    .update(dbUpdates)
-    .eq('uid', userId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('[updateProfile] Supabase error:', JSON.stringify(error));
-    throw new Error(error.message);
-  }
-
-  if (!data) {
-    console.error('[updateProfile] No data returned from Supabase');
-    throw new Error('No data returned from database');
-  }
-
-  return {
-    uid:                  data.uid,
-    firstName:            data.first_name,
-    lastName:             data.last_name,
-    middleName:        data.middle_name || '',
-    suffix:               data.suffix || '',
-    email:                data.email,
-    role:                 data.role,
-    universityId:         data.university_id,
-    isVerified:           data.is_verified,
-    isProfileSetup:       data.is_profile_setup,
-    profileComplete:      data.profile_complete,
-    birthday:             data.birthday || '',
-    age:                  data.age || '',
-    sex:                  data.sex || '',
-    bloodType:            data.blood_type || '',
-    homeAddress:          data.home_address || '',
-    religion:             data.religion || '',
-    nationality:           data.nationality || '',
-    civilStatus:           data.civil_status || '',
-    department:           data.department || '',
-    program:              data.program || '',
-    yearLevel:            data.year_level || '',
-    section:              data.section || '',
-    studentClassification: data.student_classification || '',
-    classification:       data.classification || '',
-    jobTitle:             data.job_title || '',
-    licenseNumber:        data.license_number || '',
-    phoneNumber:          data.phone_number || '',
-    emergencyContact:     data.emergency_contact || {},
-    vaccinations:         data.vaccinations || {},
-    dentalHistory:        data.dental_history || {},
-    surgicalHistory:      data.surgical_history || { operations: [], declined: false },
-  };
+  return formatUserResponse(data);
 };
 
 exports.adminUpdateUser = async (targetUid, updates) => {
   if (!targetUid) throw new Error('targetUid is required for adminUpdateUser');
 
-  // Map camelCase to snake_case for database (also accept snake_case directly from frontend)
   const dbUpdates = { updated_at: new Date().toISOString() };
 
-  // First name - normalize to Title Case
-  if (updates.firstName !== undefined) dbUpdates.first_name = normalizeName(updates.firstName);
-  else if (updates.first_name !== undefined) dbUpdates.first_name = normalizeName(updates.first_name);
+  const fieldMap = [
+    [['firstName', 'first_name'], 'first_name', true], [['lastName', 'last_name'], 'last_name', true],
+    [['middleName', 'middle_name'], 'middle_name', true], [['suffix'], 'suffix', false],
+    [['universityId', 'university_id'], 'university_id', false], [['email'], 'email', false],
+    [['phoneNumber', 'phone_number'], 'phone_number', false], [['role'], 'role', false],
+    [['department'], 'department', false], [['program'], 'program', false], [['jobTitle', 'job_title'], 'job_title', false],
+    [['licenseNumber', 'license_number'], 'license_number', false], [['birthday'], 'birthday', false],
+    [['age'], 'age', false], [['sex'], 'sex', false], [['bloodType', 'blood_type'], 'blood_type', false],
+    [['civilStatus', 'civil_status'], 'civil_status', false], [['religion'], 'religion', false],
+    [['nationality'], 'nationality', false], [['homeAddress', 'home_address'], 'home_address', false],
+    [['yearLevel', 'year_level'], 'year_level', false], [['section'], 'section', false],
+    [['studentClassification', 'student_classification'], 'student_classification', false],
+    [['classification'], 'classification', false], [['isVerified', 'is_verified'], 'is_verified', false],
+    [['profileComplete', 'profile_complete'], 'profile_complete', false], [['isProfileSetup', 'is_profile_setup'], 'is_profile_setup', false],
+    [['emergencyContact'], 'emergency_contact', false], [['vaccinations'], 'vaccinations', false],
+    [['dentalHistory'], 'dental_history', false], [['surgicalHistory'], 'surgical_history', false]
+  ];
 
-  // Middle name - normalize to Title Case
-  if (updates.middleName !== undefined) dbUpdates.middle_name = normalizeName(updates.middleName);
-  else if (updates.middle_name !== undefined) dbUpdates.middle_name = normalizeName(updates.middle_name);
+  fieldMap.forEach(([keys, dbKey, doNormalize]) => {
+    const val = keys.map(k => updates[k]).find(v => v !== undefined);
+    if (val !== undefined) dbUpdates[dbKey] = doNormalize ? normalizeName(val) : val;
+  });
 
-  // Last name - normalize to Title Case
-  if (updates.lastName !== undefined) dbUpdates.last_name = normalizeName(updates.lastName);
-  else if (updates.last_name !== undefined) dbUpdates.last_name = normalizeName(updates.last_name);
-
-  // Suffix
-  if (updates.suffix !== undefined) dbUpdates.suffix = updates.suffix;
-
-  // University ID
-  if (updates.universityId !== undefined) dbUpdates.university_id = updates.universityId;
-  else if (updates.university_id !== undefined) dbUpdates.university_id = updates.university_id;
-
-  // Email
-  if (updates.email !== undefined) dbUpdates.email = updates.email;
-
-  // Phone number
-  if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
-  else if (updates.phone_number !== undefined) dbUpdates.phone_number = updates.phone_number;
-
-  // Role
-  if (updates.role !== undefined) dbUpdates.role = updates.role;
-
-  // Department
-  if (updates.department !== undefined) dbUpdates.department = updates.department;
-
-  // Program
-  if (updates.program !== undefined) dbUpdates.program = updates.program;
-
-  // Job title
-  if (updates.jobTitle !== undefined) dbUpdates.job_title = updates.jobTitle;
-  else if (updates.job_title !== undefined) dbUpdates.job_title = updates.job_title;
-
-  // License number
-  if (updates.licenseNumber !== undefined) dbUpdates.license_number = updates.licenseNumber;
-  else if (updates.license_number !== undefined) dbUpdates.license_number = updates.license_number;
-
-  // Birthday
-  if (updates.birthday !== undefined) dbUpdates.birthday = updates.birthday;
-
-  // Age
-  if (updates.age !== undefined) dbUpdates.age = updates.age;
-
-  // Sex
-  if (updates.sex !== undefined) dbUpdates.sex = updates.sex;
-
-  // Blood type
-  if (updates.bloodType !== undefined) dbUpdates.blood_type = updates.bloodType;
-  else if (updates.blood_type !== undefined) dbUpdates.blood_type = updates.blood_type;
-
-  // Civil status
-  if (updates.civilStatus !== undefined) dbUpdates.civil_status = updates.civilStatus;
-  else if (updates.civil_status !== undefined) dbUpdates.civil_status = updates.civil_status;
-
-  // Religion
-  if (updates.religion !== undefined) dbUpdates.religion = updates.religion;
-
-  // Nationality
-  if (updates.nationality !== undefined) dbUpdates.nationality = updates.nationality;
-
-  // Home address
-  if (updates.homeAddress !== undefined) dbUpdates.home_address = updates.homeAddress;
-  else if (updates.home_address !== undefined) dbUpdates.home_address = updates.home_address;
-
-  // Year level
-  if (updates.yearLevel !== undefined) dbUpdates.year_level = updates.yearLevel;
-  else if (updates.year_level !== undefined) dbUpdates.year_level = updates.year_level;
-
-  // Section
-  if (updates.section !== undefined) dbUpdates.section = updates.section;
-
-  // Student classification
-  if (updates.studentClassification !== undefined) dbUpdates.student_classification = updates.studentClassification;
-  else if (updates.student_classification !== undefined) dbUpdates.student_classification = updates.student_classification;
-
-  // Classification
-  if (updates.classification !== undefined) dbUpdates.classification = updates.classification;
-
-  // Is verified
-  if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
-  else if (updates.is_verified !== undefined) dbUpdates.is_verified = updates.is_verified;
-
-  // Profile complete (both camelCase and snake_case)
-  if (updates.profileComplete !== undefined) dbUpdates.profile_complete = updates.profileComplete;
-  else if (updates.profile_complete !== undefined) dbUpdates.profile_complete = updates.profile_complete;
-
-  // Profile setup (both camelCase and snake_case) — this was previously MISSING,
-  // which is why toggling "Profile Complete" in the admin UI never updated
-  // is_profile_setup even though the frontend was already sending it.
-  if (updates.isProfileSetup !== undefined) dbUpdates.is_profile_setup = updates.isProfileSetup;
-  else if (updates.is_profile_setup !== undefined) dbUpdates.is_profile_setup = updates.is_profile_setup;
-
-  // Emergency contact
-  if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
-
-  // Vaccinations
-  if (updates.vaccinations !== undefined) dbUpdates.vaccinations = updates.vaccinations;
-
-  // Dental history
-  if (updates.dentalHistory !== undefined) dbUpdates.dental_history = updates.dentalHistory;
-
-  // Surgical history
-  if (updates.surgicalHistory !== undefined) dbUpdates.surgical_history = updates.surgicalHistory;
-
-  // Handle password update
   if (updates.newPassword) {
-    const { data: authData, error: authError } = await supabase.auth.admin.updateUser(targetUid, {
-      password: updates.newPassword
-    });
-    if (authError) {
-      console.error('Password update error:', authError);
-      throw new Error('Failed to update password: ' + authError.message);
-    }
-    console.log('[adminUpdateUser] Password updated successfully');
+    const { error: authError } = await supabase.auth.admin.updateUser(targetUid, { password: updates.newPassword });
+    if (authError) throw new Error('Failed to update password: ' + authError.message);
   }
 
-  console.log('[adminUpdateUser] targetUid:', targetUid);
-  console.log('[adminUpdateUser] dbUpdates:', dbUpdates);
+  let { data, error } = await supabase.from('users').update(dbUpdates).eq('uid', targetUid).select().single();
 
-  // First try to find user by uid
-  let { data, error } = await supabase
-    .from('users')
-    .update(dbUpdates)
-    .eq('uid', targetUid)
-    .select()
-    .single();
-
-  // If no results with uid, try by id
-  if (!data && error && error.code === 'PGRST116') {
+  if (!data && error?.code === 'PGRST116') {
     console.log('[adminUpdateUser] No user found by uid, trying id');
-    const { data: dataById, error: errorById } = await supabase
-      .from('users')
-      .update(dbUpdates)
-      .eq('id', targetUid)
-      .select()
-      .single();
-
-    if (errorById) {
-      console.error('[adminUpdateUser] Update by id also failed:', errorById);
-      throw new Error(errorById.message || 'User not found');
-    }
-
-    data = dataById;
-    error = errorById;
-  }
-
-  if (error) {
-    console.error('Admin update error:', error);
+    const retry = await supabase.from('users').update(dbUpdates).eq('id', targetUid).select().single();
+    data = retry.data; error = retry.error;
+    if (error) throw new Error(error.message || 'User not found');
+  } else if (error) {
     throw new Error(error.message);
   }
 
-  console.log('[adminUpdateUser] Updated successfully - data:', data);
-
-  return {
-    uid:                  data.uid,
-    firstName:            data.first_name,
-    lastName:             data.last_name,
-    middleName:        data.middle_name || '',
-    suffix:               data.suffix || '',
-    email:                data.email,
-    role:                 data.role,
-    universityId:         data.university_id,
-    isVerified:           data.is_verified,
-    isProfileSetup:       data.is_profile_setup,
-    profileComplete:      data.profile_complete,
-    birthday:             data.birthday || '',
-    age:                  data.age || '',
-    sex:                  data.sex || '',
-    bloodType:            data.blood_type || '',
-    homeAddress:          data.home_address || '',
-    department:           data.department || '',
-    program:              data.program || '',
-    yearLevel:            data.year_level || '',
-    section:              data.section || '',
-    studentClassification: data.student_classification || '',
-    classification:       data.classification || '',
-    jobTitle:             data.job_title || '',
-    licenseNumber:        data.license_number || '',
-    phoneNumber:          data.phone_number || '',
-    emergencyContact:     data.emergency_contact || {},
-    vaccinations:         data.vaccinations || {},
-    dentalHistory:        data.dental_history || {},
-    surgicalHistory:      data.surgical_history || { operations: [], declined: false },
-  };
+  return formatUserResponse(data);
 };

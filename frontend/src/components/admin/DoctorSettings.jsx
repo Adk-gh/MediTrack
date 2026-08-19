@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\components\admin\DoctorSettings.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { getAuthHeaders, getValidToken } from '../../services/token.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
@@ -93,9 +94,14 @@ export const DoctorSettings = ({ isMobile }) => {
     fetchConfig();
   }, []);
 
-  const fetchConfig = async () => {
+const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_URL}/settings/doctor`);
+      const headers = await getAuthHeaders();
+
+      const res = await fetch(`${API_URL}/settings/doctor`, {
+        headers: headers
+      });
+
       if (res.ok) {
         const data = await res.json();
         setConfig(prev => ({ ...prev, ...data }));
@@ -124,12 +130,14 @@ export const DoctorSettings = ({ isMobile }) => {
     setSigPreview(URL.createObjectURL(file));
   };
 
-  const handleSave = async () => {
+const handleSave = async () => {
     setSaving(true);
     try {
+      const jsonHeaders = await getAuthHeaders();
+
       const res = await fetch(`${API_URL}/settings/doctor`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders,
         body: JSON.stringify({
           name: config.name,
           title: config.title,
@@ -140,11 +148,15 @@ export const DoctorSettings = ({ isMobile }) => {
       if (!res.ok) throw new Error('Server error saving details');
 
       if (signatureFile) {
+        const token = await getValidToken();
         const body = new FormData();
         body.append('signature', signatureFile);
 
         const sigRes = await fetch(`${API_URL}/settings/doctor/signature`, {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           body
         });
         if (!sigRes.ok) throw new Error('Server error uploading signature');

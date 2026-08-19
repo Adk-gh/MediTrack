@@ -5,19 +5,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 // ─── Imported Admin Components ────────────────────────────────────────────────
 import SystemConfigSettings from './admin/systemConfig';
 import StorageManager from './admin/storageManager';
-import SecuritySettings from './admin/securitySettings';
-import OcrSettings from '../features/admin-clinic/OcrSettings'; // Updated Path
+import OcrSettings from '../features/admin-clinic/OcrSettings';
 import DoctorSettings from './admin/DoctorSettings';
 import DentistSettings from './admin/DentistSettings';
 
-// ─── Imported Clinic Components ───────────────────────────────────────────────
-import ClinicGeneralSettings from './clinic/generalSettings';
-import ClinicNotificationsSettings from './clinic/notificationsSettings';
-import DataAndPrivacy from './clinic/DataPrivacy';
+// ─── Imported Shared Components ───────────────────────────────────────────────
+import GeneralSettings from './clinic/generalSettings';
 
 // ─── Imported Student Components ──────────────────────────────────────────────
-import StudentGeneralSettings from './student/generalSettings';
-import StudentNotificationSettings from './student/NotificationSettings';
 import StudentSupportSettings from './student/supportSettings';
 import StudentAboutSettings from './student/aboutSettings';
 
@@ -119,21 +114,24 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
   const getSectionsByRole = (role = '') => {
     const normalizedRole = role.toLowerCase();
 
-    // Admin Settings
+    // Admin Settings (Sysadmin)
     if (normalizedRole === 'sysadmin' || normalizedRole === 'administrator') {
       return [
+        { id: 'general', label: 'General', icon: GeneralIcon },
         { id: 'ocr', label: 'OCR Settings', icon: OcrIcon },
         { id: 'doctor', label: 'Doctor Settings', icon: DoctorIcon },
         { id: 'dentist', label: 'Dentist Settings', icon: DentistIcon },
         { id: 'storage', label: 'Storage Manager', icon: StorageIcon },
-        { id: 'security', label: 'Security', icon: LockIcon },
         { id: 'system', label: 'System Config', icon: SystemIcon },
+        { id: 'about', label: 'About', icon: InfoIcon },
       ];
     }
 
-    // Clinic Staff Settings
+    // Clinic Staff Settings (Doctor or Dentist)
     if (['nurse', 'doctor', 'dentist', 'staff', 'registrar'].includes(normalizedRole)) {
-      const staffSections = [];
+      const staffSections = [
+        { id: 'general', label: 'General', icon: GeneralIcon },
+      ];
 
       if (normalizedRole === 'doctor') {
         staffSections.push({ id: 'doctor', label: 'Doctor Settings', icon: DoctorIcon });
@@ -142,11 +140,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
         staffSections.push({ id: 'dentist', label: 'Dentist Settings', icon: DentistIcon });
       }
 
-      staffSections.push(
-        { id: 'notifications', label: 'Notifications', icon: BellIcon },
-        { id: 'data', label: 'Data & Privacy', icon: DataIcon },
-        { id: 'general', label: 'General', icon: GeneralIcon },
-      );
+      staffSections.push({ id: 'about', label: 'About', icon: InfoIcon });
 
       return staffSections;
     }
@@ -154,7 +148,6 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
     // Default / Student Settings
     return [
       { id: 'general', label: 'General', icon: GeneralIcon },
-      { id: 'notifications', label: 'Notifications', icon: BellIcon },
       { id: 'support', label: 'Support', icon: SupportIcon },
       { id: 'about', label: 'About', icon: InfoIcon },
     ];
@@ -201,26 +194,14 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
         return <DentistSettings />;
       case 'storage':
         return <StorageManager />;
-      case 'security':
-        return <SecuritySettings isMobile={isMobile} />;
       case 'system':
         return <SystemConfigSettings />;
 
-      // ── Shared/Split Components ──
+      // ── Shared Settings ──
       case 'general':
-        return isStaffOrAdmin
-          ? <ClinicGeneralSettings isMobile={isMobile} activeRole={activeRole} />
-          : <StudentGeneralSettings isMobile={isMobile} activeRole={activeRole} />;
+        return <GeneralSettings isMobile={isMobile} activeRole={activeRole} />;
 
-      case 'notifications':
-        return isStaffOrAdmin
-          ? <ClinicNotificationsSettings isMobile={isMobile} />
-          : <StudentNotificationSettings isMobile={isMobile} />;
-
-      case 'data':
-        return <DataAndPrivacy isMobile={isMobile} />;
-
-      // ── Student Components ──
+      // ── Student & Info Components ──
       case 'support':
         return <StudentSupportSettings isMobile={isMobile} />;
 
@@ -235,7 +216,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
   // ── Mobile layout ────────────────────────────────────────────────────────
   if (isMobile) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f8f6', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f4f8f6', overflow: 'hidden' }}>
         <div style={{ background: '#466460', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, height: 56, boxShadow: '0 2px 12px rgba(70,100,96,0.18)' }}>
           <button onClick={handleBack} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <BackIcon />

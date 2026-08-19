@@ -18,6 +18,7 @@ const archivesRoutes = require('../features/archives/archives.route');
 const settingsRoutes = require('./settingsRoutes');
 const storageRoutes = require('./storageRoutes');
 const systemConfigRoutes = require('./systemConfig.routes');
+const supportRoutes = require('./support');
 
 // 🟢 NEW: Webhook Routes (Must be imported and mounted)
 const webhookRoutes = require('./webhook.routes');
@@ -41,5 +42,5 @@ router.use('/archives', archivesRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/storage', storageRoutes);
 router.use('/system-config', systemConfigRoutes);
-
+router.use('/support', supportRoutes);
 module.exports = router;

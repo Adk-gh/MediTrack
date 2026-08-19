@@ -1,8 +1,9 @@
-//C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
+// C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../supabase';
 import notificationsService from '../services/notifications.service.js';
+import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -69,7 +70,7 @@ const getNotificationIcon = (type) => {
   }
 };
 
-const formatTimeAgo = (dateString) => {
+const formatTimeAgo = (dateString, t) => {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now - date;
@@ -81,23 +82,24 @@ const formatTimeAgo = (dateString) => {
   const diffMonths = Math.floor(diffDays / 30);
   const diffYears = Math.floor(diffDays / 365);
 
-  if (diffSecs < 10) return 'Just now';
-  if (diffSecs < 60) return `${diffSecs}s ago`;
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  if (diffWeeks < 4) return `${diffWeeks}w ago`;
-  if (diffMonths < 12) return `${diffMonths}mo ago`;
-  return `${diffYears}y ago`;
+  if (diffSecs < 10) return t('notifications.time.justNow', 'Just now');
+  if (diffSecs < 60) return t('notifications.time.secondsAgo', '{{count}}s ago', { count: diffSecs });
+  if (diffMins < 60) return t('notifications.time.minutesAgo', '{{count}}m ago', { count: diffMins });
+  if (diffHours < 24) return t('notifications.time.hoursAgo', '{{count}}h ago', { count: diffHours });
+  if (diffDays < 7) return t('notifications.time.daysAgo', '{{count}}d ago', { count: diffDays });
+  if (diffWeeks < 4) return t('notifications.time.weeksAgo', '{{count}}w ago', { count: diffWeeks });
+  if (diffMonths < 12) return t('notifications.time.monthsAgo', '{{count}}mo ago', { count: diffMonths });
+  return t('notifications.time.yearsAgo', '{{count}}y ago', { count: diffYears });
 };
 
 // ─── Notification Bell Button (for header) ─────────────────────────────────────
 export function UserNotificationBell({ onClick, count }) {
+  const { t } = useTranslation();
   return (
     <button
       onClick={onClick}
       className="relative p-2 rounded-full hover:bg-slate-50 transition-colors cursor-pointer"
-      aria-label="Notifications"
+      aria-label={t('notifications.title', 'Notifications')}
     >
       <div className="w-5 h-5 text-[#466460]">
         <BellIcon />
@@ -115,6 +117,7 @@ export function UserNotificationBell({ onClick, count }) {
 const PAGE_SIZE = 20;
 
 export function UserNotificationPanel({ isOpen, onClose }) {
+  const { t, i18n } = useTranslation();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -131,19 +134,28 @@ export function UserNotificationPanel({ isOpen, onClose }) {
 
         if (!authUid) return;
 
-        // Look up internal user ID from auth UID
+        // Look up internal user ID and preferences from auth UID
         const { data: profile } = await supabase
           .from('users')
-          .select('id')
+          .select('id, preferences')
           .eq('uid', authUid)
           .single();
 
         userIdRef.current = profile?.id || null;
+
+        // Sync language with user preferences
+        if (profile?.preferences?.language) {
+          const langCode = profile.preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
+          if (i18n.language !== langCode) {
+            i18n.changeLanguage(langCode);
+          }
+        }
+
       } catch {}
     };
 
     fetchUserId();
-  }, []);
+  }, [i18n]);
 
   // Fetch notifications when panel opens - always get fresh data
   useEffect(() => {
@@ -315,7 +327,7 @@ export function UserNotificationPanel({ isOpen, onClose }) {
             <div className="w-5 h-5 text-white">
               <BellIcon />
             </div>
-            <h3 className="text-white font-bold text-base">Notifications</h3>
+            <h3 className="text-white font-bold text-base">{t('notifications.title', 'Notifications')}</h3>
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {unreadCount}
@@ -328,7 +340,7 @@ export function UserNotificationPanel({ isOpen, onClose }) {
                 onClick={handleMarkAllAsRead}
                 className="text-white/70 hover:text-white text-xs font-medium px-2 py-1 transition-colors"
               >
-                Mark all read
+                {t('notifications.markAllRead', 'Mark all read')}
               </button>
             )}
             <button
@@ -353,8 +365,8 @@ export function UserNotificationPanel({ isOpen, onClose }) {
               <div className="w-12 h-12 mb-3 opacity-30">
                 <BellIcon />
               </div>
-              <p className="text-sm font-medium">No notifications yet</p>
-              <p className="text-xs opacity-60">You're all caught up!</p>
+              <p className="text-sm font-medium">{t('notifications.noNotifications', 'No notifications yet')}</p>
+              <p className="text-xs opacity-60">{t('notifications.caughtUp', "You're all caught up!")}</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -399,7 +411,7 @@ export function UserNotificationPanel({ isOpen, onClose }) {
                           {notification.message}
                         </p>
                         <p className="text-[10px] text-slate-400 mt-1.5">
-                          {formatTimeAgo(notification.createdAt)}
+                          {formatTimeAgo(notification.createdAt, t)}
                         </p>
                       </div>
                       {!notification.isRead && (
@@ -424,10 +436,10 @@ export function UserNotificationPanel({ isOpen, onClose }) {
               {loadingMore ? (
                 <>
                   <div className="w-4 h-4 border-2 border-[#466460] border-t-transparent rounded-full animate-spin" />
-                  Loading...
+                  {t('common.loading', 'Loading...')}
                 </>
               ) : (
-                'Load More Notifications'
+                t('notifications.loadMore', 'Load More Notifications')
               )}
             </button>
           </div>

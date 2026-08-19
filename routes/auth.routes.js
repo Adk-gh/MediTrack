@@ -1,367 +1,66 @@
 const express = require('express');
 const router = express.Router();
-
 const authController = require('../controllers/auth.controller');
 const upload = require('../middleware/upload');
 const rateLimit = require('express-rate-limit');
-
-// Handles IPv4 + IPv6 safely for rate-limit keys
 const { ipKeyGenerator } = require('express-rate-limit');
-
-// Authentication / Authorization middleware
 const { authorized } = require('../middleware/authorized');
-
-// Audit logger
 const { auditLog } = require('../middleware/auditLogger');
-
 const supabase = require('../configs/database');
 const { getSystemConfig } = require('../services/systemConfig.service');
 
-// =========================================================
-// DYNAMIC ROLE MIDDLEWARES
-// =========================================================
-
-// Allows Admin Roles ONLY (with clinical safety net)
+// Dynamic Role Middleware for Admins
 const allowDynamicAdmin = async (req, res, next) => {
   try {
     const userRole = req.user?.role?.toLowerCase();
-    if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
-    }
+    if (!userRole) return res.status(403).json({ message: "Access denied. No role found." });
 
     const config = await getSystemConfig();
-
     const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const allowedRoles = [...adminRoles, "sysadmin", "doctor", "dentist", "nurse"];
 
-    // Safety net: Keep sysadmin and core clinical roles as hardcoded fallbacks
-    const allowedRoles = [
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse"
-    ];
-
-    if (allowedRoles.includes(userRole)) {
-      return next();
-    }
-
-    return res.status(403).json({
-      message: "Access denied. Admin privileges required."
-    });
+    if (allowedRoles.includes(userRole)) return next();
+    return res.status(403).json({ message: "Access denied. Admin privileges required." });
   } catch (error) {
     console.error("[DynamicRoleCheck] Admin verification failed:", error);
     return res.status(500).json({ message: "Internal server error during role validation." });
   }
 };
 
+// Rate Limiters
+const clientIpKey = (req) => ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown');
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyGenerator: clientIpKey, message: { success: false, message: 'Too many login attempts, please try again after 15 minutes.' }, standardHeaders: true, legacyHeaders: false });
+const emailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, keyGenerator: clientIpKey, message: { success: false, message: 'Too many email requests, please try again after an hour.' }, standardHeaders: true, legacyHeaders: false });
+const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 50, keyGenerator: clientIpKey, message: { success: false, message: 'Too many accounts created from this network. Please try again later.' }, standardHeaders: true, legacyHeaders: false });
 
-// ---------------------------------------------------------
-// RATE-LIMIT KEY GENERATOR
-// ---------------------------------------------------------
-//
-// Uses the IP address that Express resolved after processing
-// the proxy headers.
-//
-// This means:
-//
-// User A → IP A → rate-limit bucket A
-// User B → IP B → rate-limit bucket B
-//
-// IPv6 addresses are normalized safely using
-// express-rate-limit's ipKeyGenerator helper.
-//
-// ---------------------------------------------------------
+// Public Routes
+router.post('/register', registerLimiter, upload.single('image'), auditLog('register', 'auth', (req) => `Registered new user account: ${req.body.email || 'Unknown'}`), authController.register);
 
-const clientIpKey = (req) => {
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-
-  return ipKeyGenerator(ip);
-};
-
-
-// ---------------------------------------------------------
-// RATE LIMITERS
-// ---------------------------------------------------------
-
-/**
- * Login
- *
- * Maximum of 5 attempts per IP every 15 minutes.
- *
- * Different users with different IPs receive separate
- * rate-limit buckets.
- */
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-
-  max: 5,
-
-  keyGenerator: clientIpKey,
-
-  message: {
-    success: false,
-    message:
-      'Too many login attempts, please try again after 15 minutes.'
-  },
-
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-
-/**
- * Email-related requests
- *
- * Used for:
- * - Forgot password
- * - Send verification
- * - Admin resend verification
- */
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-
-  max: 10,
-
-  keyGenerator: clientIpKey,
-
-  message: {
-    success: false,
-    message:
-      'Too many email requests, please try again after an hour.'
-  },
-
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-
-/**
- * Registration
- *
- * Allows enough requests for users behind a shared
- * university/campus network while still limiting abuse.
- */
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-
-  max: 50,
-
-  keyGenerator: clientIpKey,
-
-  message: {
-    success: false,
-    message:
-      'Too many accounts created from this network. Please try again later.'
-  },
-
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-
-// ---------------------------------------------------------
-// PUBLIC AUTHENTICATION ROUTES
-// ---------------------------------------------------------
-
-
-/**
- * 1. REGISTER
- *
- * Public route.
- *
- * Users are not authenticated yet, so `authorized`
- * must NOT be used here.
- */
-router.post(
-  '/register',
-
-  registerLimiter,
-
-  upload.single('image'),
-
-  auditLog(
-    'register',
-    'auth',
-    (req) =>
-      `Registered new user account: ${
-        req.body.email || 'Unknown'
-      }`
-  ),
-
-  authController.register
-);
-
-
-/**
- * 2. LOGIN
- *
- * Public route.
- *
- * `authorized` cannot be used because the user is
- * obtaining the access token here.
- */
-router.post(
-  '/login',
-
-  loginLimiter,
-
-  async (req, res, next) => {
-    let userDetails = '';
-
-    try {
-      const email = req.body.email?.toLowerCase();
-
-      if (email) {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select(`
-            first_name,
-            middle_name,
-            last_name,
-            university_id
-          `)
-          .eq('email', email)
-          .maybeSingle();
-
-        if (existingUser) {
-          userDetails = `
-            ${existingUser.first_name || ''}
-            ${existingUser.middle_name || ''}
-            ${existingUser.last_name || ''}
-          `
-            .trim()
-            .replace(/\s+/g, ' ');
-
-          if (existingUser.university_id) {
-            userDetails += ` (${existingUser.university_id})`;
-          }
-        }
+router.post('/login', loginLimiter, async (req, res, next) => {
+  let userDetails = '';
+  try {
+    const email = req.body.email?.toLowerCase();
+    if (email) {
+      const { data: existingUser } = await supabase.from('users').select(`first_name, middle_name, last_name, university_id`).eq('email', email).maybeSingle();
+      if (existingUser) {
+        userDetails = `${existingUser.first_name || ''} ${existingUser.middle_name || ''} ${existingUser.last_name || ''}`.trim().replace(/\s+/g, ' ');
+        if (existingUser.university_id) userDetails += ` (${existingUser.university_id})`;
       }
-
-    } catch (error) {
-      // Do not allow an audit lookup failure to
-      // prevent the login request.
-      console.error(
-        '[Auth Routes] Login audit lookup failed:',
-        error.message
-      );
     }
+  } catch (error) {
+    console.error('[Auth Routes] Login audit lookup failed:', error.message);
+  }
+  req.loginUserDetails = userDetails || req.body.email || 'Unknown';
+  next();
+}, auditLog('login', 'auth', (req) => `User logged in: ${req.body.email || 'Unknown'}${req.loginUserDetails ? ` - ${req.loginUserDetails}` : ''}`), authController.login);
 
-    req.loginUserDetails =
-      userDetails ||
-      req.body.email ||
-      'Unknown';
+router.post('/forgot-password', emailLimiter, authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
+router.post('/send-verification', emailLimiter, authController.sendVerificationEmail);
+router.post('/verify-email', authController.verifyEmail);
+router.get('/email-status', authController.getEmailStatus);
 
-    next();
-  },
-
-  auditLog(
-    'login',
-    'auth',
-    (req) => {
-      const details = req.loginUserDetails
-        ? ` - ${req.loginUserDetails}`
-        : '';
-
-      return (
-        `User logged in: ` +
-        `${req.body.email || 'Unknown'}` +
-        details
-      );
-    }
-  ),
-
-  authController.login
-);
-
-
-/**
- * 3. FORGOT PASSWORD
- *
- * Public route.
- */
-router.post(
-  '/forgot-password',
-  emailLimiter,
-  authController.forgotPassword
-);
-
-
-/**
- * 4. RESET PASSWORD
- *
- * Public route.
- *
- * Authentication is performed using the secure
- * reset token instead of the normal access token.
- */
-router.post(
-  '/reset-password',
-  authController.resetPassword
-);
-
-
-/**
- * 5. SEND EMAIL VERIFICATION
- *
- * Public route.
- */
-router.post(
-  '/send-verification',
-  emailLimiter,
-  authController.sendVerificationEmail
-);
-
-
-/**
- * 6. VERIFY EMAIL
- *
- * Public route.
- */
-router.post(
-  '/verify-email',
-  authController.verifyEmail
-);
-
-
-// ---------------------------------------------------------
-// PROTECTED AUTHENTICATION ROUTES
-// ---------------------------------------------------------
-
-
-/**
- * 7. ADMIN RESEND VERIFICATION
- *
- * Requires:
- *
- * 1. Valid Supabase JWT
- * 2. Admin role
- */
-router.post(
-  '/admin-resend-verification',
-
-  emailLimiter,
-
-  authorized,
-
-  allowDynamicAdmin,
-
-  auditLog(
-    'resend_verification',
-    'auth',
-    (req) =>
-      `Administrator ${
-        req.user?.email || req.user?.uid || 'Unknown'
-      } requested a verification email resend.`
-  ),
-
-  authController.adminResendVerification
-);
-
-
-// ---------------------------------------------------------
-// EXPORT ROUTER
-// ---------------------------------------------------------
+// Protected Routes
+router.post('/admin-resend-verification', emailLimiter, authorized, allowDynamicAdmin, auditLog('resend_verification', 'auth', (req) => `Administrator ${req.user?.email || req.user?.uid || 'Unknown'} requested a verification email resend.`), authController.adminResendVerification);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+//C:\Users\HP\MediTrack\controllers\auth.controller.js
 const userService = require('../features/user/user.service');
 const supabase = require('../configs/database');
 const { sendEmail } = require('../services/email.service');
@@ -172,15 +173,15 @@ exports.resetPassword = async (req, res) => {
       .single();
 
     if (fetchError) {
-  console.log('>>> [Supabase Fetch Error]:', fetchError);
-}
-if (!user) {
-  console.log('>>> [Missing User]: No user row matched this token/email combo.');
-}
+      console.log('>>> [Supabase Fetch Error]:', fetchError);
+    }
+    if (!user) {
+      console.log('>>> [Missing User]: No user row matched this token/email combo.');
+    }
 
-if (fetchError || !user) {
-  return res.status(400).json({ success: false, message: 'Invalid reset token or email mismatch' });
-}
+    if (fetchError || !user) {
+      return res.status(400).json({ success: false, message: 'Invalid reset token or email mismatch' });
+    }
 
     if (new Date(user.reset_password_expires_at) < new Date()) {
       // Optional: Clear expired token
@@ -252,7 +253,7 @@ exports.register = async (req, res) => {
 
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
     // In register, sendVerificationEmail, and adminResendVerification:
-  const verifyUrl = `${baseUrl}/#/verify-email?token=${verifyToken}&email=${encodeURIComponent(email.toLowerCase())}`;
+    const verifyUrl = `${baseUrl}/#/verify-email?token=${verifyToken}&email=${encodeURIComponent(email.toLowerCase())}`;
 
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -564,5 +565,35 @@ exports.login = async (req, res) => {
     console.error("Login Error:", error.message);
     const statusCode = error.statusCode || 401;
     return res.status(statusCode).json({ success: false, message: error.message || "Login failed." });
+  }
+};
+
+// ---------------------------------------------------------
+// NEW EMAIL STATUS POLLING ENDPOINT
+// ---------------------------------------------------------
+exports.getEmailStatus = async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email query parameter is required' });
+    }
+
+    // Check Supabase for the latest status
+    const { data, error } = await supabase
+      .from('email_logs') // Ensure this matches the table name you used in your webhook
+      .select('status')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error || !data) {
+      return res.status(200).json({ status: 'pending' }); // Default to pending if not found yet
+    }
+
+    return res.status(200).json({ status: data.status });
+
+  } catch (error) {
+    console.error('[Auth] Error checking email status:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };

@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\components\admin\DentistSettings.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { getAuthHeaders, getValidToken } from '../../services/token.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
@@ -89,9 +90,14 @@ export const DentistSettings = ({ isMobile }) => {
     fetchConfig();
   }, []);
 
-  const fetchConfig = async () => {
+const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_URL}/settings/dentist`);
+      const headers = await getAuthHeaders();
+
+      const res = await fetch(`${API_URL}/settings/dentist`, {
+        headers: headers
+      });
+
       if (res.ok) {
         const data = await res.json();
         setConfig(prev => ({ ...prev, ...data }));
@@ -120,13 +126,14 @@ export const DentistSettings = ({ isMobile }) => {
     setSigPreview(URL.createObjectURL(file));
   };
 
-  const handleSave = async () => {
+const handleSave = async () => {
     setSaving(true);
     try {
-      // 1. Update text info
+      // 1. Update text info using getAuthHeaders()
+      const jsonHeaders = await getAuthHeaders();
       const res = await fetch(`${API_URL}/settings/dentist`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders,
         body: JSON.stringify({
           name: config.name,
           title: config.title
@@ -136,11 +143,16 @@ export const DentistSettings = ({ isMobile }) => {
 
       // 2. Upload signature if attached
       if (signatureFile) {
+        const token = await getValidToken(); // Only get the token, not the JSON headers
         const body = new FormData();
         body.append('signature', signatureFile);
 
         const sigRes = await fetch(`${API_URL}/settings/dentist/signature`, {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+            // Notice we leave Content-Type empty so the browser handles it automatically
+          },
           body
         });
         if (!sigRes.ok) throw new Error('Server error uploading signature');
@@ -158,7 +170,6 @@ export const DentistSettings = ({ isMobile }) => {
     }
     setSaving(false);
   };
-
   const currentSigSrc = sigPreview || config.signatureUrl;
   const containerStyle = { padding: isMobile ? '16px 12px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 };
 

@@ -2,11 +2,7 @@ const express = require('express');
 const router = express.Router();
 const webhookController = require('../controllers/webhook.controller');
 
-// Use express.raw just for this route to preserve the body for Svix signature verification
-router.post(
-  '/resend',
-  express.raw({ type: 'application/json' }),
-  webhookController.resendWebhook
-);
+// The function name here MUST match what is exported in webhook.controller.js
+router.post('/resend', webhookController.handleResendWebhook);
 
 module.exports = router;

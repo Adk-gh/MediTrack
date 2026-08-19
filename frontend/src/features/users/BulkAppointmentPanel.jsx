@@ -3,15 +3,16 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { supabase } from '../../supabase';
 import { createBulkAppointment } from '../../services/appointments.service';
+import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const BULK_PURPOSES = [
-  'Educational Tour',
-  'Class Medical Exam',
-  'Class Dental Exam',
-  'Group Health Screening',
-  'Other',
+const BULK_PURPOSES_OPTS = [
+  { value: 'Educational Tour', key: 'educationalTour' },
+  { value: 'Class Medical Exam', key: 'classMedicalExam' },
+  { value: 'Class Dental Exam', key: 'classDentalExam' },
+  { value: 'Group Health Screening', key: 'groupHealthScreening' },
+  { value: 'Other', key: 'other' },
 ];
 
 const STATUS_STYLES = {
@@ -74,8 +75,39 @@ async function getFreshToken() {
   return accessToken;
 }
 
+// ── Date Formatting Helper ──
+const formatDisplayDateWithMonth = (raw, preferences) => {
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw);
+
+  const formatString = preferences?.dateFormat?.toUpperCase() || 'MM/DD/YYYY';
+  const monthStr = date.toLocaleDateString('en-US', { month: 'long' });
+  const dayStr = String(date.getDate()).padStart(2, '0');
+  const yearStr = date.getFullYear();
+
+  if (formatString.startsWith('DD')) {
+    return `${dayStr} ${monthStr} ${yearStr}`;
+  } else if (formatString.startsWith('YYYY')) {
+    return `${yearStr} ${monthStr} ${dayStr}`;
+  } else {
+    return `${monthStr} ${dayStr}, ${yearStr}`;
+  }
+};
+
 export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
+  const { t, i18n } = useTranslation();
   const fileInputRef = useRef(null);
+
+  // Sync i18next with the user's database preference
+  useEffect(() => {
+    if (userProfile?.preferences?.language) {
+      const langCode = userProfile.preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
+      if (i18n.language !== langCode) {
+        i18n.changeLanguage(langCode);
+      }
+    }
+  }, [userProfile?.preferences?.language, i18n]);
 
   // ── Dashboard View State ──
   const [showForm, setShowForm] = useState(false);
@@ -126,15 +158,18 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
 
   const groupedHistory = useMemo(() => {
     const groups = {};
+    const prefs = userProfile?.preferences || {};
     history.forEach((appt) => {
       const date = new Date(appt.created_at || appt.bookedAt || Date.now());
-      const dateStr = date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-      const key = `${dateStr} | ${appt.reason || appt.service_type}`;
+      const displayDate = formatDisplayDateWithMonth(date, prefs);
+      const sortDate = date.toISOString().split('T')[0];
+
+      const key = `${sortDate} | ${displayDate} | ${appt.reason || appt.service_type}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(appt);
     });
     return Object.entries(groups).sort((a, b) => new Date(b[0].split(' | ')[0]) - new Date(a[0].split(' | ')[0]));
-  }, [history]);
+  }, [history, userProfile?.preferences]);
 
   const togglePurpose = (purpose) => {
     setSelectedPurposes((prev) => (prev.includes(purpose) ? prev.filter((p) => p !== purpose) : [...prev, purpose]));
@@ -151,13 +186,13 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
     reader.onload = () => {
       const ids = parseCsvToIds(String(reader.result || ''));
       if (ids.length === 0) {
-        setParseError('No University IDs found. Make sure the CSV has a "university_id" column, or one ID per row.');
+        setParseError(t('bulk.errNoIds', 'No University IDs found. Make sure the CSV has a "university_id" column, or one ID per row.'));
         setStudentIds([]);
         return;
       }
       setStudentIds(ids);
     };
-    reader.onerror = () => setParseError('Could not read that file. Please try again.');
+    reader.onerror = () => setParseError(t('bulk.errRead', 'Could not read that file. Please try again.'));
     reader.readAsText(file);
   };
 
@@ -181,7 +216,6 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
     setSubmitError('');
     setResult(null);
 
-    // Differentiate Dental vs Medical for notification routing
     const isDental = selectedPurposes.some((p) => p.toLowerCase().includes('dent') || p.toLowerCase().includes('oral') || p.toLowerCase().includes('tooth'));
     const resolvedServiceType = isDental ? 'Dental Examination' : (selectedPurposes.join(', ') || 'Medical Examination');
 
@@ -206,7 +240,7 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
       setTimeout(() => setShowForm(false), 2500);
     } catch (err) {
       console.error('[BulkAppointmentPanel] Submission Error:', err);
-      setSubmitError(err.message || 'Could not submit the bulk request. Please try again.');
+      setSubmitError(err.message || t('bulk.errSubmit', 'Could not submit the bulk request. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -223,28 +257,28 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
               onClick={() => setShowForm(false)}
               className="text-[12px] font-bold text-[#6b8577] hover:text-[#1a2e22] transition-colors mb-6 flex items-center gap-2"
             >
-              <i className="fa-solid fa-arrow-left"></i> Back to Class Requests
+              <i className="fa-solid fa-arrow-left"></i> {t('bulk.backToClassRequests', 'Back to Class Requests')}
             </button>
 
             <div className="mb-6">
-              <div className="text-[16px] font-bold text-[#1a2e22]">New Class Bulk Request</div>
+              <div className="text-[16px] font-bold text-[#1a2e22]">{t('bulk.newBulkRequest', 'New Class Bulk Request')}</div>
               <div className="text-[12px] text-[#6b8577] mt-1">
-                Upload a CSV of your students' University IDs to request appointments for the whole group.
+                {t('bulk.uploadCsvDesc', "Upload a CSV of your students' University IDs to request appointments for the whole group.")}
               </div>
             </div>
 
             <div className="flex flex-col gap-5">
               <div className="bg-white border border-[#ddeee5] rounded-2xl px-5 py-4">
-                <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">Requested by</div>
+                <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">{t('bulk.requestedBy', 'Requested by')}</div>
                 <div className="text-[14px] font-bold text-[#1a2e22]">{currentPatient.name}</div>
                 <div className="text-[12px] text-[#6b8577] mt-1">
-                  {userProfile?.university_id || currentPatient.idno || 'ID Not Set'} · {currentPatient.dept}
+                  {userProfile?.university_id || currentPatient.idno || t('appointments.idNotSet', 'ID Not Set')} · {currentPatient.dept}
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
                 <label className="text-[12px] font-bold text-[#466460] uppercase tracking-widest">
-                  Student List (CSV) <span className="normal-case font-medium text-[#9bb5a5]">* must include University ID</span>
+                  {t('bulk.studentListCsv', 'Student List (CSV)')} <span className="normal-case font-medium text-[#9bb5a5]">{t('bulk.mustIncludeId', '* must include University ID')}</span>
                 </label>
 
                 <div className="border border-dashed border-[#c6dfd0] rounded-2xl px-4 py-8 flex flex-col items-center gap-3 bg-white">
@@ -260,8 +294,8 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                 {studentIds.length > 0 && (
                   <div className="border border-[#ddeee5] rounded-2xl px-4 py-4 bg-white mt-2">
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-[12px] font-bold text-[#1a2e22]">{studentIds.length} student(s) loaded</div>
-                      <button onClick={resetFile} disabled={submitting} className="text-[11px] font-bold text-[#9bb5a5] hover:text-[#dc2626]">Clear</button>
+                      <div className="text-[12px] font-bold text-[#1a2e22]">{t('bulk.studentsLoaded', '{{count}} student(s) loaded', { count: studentIds.length })}</div>
+                      <button onClick={resetFile} disabled={submitting} className="text-[11px] font-bold text-[#9bb5a5] hover:text-[#dc2626]">{t('common.clear', 'Clear')}</button>
                     </div>
                     <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">
                       {studentIds.map((id) => (
@@ -276,25 +310,25 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
 
               <div className="flex flex-col gap-2 mt-2">
                 <label className="text-[12px] font-bold text-[#466460] uppercase tracking-widest">
-                  Purpose <span className="normal-case font-medium text-[#9bb5a5]">* select all that apply</span>
+                  {t('appointments.purpose', 'Purpose')} <span className="normal-case font-medium text-[#9bb5a5]">{t('appointments.selectAllThatApply', '* select all that apply')}</span>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {BULK_PURPOSES.map((p) => {
-                    const checked = selectedPurposes.includes(p);
+                  {BULK_PURPOSES_OPTS.map((p) => {
+                    const checked = selectedPurposes.includes(p.value);
                     return (
-                      <label key={p} className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border cursor-pointer transition-all text-[13px] font-bold select-none ${checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-white border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5]'} ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <label key={p.key} className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border cursor-pointer transition-all text-[13px] font-bold select-none ${checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-white border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5]'} ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         <span className={`flex-shrink-0 w-5 h-5 rounded-[6px] border-2 flex items-center justify-center transition-all ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}>
                           {checked && <svg width="10" height="8" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                         </span>
-                        <input type="checkbox" className="sr-only" checked={checked} onChange={() => !submitting && togglePurpose(p)} disabled={submitting} />
-                        {p}
+                        <input type="checkbox" className="sr-only" checked={checked} onChange={() => !submitting && togglePurpose(p.value)} disabled={submitting} />
+                        {t(`bulk.purposes.${p.key}`, p.value)}
                       </label>
                     );
                   })}
                 </div>
                 {selectedPurposes.includes('Other') && (
                   <textarea
-                    placeholder="Please specify the purpose..."
+                    placeholder={t('bulk.specifyPurpose', 'Please specify the purpose...')}
                     value={otherPurpose}
                     onChange={(e) => setOtherPurpose(e.target.value)}
                     onPaste={(e) => e.preventDefault()}
@@ -307,7 +341,7 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
 
               <div className="flex items-start gap-3 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-5 py-4 text-[12px] text-[#854F0B] mt-2">
                 <i className="fa-solid fa-circle-info mt-[2px] shrink-0 text-[14px]"></i>
-                <span>Each student on the list gets an individual appointment request. Any University ID that doesn't match an existing student record will be skipped and reported back to you.</span>
+                <span>{t('bulk.infoNotice', 'Each student on the list gets an individual appointment request. Any University ID that doesn\'t match an existing student record will be skipped and reported back to you.')}</span>
               </div>
 
               {submitError && (
@@ -321,18 +355,18 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                 <div className="flex flex-col gap-2 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl px-5 py-4 text-[13px] text-[#3B6D11]">
                   <div className="font-bold flex items-center gap-2">
                     <i className="fa-solid fa-circle-check text-[16px]"></i>
-                    {result.created?.length || 0} appointment(s) created.
+                    {t('bulk.appointmentsCreated', '{{count}} appointment(s) created.', { count: result.created?.length || 0 })}
                   </div>
                   {result.notFoundIds?.length > 0 && (
                     <div className="text-[12px] font-medium text-[#854F0B]">
-                      {result.notFoundIds.length} ID(s) not found: {result.notFoundIds.join(', ')}
+                      {t('bulk.idsNotFound', '{{count}} ID(s) not found:', { count: result.notFoundIds.length })} {result.notFoundIds.join(', ')}
                     </div>
                   )}
                 </div>
               )}
 
               <button onClick={handleSubmit} disabled={!canSubmit} className="w-full bg-[#466460] border-none py-3.5 mt-2 rounded-[40px] font-bold text-[14px] text-white cursor-pointer hover:bg-[#364e4a] disabled:opacity-40 transition-all flex items-center justify-center gap-2 shadow-sm">
-                {submitting ? <><i className="fa-solid fa-spinner fa-spin text-[12px]"></i> Submitting…</> : `Submit for ${studentIds.length || 0} Student(s)`}
+                {submitting ? <><i className="fa-solid fa-spinner fa-spin text-[12px]"></i> {t('bulk.submitting', 'Submitting…')}</> : t('bulk.submitForStudents', 'Submit for {{count}} Student(s)', { count: studentIds.length || 0 })}
               </button>
             </div>
           </div>
@@ -341,9 +375,9 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
           <div className="flex flex-col gap-6 animate-fadeIn">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-[18px] font-bold text-[#1a2e22]">Class Bulk Requests</h2>
+                <h2 className="text-[18px] font-bold text-[#1a2e22]">{t('appointments.classBulkRequests', 'Class Bulk Requests')}</h2>
                 <p className="text-[12px] font-medium text-[#6b8577] mt-1">
-                  Monitor the status of appointments requested for your students.
+                  {t('bulk.monitorDesc', 'Monitor the status of appointments requested for your students.')}
                 </p>
               </div>
               <button
@@ -351,31 +385,31 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                 className="bg-[#466460] text-white border-none py-2.5 px-5 rounded-xl font-bold text-[12px] flex items-center gap-2 hover:bg-[#364e4a] transition-all cursor-pointer shadow-sm"
               >
                 <i className="fa-solid fa-plus text-[11px]"></i>
-                New Request
+                {t('bulk.newRequest', 'New Request')}
               </button>
             </div>
 
             {loadingHistory ? (
               <div className="text-center py-12 text-[#9bb5a5] text-[13px] font-bold">
                 <i className="fa-solid fa-spinner fa-spin block text-3xl mb-3 text-[#c6dfd0]"></i>
-                Loading your class requests...
+                {t('bulk.loadingRequests', 'Loading your class requests...')}
               </div>
             ) : groupedHistory.length === 0 ? (
               <div className="text-center py-16 text-[#9bb5a5] text-[13px] font-medium border border-dashed border-[#c6dfd0] rounded-3xl bg-white shadow-sm">
                 <i className="fa-regular fa-folder-open block text-4xl mb-4 text-[#c6dfd0]"></i>
-                No class bulk requests found.<br/>
-                Click "New Request" above to upload a CSV.
+                {t('bulk.noRequestsFound1', 'No class bulk requests found.')}<br/>
+                {t('bulk.noRequestsFound2', 'Click "New Request" above to upload a CSV.')}
               </div>
             ) : (
               <div className="flex flex-col gap-8 pb-6">
                 {groupedHistory.map(([groupKey, appts]) => {
-                  const [date, reason] = groupKey.split(' | ');
+                  const [, displayDate, reason] = groupKey.split(' | ');
                   return (
                     <div key={groupKey} className="flex flex-col gap-3">
                       <div className="flex items-center justify-between border-b-2 border-[#ddeee5] pb-2">
                         <div className="text-[14px] font-bold text-[#1a2e22]">{reason}</div>
                         <div className="text-[11px] font-bold text-[#6b8577] bg-[#eef3f2] px-3 py-1.5 rounded-lg border border-[#ddeee5]">
-                          Requested on {date}
+                          {t('bulk.requestedOn', 'Requested on')} {displayDate}
                         </div>
                       </div>
 
@@ -386,19 +420,19 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                             <div key={appt.id} className="bg-white border border-[#ddeee5] rounded-2xl p-4 flex justify-between items-center hover:border-[#9bb5a5] transition-colors shadow-sm">
                               <div>
                                 <div className="text-[14px] font-bold text-[#1a2e22]">
-                                  {appt.patient_name || 'Unknown Student'}
+                                  {appt.patient_name || t('bulk.unknownStudent', 'Unknown Student')}
                                 </div>
                                 <div className="text-[11px] font-medium text-[#6b8577] mt-0.5">
-                                  ID: {appt.users?.university_id || '—'}
+                                  {t('bulk.idPrefix', 'ID:')} {appt.users?.university_id || '—'}
                                 </div>
                               </div>
                               <div className="text-right flex flex-col items-end gap-1.5">
                                 <span className={`text-[11px] font-bold px-3 py-1 rounded-lg ${style.bg} ${style.text}`}>
-                                  {style.label}
+                                  {t(`appointments.status.${(appt.status || 'pending').toLowerCase()}`, style.label)}
                                 </span>
                                 {appt.time && appt.status?.toLowerCase() === 'approved' && (
                                   <div className="text-[10px] text-[#466460] font-bold bg-[#eef3f2] px-2 py-1 rounded-md">
-                                    {appt.month}/{appt.day}/{appt.year} @ {appt.time}
+                                    {formatDisplayDateWithMonth(`${appt.year}-${String(appt.month).padStart(2, '0')}-${String(appt.day).padStart(2, '0')}`, userProfile?.preferences)} @ {appt.time}
                                   </div>
                                 )}
                               </div>

@@ -4,6 +4,8 @@ import axios from 'axios';
 import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import consultationsService from '../../services/consultations.service';
+import { formatUserDate } from '../../utils/dateFormat';
+import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 // ── CACHE KEYS ─────────────────────────────────────────────────────────────
 const MSG_CACHE_KEY      = 'meditrack_chat_messages';
@@ -95,27 +97,62 @@ const formatTime = (ts) => {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const formatDate = (ts) => {
+// ── Date Formatting Helpers ──
+const formatDisplayDateWithMonth = (raw, preferences) => {
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw);
+
+  const formatString = preferences?.dateFormat?.toUpperCase() || 'MM/DD/YYYY';
+  const monthStr = date.toLocaleDateString('en-US', { month: 'short' });
+  const dayStr = String(date.getDate()).padStart(2, '0');
+  const yearStr = date.getFullYear();
+
+  if (formatString.startsWith('DD')) {
+    return `${dayStr} ${monthStr} ${yearStr}`;
+  } else if (formatString.startsWith('YYYY')) {
+    return `${yearStr} ${monthStr} ${dayStr}`;
+  } else {
+    return `${monthStr} ${dayStr}, ${yearStr}`;
+  }
+};
+
+const formatDate = (ts, preferences, t) => {
   if (!ts) return '';
   const d = new Date(ts);
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  if (d.toDateString() === today.toDateString()) return t('consultation.relativeDates.today', 'Today');
+  if (d.toDateString() === yesterday.toDateString()) return t('consultation.relativeDates.yesterday', 'Yesterday');
+  return formatDisplayDateWithMonth(ts, preferences);
 };
 
 // ── Appointment date/time formatting + countdown helpers ───────────────────
-const formatApptDateTime = (appt) => {
+const formatApptDateTime = (appt, preferences) => {
   if (!appt?.year || !appt?.month || !appt?.day || !appt?.time) return '';
   const [h, m] = appt.time.split(':').map(Number);
   const d = new Date(appt.year, appt.month - 1, appt.day, h, m);
-  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }) +
-    ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  const formatString = preferences?.dateFormat?.toUpperCase() || 'MM/DD/YYYY';
+  const monthStr = d.toLocaleDateString('en-US', { month: 'long' });
+  const dayStr = String(d.getDate()).padStart(2, '0');
+  const yearStr = d.getFullYear();
+
+  let datePart = '';
+  if (formatString.startsWith('DD')) {
+    datePart = `${dayStr} ${monthStr} ${yearStr}`;
+  } else if (formatString.startsWith('YYYY')) {
+    datePart = `${yearStr} ${monthStr} ${dayStr}`;
+  } else {
+    datePart = `${monthStr} ${dayStr}, ${yearStr}`;
+  }
+
+  return datePart + ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 
 function ApptCountdown({ targetDate }) {
+  const { t } = useTranslation();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -127,7 +164,7 @@ function ApptCountdown({ targetDate }) {
 
   const diffMs = targetDate - now;
   if (diffMs <= 0) {
-    return <span className="text-[13px] font-bold text-[#1a5c3a]">Starting now…</span>;
+    return <span className="text-[13px] font-bold text-[#1a5c3a]">{t('consultation.startingNow', 'Starting now…')}</span>;
   }
 
   const totalSeconds = Math.floor(diffMs / 1000);
@@ -145,12 +182,12 @@ function ApptCountdown({ targetDate }) {
 
   return (
     <div className="flex items-center justify-center gap-2 mt-3">
-      {days > 0 && <Unit value={days} label="Days" />}
-      <Unit value={hours} label="Hrs" />
+      {days > 0 && <Unit value={days} label={t('consultation.days', 'Days')} />}
+      <Unit value={hours} label={t('consultation.hrs', 'Hrs')} />
       <span className="text-xl font-extrabold text-[#c4dbd8]">:</span>
-      <Unit value={minutes} label="Min" />
+      <Unit value={minutes} label={t('consultation.min', 'Min')} />
       <span className="text-xl font-extrabold text-[#c4dbd8]">:</span>
-      <Unit value={seconds} label="Sec" />
+      <Unit value={seconds} label={t('consultation.sec', 'Sec')} />
     </div>
   );
 }
@@ -220,14 +257,14 @@ function LinkifiedText({ text, isPatient = false }) {
 }
 
 const INITIAL_OPTIONS = [
-  { label: '🤒 Illness / Fever',            type: 'medical' },
-  { label: '🤕 Injury / Pain',              type: 'medical' },
-  { label: '💊 Prescription / Medicine',    type: 'medical' },
-  { label: '📄 Medical Certificate',        type: 'medical' },
-  { label: '🩺 Follow-up Check-up',         type: 'medical' },
-  { label: '🦷 Toothache / Pain',           type: 'dental'  },
-  { label: '🔍 Dental Check-up',            type: 'dental'  },
-  { label: '😬 Oral Health Concern',        type: 'dental'  },
+  { key: 'illnessFever',         defaultLabel: '🤒 Illness / Fever',          type: 'medical' },
+  { key: 'injuryPain',           defaultLabel: '🤕 Injury / Pain',            type: 'medical' },
+  { key: 'prescriptionMedicine', defaultLabel: '💊 Prescription / Medicine',    type: 'medical' },
+  { key: 'medicalCertificate',   defaultLabel: '📄 Medical Certificate',        type: 'medical' },
+  { key: 'followUpCheckup',      defaultLabel: '🩺 Follow-up Check-up',         type: 'medical' },
+  { key: 'toothachePain',        defaultLabel: '🦷 Toothache / Pain',           type: 'dental'  },
+  { key: 'dentalCheckup',        defaultLabel: '🔍 Dental Check-up',            type: 'dental'  },
+  { key: 'oralHealthConcern',    defaultLabel: '😬 Oral Health Concern',        type: 'dental'  },
 ];
 
 const MSG_PAGE_SIZE = 30;
@@ -264,6 +301,7 @@ const PullIndicator = ({ indicatorRef }) => (
 );
 
 export default function ConsultationUsers() {
+  const { t, i18n } = useTranslation();
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const profileCacheRef = useRef(readProfileCache());
   const profileCache    = profileCacheRef.current;
@@ -286,6 +324,7 @@ export default function ConsultationUsers() {
   const [clinicUnreadCount,   setClinicUnreadCount]   = useState(0);
   const [hasRecords,          setHasRecords]          = useState(false);
   const [loadingRecords,      setLoadingRecords]      = useState(true);
+  const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -300,6 +339,16 @@ export default function ConsultationUsers() {
   const [loadingOnlineAppt,   setLoadingOnlineAppt]   = useState(true);
   const [lastEndedByType,     setLastEndedByType]     = useState({ medical: null, dental: null });
   const lastEndedByTypeRef = useRef({ medical: null, dental: null });
+
+  // Sync i18next with the user's database preference
+  useEffect(() => {
+    if (preferences?.language) {
+      const langCode = preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
+      if (i18n.language !== langCode) {
+        i18n.changeLanguage(langCode);
+      }
+    }
+  }, [preferences?.language, i18n]);
 
   const updateLastEndedByType = useCallback((next) => {
     lastEndedByTypeRef.current = next;
@@ -595,7 +644,7 @@ export default function ConsultationUsers() {
       // ALWAYS fetch the correct internal user profile using the current Auth UID
       const { data: profiles, error } = await supabase
         .from('users')
-        .select('id, first_name, last_name')
+        .select('id, first_name, last_name, preferences')
         .eq('uid', authUid)
         .limit(1);
 
@@ -605,6 +654,13 @@ export default function ConsultationUsers() {
         setLoadingRecords(false);
         setLoadingOnlineAppt(false);
         return;
+      }
+
+      if (profile.preferences) {
+        setPreferences({
+          language: profile.preferences.language || 'English',
+          dateFormat: profile.preferences.dateFormat || 'MM/DD/YYYY',
+        });
       }
 
       const name = `${profile.first_name} ${profile.last_name}`.trim();
@@ -1176,7 +1232,7 @@ export default function ConsultationUsers() {
           sender_id: null,
           sender_name: 'System',
           sender_role: 'system',
-          message: `Connecting you to the ${option.type === 'dental' ? 'Dental' : 'Medical'} team... They will be with you shortly. 💬`,
+          message: t('consultation.connecting', `Connecting you to the {{type}} team... They will be with you shortly. 💬`, { type: option.type === 'dental' ? t('records.dental') : t('records.medical') }),
           created_at: new Date(Date.now() + 100).toISOString(),
         }
       ]);
@@ -1314,7 +1370,7 @@ export default function ConsultationUsers() {
     const groups = [];
     let lastDate = null;
     messages.forEach((msg) => {
-      const dateLabel = formatDate(msg.created_at);
+      const dateLabel = formatDate(msg.created_at, preferences, t);
       if (dateLabel !== lastDate) {
         groups.push({ type: 'date', label: dateLabel, key: `date-${msg.created_at}` });
         lastDate = dateLabel;
@@ -1322,19 +1378,22 @@ export default function ConsultationUsers() {
       groups.push(msg);
     });
     return groups;
-  }, [messages]);
+  }, [messages, preferences, t]);
 
   const typeConfig = useMemo(() => ({
-    generic: { label: 'MediTrack', sublabel: 'Assistant',        accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
-    medical: { label: 'Medical',   sublabel: 'Doctors & Nurses', accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
-    dental:  { label: 'Dental',    sublabel: 'Dentists',         accent: '#1a4a7a', accentLight: '#e8f0fa', accentBorder: '#b2c8e8' },
-  }), []);
+    generic: { label: 'MediTrack', sublabel: t('consultation.roles.assistant', 'Assistant'),       accent: '#466460', accentLight: '#e0eceb', accentBorder: '#c4dbd8' },
+    medical: { label: t('records.medical', 'Medical'),  sublabel: t('consultation.roles.doctorsNurses', 'Doctors & Nurses'), accent: '#1a5c3a', accentLight: '#e8f5ee', accentBorder: '#b2d9c2' },
+    dental:  { label: t('records.dental', 'Dental'),   sublabel: t('consultation.roles.dentists', 'Dentists'),          accent: '#1a4a7a', accentLight: '#e8f0fa', accentBorder: '#b2c8e8' },
+  }), [t]);
 
   const cfg = useMemo(() => (consultType && !isEnded) ? typeConfig[consultType] : typeConfig.generic, [consultType, isEnded, typeConfig]);
 
   const availableOptions = useMemo(
-    () => INITIAL_OPTIONS.filter((opt) => onlineAppt[opt.type]),
-    [onlineAppt]
+    () => INITIAL_OPTIONS.filter((opt) => onlineAppt[opt.type]).map(opt => ({
+      ...opt,
+      label: t(`consultation.options.${opt.key}`, opt.defaultLabel)
+    })),
+    [onlineAppt, t]
   );
 
   const renderMessage = (item, i, overrideCfg = null) => {
@@ -1386,6 +1445,7 @@ export default function ConsultationUsers() {
               const firstName = senderInfo.first_name || '';
               const lastName = senderInfo.last_name || '';
               const roleLower = role.toLowerCase();
+              const roleLabel = t(`consultation.roles.${roleLower}`, role);
 
               let displayName = item.sender_name || 'Clinic Staff';
               if (firstName || lastName) displayName = `${firstName} ${lastName}`.trim();
@@ -1403,7 +1463,7 @@ export default function ConsultationUsers() {
                     {getGenderIcon(senderInfo.sex)}
                   </p>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold capitalize ${roleBadgeClass}`}>
-                    {role}
+                    {roleLabel}
                   </span>
                 </>
               );
@@ -1441,7 +1501,7 @@ export default function ConsultationUsers() {
         <div className="flex-1 flex items-center justify-center p-8 h-full">
           <div className="text-center text-[#9bb5a5] text-[12px] flex flex-col items-center">
             <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 text-[#c6dfd0]"></i>
-            <span>Syncing consultation data...</span>
+            <span>{t('consultation.syncingData', 'Syncing consultation data...')}</span>
           </div>
         </div>
       ) : hasAnyActiveNow ? (
@@ -1475,13 +1535,13 @@ export default function ConsultationUsers() {
                 style={{ backgroundColor: isClinicOnline ? cfg.accentLight : '#f1f5f9', color: isClinicOnline ? cfg.accent : '#94a3b8' }}
               >
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isClinicOnline ? cfg.accent : '#94a3b8' }} />
-                {isClinicOnline ? 'Clinic Online' : 'Clinic Offline'}
+                {isClinicOnline ? t('consultation.clinicOnline', 'Clinic Online') : t('consultation.clinicOffline', 'Clinic Offline')}
               </span>
             </div>
 
             {isEnded && (
               <div className="relative">
-                <button onClick={() => setShowHistoryMenu(!showHistoryMenu)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors" title="View Chat History">
+                <button onClick={() => setShowHistoryMenu(!showHistoryMenu)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors" title={t('consultation.chatHistory', 'View Chat History')}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-[#466460]">
                     <circle cx="12" cy="5" r="1.5" />
                     <circle cx="12" cy="12" r="1.5" />
@@ -1492,14 +1552,14 @@ export default function ConsultationUsers() {
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowHistoryMenu(false)} />
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-20" onClick={(e) => e.stopPropagation()}>
-                      <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">Chat History</div>
+                      <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">{t('consultation.chatHistory', 'Chat History')}</div>
                       <button onClick={() => { handleHistoryFilterSwitch('medical'); setShowHistoryMenu(false); }} className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${historyFilter === 'medical' ? 'bg-[#1a5c3a]/10 text-[#1a5c3a]' : 'text-[#466460] hover:bg-slate-50'}`}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        Medical History
+                        {t('consultation.medicalHistory', 'Medical History')}
                       </button>
                       <button onClick={() => { handleHistoryFilterSwitch('dental'); setShowHistoryMenu(false); }} className={`w-full text-left px-4 py-2.5 text-[13px] font-bold flex items-center gap-2 transition-colors ${historyFilter === 'dental' ? 'bg-[#1a4a7a]/10 text-[#1a4a7a]' : 'text-[#466460] hover:bg-slate-50'}`}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        Dental History
+                        {t('consultation.dentalHistory', 'Dental History')}
                       </button>
                     </div>
                   </>
@@ -1525,7 +1585,7 @@ export default function ConsultationUsers() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                   </svg>
-                  <span className="text-[10px]">Loading…</span>
+                  <span className="text-[10px]">{t('common.loading', 'Loading…')}</span>
                 </div>
               </div>
             )}
@@ -1543,9 +1603,9 @@ export default function ConsultationUsers() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                       </svg>
-                      Loading…
+                      {t('consultation.loadingEarlier', 'Loading…')}
                     </>
-                  ) : '↑ Load earlier messages'}
+                  ) : t('consultation.loadEarlier', '↑ Load earlier messages')}
                 </button>
               </div>
             )}
@@ -1557,7 +1617,7 @@ export default function ConsultationUsers() {
                 {sessionReady && groupedMessages.map((item, i) => renderMessage(item, i, typeConfig.generic))}
                 <div className="flex items-center gap-3 my-4 opacity-60">
                   <div className="flex-1 h-px bg-slate-300" />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Session Ended</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t('consultation.sessionEnded', 'Session Ended')}</span>
                   <div className="flex-1 h-px bg-slate-300" />
                 </div>
               </>
@@ -1575,9 +1635,9 @@ export default function ConsultationUsers() {
                     </svg>
                   </div>
                   <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed shadow-sm rounded-2xl rounded-bl-sm bg-white border border-[#c4dbd8] text-[#1a2e22]">
-                    <span>👋 Hello! I'm the MediTrack assistant.</span>
+                    <span>{t('consultation.botGreeting', "👋 Hello! I'm the MediTrack assistant.")}</span>
                     <br />
-                    <strong>What brings you in today?</strong> Please select the type of consultation you need:
+                    <strong>{t('consultation.botQuestion', 'What brings you in today?')}</strong> {t('consultation.botInstruction', 'Please select the type of consultation you need:')}
                   </div>
                 </div>
 
@@ -1593,7 +1653,7 @@ export default function ConsultationUsers() {
                        const period = h >= 12 ? 'PM' : 'AM';
                        const hr = h % 12 || 12;
                        const padM = String(m).padStart(2, '0');
-                       timeText = `Unlocks at ${hr}:${padM} ${period}`;
+                       timeText = `${t('consultation.unlocksAt', 'Unlocks at')} ${hr}:${padM} ${period}`;
                     }
 
                     const isDisabled = !sessionReady || startingOption !== null || !isActiveNow;
@@ -1642,7 +1702,7 @@ export default function ConsultationUsers() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               onPaste={(e) => e.preventDefault()}
-              placeholder={isEnded ? 'Please select an option above…' : 'Type a message…'}
+              placeholder={isEnded ? t('consultation.selectOptionPlaceholder', 'Please select an option above…') : t('consultation.typeMessagePlaceholder', 'Type a message…')}
               disabled={isEnded || !sessionReady}
               className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
               style={{ borderColor: cfg.accentBorder }}
@@ -1672,11 +1732,11 @@ export default function ConsultationUsers() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Appointment Confirmed</h3>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{t('consultation.apptConfirmed', 'Appointment Confirmed')}</h3>
             <p className="text-[13px] text-[#64748b]">
               {nextApptTarget
-                ? `Your ${nextApptTarget.type} consultation is scheduled for ${formatApptDateTime(nextApptTarget.appt)}. This chat unlocks once your appointment window opens.`
-                : 'Your online consultation is approved. This chat will unlock once your appointment window opens.'}
+                ? t('consultation.apptConfirmedDesc', `Your {{type}} consultation is scheduled for {{date}}. This chat unlocks once your appointment window opens.`, { type: t(`records.${nextApptTarget.type}`, nextApptTarget.type), date: formatApptDateTime(nextApptTarget.appt, preferences) })
+                : t('consultation.apptConfirmedDescGeneral', 'Your online consultation is approved. This chat will unlock once your appointment window opens.')}
             </p>
             <ApptCountdown targetDate={nextApptTarget?.date} />
           </div>
@@ -1690,16 +1750,16 @@ export default function ConsultationUsers() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Waiting for Approval</h3>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{t('consultation.waitingApproval', 'Waiting for Approval')}</h3>
             <p className="text-[13px] text-[#64748b]">
-              Your online consultation request has been submitted and is waiting for the clinic to review and approve it. You'll be able to chat here once it's approved.
+              {t('consultation.waitingApprovalDesc', "Your online consultation request has been submitted and is waiting for the clinic to review and approve it. You'll be able to chat here once it's approved.")}
             </p>
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
               className="mt-4 inline-flex items-center gap-2 bg-white border border-[#c4dbd8] hover:border-[#466460] text-[#466460] text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
             >
               <i className="fa-solid fa-calendar-days"></i>
-              View My Requests
+              {t('consultation.viewRequests', 'View My Requests')}
             </button>
           </div>
         </div>
@@ -1712,9 +1772,9 @@ export default function ConsultationUsers() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Visit the Clinic First</h3>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{t('consultation.visitClinicFirst', 'Visit the Clinic First')}</h3>
             <p className="text-[13px] text-[#64748b]">
-              Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before accessing digital consultations.
+              {t('consultation.visitClinicDesc', 'Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before accessing digital consultations.')}
             </p>
           </div>
         </div>
@@ -1727,16 +1787,16 @@ export default function ConsultationUsers() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Book an Online Consultation First</h3>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{t('consultation.bookOnlineFirst', 'Book an Online Consultation First')}</h3>
             <p className="text-[13px] text-[#64748b] mb-4">
-              Digital consultations open up once the clinic approves an online medical or dental appointment for you. Please request one from your Appointments page.
+              {t('consultation.bookOnlineDesc', 'Digital consultations open up once the clinic approves an online medical or dental appointment for you. Please request one from your Appointments page.')}
             </p>
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
               className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
             >
               <i className="fa-solid fa-calendar-plus"></i>
-              Request Appointment
+              {t('consultation.requestAppointment', 'Request Appointment')}
             </button>
           </div>
         </div>

@@ -16,6 +16,30 @@ const ForgotPassword = () => {
     setIsLoaded(true);
   }, []);
 
+  // Polling function to check status after submission
+  const checkEmailStatus = async (targetEmail, attempts = 5) => {
+    if (attempts <= 0) return;
+
+    try {
+      const res = await fetch(`${API_URL}/auth/email-status?email=${encodeURIComponent(targetEmail)}`);
+      const data = await res.json();
+
+      if (data.status === 'bounced') {
+        setError('The email address bounced. Please check for typos and try again.');
+        setMessage(''); // Clear the success message
+        return;
+      } else if (data.status === 'delivered') {
+        // Confirmed delivered! Keep the success message active.
+        return;
+      }
+
+      // If still pending/queued in Resend, poll again in 3 seconds
+      setTimeout(() => checkEmailStatus(targetEmail, attempts - 1), 3000);
+    } catch (err) {
+      // Silently fail on network blips so we don't disrupt the user UI
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -32,12 +56,16 @@ const ForgotPassword = () => {
 
       if (!res.ok) {
         setError(data.message || 'Failed to send reset email');
+        setLoading(false);
       } else {
         setMessage(data.message || 'Password reset email sent! Check your inbox.');
+        setLoading(false);
+
+        // Start polling the backend for bounce/delivery updates
+        checkEmailStatus(email);
       }
     } catch (err) {
       setError('Network error. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
@@ -76,7 +104,7 @@ const ForgotPassword = () => {
           .lf-mobile-wrapper  { display: flex !important; }
         }
 
-        /* ── Desktop (unchanged look) ── */
+        /* ── Desktop ── */
         .fp-container { animation: fp-fadeUp 0.5s ease-out forwards; }
         .fp-input {
           width: 100%; padding: 14px 16px;
@@ -111,34 +139,21 @@ const ForgotPassword = () => {
           .fp-container { padding: 30px 24px; }
         }
 
-        /* ════════════════════════════════════
-           MOBILE — matches Login/Signup shell
-        ════════════════════════════════════ */
+        /* ── Mobile ── */
         @media (max-width: 640px) {
           .lf-mobile-wrapper {
-            /* Removed position fixed and height/overflow restrictions */
-            width: 100%;
-            min-height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            background: #F2F4F3;
-            box-sizing: border-box;
-            z-index: 10;
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
+            width: 100%; min-height: 100dvh; display: flex; flex-direction: column;
+            background: #F2F4F3; box-sizing: border-box; z-index: 10;
+            padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
           }
-
           .m-topbar {
             display: flex; align-items: center; justify-content: center;
-            padding: 20px 24px 0; flex-shrink: 0;
-            animation: m-fadeIn 0.4s ease both;
+            padding: 20px 24px 0; flex-shrink: 0; animation: m-fadeIn 0.4s ease both;
           }
           .m-logo-wrap { display: flex; align-items: center; gap: 10px; }
           .m-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
-
           .m-hero {
-            padding: 36px 28px 24px; flex-shrink: 0;
-            animation: m-fadeUp 0.5s ease 0.1s both;
+            padding: 36px 28px 24px; flex-shrink: 0; animation: m-fadeUp 0.5s ease 0.1s both;
           }
           .m-eyebrow {
             font-size: 12px; font-weight: 600; color: #4A8C82;
@@ -149,58 +164,43 @@ const ForgotPassword = () => {
             line-height: 1.15; letter-spacing: -0.6px; margin-bottom: 8px;
           }
           .m-subtitle { font-size: 14px; color: #6B8580; line-height: 1.5; }
-
           .m-card {
             background: #fff; border-radius: 28px 28px 0 0;
-            padding: 36px 24px 56px; flex: 1;
-            box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
-            animation: m-fadeUp 0.5s ease 0.2s both;
-            min-width: 0;
+            padding: 36px 24px 56px; flex: 1; box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
+            animation: m-fadeUp 0.5s ease 0.2s both; min-width: 0;
           }
-
           .m-error {
-            display: flex; align-items: center; gap: 10px;
-            padding: 12px 14px; margin-bottom: 20px;
-            background: #FFF0F0; border-radius: 14px;
-            border: 1px solid #FFCCCC;
+            display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 20px;
+            background: #FFF0F0; border-radius: 14px; border: 1px solid #FFCCCC;
             animation: m-slideDown 0.3s ease;
           }
           .m-error-icon {
-            width: 20px; height: 20px; border-radius: 50%;
-            background: #FF4444; display: flex; align-items: center;
-            justify-content: center; flex-shrink: 0;
+            width: 20px; height: 20px; border-radius: 50%; background: #FF4444;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
           }
           .m-error-text { font-size: 13.5px; color: #C0392B; font-weight: 500; line-height: 1.4; }
           .m-success {
-            display: flex; align-items: center; gap: 10px;
-            padding: 12px 14px; margin-bottom: 20px;
-            background: #EDFAF4; border-radius: 14px;
-            border: 1px solid #A7EED0;
+            display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 20px;
+            background: #EDFAF4; border-radius: 14px; border: 1px solid #A7EED0;
             animation: m-slideDown 0.3s ease;
           }
           .m-success-icon {
-            width: 20px; height: 20px; border-radius: 50%;
-            background: #22C77A; display: flex; align-items: center;
-            justify-content: center; flex-shrink: 0;
+            width: 20px; height: 20px; border-radius: 50%; background: #22C77A;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
           }
           .m-success-text { font-size: 13.5px; color: #0A7850; font-weight: 500; line-height: 1.4; }
-
           .m-field { margin-bottom: 16px; min-width: 0; }
           .m-field-label {
             font-size: 11.5px; font-weight: 700; letter-spacing: 0.7px;
             text-transform: uppercase; color: #8AA09C; margin-bottom: 8px; display: block;
           }
-
           .m-input-pill {
-            display: flex; align-items: center;
-            background: #F4F7F6; border-radius: 16px;
-            border: 1.5px solid transparent;
-            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+            display: flex; align-items: center; background: #F4F7F6; border-radius: 16px;
+            border: 1.5px solid transparent; transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
             overflow: hidden; min-width: 0;
           }
           .m-input-pill:focus-within {
-            border-color: #3D7A6F; background: #fff;
-            box-shadow: 0 0 0 4px rgba(61,122,111,0.1);
+            border-color: #3D7A6F; background: #fff; box-shadow: 0 0 0 4px rgba(61,122,111,0.1);
           }
           .m-pill-icon {
             padding: 0 6px 0 16px; display: flex; align-items: center;
@@ -209,23 +209,17 @@ const ForgotPassword = () => {
           .m-input-pill:focus-within .m-pill-icon { color: #3D7A6F; }
           .m-pill-input {
             flex: 1; min-width: 0; border: none; background: transparent; outline: none;
-            font-size: 15px; font-family: inherit; color: #1A2E2B;
-            padding: 15px 16px 15px 8px;
+            font-size: 15px; font-family: inherit; color: #1A2E2B; padding: 15px 16px 15px 8px;
           }
           .m-pill-input::placeholder { color: #B5C8C5; }
-
           .m-btn-primary {
             width: 100%; padding: 17px; border-radius: 18px; border: none;
-            background: #2D5C52; color: #fff;
-            font-size: 16px; font-weight: 700; font-family: inherit;
-            cursor: pointer; letter-spacing: 0.1px;
-            transition: transform 0.15s, background 0.2s;
-            margin-top: 6px; margin-bottom: 24px;
-            -webkit-tap-highlight-color: transparent;
+            background: #2D5C52; color: #fff; font-size: 16px; font-weight: 700; font-family: inherit;
+            cursor: pointer; letter-spacing: 0.1px; transition: transform 0.15s, background 0.2s;
+            margin-top: 6px; margin-bottom: 24px; -webkit-tap-highlight-color: transparent;
           }
           .m-btn-primary:active:not(:disabled) { transform: scale(0.97); }
           .m-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
           .m-footer { text-align: center; font-size: 13.5px; color: #8AA09C; }
           .m-footer a { color: #2D5C52; font-weight: 700; text-decoration: none; }
         }

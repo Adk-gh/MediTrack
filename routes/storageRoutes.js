@@ -128,15 +128,31 @@ router.get('/buckets', authorized, allowDynamicAdmin, async (req, res, next) => 
       });
     }
 
-    const { data, error } = await withTimeout(
-      supabase.storage.listBuckets(),
-      10000
-    );
+    // --- RETRY LOOP FOR COLD START GLITCH ---
+    let data, error;
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const result = await withTimeout(supabase.storage.listBuckets(), 10000);
+      data = result.data;
+      error = result.error;
+
+      if (error) break; // If it's a hard error, stop retrying
+
+      if (Array.isArray(data) && data.length > 0) {
+        break; // Successfully got buckets, exit loop
+      }
+
+      if (Array.isArray(data) && data.length === 0 && attempt < maxRetries) {
+        console.warn(`[Storage] Supabase returned empty array (Cold Start Glitch). Attempt ${attempt}. Retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5 seconds
+      }
+    }
+    // ----------------------------------------
 
     // ------------------------------------------
     // SUPABASE ERROR
     // ------------------------------------------
-
     if (error) {
       console.error('[Storage] Supabase listBuckets error:', {
         message: getErrorMessage(error),
@@ -154,7 +170,6 @@ router.get('/buckets', authorized, allowDynamicAdmin, async (req, res, next) => 
     // ------------------------------------------
     // NORMALIZE RESULT
     // ------------------------------------------
-
     const buckets = Array.isArray(data) ? data : [];
 
     console.log(
@@ -165,7 +180,6 @@ router.get('/buckets', authorized, allowDynamicAdmin, async (req, res, next) => 
     // ------------------------------------------
     // SUCCESS
     // ------------------------------------------
-
     return res.status(200).json({
       success: true,
       buckets

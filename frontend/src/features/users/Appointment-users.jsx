@@ -5,6 +5,8 @@ import axios from 'axios';
 import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import BulkAppointmentPanel from './BulkAppointmentPanel';
+import { formatUserDate } from '../../utils/dateFormat';
+import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -24,21 +26,17 @@ const STATUS_STYLES = {
   rejected: { bg: 'bg-[#fef2f2]', text: 'text-[#dc2626]', label: 'Rejected' },
 };
 
-const PURPOSES = [
-  'Check-up',
-  'Consultation',
-  'Online Medical Consultation',
-  'Online Dental Consultation',
-  'Vaccination',
-  'Dental',
-  'Medical Clearance',
-  'Physical Exam',
-  'Other'
-];
-
-const SORT_OPTIONS = [
-  { value: 'newest', label: 'Newest First' },
-  { value: 'oldest', label: 'Oldest First' },
+// Extracted purpose array into objects for easier translation while retaining the DB value
+const PURPOSES_OPTS = [
+  { value: 'Check-up', key: 'checkup' },
+  { value: 'Consultation', key: 'consultation' },
+  { value: 'Online Medical Consultation', key: 'onlineMedical' },
+  { value: 'Online Dental Consultation', key: 'onlineDental' },
+  { value: 'Vaccination', key: 'vaccination' },
+  { value: 'Dental', key: 'dental' },
+  { value: 'Medical Clearance', key: 'medicalClearance' },
+  { value: 'Physical Exam', key: 'physicalExam' },
+  { value: 'Other', key: 'other' }
 ];
 
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
@@ -63,11 +61,18 @@ const PullIndicator = ({ indicatorRef }) => (
   </div>
 );
 
-// ── Custom Sort Dropdown (replaces native <select> so mobile doesn't fall back to the OS picker UI) ──
+// ── Custom Sort Dropdown ──
 const SortDropdown = ({ value, onChange }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
-  const currentLabel = SORT_OPTIONS.find(o => o.value === value)?.label || 'Sort';
+
+  const sortOptions = [
+    { value: 'newest', label: t('records.newestFirst', 'Newest First') },
+    { value: 'oldest', label: t('records.oldestFirst', 'Oldest First') },
+  ];
+
+  const currentLabel = sortOptions.find(o => o.value === value)?.label || t('common.sort', 'Sort');
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -99,7 +104,7 @@ const SortDropdown = ({ value, onChange }) => {
           className="absolute right-0 mt-1.5 bg-white border border-[#ddeee5] rounded-xl shadow-lg overflow-hidden z-50"
           style={{ minWidth: 140 }}
         >
-          {SORT_OPTIONS.map(opt => (
+          {sortOptions.map(opt => (
             <button
               key={opt.value}
               type="button"
@@ -115,6 +120,53 @@ const SortDropdown = ({ value, onChange }) => {
       )}
     </div>
   );
+};
+
+// ── Date Formatting Helpers ──
+const formatDisplayDateWithMonth = (raw, preferences) => {
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw);
+
+  const formatString = preferences?.dateFormat?.toUpperCase() || 'MM/DD/YYYY';
+  const monthStr = date.toLocaleDateString('en-US', { month: 'long' });
+  const dayStr = String(date.getDate()).padStart(2, '0');
+  const yearStr = date.getFullYear();
+
+  if (formatString.startsWith('DD')) {
+    return `${dayStr} ${monthStr} ${yearStr}`;
+  } else if (formatString.startsWith('YYYY')) {
+    return `${yearStr} ${monthStr} ${dayStr}`;
+  } else {
+    return `${monthStr} ${dayStr}, ${yearStr}`;
+  }
+};
+
+const formatDisplayDateWithMonthAndTime = (raw, preferences) => {
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw);
+
+  const datePart = formatDisplayDateWithMonth(raw, preferences);
+  const timePart = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return `${datePart} ${timePart}`;
+};
+
+const formatTimeStringTo12Hour = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) return timeStr;
+
+  const parts = timeStr.split(':');
+  if (parts.length >= 2) {
+    let hours = parseInt(parts[0], 10);
+    const minutes = parts[1];
+    if (!isNaN(hours)) {
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      return `${hours}:${minutes} ${ampm}`;
+    }
+  }
+  return timeStr;
 };
 
 function useCurrentPatient() {
@@ -174,6 +226,7 @@ async function getFreshToken() {
 }
 
 export default function AppointmentUsers() {
+  const { t, i18n } = useTranslation();
   const currentPatient = useCurrentPatient();
   const isFaculty = useMemo(() => FACULTY_ROLES.includes((currentPatient?.type || '').toLowerCase()), [currentPatient?.type]);
 
@@ -184,6 +237,17 @@ export default function AppointmentUsers() {
   const [userProfile,    setUserProfile]    = useState(null);
   const [hasRecords,     setHasRecords]     = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(true);
+  const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
+
+  // Sync i18next with the user's database preference
+  useEffect(() => {
+    if (preferences?.language) {
+      const langCode = preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
+      if (i18n.language !== langCode) {
+        i18n.changeLanguage(langCode);
+      }
+    }
+  }, [preferences?.language, i18n]);
 
   const getInternalUserId = async () => {
     if (!currentPatient?.uid && !currentPatient?.idno) return null;
@@ -225,27 +289,35 @@ export default function AppointmentUsers() {
       try {
         let profile = null;
         if (currentPatient.uid) {
-          const { data } = await supabase.from('users').select('id, university_id, department, program, year_level, section').eq('uid', currentPatient.uid).maybeSingle();
+          const { data } = await supabase.from('users').select('id, university_id, department, program, year_level, section, preferences').eq('uid', currentPatient.uid).maybeSingle();
           if (data) profile = data;
         }
         if (!profile && currentPatient.idno) {
-          const { data } = await supabase.from('users').select('id, university_id, department, program, year_level, section').eq('university_id', currentPatient.idno).maybeSingle();
+          const { data } = await supabase.from('users').select('id, university_id, department, program, year_level, section, preferences').eq('university_id', currentPatient.idno).maybeSingle();
           if (data) profile = data;
         }
-        if (profile) setUserProfile(profile);
+        if (profile) {
+          setUserProfile(profile);
+          if (profile.preferences) {
+            setPreferences({
+              language: profile.preferences.language || 'English',
+              dateFormat: profile.preferences.dateFormat || 'MM/DD/YYYY',
+            });
+          }
+        }
       } catch (err) {}
     };
     fetchUserProfile();
   }, [currentPatient?.uid, currentPatient?.idno]);
 
-  const [showModal,        setShowModal]        = useState(false);
-  const [submitting,       setSubmitting]       = useState(false);
-  const [submitError,      setSubmitError]      = useState('');
-  const [submitted,        setSubmitted]        = useState(false);
-  const [selectedAppt,     setSelectedAppt]     = useState(null);
-  const [selectedPurposes, setSelectedPurposes] = useState([]);
-  const [otherPurpose,     setOtherPurpose]     = useState('');
-  const [sortBy,           setSortBy]           = useState('newest');
+  const [showModal,         setShowModal]         = useState(false);
+  const [submitting,        setSubmitting]        = useState(false);
+  const [submitError,       setSubmitError]       = useState('');
+  const [submitted,         setSubmitted]         = useState(false);
+  const [selectedAppt,      setSelectedAppt]      = useState(null);
+  const [selectedPurposes,  setSelectedPurposes]  = useState([]);
+  const [otherPurpose,      setOtherPurpose]      = useState('');
+  const [sortBy,            setSortBy]            = useState('newest');
 
   const sortedAppointments = useMemo(() => {
     return myAppointments
@@ -262,7 +334,6 @@ export default function AppointmentUsers() {
     try {
       setLoadingAppts(true);
       const token = await getFreshToken();
-      // FIX: Removed 'x-user-uid' header to prevent CORS preflight error
       const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -286,7 +357,7 @@ export default function AppointmentUsers() {
     return (
       <div className="flex flex-col h-full bg-[#f7faf8] items-center justify-center text-[#9bb5a5] text-[12px]">
         <i className="fa-solid fa-circle-exclamation text-2xl mb-2 text-[#f0c070]"></i>
-        Could not load your profile. Please log in again.
+        {t('appointments.loadingProfile', 'Could not load your profile. Please log in again.')}
       </div>
     );
   }
@@ -316,7 +387,7 @@ export default function AppointmentUsers() {
     const parts = selectedPurposes.map(p => p === 'Other' && otherPurpose.trim() ? `Other: ${otherPurpose.trim()}` : p);
     const reason = parts.join(', ');
 
-    if (!canSubmit) { setSubmitError('Please complete all required fields.'); return; }
+    if (!canSubmit) { setSubmitError(t('appointments.errorFields', 'Please complete all required fields.')); return; }
     setSubmitting(true);
     setSubmitError('');
 
@@ -341,7 +412,6 @@ export default function AppointmentUsers() {
 
     try {
       const token = await getFreshToken();
-      // FIX: Removed 'x-user-uid' header to prevent CORS preflight error
       const response = await axios.post(`${API_URL}/appointments`, payload, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -358,22 +428,27 @@ export default function AppointmentUsers() {
       }
     } catch (err) {
       console.error('Error submitting appointment request:', err);
-      setSubmitError(err.response?.data?.message || 'Could not save your appointment request. Please try again.');
+      setSubmitError(err.response?.data?.message || t('appointments.errorSubmit', 'Could not save your appointment request. Please try again.'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const formatApptDate = (appt) => {
-    if (!appt.year || !appt.time) return 'Awaiting schedule from clinic';
+    if (!appt.year || !appt.time) return t('appointments.awaitingSchedule', 'Awaiting schedule from clinic');
     const slotInfo  = HOUR_SLOTS.find(s => s.value === appt.time || s.label.includes(appt.time));
-    const timeLabel = slotInfo ? slotInfo.label : appt.time;
+    const timeLabel = slotInfo ? slotInfo.label : formatTimeStringTo12Hour(appt.time);
     const statusStr = appt.status?.toLowerCase();
-    let prefix = 'Scheduled for';
-    if (statusStr === 'pending') prefix = 'Requested for';
-    if (statusStr === 'missed')  prefix = 'Missed on';
-    if (statusStr === 'done')    prefix = 'Completed on';
-    return `${prefix}: ${MONTHS[appt.month - 1]} ${appt.day}, ${appt.year} at ${timeLabel}`;
+
+    let prefix = t('appointments.prefixes.scheduledFor', 'Scheduled for');
+    if (statusStr === 'pending') prefix = t('appointments.prefixes.requestedFor', 'Requested for');
+    if (statusStr === 'missed')  prefix = t('appointments.prefixes.missedOn', 'Missed on');
+    if (statusStr === 'done')    prefix = t('appointments.prefixes.completedOn', 'Completed on');
+
+    const dateStr = `${appt.year}-${String(appt.month).padStart(2, '0')}-${String(appt.day).padStart(2, '0')}`;
+    const formattedDate = formatDisplayDateWithMonth(dateStr, preferences);
+
+    return `${prefix}: ${formattedDate} at ${timeLabel}`;
   };
 
   return (
@@ -389,8 +464,8 @@ export default function AppointmentUsers() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">Visit the Clinic First</h3>
-            <p className="text-[13px] text-[#64748b]">Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before requesting digital appointments.</p>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{t('consultation.visitClinicFirst', 'Visit the Clinic First')}</h3>
+            <p className="text-[13px] text-[#64748b]">{t('appointments.visitClinicDescAppt', 'Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before requesting digital appointments.')}</p>
           </div>
         </div>
       ) : (
@@ -405,7 +480,7 @@ export default function AppointmentUsers() {
                     viewMode === 'personal' ? 'border-[#466460] text-[#1a2e22]' : 'border-transparent text-[#9bb5a5] hover:text-[#6b8577]'
                   }`}
                 >
-                  My Appointments
+                  {t('appointments.myAppointments', 'My Appointments')}
                 </button>
                 <button
                   onClick={() => setViewMode('bulk')}
@@ -413,7 +488,7 @@ export default function AppointmentUsers() {
                     viewMode === 'bulk' ? 'border-[#466460] text-[#1a2e22]' : 'border-transparent text-[#9bb5a5] hover:text-[#6b8577]'
                   }`}
                 >
-                  Class Bulk Requests
+                  {t('appointments.classBulkRequests', 'Class Bulk Requests')}
                 </button>
               </div>
             </div>
@@ -431,7 +506,7 @@ export default function AppointmentUsers() {
               {submitted && (
                 <div className="shrink-0 mx-4 mt-3 px-4 py-2.5 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl text-[12px] font-semibold text-[#3B6D11] flex items-center gap-2 animate-fadeIn">
                   <i className="fa-solid fa-circle-check"></i>
-                  Request submitted! The clinic will review and assign your schedule.
+                  {t('appointments.requestSubmittedMsg', 'Request submitted! The clinic will review and assign your schedule.')}
                 </div>
               )}
 
@@ -444,11 +519,11 @@ export default function AppointmentUsers() {
                       hasActiveAppointment ? 'bg-[#9bb5a5] text-white cursor-not-allowed opacity-70' : 'bg-[#466460] text-white cursor-pointer hover:bg-[#364e4a]'
                     }`}
                   >
-                    <i className="fa-solid fa-plus"></i> Request Appointment
+                    <i className="fa-solid fa-plus"></i> {t('consultation.requestAppointment', 'Request Appointment')}
                   </button>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="text-[14px] font-bold text-[#1a2e22]">My Appointment Requests</div>
+                  <div className="text-[14px] font-bold text-[#1a2e22]">{t('appointments.myAppointmentRequests', 'My Appointment Requests')}</div>
                   <SortDropdown value={sortBy} onChange={setSortBy} />
                 </div>
               </div>
@@ -459,12 +534,12 @@ export default function AppointmentUsers() {
                   {loadingAppts ? (
                     <div className="text-center py-8 text-[#9bb5a5] text-[12px]">
                       <i className="fa-solid fa-spinner fa-spin block text-2xl mb-2 text-[#c6dfd0]"></i>
-                      Loading your appointments…
+                      {t('appointments.loadingAppointments', 'Loading your appointments…')}
                     </div>
                   ) : sortedAppointments.length === 0 ? (
                     <div className="text-center py-8 text-[#9bb5a5] text-[12px] bg-white border border-dashed border-[#ddeee5] rounded-2xl">
                       <i className="fa-regular fa-calendar block text-2xl mb-2 text-[#c6dfd0]"></i>
-                      No appointment requests yet
+                      {t('appointments.noRequests', 'No appointment requests yet')}
                     </div>
                   ) : (
                     <div className="flex flex-col gap-2">
@@ -499,7 +574,9 @@ export default function AppointmentUsers() {
                           <div key={appt.id} onClick={() => setSelectedAppt(appt)} className={`border rounded-2xl p-4 transition-all shrink-0 cursor-pointer ${cardClasses}`}>
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-sm font-bold text-[#1a2e22]">{appt.reason || appt.service_type}</div>
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>{style.label}</span>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
+                                {t(`appointments.status.${(appt.status || 'pending').toLowerCase()}`, style.label)}
+                              </span>
                             </div>
                             <div className={`text-[12px] mt-1 font-medium ${timeColor}`}>
                               <i className={`mr-1 fa-solid ${timeIcon}`}></i>
@@ -507,7 +584,7 @@ export default function AppointmentUsers() {
                             </div>
                             <div className="text-[10px] text-[#9bb5a5] mt-1.5">
                               <i className="fa-regular fa-clock mr-1"></i>
-                              Submitted {new Date(stampDate).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              {t('common.submit', 'Submitted')} {formatDisplayDateWithMonthAndTime(stampDate, preferences)}
                             </div>
                           </div>
                         );
@@ -519,44 +596,44 @@ export default function AppointmentUsers() {
             </>
           )}
 
-          {/* ── REQUEST MODAL (portaled to <body> so it renders above any transformed ancestor and the bottom nav) ── */}
+          {/* ── REQUEST MODAL ── */}
           {showModal && createPortal(
             <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 pb-28 sm:p-6 sm:pb-6" onClick={closeModal}>
               <div className="w-full max-w-[520px] bg-white rounded-[28px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
                 <div className="bg-[#466460] px-6 py-5 text-white flex-shrink-0">
-                  <h3 className="font-serif text-xl tracking-wide">Request Appointment</h3>
-                  <p className="text-[12px] opacity-80 mt-1">Submit your request and the clinic will assign a schedule for you.</p>
+                  <h3 className="font-serif text-xl tracking-wide">{t('consultation.requestAppointment', 'Request Appointment')}</h3>
+                  <p className="text-[12px] opacity-80 mt-1">{t('appointments.modalDesc', 'Submit your request and the clinic will assign a schedule for you.')}</p>
                 </div>
                 <div className="p-6 flex flex-col gap-5 overflow-y-auto flex-1">
                   <div className="bg-[#f4f8f7] border border-[#d0dedd] rounded-2xl px-4 py-3">
-                    <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">Booking as</div>
+                    <div className="text-[10px] font-bold text-[#466460] uppercase tracking-widest mb-1.5">{t('appointments.bookingAs', 'Booking as')}</div>
                     <div className="text-[13px] font-semibold text-[#1a2e22]">{currentPatient.name}</div>
                     <div className="text-[11px] text-[#6b8577] mt-0.5 flex flex-wrap gap-1">
-                      <span className="font-medium">{userProfile?.university_id || currentPatient.idno || 'ID Not Set'}</span>
+                      <span className="font-medium">{userProfile?.university_id || currentPatient.idno || t('appointments.idNotSet', 'ID Not Set')}</span>
                       {(userProfile?.program || currentPatient.prog) && <><span>·</span><span>{userProfile?.program || currentPatient.prog}</span></>}
                       {(userProfile?.department || currentPatient.dept) && <><span>·</span><span>{userProfile?.department || currentPatient.dept}</span></>}
-                      {(userProfile?.section || currentPatient.section) && <><span>·</span><span>Sec {userProfile?.section || currentPatient.section}</span></>}
+                      {(userProfile?.section || currentPatient.section) && <><span>·</span><span>{t('appointments.sec', 'Sec')} {userProfile?.section || currentPatient.section}</span></>}
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">Purpose <span className="normal-case font-normal text-[#9bb5a5]">* select all that apply</span></label>
+                    <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">{t('appointments.purpose', 'Purpose')} <span className="normal-case font-normal text-[#9bb5a5]">{t('appointments.selectAllThatApply', '* select all that apply')}</span></label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-                      {PURPOSES.map(p => {
-                        const checked = selectedPurposes.includes(p);
+                      {PURPOSES_OPTS.map(p => {
+                        const checked = selectedPurposes.includes(p.value);
                         return (
-                          <label key={p} className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border cursor-pointer transition-all text-[12px] font-medium select-none ${checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-[#f7faf8] border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5] hover:bg-[#f0f5f4]'} ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <label key={p.key} className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border cursor-pointer transition-all text-[12px] font-medium select-none ${checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-[#f7faf8] border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5] hover:bg-[#f0f5f4]'} ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
                             <span className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}>
                               {checked && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                             </span>
-                            <input type="checkbox" className="sr-only" value={p} checked={checked} onChange={() => !submitting && togglePurpose(p)} disabled={submitting} />
-                            {p}
+                            <input type="checkbox" className="sr-only" value={p.value} checked={checked} onChange={() => !submitting && togglePurpose(p.value)} disabled={submitting} />
+                            {t(`appointments.purposes.${p.key}`, p.value)}
                           </label>
                         );
                       })}
                     </div>
                     {selectedPurposes.includes('Other') && (
                       <textarea
-                        placeholder="Please elaborate here..."
+                        placeholder={t('appointments.elaborate', 'Please elaborate here...')}
                         value={otherPurpose}
                         onChange={e => setOtherPurpose(e.target.value)}
                         onPaste={(e) => e.preventDefault()}
@@ -568,7 +645,7 @@ export default function AppointmentUsers() {
                   </div>
                   <div className="flex items-start gap-2.5 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">
                     <i className="fa-solid fa-circle-info mt-[1px] shrink-0 text-[13px]"></i>
-                    <span>After submitting, the clinic staff will review your request and assign an appointment date and time for you. You will see it confirmed here once approved.</span>
+                    <span>{t('appointments.infoNotice', 'After submitting, the clinic staff will review your request and assign an appointment date and time for you. You will see it confirmed here once approved.')}</span>
                   </div>
                   {submitError && (
                     <div className="flex items-start gap-2.5 bg-[#fef2f2] border border-[#fecaca] rounded-2xl px-4 py-3 text-[11px] text-[#dc2626]">
@@ -578,9 +655,9 @@ export default function AppointmentUsers() {
                   )}
                 </div>
                 <div className="flex gap-3 px-6 py-4 border-t border-[#ddeee5] bg-white flex-shrink-0">
-                  <button onClick={closeModal} disabled={submitting} className="flex-1 bg-transparent border border-[#ddeee5] py-2.5 rounded-[40px] font-bold text-[12px] text-[#6b8577] cursor-pointer hover:bg-[#f0f5f4] hover:border-[#9bb5a5] transition-colors disabled:opacity-40">Cancel</button>
+                  <button onClick={closeModal} disabled={submitting} className="flex-1 bg-transparent border border-[#ddeee5] py-2.5 rounded-[40px] font-bold text-[12px] text-[#6b8577] cursor-pointer hover:bg-[#f0f5f4] hover:border-[#9bb5a5] transition-colors disabled:opacity-40">{t('common.cancel', 'Cancel')}</button>
                   <button onClick={handleSubmit} disabled={submitting || !canSubmit} className="flex-1 bg-[#466460] border-none py-2.5 rounded-[40px] font-bold text-[12px] text-white cursor-pointer hover:bg-[#364e4a] disabled:opacity-40 transition-all flex items-center justify-center gap-1.5">
-                    {submitting ? <><i className="fa-solid fa-spinner fa-spin text-[10px]"></i> Saving…</> : 'Submit Request'}
+                    {submitting ? <><i className="fa-solid fa-spinner fa-spin text-[10px]"></i> {t('common.saving', 'Saving…')}</> : t('appointments.submitRequest', 'Submit Request')}
                   </button>
                 </div>
               </div>
@@ -588,18 +665,20 @@ export default function AppointmentUsers() {
             document.body
           )}
 
-          {/* ── APPOINTMENT DETAILS MODAL (portaled to <body> so it renders above any transformed ancestor and the bottom nav) ── */}
+          {/* ── APPOINTMENT DETAILS MODAL ── */}
           {selectedAppt && createPortal(
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4" onClick={() => setSelectedAppt(null)}>
               <div className="w-full max-w-[420px] bg-white rounded-[24px] overflow-hidden shadow-2xl animate-fadeIn" onClick={(e) => e.stopPropagation()}>
                 <div className="bg-[#f7faf8] px-5 py-4 border-b border-[#eef2f6]">
                   <div className="flex items-center justify-between">
-                    <span className={`text-[11px] font-bold px-3 py-1.5 rounded-full ${STATUS_STYLES[selectedAppt.status]?.bg || 'bg-gray-100'} ${STATUS_STYLES[selectedAppt.status]?.text || 'text-gray-600'}`}>{STATUS_STYLES[selectedAppt.status]?.label || selectedAppt.status || 'Pending'}</span>
+                    <span className={`text-[11px] font-bold px-3 py-1.5 rounded-full ${STATUS_STYLES[selectedAppt.status]?.bg || 'bg-gray-100'} ${STATUS_STYLES[selectedAppt.status]?.text || 'text-gray-600'}`}>
+                      {t(`appointments.status.${(selectedAppt.status || 'pending').toLowerCase()}`, STATUS_STYLES[selectedAppt.status]?.label || selectedAppt.status || 'Pending')}
+                    </span>
                     <button onClick={() => setSelectedAppt(null)} className="w-8 h-8 rounded-full bg-white border border-[#e2e8f0] flex items-center justify-center text-[#94a3b8] hover:text-[#466460] hover:border-[#466460] transition-colors"><i className="fa-solid fa-xmark text-xs"></i></button>
                   </div>
                 </div>
                 <div className="px-5 py-4 border-b border-[#eef2f6]">
-                  <div className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Patient Information</div>
+                  <div className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">{t('records.patientInformation', 'Patient Information')}</div>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-[#E1F5EE] flex items-center justify-center text-[#466460] font-bold text-sm">{currentPatient.name?.charAt(0).toUpperCase() || '?'}</div>
@@ -609,43 +688,48 @@ export default function AppointmentUsers() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">University ID</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.university_id || currentPatient.idno || '—'}</div></div>
-                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Department</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.department || currentPatient.dept || '—'}</div></div>
-                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Program</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.program || currentPatient.prog || '—'}</div></div>
-                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Year Level</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.year_level || currentPatient.yearLevel || '—'}</div></div>
-                      <div className="col-span-2"><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Section</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.section || currentPatient.section || '—'}</div></div>
+                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('profile.universityId', 'University ID')}</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.university_id || currentPatient.idno || '—'}</div></div>
+                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('profile.department', 'Department')}</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.department || currentPatient.dept || '—'}</div></div>
+                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('profile.program', 'Program')}</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.program || currentPatient.prog || '—'}</div></div>
+                      <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('profile.yearLevel', 'Year Level')}</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.year_level || currentPatient.yearLevel || '—'}</div></div>
+                      <div className="col-span-2"><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('profile.section', 'Section')}</div><div className="text-sm font-semibold text-[#1a2e22]">{userProfile?.section || currentPatient.section || '—'}</div></div>
                     </div>
                   </div>
                 </div>
                 <div className="px-5 py-4">
-                  <div className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">Appointment Details</div>
+                  <div className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider mb-3">{t('appointments.appointmentDetails', 'Appointment Details')}</div>
                   <div className="space-y-3">
                     <div className={`rounded-xl p-4 text-center ${
                       selectedAppt.status?.toLowerCase() === 'approved' ? 'bg-[#E1F5EE] border border-[#466460]' : selectedAppt.status?.toLowerCase() === 'done' ? 'bg-[#f1f5f9] border border-[#e2e8f0]' : selectedAppt.status?.toLowerCase() === 'missed' ? 'bg-[#fef3c7] border border-[#fde68a]' : selectedAppt.status?.toLowerCase() === 'rejected' ? 'bg-[#fef2f2] border border-[#fecaca]' : 'bg-[#FAEEDA] border border-[#f0c070]'
                     }`}>
                       <div className="text-xs text-[#64748b] mb-1">
-                        {selectedAppt.status?.toLowerCase() === 'pending' ? 'Requested Date' : selectedAppt.status?.toLowerCase() === 'missed' ? 'Missed Date' : selectedAppt.status?.toLowerCase() === 'done' ? 'Completed Date' : selectedAppt.status?.toLowerCase() === 'rejected' ? 'Rejected Date' : 'Scheduled Date'}
+                        {selectedAppt.status?.toLowerCase() === 'pending' ? t('appointments.dates.requestedDate', 'Requested Date') : selectedAppt.status?.toLowerCase() === 'missed' ? t('appointments.dates.missedDate', 'Missed Date') : selectedAppt.status?.toLowerCase() === 'done' ? t('appointments.dates.completedDate', 'Completed Date') : selectedAppt.status?.toLowerCase() === 'rejected' ? t('appointments.dates.rejectedDate', 'Rejected Date') : t('appointments.dates.scheduledDate', 'Scheduled Date')}
                       </div>
                       <div className={`text-lg font-bold ${
                         selectedAppt.status?.toLowerCase() === 'approved' ? 'text-[#466460]' : selectedAppt.status?.toLowerCase() === 'done' ? 'text-[#64748b]' : selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' : selectedAppt.status?.toLowerCase() === 'rejected' ? 'text-[#dc2626]' : 'text-[#854F0B]'
                       }`}>
-                        {selectedAppt.year && selectedAppt.month ? `${MONTHS[selectedAppt.month - 1]} ${selectedAppt.day}, ${selectedAppt.year}` : 'No Date Set'}
+                        {selectedAppt.year && selectedAppt.month && selectedAppt.day
+                          ? formatDisplayDateWithMonth(`${selectedAppt.year}-${String(selectedAppt.month).padStart(2, '0')}-${String(selectedAppt.day).padStart(2, '0')}`, preferences)
+                          : t('appointments.status.pending', 'Pending')}
                       </div>
-                      {selectedAppt.time && (
+                      {selectedAppt.time && selectedAppt.year && (
                         <div className={`text-sm font-medium mt-1 ${
                           selectedAppt.status?.toLowerCase() === 'approved' ? 'text-[#466460]' : selectedAppt.status?.toLowerCase() === 'done' ? 'text-[#64748b]' : selectedAppt.status?.toLowerCase() === 'missed' ? 'text-[#92400e]' : selectedAppt.status?.toLowerCase() === 'rejected' ? 'text-[#dc2626]' : 'text-[#854F0B]'
                         }`}>
-                          {(() => { const [h, m] = selectedAppt.time.split(':').map(Number); const period = h >= 12 ? 'PM' : 'AM'; const hr = h % 12 || 12; return `${hr}:${String(m).padStart(2, '0')} ${period}`; })()}
+                          {(() => {
+                            const slotInfo = HOUR_SLOTS.find(s => s.value === selectedAppt.time || s.label.includes(selectedAppt.time));
+                            return slotInfo ? slotInfo.label : formatTimeStringTo12Hour(selectedAppt.time);
+                          })()}
                         </div>
                       )}
                     </div>
-                    <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Purpose</div><div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.reason || selectedAppt.service_type || '—'}</div></div>
-                    {selectedAppt.service_type && <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Service Type</div><div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.service_type}</div></div>}
-                    <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">Submitted</div><div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.created_at ? new Date(selectedAppt.created_at).toLocaleString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</div></div>
+                    <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('appointments.purpose', 'Purpose')}</div><div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.reason || selectedAppt.service_type || '—'}</div></div>
+                    {selectedAppt.service_type && <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('appointments.serviceType', 'Service Type')}</div><div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.service_type}</div></div>}
+                    <div><div className="text-[10px] text-[#94a3b8] uppercase tracking-wider">{t('common.submit', 'Submitted')}</div><div className="text-sm font-semibold text-[#1a2e22] mt-1">{selectedAppt.created_at ? formatDisplayDateWithMonthAndTime(selectedAppt.created_at, preferences) : '—'}</div></div>
                   </div>
                 </div>
                 <div className="px-5 py-4 border-t border-[#eef2f6] bg-[#f7faf8]">
-                  <button onClick={() => setSelectedAppt(null)} className="w-full py-3 bg-white border border-[#e2e8f0] rounded-xl text-sm font-bold text-[#466460] hover:bg-[#E1F5EE] hover:border-[#466460] transition-colors">Close</button>
+                  <button onClick={() => setSelectedAppt(null)} className="w-full py-3 bg-white border border-[#e2e8f0] rounded-xl text-sm font-bold text-[#466460] hover:bg-[#E1F5EE] hover:border-[#466460] transition-colors">{t('common.close', 'Close')}</button>
                 </div>
               </div>
             </div>,

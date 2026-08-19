@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\components\admin\storageManager.jsx
 import React, { useState, useEffect } from 'react';
+import { getAuthHeaders } from '../../services/token.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
@@ -120,13 +121,17 @@ export default function StorageManager({ isMobile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBucket, currentPrefix]);
 
-  const fetchBuckets = async (retries = 3) => {
+ const fetchBuckets = async (retries = 3) => {
     setLoadingBuckets(true);
     setBucketsError(null);
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const res = await fetch(`${API_URL}/storage/buckets`, { cache: 'no-store' });
+        const headers = await getAuthHeaders(); // Get token headers
+        const res = await fetch(`${API_URL}/storage/buckets`, {
+          headers,
+          cache: 'no-store'
+        });
 
         if (!res.ok) {
           throw new Error(`Server responded ${res.status}`);
@@ -159,13 +164,15 @@ export default function StorageManager({ isMobile }) {
     setLoadingBuckets(false);
   };
 
-  const fetchItems = async () => {
+const fetchItems = async () => {
     setLoadingItems(true);
     setItemsError(null);
     setSelected(new Set());
     try {
+      const headers = await getAuthHeaders(); // Get token headers
       const query = currentPrefix ? `?prefix=${encodeURIComponent(currentPrefix)}` : '';
       const res = await fetch(`${API_URL}/storage/buckets/${encodeURIComponent(selectedBucket)}/list${query}`, {
+        headers,
         cache: 'no-store'
       });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
@@ -255,15 +262,16 @@ export default function StorageManager({ isMobile }) {
 
     if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
 
-    setDeleting(true);
+setDeleting(true);
     try {
+      const headers = await getAuthHeaders(); // Get token headers
       const filePaths = selectedItems.filter(i => i.type === 'file').map(i => i.path);
       const folderItems = selectedItems.filter(i => i.type === 'folder');
 
       if (filePaths.length) {
         const res = await fetch(`${API_URL}/storage/buckets/${encodeURIComponent(selectedBucket)}/objects`, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers, // Replace inline headers
           body: JSON.stringify({ paths: filePaths })
         });
         if (!res.ok) throw new Error('Delete failed');
@@ -272,7 +280,7 @@ export default function StorageManager({ isMobile }) {
       for (const folder of folderItems) {
         const res = await fetch(`${API_URL}/storage/buckets/${encodeURIComponent(selectedBucket)}/folder`, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers, // Replace inline headers
           body: JSON.stringify({ prefix: folder.path })
         });
         if (!res.ok) throw new Error('Delete failed');

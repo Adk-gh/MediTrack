@@ -1,35 +1,46 @@
-//C:\Users\HP\MediTrack\controllers\webhook.controller.js
-const { Webhook } = require('svix'); // Resend uses Svix to verify webhook signatures
+// controllers/webhook.controller.js
+const { Webhook } = require('svix');
+const supabase = require('../configs/database');
 
-exports.resendWebhook = async (req, res) => {
+exports.handleResendWebhook = async (req, res) => {
   try {
-    const payload = req.body.toString();
+    const payload = JSON.stringify(req.body);
     const headers = req.headers;
 
-    // Verify the webhook is actually from Resend (security best practice)
+    // Create a new Svix instance using your Render environment variable
     const wh = new Webhook(process.env.RESEND_WEBHOOK_SECRET);
-    const event = wh.verify(payload, headers);
 
-    // Check which event just happened
-    if (event.type === 'email.delivered') {
-      const emailId = event.data.email_id;
-      const recipient = event.data.to[0];
+    // Verify the payload using Svix
+    const event = wh.verify(payload, {
+      "svix-id": headers["svix-id"],
+      "svix-timestamp": headers["svix-timestamp"],
+      "svix-signature": headers["svix-signature"],
+    });
 
-      console.log(`✅ [Resend] Email ${emailId} successfully delivered to ${recipient}`);
+    const emailAddress = event.data.to[0];
 
-      // Here you could update your 'users' table or an 'email_logs' table
-      // in Supabase to mark the exact timestamp of delivery.
-    }
-
+    // Handle the specific events we checked in the dashboard
     if (event.type === 'email.bounced') {
-      console.error(`❌ [Resend] Email bounced for ${event.data.to[0]}`);
-      // Handle the bounce (e.g., flag the user account, notify an admin)
+      console.log(`[Webhook] Email bounced for: ${emailAddress}`);
+
+      // Update Supabase to mark this email as bounced
+      await supabase
+        .from('email_logs') // Use your actual table name tracking emails or users
+        .upsert({ email: emailAddress, status: 'bounced', updated_at: new Date() }, { onConflict: 'email' });
+
+    } else if (event.type === 'email.delivered') {
+      console.log(`[Webhook] Email delivered to: ${emailAddress}`);
+
+      await supabase
+        .from('email_logs')
+        .upsert({ email: emailAddress, status: 'delivered', updated_at: new Date() }, { onConflict: 'email' });
     }
 
-    // Always return a 200 OK so Resend knows you received the event
-    return res.status(200).json({ success: true });
+    // Always respond with 200 OK so Resend knows you received it
+    res.status(200).json({ success: true });
+
   } catch (err) {
-    console.error('Webhook Error:', err.message);
-    return res.status(400).json({ success: false, message: 'Webhook verification failed' });
+    console.error('[Webhook] Verification failed:', err.message);
+    res.status(400).json({ success: false, message: 'Webhook verification failed' });
   }
 };
