@@ -1,17 +1,16 @@
 // frontend/src/App.jsx
-import React, { useEffect, useState, Suspense, lazy } from 'react';
+import React, { useEffect, useState, Suspense, lazy, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { App as CapacitorApp } from '@capacitor/app';
 import Loading from './components/loading.jsx';
 import authService from './services/auth.service.js';
 import { startTokenRefresh } from './services/token.service.js';
 import './index.css';
 
-
 // Shared context
 import { AppointmentProvider } from './context/AppointmentContext.jsx';
 import { LoadingProvider, useLoading } from './context/LoadingContext.jsx';
 
-// ── Lazy Loading ───────────────────────────────────────────────────────────────
 // Common pages (loaded immediately)
 import LoginForm from './features/LoginForm.jsx';
 import ForgotPassword from './features/ForgotPassword.jsx';
@@ -28,7 +27,6 @@ import AppointmentManagement from './features/admin-clinic/AppointmentManagement
 import ApprovalManagement from './features/admin-clinic/ApprovalManagement.jsx';
 import Meditrack from './features/users/Meditrack.jsx';
 
-
 // Rarely used pages (lazy loaded)
 const SignupForm = lazy(() => import('./features/SignupForm.jsx'));
 const ProfileSetup = lazy(() => import('./components/ProfileSetup.jsx'));
@@ -43,7 +41,6 @@ const Reports = lazy(() => import('./features/admin-clinic/Reports.jsx'));
 const Archives = lazy(() => import('./features/admin-clinic/Archives.jsx'));
 const Settings = lazy(() => import('./components/Settings'));
 
-// ── Lazy Loading Fallback ─────────────────────────────────────────────────────
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-[200px]">
     <div className="w-8 h-8 border-3 border-[#466460] border-t-transparent rounded-full animate-spin" />
@@ -52,23 +49,20 @@ const PageLoader = () => (
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// ── Protected route guard ─────────────────────────────────────────────────────
+// ── Protected Route Guard ─────────────────────────────────────────────────────
 const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
-  const token   = localStorage.getItem('token');
-  const rawUser = localStorage.getItem('user');
-  const user    = rawUser ? JSON.parse(rawUser) : null;
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   if (!token || !user) return <Navigate to="/login" replace />;
-
-  if (user.isProfileSetup === false) {
-    return <Navigate to="/onboarding" replace />;
-  }
+  if (user.isProfileSetup === false) return <Navigate to="/onboarding" replace />;
 
   if (adminOnly) {
     const role = user.role?.toLowerCase().trim() || '';
     const isStaffRole = ['nurse', 'doctor', 'dentist', 'sysadmin'].includes(role);
+
     if (!isStaffRole) {
-      console.log(`Access Denied to Dashboard. Role parsed as: "${role}"`);
+      console.log(`[ProtectedRoute] Access Denied to Dashboard. Role parsed as: "${role}"`);
       return <Navigate to="/student/meditrack" replace />;
     }
   }
@@ -79,76 +73,90 @@ const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
     const classification = user.classification?.toLowerCase() || '';
     const jobTitle = user.job_title?.toLowerCase() || '';
 
-    // Determine effective role for access control
     let effectiveRole = role;
     if (!effectiveRole || effectiveRole === 'student') {
-      if (classification === 'dentist' || jobTitle.includes('dentist')) {
-        effectiveRole = 'dentist';
-      } else if (classification === 'doctor' || jobTitle.includes('doctor')) {
-        effectiveRole = 'doctor';
-      } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
-        effectiveRole = 'nurse';
-      } else if (classification === 'System Administrator' || role === 'sysadmin') {
-        effectiveRole = 'sysadmin';
-      }
+      if (classification === 'dentist' || jobTitle.includes('dentist')) effectiveRole = 'dentist';
+      else if (classification === 'doctor' || jobTitle.includes('doctor')) effectiveRole = 'doctor';
+      else if (classification === 'nurse' || jobTitle.includes('nurse')) effectiveRole = 'nurse';
+      else if (classification === 'system administrator' || role === 'sysadmin') effectiveRole = 'sysadmin';
     }
 
     if (!allowedRoles.includes(effectiveRole)) {
-      console.log(`Access Denied. User role: "${effectiveRole}", Required roles: ${allowedRoles.join(', ')}`);
-      // Redirect to appropriate page based on role
-      if (effectiveRole === 'dentist') {
-        return <Navigate to="/examinations" replace />;
-      } else if (effectiveRole === 'doctor' || effectiveRole === 'nurse') {
-        return <Navigate to="/approvals" replace />;
-      } else {
-        return <Navigate to="/dashboard" replace />;
-      }
+      console.log(`[ProtectedRoute] Access Denied. User role: "${effectiveRole}", Required roles: ${allowedRoles.join(', ')}`);
+      if (effectiveRole === 'dentist') return <Navigate to="/examinations" replace />;
+      if (effectiveRole === 'doctor' || effectiveRole === 'nurse') return <Navigate to="/approvals" replace />;
+      return <Navigate to="/dashboard" replace />;
     }
   }
 
   return children;
 };
 
-// ── Route ↔ Tab maps ──────────────────────────────────────────────────────────
+// ── Route ↔ Tab Maps ──────────────────────────────────────────────────────────
 const ROUTE_TO_TAB = {
-  '/dashboard':        'dashboard',
-  '/records':          'records',
-  '/record-management':'recordManagement',
-   '/notifications-management': 'notificationsManagement',
-  '/audit-logs':       'auditLogs',
-  '/appointments':    'appointments',
-  '/examinations':     'examinations',
-  '/approvals':        'approvals',
-  '/consultations':    'consultations',
-  '/consultation-management': 'consultationManagement',
-  '/appointment-management': 'appointmentManagement',
-  '/approval-management': 'approvalManagement',
-  '/announcements':   'announcements',
-  '/users':            'users',
-  '/ocr-settings':    'ocrSettings',
-  '/reports':          'reports',
-  '/archives':         'archives',
+  '/dashboard': 'dashboard', '/records': 'records', '/record-management': 'recordManagement',
+  '/notifications-management': 'notificationsManagement', '/audit-logs': 'auditLogs',
+  '/appointments': 'appointments', '/examinations': 'examinations', '/approvals': 'approvals',
+  '/consultations': 'consultations', '/consultation-management': 'consultationManagement',
+  '/appointment-management': 'appointmentManagement', '/approval-management': 'approvalManagement',
+  '/announcements': 'announcements', '/users': 'users', '/ocr-settings': 'ocrSettings',
+  '/reports': 'reports', '/archives': 'archives',
 };
 
-const TAB_TO_ROUTE = {
-  'dashboard':        '/dashboard',
-  'records':          '/records',
-  'recordManagement': '/record-management',
-  'notificationsManagement': '/notifications-management',
-  'auditLogs':        '/audit-logs',
-  'appointments':     '/appointments',
-  'examinations':     '/examinations',
-  'approvals':         '/approvals',
-  'consultations':    '/consultations',
-  'consultationManagement': '/consultation-management',
-  'appointmentManagement': '/appointment-management',
-  'approvalManagement': '/approval-management',
-  'announcements':   '/announcements',
-  'users':            '/users',
-  'ocrSettings':     '/ocr-settings',
-  'reports':          '/reports',
-  'archives':         '/archives',
-};
+const TAB_TO_ROUTE = Object.fromEntries(Object.entries(ROUTE_TO_TAB).map(([k, v]) => [v, k]));
+
+// ── Android Back Button Handler ───────────────────────────────────────────────
+function AndroidBackButtonHandler() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const locationRef = useRef(location.pathname);
+
+  useEffect(() => {
+    locationRef.current = location.pathname;
+  }, [location.pathname]);
+
+  useEffect(() => {
+    let backButtonListener = null;
+
+    const setupBackButton = async () => {
+      try {
+        if (!CapacitorApp) return;
+
+        backButtonListener = await CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+          const currentPath = locationRef.current;
+          console.log(`[Android Back] Current route: ${currentPath} | canGoBack: ${canGoBack}`);
+
+          if (currentPath === '/student/meditrack' || currentPath === '/dashboard') {
+            console.log('[Android Back] Homepage reached. Exiting app.');
+            CapacitorApp.exitApp();
+            return;
+          }
+
+          if (canGoBack) {
+            console.log('[Android Back] Navigating to previous route.');
+            navigate(-1);
+            return;
+          }
+
+          console.log('[Android Back] No navigation history. Exiting app.');
+          CapacitorApp.exitApp();
+        });
+      } catch (error) {
+        console.error('[Android Back] Failed to register back button listener:', error);
+      }
+    };
+
+    setupBackButton();
+    return () => {
+      if (backButtonListener) {
+        backButtonListener.remove();
+        backButtonListener = null;
+      }
+    };
+  }, [navigate]);
+
+  return null;
+}
 
 // ── Admin Layout Wrapper ───────────────────────────────────────────────────────
 const AdminLayoutWrapper = ({ children }) => {
@@ -168,7 +176,7 @@ const AdminLayoutWrapper = ({ children }) => {
     const fetchProfile = async () => {
       try {
         const token = localStorage.getItem('token');
-        if (!token) { navigate('/login'); return; }
+        if (!token) return navigate('/login');
 
         const response = await fetch(`${API_URL}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -176,8 +184,7 @@ const AdminLayoutWrapper = ({ children }) => {
 
         if (response.status === 401) {
           authService.logout();
-          navigate('/login');
-          return;
+          return navigate('/login');
         }
 
         const result = await response.json();
@@ -188,6 +195,7 @@ const AdminLayoutWrapper = ({ children }) => {
         setLoading(false);
       }
     };
+
     fetchProfile();
   }, [navigate]);
 
@@ -199,7 +207,7 @@ const AdminLayoutWrapper = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#466460]"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#466460]" />
       </div>
     );
   }
@@ -218,11 +226,10 @@ const AdminLayoutWrapper = ({ children }) => {
   );
 };
 
-// ── Onboarding page ───────────────────────────────────────────────────────────
+// ── Onboarding Page ───────────────────────────────────────────────────────────
 const OnboardingPage = () => {
   const navigate = useNavigate();
-  const rawUser  = localStorage.getItem('user');
-  const user     = rawUser ? JSON.parse(rawUser) : null;
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   if (!user) return <Navigate to="/login" replace />;
 
@@ -232,13 +239,14 @@ const OnboardingPage = () => {
 
     const role = user.role?.toLowerCase().trim() || '';
     const isStaffRole = ['nurse', 'doctor', 'dentist', 'sysadmin'].includes(role);
+
     navigate(isStaffRole ? '/dashboard' : '/student/meditrack');
   };
 
   return <ProfileSetup user={user} onComplete={handleComplete} />;
 };
 
-// ── Route Change Handler ───────────────────────────────────────────────────
+// ── Route Change Handler ─────────────────────────────────────────────────────
 function RouteChangeHandler() {
   const location = useLocation();
   const { loading, hideLoading } = useLoading();
@@ -258,150 +266,79 @@ function RouteChangeHandler() {
 function GlobalLoading() {
   const { loading } = useLoading();
   if (!loading.show) return null;
-  return (
-    <Loading
-      variant="overlay"
-      theme={loading.theme}
-      label={loading.message}
-      showLabel={true}
-    />
-  );
+  return <Loading variant="overlay" theme={loading.theme} label={loading.message} showLabel={true} />;
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
-  // 🟢 NEW: Start token refresh if user is already logged in (page refresh)
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
+
     if (token && user) {
       console.log('[App] User already logged in, starting token refresh...');
       startTokenRefresh();
     }
   }, []);
 
+  // Helper for admin routes to reduce duplication
+  const AdminRoute = ({ children, allowedRoles = [] }) => (
+    <ProtectedRoute adminOnly={true} allowedRoles={allowedRoles}>
+      <AdminLayoutWrapper>{children}</AdminLayoutWrapper>
+    </ProtectedRoute>
+  );
+
   return (
     <LoadingProvider>
       <AppointmentProvider>
+        <AndroidBackButtonHandler />
         <RouteChangeHandler />
         <GlobalLoading />
+
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public */}
-            <Route path="/signup"           element={<SignupForm />} />
-            <Route path="/login"            element={<LoginForm />} />
-            <Route path="/forgot-password"  element={<ForgotPassword />} />
-            <Route path="/reset-password"   element={<ResetPassword />} />
-            <Route path="/verify-email"    element={<VerifyEmail />} />
-            <Route path="/onboarding"       element={<OnboardingPage />} />
+            <Route path="/signup" element={<SignupForm />} />
+            <Route path="/login" element={<LoginForm />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
 
             {/* Admin / Clinic */}
-            <Route path="/dashboard" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Dashboard /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/records" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Records /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/record-management" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><RecordManagement /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/notifications-management" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><NotificationsManagement /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/audit-logs" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><AuditLogs /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/appointments" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Appointments /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/examinations" element={
-              <ProtectedRoute adminOnly={true} allowedRoles={['sysadmin', 'doctor', 'nurse', 'dentist']}>
-                <AdminLayoutWrapper><Examination /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/approvals" element={
-              <ProtectedRoute adminOnly={true} allowedRoles={['sysadmin', 'doctor', 'nurse', 'dentist']}>
-                <AdminLayoutWrapper><Approvals /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/announcements" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Announcements /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/consultations" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Consultations /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/consultation-management" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><ConsultationManagement /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/appointment-management" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><AppointmentManagement /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/approval-management" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><ApprovalManagement /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/users" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><UserManagement /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/ocr-settings" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><OcrSettings /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/reports" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Reports /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
-            <Route path="/archives" element={
-              <ProtectedRoute adminOnly={true}>
-                <AdminLayoutWrapper><Archives /></AdminLayoutWrapper>
-              </ProtectedRoute>
-            } />
+            <Route path="/dashboard" element={<AdminRoute><Dashboard /></AdminRoute>} />
+            <Route path="/records" element={<AdminRoute><Records /></AdminRoute>} />
+            <Route path="/record-management" element={<AdminRoute><RecordManagement /></AdminRoute>} />
+            <Route path="/notifications-management" element={<AdminRoute><NotificationsManagement /></AdminRoute>} />
+            <Route path="/audit-logs" element={<AdminRoute><AuditLogs /></AdminRoute>} />
+            <Route path="/appointments" element={<AdminRoute><Appointments /></AdminRoute>} />
+            <Route path="/announcements" element={<AdminRoute><Announcements /></AdminRoute>} />
+            <Route path="/consultations" element={<AdminRoute><Consultations /></AdminRoute>} />
+            <Route path="/consultation-management" element={<AdminRoute><ConsultationManagement /></AdminRoute>} />
+            <Route path="/appointment-management" element={<AdminRoute><AppointmentManagement /></AdminRoute>} />
+            <Route path="/approval-management" element={<AdminRoute><ApprovalManagement /></AdminRoute>} />
+            <Route path="/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
+            <Route path="/ocr-settings" element={<AdminRoute><OcrSettings /></AdminRoute>} />
+            <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
+            <Route path="/archives" element={<AdminRoute><Archives /></AdminRoute>} />
+
+            {/* Role-Restricted Admin Routes */}
+            <Route path="/examinations" element={<AdminRoute allowedRoles={['sysadmin', 'doctor', 'nurse', 'dentist']}><Examination /></AdminRoute>} />
+            <Route path="/approvals" element={<AdminRoute allowedRoles={['sysadmin', 'doctor', 'nurse', 'dentist']}><Approvals /></AdminRoute>} />
 
             {/* Student / Patient */}
-            <Route path="/student/meditrack" element={
-              <ProtectedRoute adminOnly={false}>
-                <Meditrack />
-              </ProtectedRoute>
-            } />
-
-            {/* ── Settings (Global) ── */}
+            <Route path="/student/meditrack" element={<ProtectedRoute><Meditrack /></ProtectedRoute>} />
             <Route path="/student/settings" element={
-              <ProtectedRoute adminOnly={false}>
+              <ProtectedRoute>
                 <Settings
                   userRole={JSON.parse(localStorage.getItem('user'))?.role || 'student'}
-                  onLogout={() => { authService.logout(); }}
+                  onLogout={() => authService.logout()}
                 />
               </ProtectedRoute>
             } />
 
             {/* Fallback */}
-            <Route path="/"  element={<Navigate to="/login" replace />} />
-            <Route path="*"  element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Suspense>
       </AppointmentProvider>

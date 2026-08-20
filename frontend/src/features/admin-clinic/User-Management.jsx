@@ -1,5 +1,5 @@
 // frontend/src/features/admin-clinic/User-Management.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabase';
 import { createPortal } from 'react-dom';
 import DatePicker from '../../components/Datepicker';
@@ -88,6 +88,13 @@ const isFaculty     = (r, config) => config?.faculty_roles?.includes(r?.toLowerC
 const isStudent     = (r) => r?.toLowerCase() === 'student';
 const isAdmin       = (r, config) => config?.admin_roles?.includes(r?.toLowerCase());
 
+// Extracts unique values from a config field (array or JSONB object values)
+const extractUniqueConfigValues = (configField) => {
+  if (!configField) return [];
+  if (Array.isArray(configField)) return Array.from(new Set(configField));
+  return Array.from(new Set(Object.values(configField).flat()));
+};
+
 const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
 
 const ITEMS_PER_PAGE = 100;
@@ -106,12 +113,11 @@ const capitalizeWords = (str) => {
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputCls  = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] bg-white";
-const selectCls = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]";
-const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tracking-wide";
 const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tracking-wide";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Toggle — fixed-size switch used by Account Flags / Account Status sections.
+// Toggle Component
 // ─────────────────────────────────────────────────────────────────────────────
 const Toggle = ({ checked, onChange }) => (
   <button
@@ -119,39 +125,21 @@ const Toggle = ({ checked, onChange }) => (
     onClick={onChange}
     aria-pressed={checked}
     style={{
-      position: 'relative',
-      width: 40,
-      height: 20,
-      minWidth: 40,
-      maxWidth: 40,
-      padding: 0,
-      border: 'none',
-      borderRadius: 9999,
-      cursor: 'pointer',
-      flexShrink: 0,
-      background: checked ? '#466460' : '#cbd5e1',
-      transition: 'background-color 0.15s ease',
+      position: 'relative', width: 40, height: 20, minWidth: 40, maxWidth: 40, padding: 0,
+      border: 'none', borderRadius: 9999, cursor: 'pointer', flexShrink: 0,
+      background: checked ? '#466460' : '#cbd5e1', transition: 'background-color 0.15s ease',
     }}
   >
     <span
       style={{
-        position: 'absolute',
-        top: 2,
-        left: checked ? 22 : 2,
-        width: 16,
-        height: 16,
-        borderRadius: 9999,
-        background: '#fff',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
+        position: 'absolute', top: 2, left: checked ? 22 : 2, width: 16, height: 16,
+        borderRadius: 9999, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
         transition: 'left 0.15s ease',
       }}
     />
   </button>
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EyeIcon
-// ─────────────────────────────────────────────────────────────────────────────
 const EyeIcon = ({ open }) => open
   ? <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M3.5 3.5l13 13M8.34 8.41A3 3 0 0 0 11.6 11.6M4.5 5.6C3.2 6.8 2 8.5 2 10s3.13 5.5 8 5.5a10 10 0 0 0 3.5-.63M7 4.63A9.94 9.94 0 0 1 10 4.5c4.87 0 8 3 8 5.5 0 1.4-1.07 3-2.34 4.06"/></svg>
   : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><path d="M2 10s3.13-5.5 8-5.5S18 10 18 10s-3.13 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.5"/></svg>;
@@ -162,31 +150,111 @@ const getCurrentUser = () => {
 
 const currentUser = getCurrentUser();
 const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(currentUser?.role?.toLowerCase());
-
-// Admin identity used for audit logging.
 const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dynamic RoleOptions Component
+// CustomSelect Component (Fixes max-height browser issue for native <select>)
 // ─────────────────────────────────────────────────────────────────────────────
-const RoleOptions = ({ configData }) => {
-  if (!configData) return null;
+const CustomSelect = ({ value, onChange, options, placeholder = "— Select —", disabled = false, grouped = false }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const normalizeOpt = (opt) => (typeof opt === 'object' && opt !== null) ? opt : { value: opt, label: opt };
+
+  const getDisplay = () => {
+    if (!value) return placeholder;
+    if (!grouped) {
+       const found = options.map(normalizeOpt).find(o => String(o.value) === String(value));
+       return found ? found.label : value;
+    } else {
+       for (const g of options) {
+         const found = g.options.map(normalizeOpt).find(o => String(o.value) === String(value));
+         if (found) return found.label;
+       }
+       return value;
+    }
+  };
+
   return (
-    <>
-      {isCurrentUserSysAdmin && (
-        <optgroup label="System Administration">
-          {configData.admin_roles?.map(r => <option key={r} value={r}>{capitalizeWords(r)}</option>)}
-        </optgroup>
+    <div className={`relative ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`} ref={ref}>
+      <div
+        className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm flex items-center justify-between transition-colors focus:ring-2 focus:ring-[#e0eceb] ${disabled ? 'bg-slate-50 text-slate-500' : 'bg-white cursor-pointer hover:border-[#466460]'}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+      >
+         <span className={`truncate pr-2 ${!value ? 'text-slate-400' : 'text-slate-800'}`}>
+           {getDisplay()}
+         </span>
+         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${isOpen ? 'rotate-180 text-[#466460]' : 'text-slate-400'}`}><polyline points="2,4 6,8 10,4"/></svg>
+      </div>
+      {isOpen && !disabled && (
+        <div className="absolute z-[100] top-[calc(100%+4px)] left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-xl max-h-56 overflow-y-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#cbd5e1] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
+           <div
+             className="px-3 py-2 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 italic border-b border-slate-100"
+             onClick={() => { onChange(''); setIsOpen(false); }}
+           >
+             {placeholder}
+           </div>
+           {grouped ? (
+             options.map((g, i) => (
+               <div key={i}>
+                 <div className="px-3 py-1.5 bg-slate-50/90 backdrop-blur-sm text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 border-b border-slate-100 z-10">{g.label}</div>
+                 {g.options.map(o => {
+                   const opt = normalizeOpt(o);
+                   return (
+                     <div
+                       key={opt.value}
+                       className={`px-4 py-2 text-sm cursor-pointer transition-colors ${String(value) === String(opt.value) ? 'bg-[#e0eceb] text-[#466460] font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
+                       onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                     >
+                       {opt.label}
+                     </div>
+                   )
+                 })}
+               </div>
+             ))
+           ) : (
+             options.map((o, i) => {
+               const opt = normalizeOpt(o);
+               return (
+                 <div
+                   key={opt.value || i}
+                   className={`px-4 py-2 text-sm cursor-pointer transition-colors ${String(value) === String(opt.value) ? 'bg-[#e0eceb] text-[#466460] font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
+                   onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                 >
+                   {opt.label}
+                 </div>
+               )
+             })
+           )}
+        </div>
       )}
-      <optgroup label="Clinic Staff">
-        {configData.clinic_roles?.map(r => <option key={r} value={r}>{capitalizeWords(r)}</option>)}
-      </optgroup>
-      <optgroup label="Faculty">
-        {configData.faculty_roles?.map(r => <option key={r} value={r}>{capitalizeWords(r)}</option>)}
-      </optgroup>
-      <optgroup label="Student"><option value="student">Student</option></optgroup>
-    </>
+    </div>
   );
+};
+
+// Generate Grouped Role Options safely
+const getRoleOptions = (configData) => {
+  if (!configData) return [];
+  const groups = [];
+  if (isCurrentUserSysAdmin) {
+    groups.push({ label: 'System Administration', options: (configData.admin_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  }
+  groups.push({ label: 'Clinic Staff', options: (configData.clinic_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: 'Faculty', options: (configData.faculty_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: 'Student', options: [{ value: 'student', label: 'Student' }] });
+  return groups;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,18 +277,26 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
 
   const deptAbbrToFull = Object.fromEntries(configData.departments.map(d => [d.abbr, d.full]));
   const programsByDeptAbbr = Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs]));
+
   const PLSP_OFFICES_FOR_STAFF = [
     ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
     ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
   ];
-  const uniqueClassifications = Array.from(new Set(Object.values(configData.classifications || {})));
+  const uniqueClassifications = extractUniqueConfigValues(configData.classifications);
+  const uniqueJobTitles = extractUniqueConfigValues(configData.job_titles);
 
   const cf = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const handleRoleChange = (val) => {
+    let rawClassification = configData.classifications[val?.toLowerCase()];
+    if (Array.isArray(rawClassification)) rawClassification = rawClassification[0];
+
+    let rawJobTitle = configData.job_titles[val?.toLowerCase()];
+    if (Array.isArray(rawJobTitle)) rawJobTitle = rawJobTitle[0];
+
     setForm(f => ({
-      ...f, role: val, classification: configData.classifications[val?.toLowerCase()] || '',
-      job_title: configData.job_titles[val?.toLowerCase()] || capitalizeWords(val), department: '', departmentAbbr: '', program: '',
+      ...f, role: val, classification: rawClassification || '',
+      job_title: rawJobTitle || '', department: '', departmentAbbr: '', program: '',
       year_level: '1st Year', section: '', student_classification: 'Regular',
     }));
   };
@@ -246,7 +322,6 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
       showSnackbar('Please fill all required fields', 'error'); return;
     }
 
-    // Dynamic Password Validation Check
     const pwCheck = validatePassword(form.password, configData.passwordRules);
     if (!pwCheck.valid) {
       showSnackbar(pwCheck.message, 'error');
@@ -297,7 +372,6 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
       const { data: inserted, error: insertError } = await supabase.from('users').insert(newUser).select().single();
       if (insertError) throw insertError;
 
-      // ---- AUDIT LOG ----
       logAdminAction({
         action: 'user_created',
         details: {
@@ -362,35 +436,80 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
               <div><label className={labelCls}>First Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.first_name} onChange={e => cf('first_name', e.target.value)} placeholder="First name" required /></div>
               <div><label className={labelCls}>Last Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.last_name} onChange={e => cf('last_name', e.target.value)} placeholder="Last name" required /></div>
               <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={form.middle_name} onChange={e => cf('middle_name', e.target.value)} placeholder="Middle name" /></div>
-              <div><label className={labelCls}>Suffix</label><select className={selectCls} value={form.suffix} onChange={e => cf('suffix', e.target.value)}><option value="">None</option>{['Jr.','Sr.','II','III','IV','V'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div>
+                <label className={labelCls}>Suffix</label>
+                <CustomSelect value={form.suffix} onChange={v => cf('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
+              </div>
               <div><label className={labelCls}>Birthday</label><DatePicker value={form.birthday} onChange={(val) => handleBirthdayChange(val)} /></div>
               <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" /></div>
-              <div><label className={labelCls}>Sex</label><select className={selectCls} value={form.sex} onChange={e => cf('sex', e.target.value)}><option value="">— Select —</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-              <div><label className={labelCls}>Civil Status</label><select className={selectCls} value={form.civil_status} onChange={e => cf('civil_status', e.target.value)}>{['Single','Married','Widowed','Divorced','Separated'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-              <div><label className={labelCls}>Religion</label><select className={selectCls} value={form.religion} onChange={e => cf('religion', e.target.value)}><option value="">— Select —</option>{['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other'].map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-              <div><label className={labelCls}>Nationality</label><select className={selectCls} value={form.nationality} onChange={e => cf('nationality', e.target.value)}>{['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other'].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+              <div>
+                <label className={labelCls}>Sex</label>
+                <CustomSelect value={form.sex} onChange={v => cf('sex', v)} options={['Male', 'Female']} />
+              </div>
+              <div>
+                <label className={labelCls}>Civil Status</label>
+                <CustomSelect value={form.civil_status} onChange={v => cf('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
+              </div>
+              <div>
+                <label className={labelCls}>Religion</label>
+                <CustomSelect value={form.religion} onChange={v => cf('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
+              </div>
+              <div>
+                <label className={labelCls}>Nationality</label>
+                <CustomSelect value={form.nationality} onChange={v => cf('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
+              </div>
               <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
 
               <div className={secHead}>Role &amp; Work</div>
-              <div><label className={labelCls}>Role <span className="text-red-400">*</span></label><select className={selectCls} value={form.role} onChange={e => handleRoleChange(e.target.value)}><RoleOptions configData={configData} /></select></div>
+              <div>
+                <label className={labelCls}>Role <span className="text-red-400">*</span></label>
+                <CustomSelect value={form.role} onChange={handleRoleChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
+              </div>
               <div><label className={labelCls}>University ID <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
 
               {isStudentRole && (
                 <>
-                  <div><label className={labelCls}>Department <span className="text-red-400">*</span></label><select className={selectCls} value={form.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}><option value="">— Select —</option>{configData.departments.map(d => <option key={d.abbr} value={d.abbr}>{d.abbr}</option>)}</select>{form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}</div>
-                  <div><label className={labelCls}>Program <span className="text-red-400">*</span></label><select className={`${selectCls} disabled:opacity-50`} value={form.program} disabled={!form.departmentAbbr} onChange={e => cf('program', e.target.value)}><option value="">— Select —</option>{availablePrograms.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                  <div><label className={labelCls}>Year Level</label><select className={selectCls} value={form.year_level} onChange={e => cf('year_level', e.target.value)}>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
-                  <div><label className={labelCls}>Section</label><select className={selectCls} value={form.section} onChange={e => cf('section', e.target.value)}><option value="">— Select —</option>{(configData.sections || []).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                  <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={form.student_classification} onChange={e => cf('student_classification', e.target.value)}>{['Regular','Irregular','Returning'].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                  <div>
+                    <label className={labelCls}>Department <span className="text-red-400">*</span></label>
+                    <CustomSelect value={form.departmentAbbr} onChange={handleDeptChange} options={configData.departments.map(d => ({ value: d.abbr, label: d.abbr }))} />
+                    {form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}
+                  </div>
+                  <div>
+                    <label className={labelCls}>Program <span className="text-red-400">*</span></label>
+                    <CustomSelect value={form.program} onChange={v => cf('program', v)} options={availablePrograms} disabled={!form.departmentAbbr} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Year Level</label>
+                    <CustomSelect value={form.year_level} onChange={v => cf('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Section</label>
+                    <CustomSelect value={form.section} onChange={v => cf('section', v)} options={configData.sections || []} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Student Classification</label>
+                    <CustomSelect value={form.student_classification} onChange={v => cf('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
+                  </div>
                 </>
               )}
 
               {(isFacultyRole || isClinicRole || isAdminRole) && (
                 <>
-                  <div><label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label><select className={selectCls} value={form.department} onChange={e => cf('department', e.target.value)}><option value="">— Select Office —</option>{PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-                  <div><label className={labelCls}>Job Title <span className="text-red-400">*</span></label><input className={inputCls} value={form.job_title} onChange={e => cf('job_title', e.target.value)} placeholder="e.g. Nurse, Professor" /></div>
+                  <div>
+                    <label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label>
+                    <CustomSelect value={form.department} onChange={v => cf('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
+                    <CustomSelect value={form.job_title} onChange={v => cf('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
+                  </div>
+
                   {!isAdminRole && (
-                    <div><label className={labelCls}>Classification</label><select className={selectCls} value={form.classification} onChange={e => cf('classification', e.target.value)}>{uniqueClassifications.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    <div>
+                      <label className={labelCls}>Classification</label>
+                      <CustomSelect value={form.classification} onChange={v => cf('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
+                    </div>
                   )}
                 </>
               )}
@@ -441,7 +560,7 @@ export const UserManagement = () => {
   const [verifyFilter, setVerifyFilter]   = useState('all');
   const [sexFilter, setSexFilter]         = useState('all');
   const [deptFilter, setDeptFilter]       = useState('all');
-  const [sortOrder, setSortOrder]         = useState('asc'); // Name (A-Z) by default
+  const [sortOrder, setSortOrder]         = useState('asc');
   const [searchInput, setSearchInput]   = useState('');
 
   // Pagination
@@ -475,7 +594,6 @@ export const UserManagement = () => {
     fetchConfig();
   }, []);
 
-  // Reset pagination when search or filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchInput, currentFilter, profileFilter, verifyFilter, sexFilter, deptFilter, sortOrder]);
@@ -501,7 +619,6 @@ export const UserManagement = () => {
       const result = await res.json();
       if (result.success) {
         const data = result.data;
-        // Normalize dynamic password rules for use in User Management forms
         if (data.password_rules) {
           data.passwordRules = {
             minLength: Number(data.password_rules.minLength) || 8,
@@ -539,48 +656,43 @@ export const UserManagement = () => {
     return { background: '#f1f5f9', color: '#475569' };
   };
 
-  // Derive dynamic configuration options safely for filters
   const deptAbbrToFull = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.full])) : {};
   const programsByDeptAbbr = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs])) : {};
   const PLSP_OFFICES_FOR_STAFF = configData ? [
     ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
     ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
   ] : [];
-  const uniqueClassifications = configData ? Array.from(new Set(Object.values(configData.classifications || {}))) : [];
+
+  const uniqueClassifications = configData ? extractUniqueConfigValues(configData.classifications) : [];
+  const uniqueJobTitles = configData ? extractUniqueConfigValues(configData.job_titles) : [];
 
   let filteredUsers = users.filter(user => {
     const role = user.role?.toLowerCase();
 
-    // Role Filter
     if (currentFilter === 'faculty') { if (!isFaculty(role, configData)) return false; }
     else if (currentFilter === 'clinic_staff') { if (!isClinicStaff(role, configData)) return false; }
     else if (currentFilter !== 'all') { if (role !== currentFilter) return false; }
 
-    // Profile Filter
     if (profileFilter !== 'all') {
       const isComplete = !!user.profile_complete;
       if (profileFilter === 'active' && !isComplete) return false;
       if (profileFilter === 'pending' && isComplete) return false;
     }
 
-    // Verification Filter
     if (verifyFilter !== 'all') {
       const isVer = !!user.is_verified;
       if (verifyFilter === 'verified' && !isVer) return false;
       if (verifyFilter === 'unverified' && isVer) return false;
     }
 
-    // Sex Filter
     if (sexFilter !== 'all') {
       if (user.sex !== sexFilter) return false;
     }
 
-    // Department Filter
     if (deptFilter !== 'all') {
       if (user.department !== deptFilter) return false;
     }
 
-    // Search input
     if (searchInput) {
       const s = searchInput.toLowerCase();
       if (!(getFullName(user).toLowerCase().includes(s) || user.email?.toLowerCase().includes(s) || user.university_id?.toLowerCase().includes(s))) return false;
@@ -589,7 +701,6 @@ export const UserManagement = () => {
     return true;
   });
 
-  // Sorting
   filteredUsers.sort((a, b) => {
     const nameA = getFullName(a).toLowerCase();
     const nameB = getFullName(b).toLowerCase();
@@ -597,7 +708,6 @@ export const UserManagement = () => {
     return nameB.localeCompare(nameA);
   });
 
-  // Derived paginated state
   const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
@@ -665,9 +775,15 @@ export const UserManagement = () => {
   };
 
   const handleRoleEditChange = (val) => {
+    let rawClassification = configData.classifications[val?.toLowerCase()];
+    if (Array.isArray(rawClassification)) rawClassification = rawClassification[0];
+
+    let rawJobTitle = configData.job_titles[val?.toLowerCase()];
+    if (Array.isArray(rawJobTitle)) rawJobTitle = rawJobTitle[0];
+
     setEditForm(f => ({
-      ...f, role: val, classification: configData.classifications[val?.toLowerCase()] || '',
-      job_title: configData.job_titles[val?.toLowerCase()] || capitalizeWords(val),
+      ...f, role: val, classification: rawClassification || '',
+      job_title: rawJobTitle || capitalizeWords(val),
     }));
   };
 
@@ -688,7 +804,6 @@ export const UserManagement = () => {
       return;
     }
 
-    // Dynamic Password Validation Check for Edit User
     if (editForm.password) {
       const pwCheck = validatePassword(editForm.password, configData.passwordRules);
       if (!pwCheck.valid) {
@@ -730,7 +845,6 @@ export const UserManagement = () => {
 
       if (!response.ok) throw new Error(result.message || result.error || 'Failed to update user');
 
-      // ---- AUDIT LOG ----
       logAdminAction({
         action: 'user_updated',
         details: {
@@ -745,7 +859,7 @@ export const UserManagement = () => {
 
       showSnackbar('User updated successfully', 'success');
       setShowEditModal(false);
-      fetchUsers(); // Refresh Table
+      fetchUsers();
     } catch (err) {
       showSnackbar('Error updating user: ' + (err.message || ''), 'error');
     } finally {
@@ -787,7 +901,6 @@ export const UserManagement = () => {
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
   const openDeleteModal = (user) => { setDeleteTarget(user); setShowDeleteModal(true); };
 
   const confirmDelete = async () => {
@@ -802,7 +915,6 @@ export const UserManagement = () => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || 'Failed to archive user');
 
-      // ---- AUDIT LOG ----
       logAdminAction({
         action: 'user_archived',
         details: {
@@ -827,7 +939,6 @@ export const UserManagement = () => {
     setTimeout(() => setMessage(null), 4000);
   };
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
   const statTotal       = filteredUsers.length;
   const statAdmin       = filteredUsers.filter(u => isAdmin(u.role, configData)).length;
   const statClinicStaff = filteredUsers.filter(u => isClinicStaff(u.role, configData)).length;
@@ -869,13 +980,9 @@ export const UserManagement = () => {
         ))}
       </div>
 
-      {/* Main Container */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
-        {/* Unified Inline Toolbar */}
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-
-          {/* Left side: Search & Filters */}
           <div className="flex flex-wrap gap-2 items-center flex-1 w-full xl:w-auto">
 
             <div className="relative w-full sm:w-60">
@@ -925,7 +1032,6 @@ export const UserManagement = () => {
             </select>
           </div>
 
-          {/* Right side: Actions */}
           <div className="flex gap-2 flex-wrap items-center justify-end shrink-0">
            <button onClick={() => setShowCreateWizard(true)}
              className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
@@ -945,7 +1051,6 @@ export const UserManagement = () => {
           </div>
         </div>
 
-        {/* Table Area */}
         <div className="flex-1 overflow-auto bg-white [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
@@ -1051,7 +1156,6 @@ export const UserManagement = () => {
           </table>
         </div>
 
-        {/* Pagination Footer */}
         {totalPages > 1 && (
           <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
             <div>
@@ -1081,17 +1185,15 @@ export const UserManagement = () => {
 
       </div>
 
-      {/* Create Wizard */}
       {showCreateWizard && configData && (
         <CreateUserModal
           onClose={() => setShowCreateWizard(false)}
-          onCreated={() => fetchUsers()} // Automatically refetch table data on success
+          onCreated={() => fetchUsers()}
           showSnackbar={showSnackbar}
           configData={configData}
         />
       )}
 
-      {/* ── Edit Modal ── */}
       {showEditModal && editTarget && createPortal(
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
@@ -1110,7 +1212,6 @@ export const UserManagement = () => {
               <form onSubmit={saveEdit} id="edit-form">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
 
-                  {/* Account Section */}
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Account Information</div>
                   </div>
@@ -1124,18 +1225,19 @@ export const UserManagement = () => {
                         <EyeIcon open={editShowPwd} />
                       </button>
                     </div>
-                    {/* Render requirements block conditionally ONLY when text is present to save space on edits */}
                     {editForm.password && <PasswordRequirements password={editForm.password} rules={configData.passwordRules} />}
                   </div>
 
-                  {/* Identity Section */}
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Personal Information</div>
                   </div>
                   <div><label className={labelCls}>First Name</label><input className={inputCls} value={editForm.first_name} onChange={e => field('first_name', e.target.value)} required /></div>
                   <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={editForm.middle_name} onChange={e => field('middle_name', e.target.value)} /></div>
                   <div><label className={labelCls}>Last Name</label><input className={inputCls} value={editForm.last_name} onChange={e => field('last_name', e.target.value)} required /></div>
-                  <div><label className={labelCls}>Suffix</label><input className={inputCls} value={editForm.suffix} onChange={e => field('suffix', e.target.value)} placeholder="e.g. Jr., III" /></div>
+                  <div>
+                    <label className={labelCls}>Suffix</label>
+                    <CustomSelect value={editForm.suffix} onChange={v => field('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
+                  </div>
                   <div>
                     <label className={labelCls}>Phone Number</label>
                     <input
@@ -1148,28 +1250,49 @@ export const UserManagement = () => {
                     {phoneError && <p className="text-xs text-red-500 mt-1">{phoneError}</p>}
                   </div>
 
-                  {/* Role & Work Section */}
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Role &amp; Work Information</div>
                   </div>
-                  <div><label className={labelCls}>Role</label><select className={selectCls} value={editForm.role} onChange={e => handleRoleEditChange(e.target.value)}><RoleOptions configData={configData} /></select></div>
-                  <div><label className={labelCls}>Job Title</label><input className={inputCls} value={editForm.job_title} onChange={e => field('job_title', e.target.value)} /></div>
-                  <div><label className={labelCls}>Classification</label><input className={inputCls} value={editForm.classification} onChange={e => field('classification', e.target.value)} /></div>
-                  <div><label className={labelCls}>Department / Office</label>
-                    <select className={selectCls} value={editForm.departmentAbbr} onChange={e => handleDeptChange(e.target.value)}>
-                      <option value="">— Select —</option>
-                      {configData?.departments?.map(d => <option key={d.abbr} value={d.abbr}>{d.full}</option>)}
-                      {configData?.non_academic_offices?.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  </div>
-                  <div><label className={labelCls}>Program / Unit</label>
-                    <select className={selectCls} value={editForm.program} onChange={e => field('program', e.target.value)} disabled={!editForm.departmentAbbr}>
-                      <option value="">— Select —</option>
-                      {(programsByDeptAbbr[editForm.departmentAbbr] || []).map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                  <div>
+                    <label className={labelCls}>Role</label>
+                    <CustomSelect value={editForm.role} onChange={handleRoleEditChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
                   </div>
 
-                  {/* Personal Details Section */}
+                  {isStudent(editForm.role) && (
+                    <>
+                      <div>
+                        <label className={labelCls}>Department</label>
+                        <CustomSelect value={editForm.departmentAbbr} onChange={handleDeptChange} options={configData?.departments?.map(d => ({ value: d.abbr, label: d.abbr }))} />
+                        {editForm.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[editForm.departmentAbbr]}</p>}
+                      </div>
+                      <div>
+                        <label className={labelCls}>Program</label>
+                        <CustomSelect value={editForm.program} onChange={v => field('program', v)} options={programsByDeptAbbr[editForm.departmentAbbr] || []} disabled={!editForm.departmentAbbr} />
+                      </div>
+                    </>
+                  )}
+
+                  {(isFaculty(editForm.role, configData) || isClinicStaff(editForm.role, configData) || isAdmin(editForm.role, configData)) && (
+                    <>
+                      <div>
+                        <label className={labelCls}>Department / Office</label>
+                        <CustomSelect value={editForm.department} onChange={v => field('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
+                      </div>
+
+                      <div>
+                        <label className={labelCls}>Job Title</label>
+                        <CustomSelect value={editForm.job_title} onChange={v => field('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
+                      </div>
+
+                      {!isAdmin(editForm.role, configData) && (
+                        <div>
+                          <label className={labelCls}>Classification</label>
+                          <CustomSelect value={editForm.classification} onChange={v => field('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
+                        </div>
+                      )}
+                    </>
+                  )}
+
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Personal Details</div>
                   </div>
@@ -1181,11 +1304,26 @@ export const UserManagement = () => {
                     />
                   </div>
                   <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
-                  <div><label className={labelCls}>Sex</label><select className={selectCls} value={editForm.sex} onChange={e => field('sex', e.target.value)}><option value="">— Select —</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-                  <div><label className={labelCls}>Civil Status</label><select className={selectCls} value={editForm.civil_status} onChange={e => field('civil_status', e.target.value)}><option value="">— Select —</option>{['Single','Married','Widowed','Divorced','Separated'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                  <div><label className={labelCls}>Blood Type</label><select className={selectCls} value={editForm.blood_type} onChange={e => field('blood_type', e.target.value)}><option value="">— Select —</option>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label className={labelCls}>Religion</label><select className={selectCls} value={editForm.religion} onChange={e => field('religion', e.target.value)}><option value="">— Select —</option>{['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other'].map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                  <div><label className={labelCls}>Nationality</label><select className={selectCls} value={editForm.nationality} onChange={e => field('nationality', e.target.value)}><option value="">— Select —</option>{['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other'].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+                  <div>
+                    <label className={labelCls}>Sex</label>
+                    <CustomSelect value={editForm.sex} onChange={v => field('sex', v)} options={['Male', 'Female']} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Civil Status</label>
+                    <CustomSelect value={editForm.civil_status} onChange={v => field('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Blood Type</label>
+                    <CustomSelect value={editForm.blood_type} onChange={v => field('blood_type', v)} options={['A+','A-','B+','B-','AB+','AB-','O+','O-']} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Religion</label>
+                    <CustomSelect value={editForm.religion} onChange={v => field('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nationality</label>
+                    <CustomSelect value={editForm.nationality} onChange={v => field('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
+                  </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Home Address</label>
                     <div className="flex gap-2">
@@ -1196,29 +1334,35 @@ export const UserManagement = () => {
                     </div>
                   </div>
 
-                  {/* Academic Section - Only show for students */}
                   {(editForm.role === 'student') && (
                     <>
                       <div className="sm:col-span-2">
                         <div className={sectionHeadCls}>Academic Information</div>
                       </div>
-                      <div><label className={labelCls}>Year Level</label><select className={selectCls} value={editForm.year_level} onChange={e => field('year_level', e.target.value)}><option value="">— Select —</option>{['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate'].map(yr => <option key={yr} value={yr}>{yr}</option>)}</select></div>
-                      <div><label className={labelCls}>Section</label><select className={selectCls} value={editForm.section} onChange={e => field('section', e.target.value)}><option value="">— Select —</option>{(configData?.sections || []).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                      <div><label className={labelCls}>Student Classification</label><select className={selectCls} value={editForm.student_classification} onChange={e => field('student_classification', e.target.value)}><option value="">— Select —</option>{STUDENT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                      <div>
+                        <label className={labelCls}>Year Level</label>
+                        <CustomSelect value={editForm.year_level} onChange={v => field('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Section</label>
+                        <CustomSelect value={editForm.section} onChange={v => field('section', v)} options={configData?.sections || []} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Student Classification</label>
+                        <CustomSelect value={editForm.student_classification} onChange={v => field('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
+                      </div>
                     </>
                   )}
 
-                 {/* Account Flags */}
                   <div className="sm:col-span-2">
                     <div className={sectionHeadCls}>Account Status</div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                      {/* Email Verified Toggle */}
                       <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                         <Toggle checked={editForm.is_verified} onChange={() => field('is_verified', !editForm.is_verified)} />
                         <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
                           <span className="text-sm font-semibold text-slate-700 truncate">Email Verified</span>
-                          {!editForm.is_verified && (
+                          {!editTarget?.is_verified && (
                             <button
                               type="button"
                               onClick={() => resendVerificationEmail(editTarget)}
@@ -1231,7 +1375,6 @@ export const UserManagement = () => {
                         </div>
                       </div>
 
-                      {/* Profile Complete Toggle — also drives is_profile_setup */}
                       <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                         <Toggle checked={editForm.profile_complete} onChange={toggleProfileComplete} />
                         <span className="text-sm font-semibold text-slate-700 truncate">Profile Complete</span>
@@ -1254,7 +1397,6 @@ export const UserManagement = () => {
     document.body
       )}
 
-      {/* ── Address Modal for Edit ── */}
       {showAddressModal && (
         <AddressModal
           isOpen={showAddressModal}
@@ -1270,7 +1412,6 @@ export const UserManagement = () => {
         />
       )}
 
-      {/* Delete Confirmation Modal Using Portal */}
       {showDeleteModal && deleteTarget && createPortal(
         <div
           className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
@@ -1315,7 +1456,6 @@ export const UserManagement = () => {
         document.body
       )}
 
-      {/* ── Snackbar ── */}
       {message && (
         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'

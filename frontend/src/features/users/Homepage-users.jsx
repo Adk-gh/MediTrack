@@ -627,7 +627,7 @@ const HomePageUsers = () => {
   if (hasEmptyVaccinations) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.vaccinationsDesc', "You have incomplete items (Vaccination History). Please complete your profile before going to the clinic for an f2f consultation."),
+      desc:      t('homepage.pendingActions.vaccinationsDesc', "You have incomplete items (Vaccination History). Please complete your profile before going to the clinic for a f2f consultation."),
       btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
       targetTab: "profile",
       scrollTo:  "vaccinations",
@@ -635,7 +635,7 @@ const HomePageUsers = () => {
   } else if (hasEmptyEmergency) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.emergencyDesc', "You have incomplete items (Emergency Contact). Please complete your profile before going to the clinic for an f2f consultation."),
+      desc:      t('homepage.pendingActions.emergencyDesc', "You have incomplete items (Emergency Contact). Please complete your profile before going to the clinic for a f2f consultation."),
       btnText:   t('homepage.pendingActions.addContact', "Add Contact"),
       targetTab: "profile",
       scrollTo:  "emergency",
@@ -643,7 +643,7 @@ const HomePageUsers = () => {
   } else if (hasEmptyAcademic) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.academicDesc', "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for an f2f consultation."),
+      desc:      t('homepage.pendingActions.academicDesc', "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for a f2f consultation."),
       btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
       targetTab: "profile",
       scrollTo:  "academic",
@@ -651,7 +651,7 @@ const HomePageUsers = () => {
   } else if (hasEmptyContact) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.contactDesc', "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for an f2f consultation."),
+      desc:      t('homepage.pendingActions.contactDesc', "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for a f2f consultation."),
       btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
       targetTab: "profile",
       scrollTo:  "contact",
@@ -659,7 +659,7 @@ const HomePageUsers = () => {
   } else if (hasEmptyDental) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.dentalDesc', "You have incomplete items (Dental History). Please complete your profile before going to the clinic for an f2f consultation."),
+      desc:      t('homepage.pendingActions.dentalDesc', "You have incomplete items (Dental History). Please complete your profile before going to the clinic for a f2f consultation."),
       btnText:   t('homepage.pendingActions.addDentalHistory', "Add Dental History"),
       targetTab: "profile",
       scrollTo:  "dental",
@@ -667,7 +667,7 @@ const HomePageUsers = () => {
   } else if (hasEmptySurgical) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.surgicalDesc', "You have incomplete items (Surgical History). Please complete your profile before going to the clinic for an f2f consultation."),
+      desc:      t('homepage.pendingActions.surgicalDesc', "You have incomplete items (Surgical History). Please complete your profile before going to the clinic for a f2f consultation."),
       btnText:   t('homepage.pendingActions.addSurgicalHistory', "Add Surgical History"),
       targetTab: "profile",
       scrollTo:  "surgical",

@@ -148,6 +148,13 @@ const ResetPassword = () => {
   return (
     <>
       <style>{`
+        /* Force the entire page to allow natural scrolling (overrides layout restrictions) */
+        html, body, #root {
+          height: auto !important;
+          min-height: 100vh;
+          overflow-y: auto !important;
+        }
+
         @keyframes rp-fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes rp-spin { to { transform: rotate(360deg); } }
         @keyframes lf-spin { to { transform: rotate(360deg); } }
@@ -156,7 +163,7 @@ const ResetPassword = () => {
         @keyframes m-slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
         .lf-spinner { display: inline-block; width: 15px; height: 15px; border: 2.5px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: lf-spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
-        .lf-desktop-wrapper { display: block; }
+        .lf-desktop-wrapper { display: block; padding-bottom: 60px; }
         .lf-mobile-wrapper { display: none; }
 
         @media (max-width: 640px) {
@@ -227,8 +234,8 @@ const ResetPassword = () => {
 
       {/* DESKTOP */}
       <div className="lf-desktop-wrapper">
-        <AuthLayout>
-          <div className={`rp-container ${!isLoaded ? 'opacity-0' : ''}`} style={{ maxWidth: 420, margin: '0 auto', padding: '40px' }}>
+        <AuthLayout widthClass="max-w-[480px]">
+          <div className={`rp-container ${!isLoaded ? 'opacity-0' : ''}`} style={{ maxWidth: 480, margin: '0 auto', padding: '40px' }}>
             <div className="rp-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21V11a2.25 2.25 0 012-2h5.5a2.25 2.25 0 012 2v.75l-2.256-2.256A2.25 2.25 0 0113.5 16.5h-2.378a2.25 2.25 0 01-2.244-2.244V12.89a2.25 2.25 0 00-.659-1.591L3.662 6.694a2.25 2.25 0 011.591-.659H9.75z" />

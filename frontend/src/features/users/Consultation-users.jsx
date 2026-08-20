@@ -5,7 +5,7 @@ import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import consultationsService from '../../services/consultations.service';
 import { formatUserDate } from '../../utils/dateFormat';
-import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
+import { useTranslation } from 'react-i18next';
 
 // ── CACHE KEYS ─────────────────────────────────────────────────────────────
 const MSG_CACHE_KEY      = 'meditrack_chat_messages';
@@ -257,8 +257,8 @@ function LinkifiedText({ text, isPatient = false }) {
 }
 
 const INITIAL_OPTIONS = [
-  { key: 'illnessFever',         defaultLabel: '🤒 Illness / Fever',          type: 'medical' },
-  { key: 'injuryPain',           defaultLabel: '🤕 Injury / Pain',            type: 'medical' },
+  { key: 'illnessFever',         defaultLabel: '🤒 Illness / Fever',         type: 'medical' },
+  { key: 'injuryPain',           defaultLabel: '🤕 Injury / Pain',           type: 'medical' },
   { key: 'prescriptionMedicine', defaultLabel: '💊 Prescription / Medicine',    type: 'medical' },
   { key: 'medicalCertificate',   defaultLabel: '📄 Medical Certificate',        type: 'medical' },
   { key: 'followUpCheckup',      defaultLabel: '🩺 Follow-up Check-up',         type: 'medical' },
@@ -286,6 +286,19 @@ const ptrStyles = `
   [data-spin="true"]  [data-ptr-spin] { display: block; }
   [data-spin="false"] [data-ptr-icon] { display: block; }
   [data-spin="false"] [data-ptr-spin] { display: none;  }
+`;
+
+// Global style injected to gracefully hide the navigation bars when the virtual keyboard is active
+const combinedStyles = `
+  ${ptrStyles}
+  body.keyboard-active nav,
+  body.keyboard-active header:not(.chat-header),
+  body.keyboard-active footer,
+  body.keyboard-active [class*="bottom-nav"],
+  body.keyboard-active [class*="BottomNav"],
+  body.keyboard-active [class*="TabMenu"] {
+    display: none !important;
+  }
 `;
 
 const PullIndicator = ({ indicatorRef }) => (
@@ -328,6 +341,59 @@ export default function ConsultationUsers() {
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // ── Mobile Keyboard Viewport Tracking ────────────────────────────────────────
+  const [vvState, setVvState] = useState({ height: '100%', top: 0, isKeyboard: false });
+
+  const messagesEndRef   = useRef(null);
+  const scrollToBottom = useCallback((smooth = true) => {
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({
+          behavior: smooth ? 'smooth' : 'auto',
+          block: 'end'
+        });
+      }
+    }, 100);
+  }, []);
+
+  useEffect(() => {
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        const vv = window.visualViewport;
+        const isMobile = window.innerWidth < 768;
+        // Detect if keyboard is active by checking if visual viewport shrunk significantly
+        const isKbd = isMobile && (window.innerHeight - vv.height > 100 || window.screen.height - vv.height > 250);
+
+        setVvState({
+          height: isKbd ? `${vv.height}px` : '100%',
+          top: isKbd ? `${vv.offsetTop}px` : 0,
+          isKeyboard: isKbd
+        });
+
+        if (isKbd) {
+          document.body.classList.add('keyboard-active');
+          scrollToBottom(false);
+        } else {
+          document.body.classList.remove('keyboard-active');
+        }
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVisualViewportResize);
+      window.visualViewport.addEventListener('scroll', handleVisualViewportResize);
+      handleVisualViewportResize(); // Initial check
+    }
+
+    return () => {
+      document.body.classList.remove('keyboard-active');
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleVisualViewportResize);
+        window.visualViewport.removeEventListener('scroll', handleVisualViewportResize);
+      }
+    };
+  }, [scrollToBottom]);
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 10000);
     return () => clearInterval(timer);
@@ -340,7 +406,6 @@ export default function ConsultationUsers() {
   const [lastEndedByType,     setLastEndedByType]     = useState({ medical: null, dental: null });
   const lastEndedByTypeRef = useRef({ medical: null, dental: null });
 
-  // Sync i18next with the user's database preference
   useEffect(() => {
     if (preferences?.language) {
       const langCode = preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
@@ -521,14 +586,10 @@ export default function ConsultationUsers() {
     return currentTime >= apptStart && currentTime <= apptEnd;
   }, [onlineApptDetails, currentTime]);
 
-  // ── Derived gating states ─────────────────────────────────────────────
   const hasApprovedOnline = onlineAppt.medical || onlineAppt.dental;
   const hasPendingOnline  = pendingAppt.medical || pendingAppt.dental;
-
-  // If the consultation hasn't been ended and we have a room, it stays open regardless of time
   const hasAnyActiveNow   = (!isEnded && !!activeRoomId) || isApptActive('medical') || isApptActive('dental');
 
-  // Earliest upcoming approved-but-not-yet-open appointment, for the countdown screen
   const nextApptTarget = useMemo(() => {
     const candidates = ['medical', 'dental']
       .filter((t) => onlineAppt[t] && !isApptActive(t))
@@ -571,7 +632,6 @@ export default function ConsultationUsers() {
 
   const [startingOption,  setStartingOption]  = useState(null);
 
-  const messagesEndRef   = useRef(null);
   const scrollAreaRef    = useRef(null);
   const isEndedRef       = useRef(true);
   const initRanRef       = useRef(false);
@@ -641,7 +701,6 @@ export default function ConsultationUsers() {
 
       await ensureValidSession();
 
-      // ALWAYS fetch the correct internal user profile using the current Auth UID
       const { data: profiles, error } = await supabase
         .from('users')
         .select('id, first_name, last_name, preferences')
@@ -668,7 +727,6 @@ export default function ConsultationUsers() {
       setInternalName(name);
       setSessionReady(true);
 
-      // Overwrite any stale cache with the correct data
       writeProfileCache({ internalUserId: profile.id, internalName: name });
 
       try {
@@ -1062,17 +1120,6 @@ export default function ConsultationUsers() {
       isMounted = false;
       supabase.removeChannel(presenceChannel);
     };
-  }, []);
-
-  const scrollToBottom = useCallback((smooth = true) => {
-    setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({
-          behavior: smooth ? 'smooth' : 'auto',
-          block: 'end'
-        });
-      }
-    }, 100);
   }, []);
 
   useEffect(() => {
@@ -1494,8 +1541,21 @@ export default function ConsultationUsers() {
   const isLoading = loadingRecords || loadingOnlineAppt || !internalUserId;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#f4f7f5' }}>
-      <style>{ptrStyles}</style>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: vvState.height,
+      minHeight: 0,
+      background: '#f4f7f5',
+      ...(vvState.isKeyboard ? {
+        position: 'fixed',
+        top: vvState.top,
+        left: 0,
+        right: 0,
+        zIndex: 99999
+      } : {})
+    }}>
+      <style>{combinedStyles}</style>
 
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center p-8 h-full">
@@ -1509,7 +1569,7 @@ export default function ConsultationUsers() {
         <>
           <div
             style={{ position: 'sticky', top: 0, zIndex: 20, background: '#ffffff', borderBottom: '1px solid #edf3f0', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', flexShrink: 0 }}
-            className="px-5 py-4 flex items-center gap-3 transition-all duration-300"
+            className="px-5 py-4 flex items-center gap-3 transition-all duration-300 chat-header"
           >
             <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300" style={{ backgroundColor: cfg.accentLight }}>
               {consultType === 'dental' && !isEnded ? (
@@ -1702,12 +1762,15 @@ export default function ConsultationUsers() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               onPaste={(e) => e.preventDefault()}
+              onFocus={(e) => {
+                if (!isEnded) e.target.style.borderColor = cfg.accent;
+                setTimeout(() => scrollToBottom(false), 150);
+              }}
+              onBlur={(e) => (e.target.style.borderColor = cfg.accentBorder)}
               placeholder={isEnded ? t('consultation.selectOptionPlaceholder', 'Please select an option above…') : t('consultation.typeMessagePlaceholder', 'Type a message…')}
               disabled={isEnded || !sessionReady}
               className="flex-1 border rounded-full px-5 py-3.5 text-[13px] bg-[#f9fbfa] text-[#1a2e22] outline-none transition-colors placeholder:text-[#9bb5a5] disabled:opacity-50 disabled:cursor-not-allowed duration-300"
               style={{ borderColor: cfg.accentBorder }}
-              onFocus={(e) => !isEnded && (e.target.style.borderColor = cfg.accent)}
-              onBlur={(e) => (e.target.style.borderColor = cfg.accentBorder)}
             />
             <button
               onClick={handleSend}
@@ -1802,5 +1865,7 @@ export default function ConsultationUsers() {
         </div>
       )}
     </div>
+
   );
+
 }

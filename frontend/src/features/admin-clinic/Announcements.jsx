@@ -164,7 +164,7 @@ export const Announcements = () => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [currentEditId, setCurrentEditId]     = useState(null);
-  const [showAllDepts, setShowAllDepts]       = useState(false); // New state for interactive departments
+  const [showAllDepts, setShowAllDepts]       = useState(false);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState(null);
@@ -179,10 +179,8 @@ export const Announcements = () => {
 
   const [userRole, setUserRole] = useState('');
 
-  // Derived Department Options
   const deptOptions = configData?.departments?.map(d => d.full) || [];
 
-  // Helper function to get the abbreviation from the full name
   const getDeptAbbr = (fullName) => {
     const dept = configData?.departments?.find(d => d.full === fullName);
     return dept ? dept.abbr : fullName;
@@ -266,7 +264,6 @@ export const Announcements = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch announcements
         const { data: annData, error: annError } = await supabase
           .from('announcements')
           .select('*')
@@ -276,7 +273,6 @@ export const Announcements = () => {
         if (annError) throw annError;
         setAnnouncements(annData || []);
 
-        // Fetch System Configuration
         const configRes = await fetch(`${API_URL}/system-config`);
         const configResult = await configRes.json();
 
@@ -414,7 +410,6 @@ export const Announcements = () => {
         const newAnnouncement = data[0];
         setAnnouncements(prev => [newAnnouncement, ...prev]);
 
-        // ── Broadcast Notification to Target Department Users ──
         try {
           const isAllDepts = formData.dept.length === 0 || formData.dept.length === deptOptions.length;
           let userQuery = supabase.from('users').select('id, department');
@@ -437,7 +432,6 @@ export const Announcements = () => {
               created_at: new Date().toISOString(),
             }));
 
-            // Chunk inserts by batches of 200
             for (let i = 0; i < notifRows.length; i += 200) {
               await supabase.from('notifications').insert(notifRows.slice(i, i + 200));
             }
@@ -496,7 +490,7 @@ export const Announcements = () => {
 
   const handleView = (item) => {
     setViewData(item);
-    setShowAllDepts(false); // Reset the department view mode
+    setShowAllDepts(false);
     setIsViewModalOpen(true);
   };
 
@@ -1000,7 +994,7 @@ export const Announcements = () => {
                       ))}
                       <button
                         onClick={(e) => { e.stopPropagation(); setShowAllDepts(false); }}
-                        className="text-xs font-bold px-3 py-1 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                        className="text-xs font-bold px-3 py-1 rounded-full bg-[#e0eceb] text-[#466460] hover:bg-[#d1e0df] transition-colors"
                       >
                         Less
                       </button>

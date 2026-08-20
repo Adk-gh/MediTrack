@@ -41,12 +41,18 @@ const formatDate = (year, month, day) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// Formats a raw time string (e.g., "08:00") into a 1-hour window (e.g., "8:00 AM – 9:00 AM")
 const formatTime = (time) => {
   if (!time) return '';
-  const [h, m] = time.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hr = h % 12 || 12;
-  return `${hr}:${String(m).padStart(2, '0')} ${period}`;
+  const [h] = time.split(':').map(Number);
+
+  const fmt = (hour) => {
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHr = hour % 12 || 12;
+    return `${displayHr}:00 ${period}`;
+  };
+
+  return `${fmt(h)} – ${fmt(h + 1)}`;
 };
 
 // Build a 'YYYY-MM-DD' string for the DatePicker from separate y/m/d fields.
@@ -62,6 +68,9 @@ const fromDateInputValue = (val) => {
   const [y, m, d] = val.split('-').map(Number);
   return { y, m, d };
 };
+
+// Statuses whose date/time can no longer be edited once set.
+const LOCKED_STATUSES = ['done', 'missed', 'rejected'];
 
 export const AppointmentManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -312,9 +321,8 @@ export const AppointmentManagement = () => {
   const handleEditSave = async () => {
     if (!appointmentToEdit) return;
 
-    const isFinalStatus = ['done', 'missed', 'rejected'].includes(editForm.status);
+    const isFinalStatus = LOCKED_STATUSES.includes(editForm.status);
     const isApproved = editForm.status === 'approved';
-    const isPending = editForm.status === 'pending';
 
     if (isApproved && (!editForm.year || !editForm.month || !editForm.day)) {
       showSnackbar('Please select a valid date for approved appointments', 'error');
@@ -327,17 +335,15 @@ export const AppointmentManagement = () => {
         status: editForm.status,
       };
 
-      if (isPending) {
-        updates.year = null;
-        updates.month = null;
-        updates.day = null;
-        updates.time = null;
-      } else if (!isFinalStatus) {
-        updates.year = String(editForm.year);
-        updates.month = String(editForm.month).padStart(2, '0');
-        updates.day = String(editForm.day).padStart(2, '0');
+      if (!isFinalStatus) {
+        // Pending and approved appointments can have their date/time set or changed.
+        // Pending doesn't require a date, so fields simply stay null if not chosen.
+        updates.year = editForm.year ? String(editForm.year) : null;
+        updates.month = editForm.month ? String(editForm.month).padStart(2, '0') : null;
+        updates.day = editForm.day ? String(editForm.day).padStart(2, '0') : null;
         updates.time = editForm.time ? String(editForm.time).slice(0, 5) : null;
       }
+      // isFinalStatus (done/missed/rejected) keeps its existing date/time untouched.
 
       if (typeof appointmentsService.updateAppointment === 'function') {
         await appointmentsService.updateAppointment(appointmentToEdit.id, updates);
@@ -869,19 +875,7 @@ export const AppointmentManagement = () => {
                 </label>
                 <select
                   value={editForm.status}
-                  onChange={e => {
-                    const newStatus = e.target.value;
-                    setEditForm(f => {
-                      const updated = { ...f, status: newStatus };
-                      if (newStatus === 'pending') {
-                        updated.year = '';
-                        updated.month = '';
-                        updated.day = '';
-                        updated.time = '';
-                      }
-                      return updated;
-                    });
-                  }}
+                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
                 >
                   {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => (
@@ -893,26 +887,26 @@ export const AppointmentManagement = () => {
               {/* Date */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Date {['done', 'missed', 'rejected', 'pending'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
+                  Date {LOCKED_STATUSES.includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
                 </label>
                 <DatePicker
                   value={toDateInputValue(editForm.year, editForm.month, editForm.day)}
                   onChange={handleEditDateChange}
                   placeholder="Select date"
-                  disabled={['done', 'missed', 'rejected', 'pending'].includes(editForm.status)}
+                  disabled={LOCKED_STATUSES.includes(editForm.status)}
                 />
               </div>
 
               {/* Time */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Time {['done', 'missed', 'rejected', 'pending'].includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
+                  Time {LOCKED_STATUSES.includes(editForm.status) && <span className="text-slate-400 normal-case">(Cannot change)</span>}
                 </label>
                 <select
                   value={editForm.time || ''}
                   onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
-                  disabled={['done', 'missed', 'rejected', 'pending'].includes(editForm.status)}
+                  disabled={LOCKED_STATUSES.includes(editForm.status)}
                 >
                   <option value="" disabled>Select time</option>
                   {CLINIC_SLOTS.map(slot => (

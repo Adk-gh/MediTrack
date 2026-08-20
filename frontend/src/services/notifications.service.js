@@ -1,4 +1,4 @@
-//C:\Users\HP\MediTrack\frontend\src\services\notifications.service.js
+// C:\Users\HP\MediTrack\frontend\src\services\notifications.service.js
 import { supabase } from '../supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -36,23 +36,6 @@ export const getInternalUserId = async () => {
 };
 
 export const getNotifications = async (limit = 20) => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const isSysAdmin = user?.role === 'sysadmin';
-
-  if (isSysAdmin) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      console.error('Error fetching notifications for sysadmin:', error);
-      return [];
-    }
-    return data || [];
-  }
-
   const userId = await getInternalUserId();
   if (!userId) return [];
 
@@ -72,22 +55,14 @@ export const getNotifications = async (limit = 20) => {
 };
 
 export const getUnreadCount = async () => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const isSysAdmin = user?.role === 'sysadmin';
+  const userId = await getInternalUserId();
+  if (!userId) return 0;
 
-  let query = supabase
+  const { count, error } = await supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
-    .eq('is_read', false);
-
-  // If regular user (doctor, nurse, dentist), filter by user_id
-  if (!isSysAdmin) {
-    const userId = await getInternalUserId();
-    if (!userId) return 0;
-    query = query.eq('user_id', userId);
-  }
-
-  const { count, error } = await query;
+    .eq('is_read', false)
+    .eq('user_id', userId);
 
   if (error) {
     console.error('Error fetching unread count:', error);
@@ -110,18 +85,15 @@ export const markAsRead = async (notificationId) => {
 };
 
 export const markAllAsRead = async () => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const isSysAdmin = user?.role === 'sysadmin';
+  const userId = await getInternalUserId();
+  if (!userId) return { success: false };
 
-  let query = supabase.from('notifications').update({ is_read: true }).eq('is_read', false);
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('is_read', false)
+    .eq('user_id', userId);
 
-  if (!isSysAdmin) {
-    const userId = await getInternalUserId();
-    if (!userId) return { success: false };
-    query = query.eq('user_id', userId);
-  }
-
-  const { error } = await query;
   if (error) throw error;
 
   sessionStorage.removeItem(NOTIF_CACHE_KEY);

@@ -126,7 +126,7 @@ export function NotificationBell({ onClick, count }) {
   );
 }
 
-function NotificationRow({ notification, onMarkAsRead, onDelete, isSysAdmin, dense }) {
+function NotificationRow({ notification, onMarkAsRead, onDelete, dense }) {
   const IconComponent = getNotificationIcon(notification.type);
   return (
     <div
@@ -169,7 +169,7 @@ function NotificationRow({ notification, onMarkAsRead, onDelete, isSysAdmin, den
             <p className="text-[10px] text-slate-400">
               {formatTimeAgo(notification.createdAt)}
             </p>
-            {isSysAdmin && notification.userName && (
+            {notification.userName && (
               <>
                 <span className="text-slate-300">•</span>
                 <p className="text-[10px] text-slate-400 truncate">{notification.userName}</p>
@@ -187,33 +187,17 @@ function NotificationRow({ notification, onMarkAsRead, onDelete, isSysAdmin, den
 
 const MODAL_PAGE_SIZE = 30;
 
-function AllNotificationsModal({ isOpen, onClose, isSysAdmin, onNotificationsChanged }) {
+function AllNotificationsModal({ isOpen, onClose, onNotificationsChanged }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
   const loadPage = useCallback(async (offset) => {
-    if (isSysAdmin) {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*, users ( name, full_name, email )')
-        .order('created_at', { ascending: false })
-        .range(offset, offset + MODAL_PAGE_SIZE - 1);
-
-      if (error) {
-        console.error('Supabase query error:', error.message);
-        throw error;
-      }
-
-      return (data || []).map((n) => ({
-        ...normalizeNotification(n),
-        userName: n.users?.full_name || n.users?.name || n.users?.email || null,
-      }));
-    }
+    // Only fetch notifications tied to the logged-in user via the service
     const notifs = await notificationsService.getNotifications(offset + MODAL_PAGE_SIZE);
     return (notifs || []).slice(offset).map(normalizeNotification);
-  }, [isSysAdmin]);
+  }, []);
 
   const fetchFirstPage = useCallback(async () => {
     setLoading(true);
@@ -280,7 +264,7 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, onNotificationsCha
               <BellIcon />
             </div>
             <h3 className="text-white font-bold text-base">
-              {isSysAdmin ? 'All System Notifications' : 'All Notifications'}
+              All Notifications
             </h3>
           </div>
           <button
@@ -313,7 +297,6 @@ function AllNotificationsModal({ isOpen, onClose, isSysAdmin, onNotificationsCha
                   notification={notification}
                   onMarkAsRead={handleMarkAsRead}
                   onDelete={handleDelete}
-                  isSysAdmin={isSysAdmin}
                   dense={false}
                 />
               ))}
@@ -349,20 +332,13 @@ const PAGE_SIZE = 20;
 export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isSysAdmin, setIsSysAdmin] = useState(false);
   const [showAllModal, setShowAllModal] = useState(false);
   const userIdRef = useRef(null);
 
   useEffect(() => {
     const initUser = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const isSysAdminRole = user?.role === 'sysadmin';
-        setIsSysAdmin(isSysAdminRole);
-
         const internalId = await notificationsService.getInternalUserId();
         userIdRef.current = internalId;
       } catch (e) {
@@ -387,7 +363,6 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
       const normalized = (notifs || []).map(normalizeNotification);
       setNotifications(normalized);
       updateCount(count || 0);
-      setHasMore(normalized.length >= PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -403,34 +378,32 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
     }
   }, [isOpen, fetchNotifications]);
 
-  // Realtime updates
+  // Realtime updates (strictly bound to the user's ID)
   useEffect(() => {
-    if (!isOpen) return;
-    if (!isSysAdmin && !userIdRef.current) return;
+    if (!isOpen || !userIdRef.current) return;
 
-    const filter = isSysAdmin ? undefined : `user_id=eq.${userIdRef.current}`;
-    let channel = supabase.channel(isSysAdmin ? 'sysadmin-notifications-realtime' : 'user-notifications-realtime');
+    const filter = `user_id=eq.${userIdRef.current}`;
+    let channel = supabase.channel('user-personal-notifications');
 
     channel = channel
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter },
         (payload) => {
           setNotifications((prev) => [normalizeNotification(payload.new), ...prev].slice(0, PAGE_SIZE));
           updateCount((prev) => prev + 1);
-          if (!isSysAdmin) {
-            sendNotification({
-              userId: payload.new.user_id,
-              type: 'new_message',
-              title: payload.new.title,
-              message: payload.new.message,
-            });
-          }
+
+          sendNotification({
+            userId: payload.new.user_id,
+            type: 'new_message',
+            title: payload.new.title,
+            message: payload.new.message,
+          });
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter },
         (payload) => {
           setNotifications((prev) =>
             prev.map((n) => (n.id === payload.new.id ? { ...n, isRead: payload.new.is_read } : n))
@@ -439,7 +412,7 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
       )
       .on(
         'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'notifications', ...(filter ? { filter } : {}) },
+        { event: 'DELETE', schema: 'public', table: 'notifications', filter },
         (payload) => {
           setNotifications((prev) => prev.filter((n) => n.id !== payload.old.id));
         }
@@ -449,7 +422,7 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isOpen, isSysAdmin]);
+  }, [isOpen]);
 
   const handleMarkAsRead = async (notificationId) => {
     try {
@@ -496,7 +469,7 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
               <BellIcon />
             </div>
             <h3 className="text-white font-bold text-base">
-              {isSysAdmin ? 'All System Notifications' : 'Notifications'}
+              Notifications
             </h3>
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -545,7 +518,6 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
                   notification={notification}
                   onMarkAsRead={handleMarkAsRead}
                   onDelete={handleDelete}
-                  isSysAdmin={isSysAdmin}
                   dense
                 />
               ))}
@@ -568,7 +540,6 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountChange }) {
       <AllNotificationsModal
         isOpen={showAllModal}
         onClose={() => setShowAllModal(false)}
-        isSysAdmin={isSysAdmin}
         onNotificationsChanged={fetchNotifications}
       />
 

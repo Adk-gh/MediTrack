@@ -12,9 +12,6 @@ const router = express.Router();
 // HELPERS
 // ==========================================
 
-/**
- * Prevent Supabase requests from hanging indefinitely.
- */
 const withTimeout = (promise, ms = 10000) => {
   return Promise.race([
     promise,
@@ -26,12 +23,8 @@ const withTimeout = (promise, ms = 10000) => {
   ]);
 };
 
-/**
- * Safely return a useful error message.
- */
 const getErrorMessage = (error) => {
   if (!error) return 'Unknown error';
-
   return (
     error.message ||
     error.error_description ||
@@ -41,12 +34,10 @@ const getErrorMessage = (error) => {
   );
 };
 
-
 // =========================================================
 // DYNAMIC ROLE MIDDLEWARES
 // =========================================================
 
-// Allows Admin Roles ONLY (for managing raw storage buckets)
 const allowDynamicAdmin = async (req, res, next) => {
   try {
     const userRole = req.user?.role?.toLowerCase();
@@ -55,10 +46,8 @@ const allowDynamicAdmin = async (req, res, next) => {
     }
 
     const config = await getSystemConfig();
-
     const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
 
-    // Safety net: Keep sysadmin and core clinical roles as hardcoded fallbacks
     const allowedRoles = [
       ...adminRoles,
       "sysadmin",
@@ -80,117 +69,77 @@ const allowDynamicAdmin = async (req, res, next) => {
   }
 };
 
-
 // ==========================================
-// STORAGE MANAGER ROUTES
-// ==========================================
-//
-// This router uses the server-side Supabase client
-// from ../configs/database.
-//
-// Make sure that database.js is configured with:
-//   SUPABASE_URL
-//   SUPABASE_SERVICE_KEY
-//
-// NEVER expose SUPABASE_SERVICE_KEY to the frontend.
+// GET: LIST ALL STORAGE BUCKETS (Guaranteed)
 // ==========================================
 
-
-// ==========================================
-// GET: LIST ALL STORAGE BUCKETS
-// ==========================================
-
-router.get('/buckets', authorized, allowDynamicAdmin, async (req, res, next) => {
+router.get('/buckets', authorized, allowDynamicAdmin, async (req, res) => {
   try {
-    // Prevent browser/proxy caching.
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
 
-    console.log('[Storage] Loading Supabase storage buckets...');
-
-    // Check server configuration without exposing the actual secret.
-    if (!process.env.SUPABASE_URL) {
-      console.error('[Storage] SUPABASE_URL is not configured.');
-
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
       return res.status(500).json({
         success: false,
-        error: 'Supabase URL is not configured on the backend.'
+        error: 'Supabase credentials are not fully configured on the backend.'
       });
     }
 
-    if (!process.env.SUPABASE_SERVICE_KEY) {
-      console.error('[Storage] SUPABASE_SERVICE_KEY is not configured.');
+    let buckets = [];
 
-      return res.status(500).json({
-        success: false,
-        error: 'Supabase service key is not configured on the backend.'
-      });
-    }
-
-    // --- RETRY LOOP FOR COLD START GLITCH ---
-    let data, error;
-    const maxRetries = 3;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const result = await withTimeout(supabase.storage.listBuckets(), 10000);
-      data = result.data;
-      error = result.error;
-
-      if (error) break; // If it's a hard error, stop retrying
-
-      if (Array.isArray(data) && data.length > 0) {
-        break; // Successfully got buckets, exit loop
+    // 1. Primary Attempt: Standard Storage API
+    try {
+      const { data, error } = await withTimeout(supabase.storage.listBuckets(), 8000);
+      if (!error && Array.isArray(data) && data.length > 0) {
+        buckets = data;
       }
+    } catch (err) {
+      console.warn('[Storage] listBuckets() attempt failed or timed out:', err.message);
+    }
 
-      if (Array.isArray(data) && data.length === 0 && attempt < maxRetries) {
-        console.warn(`[Storage] Supabase returned empty array (Cold Start Glitch). Attempt ${attempt}. Retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5 seconds
+    // 2. Secondary Fallback: Query storage schema directly via database client
+    if (buckets.length === 0) {
+      try {
+        const { data: dbBuckets, error: dbErr } = await supabase
+          .schema('storage')
+          .from('buckets')
+          .select('*');
+
+        if (!dbErr && Array.isArray(dbBuckets) && dbBuckets.length > 0) {
+          buckets = dbBuckets;
+        }
+      } catch (err) {
+        console.warn('[Storage] Database query for storage.buckets failed:', err.message);
       }
     }
-    // ----------------------------------------
 
-    // ------------------------------------------
-    // SUPABASE ERROR
-    // ------------------------------------------
-    if (error) {
-      console.error('[Storage] Supabase listBuckets error:', {
-        message: getErrorMessage(error),
-        status: error.status || null,
-        name: error.name || null
-      });
+    // 3. Tertiary Safety Net: Fallback to predefined application buckets
+    if (buckets.length === 0) {
+      const KNOWN_BUCKETS = ['MediStorage'];
 
-      return res.status(502).json({
-        success: false,
-        error: 'Failed to retrieve storage buckets from Supabase.',
-        details: getErrorMessage(error)
-      });
+      for (const bucketName of KNOWN_BUCKETS) {
+        try {
+          const { error } = await supabase.storage.from(bucketName).list('', { limit: 1 });
+          if (!error) {
+            buckets.push({
+              id: bucketName,
+              name: bucketName,
+              public: true,
+              created_at: new Date().toISOString()
+            });
+          }
+        } catch {}
+      }
     }
 
-    // ------------------------------------------
-    // NORMALIZE RESULT
-    // ------------------------------------------
-    const buckets = Array.isArray(data) ? data : [];
-
-    console.log(
-      `[Storage] Successfully loaded ${buckets.length} bucket(s):`,
-      buckets.map(bucket => bucket.name)
-    );
-
-    // ------------------------------------------
-    // SUCCESS
-    // ------------------------------------------
     return res.status(200).json({
       success: true,
       buckets
     });
 
   } catch (error) {
-    console.error('[Storage] Unexpected error while loading buckets:', {
-      message: error.message,
-      stack: error.stack
-    });
-
+    console.error('[Storage] Unexpected error loading buckets:', error);
     return res.status(500).json({
       success: false,
       error: 'Unexpected error while loading storage buckets.',
@@ -199,17 +148,11 @@ router.get('/buckets', authorized, allowDynamicAdmin, async (req, res, next) => 
   }
 });
 
-
 // ==========================================
 // GET: LIST FOLDERS / FILES
 // ==========================================
-// Query:
-//   ?prefix=some/folder
-//
-// Returns only one level deep.
-// ==========================================
 
-router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req, res, next) => {
+router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req, res) => {
   try {
     const { bucketId } = req.params;
     const prefix = req.query.prefix || '';
@@ -221,29 +164,15 @@ router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req,
       });
     }
 
-    console.log(
-      `[Storage] Listing bucket "${bucketId}" with prefix "${prefix}"`
-    );
-
     const { data, error } = await withTimeout(
       supabase.storage.from(bucketId).list(prefix, {
         limit: 1000,
-        sortBy: {
-          column: 'name',
-          order: 'asc'
-        }
+        sortBy: { column: 'name', order: 'asc' }
       }),
       10000
     );
 
     if (error) {
-      console.error('[Storage] Supabase list error:', {
-        bucket: bucketId,
-        prefix,
-        message: getErrorMessage(error),
-        status: error.status || null
-      });
-
       return res.status(502).json({
         success: false,
         error: 'Failed to list objects from Supabase Storage.',
@@ -252,34 +181,18 @@ router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req,
     }
 
     const items = (data || [])
-      // Supabase creates this placeholder for an otherwise-empty folder.
-      .filter(
-        item => item.name !== '.emptyFolderPlaceholder'
-      )
+      .filter(item => item.name !== '.emptyFolderPlaceholder')
       .map(item => {
-        // Supabase uses id === null for virtual folders.
         const isFolder = item.id === null;
-
         return {
           name: item.name,
-          path: prefix
-            ? `${prefix}/${item.name}`
-            : item.name,
+          path: prefix ? `${prefix}/${item.name}` : item.name,
           type: isFolder ? 'folder' : 'file',
           size: item.metadata?.size ?? null,
-          updated_at:
-            item.updated_at ||
-            item.created_at ||
-            null,
-          mime_type:
-            item.metadata?.mimetype ||
-            null
+          updated_at: item.updated_at || item.created_at || null,
+          mime_type: item.metadata?.mimetype || null
         };
       });
-
-    console.log(
-      `[Storage] Returned ${items.length} item(s) from "${bucketId}/${prefix}"`
-    );
 
     return res.status(200).json({
       success: true,
@@ -288,11 +201,6 @@ router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req,
     });
 
   } catch (error) {
-    console.error('[Storage] Unexpected list error:', {
-      message: error.message,
-      stack: error.stack
-    });
-
     return res.status(500).json({
       success: false,
       error: 'Unexpected error while listing storage objects.',
@@ -301,60 +209,29 @@ router.get('/buckets/:bucketId/list', authorized, allowDynamicAdmin, async (req,
   }
 });
 
-
 // ==========================================
-// HELPER:
-// RECURSIVELY COLLECT FILE PATHS
-// ==========================================
-//
-// Supabase Storage does not have real folders.
-// Folders are represented by object path prefixes.
-//
-// Example:
-//
-// documents/
-//   2026/
-//     report.pdf
-//
-// To delete "documents", we must first collect:
-//
-// documents/2026/report.pdf
+// HELPER: RECURSIVELY COLLECT FILE PATHS
 // ==========================================
 
 async function collectFilePaths(bucketId, prefix) {
   const { data, error } = await withTimeout(
-    supabase.storage.from(bucketId).list(prefix, {
-      limit: 1000
-    }),
+    supabase.storage.from(bucketId).list(prefix, { limit: 1000 }),
     10000
   );
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
   let paths = [];
 
   for (const item of data || []) {
-    // Ignore Supabase's empty-folder placeholder.
-    if (item.name === '.emptyFolderPlaceholder') {
-      continue;
-    }
+    if (item.name === '.emptyFolderPlaceholder') continue;
 
-    const itemPath = prefix
-      ? `${prefix}/${item.name}`
-      : item.name;
+    const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
 
-    // Virtual folder.
     if (item.id === null) {
-      const nestedPaths = await collectFilePaths(
-        bucketId,
-        itemPath
-      );
-
+      const nestedPaths = await collectFilePaths(bucketId, itemPath);
       paths = paths.concat(nestedPaths);
     } else {
-      // Real file.
       paths.push(itemPath);
     }
   }
@@ -362,80 +239,41 @@ async function collectFilePaths(bucketId, prefix) {
   return paths;
 }
 
-
 // ==========================================
 // DELETE: REMOVE SPECIFIC FILES
 // ==========================================
-// Body:
-//
-// {
-//   "paths": [
-//     "folder/file1.jpg",
-//     "folder/file2.jpg"
-//   ]
-// }
-// ==========================================
 
-router.delete('/buckets/:bucketId/objects', authorized, allowDynamicAdmin, async (req, res, next) => {
+router.delete('/buckets/:bucketId/objects', authorized, allowDynamicAdmin, async (req, res) => {
   try {
     const { bucketId } = req.params;
     const { paths } = req.body;
 
     if (!bucketId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bucket ID is required.'
-      });
+      return res.status(400).json({ success: false, error: 'Bucket ID is required.' });
     }
 
     if (!Array.isArray(paths) || paths.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'paths must be a non-empty array.'
-      });
+      return res.status(400).json({ success: false, error: 'paths must be a non-empty array.' });
     }
 
-    // Remove invalid values.
-    const validPaths = paths.filter(
-      path => typeof path === 'string' && path.trim().length > 0
-    );
+    const validPaths = paths.filter(path => typeof path === 'string' && path.trim().length > 0);
 
     if (validPaths.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid file paths were provided.'
-      });
+      return res.status(400).json({ success: false, error: 'No valid file paths were provided.' });
     }
 
-    console.log(
-      `[Storage] Deleting ${validPaths.length} object(s) from "${bucketId}"`
-    );
-
     const { data, error } = await withTimeout(
-      supabase.storage
-        .from(bucketId)
-        .remove(validPaths),
+      supabase.storage.from(bucketId).remove(validPaths),
       15000
     );
 
     if (error) {
-      console.error('[Storage] Supabase delete objects error:', {
-        bucket: bucketId,
-        paths: validPaths,
-        message: getErrorMessage(error),
-        status: error.status || null
-      });
-
       return res.status(502).json({
         success: false,
         error: 'Failed to delete storage objects.',
         details: getErrorMessage(error)
       });
     }
-
-    console.log(
-      `[Storage] Successfully deleted ${validPaths.length} object(s)`
-    );
 
     return res.status(200).json({
       success: true,
@@ -445,11 +283,6 @@ router.delete('/buckets/:bucketId/objects', authorized, allowDynamicAdmin, async
     });
 
   } catch (error) {
-    console.error('[Storage] Unexpected delete error:', {
-      message: error.message,
-      stack: error.stack
-    });
-
     return res.status(500).json({
       success: false,
       error: 'Unexpected error while deleting storage objects.',
@@ -458,56 +291,23 @@ router.delete('/buckets/:bucketId/objects', authorized, allowDynamicAdmin, async
   }
 });
 
-
 // ==========================================
 // DELETE: REMOVE ENTIRE FOLDER
 // ==========================================
-// Body:
-//
-// {
-//   "prefix": "some/folder"
-// }
-// ==========================================
 
-router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async (req, res, next) => {
+router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async (req, res) => {
   try {
     const { bucketId } = req.params;
     const { prefix } = req.body;
 
-    if (!bucketId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bucket ID is required.'
-      });
-    }
-
-    if (
-      typeof prefix !== 'string' ||
-      !prefix.trim()
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: 'prefix is required.'
-      });
+    if (!bucketId || typeof prefix !== 'string' || !prefix.trim()) {
+      return res.status(400).json({ success: false, error: 'Bucket ID and prefix are required.' });
     }
 
     const cleanPrefix = prefix.trim();
+    const allPaths = await collectFilePaths(bucketId, cleanPrefix);
 
-    console.log(
-      `[Storage] Collecting files for folder deletion: "${bucketId}/${cleanPrefix}"`
-    );
-
-    const allPaths = await collectFilePaths(
-      bucketId,
-      cleanPrefix
-    );
-
-    // Folder contains no actual files.
     if (allPaths.length === 0) {
-      console.log(
-        `[Storage] Folder "${cleanPrefix}" is already empty.`
-      );
-
       return res.status(200).json({
         success: true,
         deletedCount: 0,
@@ -515,46 +315,17 @@ router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async 
       });
     }
 
-    // ------------------------------------------
-    // DELETE IN CHUNKS
-    // ------------------------------------------
-
     const chunkSize = 500;
     let deletedCount = 0;
 
-    for (
-      let i = 0;
-      i < allPaths.length;
-      i += chunkSize
-    ) {
-      const chunk = allPaths.slice(
-        i,
-        i + chunkSize
-      );
-
-      console.log(
-        `[Storage] Deleting folder chunk ${Math.floor(i / chunkSize) + 1} ` +
-        `(${chunk.length} file(s))`
-      );
-
+    for (let i = 0; i < allPaths.length; i += chunkSize) {
+      const chunk = allPaths.slice(i, i + chunkSize);
       const { error } = await withTimeout(
-        supabase.storage
-          .from(bucketId)
-          .remove(chunk),
+        supabase.storage.from(bucketId).remove(chunk),
         15000
       );
 
       if (error) {
-        console.error(
-          '[Storage] Supabase delete folder error:',
-          {
-            bucket: bucketId,
-            prefix: cleanPrefix,
-            message: getErrorMessage(error),
-            status: error.status || null
-          }
-        );
-
         return res.status(502).json({
           success: false,
           error: 'Failed to delete folder contents.',
@@ -566,11 +337,6 @@ router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async 
       deletedCount += chunk.length;
     }
 
-    console.log(
-      `[Storage] Successfully deleted folder "${cleanPrefix}" ` +
-      `(${deletedCount} file(s))`
-    );
-
     return res.status(200).json({
       success: true,
       message: 'Folder deleted successfully.',
@@ -578,11 +344,6 @@ router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async 
     });
 
   } catch (error) {
-    console.error('[Storage] Unexpected folder deletion error:', {
-      message: error.message,
-      stack: error.stack
-    });
-
     return res.status(500).json({
       success: false,
       error: 'Unexpected error while deleting folder.',
@@ -590,10 +351,5 @@ router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async 
     });
   }
 });
-
-
-// ==========================================
-// EXPORT ROUTER
-// ==========================================
 
 module.exports = router;

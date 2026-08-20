@@ -31,7 +31,7 @@ const inputCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rou
 const selectCls = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] bg-white outline-none focus:border-[#4a635d] transition-colors";
 const labelCls = "block text-[11px] font-bold text-[#64748b] uppercase mb-[4px] ml-[2px]";
 
-export default function AddressModal({ isOpen, onClose, onConfirm, initialData = {}, zIndex = 200 }) {
+export default function AddressModal({ isOpen, onClose, onConfirm, initialData = {}, zIndex = 100000 }) {
   const [formData, setFormData] = useState({
     addressCountry: initialData.addressCountry || 'Philippines',
     addressRegion: initialData.addressRegion || '',
@@ -242,7 +242,14 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center" style={{ zIndex }}>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center"
+      style={{ zIndex }}
+      onClick={(e) => {
+        // Closes the modal ONLY if the backdrop is clicked directly
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h2 className="text-lg font-bold text-[#1a2e22]">Enter Address</h2>

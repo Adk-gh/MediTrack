@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+// C:\Users\HP\MediTrack\frontend\src\layouts\UserDashboardLayout.jsx
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   UserNotificationBell,
@@ -8,6 +9,10 @@ import { supabase } from "../supabase";
 import notificationsService from "../services/notifications.service.js";
 import { createPortal } from "react-dom";
 import logo from '../assets/logo.jpg';
+
+// ─── Notification type groupings ─────────────────────────────────────────────
+const APPOINTMENT_NOTIF_TYPES = ["appointment_request", "appointment_status"];
+const RECORD_NOTIF_TYPES = ["record_added", "record_updated"];
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
 
@@ -53,7 +58,7 @@ const ConsultIcon = ({ active }) => (
     strokeLinejoin="round"
     className="w-full h-full"
   >
-    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4z" />
+    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 4 4z" />
     <path d="M18 21v-2a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v2" />
     <path d="M12 12v3" />
     <path d="M10.5 13.5h3" />
@@ -290,7 +295,7 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
                 strokeLinejoin="round"
               >
                 <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
               Settings
             </button>
@@ -425,6 +430,8 @@ function MobilePillNav({
   onTabChange,
   hidden,
   consultUnreadCount = 0,
+  apptNotifCount = 0,
+  recordNotifCount = 0,
 }) {
   const [vw, setVw] = useState(window.innerWidth);
 
@@ -445,6 +452,12 @@ function MobilePillNav({
   const labelSz = Math.max(9, Math.round(10 * scale));
   const popUp = Math.round(24 * scale);
   const bottomOffset = Math.round(20 * scale);
+
+  const NAV_BADGE_COUNTS = {
+    booking: apptNotifCount,
+    consult: consultUnreadCount,
+    records: recordNotifCount,
+  };
 
   if (hidden) return null;
 
@@ -474,8 +487,7 @@ function MobilePillNav({
       >
         {MOBILE_NAV.map(({ id, label, Icon }) => {
           const isActive = activeTab === id;
-          const showUnreadBadge =
-            id === "consult" && consultUnreadCount > 0;
+          const showUnreadBadge = (NAV_BADGE_COUNTS[id] || 0) > 0;
 
           return (
             <button
@@ -728,7 +740,15 @@ function DesktopShell({
   userName,
   onLogout,
   consultUnreadCount,
+  apptNotifCount,
+  recordNotifCount,
 }) {
+  const NAV_BADGE_COUNTS = {
+    booking: apptNotifCount,
+    consult: consultUnreadCount,
+    records: recordNotifCount,
+  };
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col">
       <header className="bg-transparent px-5 pb-3 flex items-center justify-between sticky top-0 z-10">
@@ -753,8 +773,8 @@ function DesktopShell({
           <nav className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3 sticky top-24">
             {DESKTOP_NAV.map(({ id, label, Icon }) => {
               const isActive = activeTab === id;
-              const showUnreadBadge =
-                id === "consult" && consultUnreadCount > 0;
+              const badgeCount = NAV_BADGE_COUNTS[id] || 0;
+              const showUnreadBadge = badgeCount > 0;
 
               return (
                 <button
@@ -778,7 +798,7 @@ function DesktopShell({
 
                   {showUnreadBadge && (
                     <span className="ml-auto text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">
-                      {consultUnreadCount}
+                      {badgeCount}
                     </span>
                   )}
                 </button>
@@ -832,6 +852,8 @@ function MobileShell({
   userName,
   onLogout,
   consultUnreadCount,
+  apptNotifCount,
+  recordNotifCount,
 }) {
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
@@ -846,11 +868,6 @@ function MobileShell({
         fontFamily: "sans-serif",
       }}
     >
-      {/*
-        Android edge-to-edge:
-        The WebView is allowed behind the status bar.
-        We therefore explicitly add the safe-area inset here.
-      */}
       <header
         className="bg-transparent px-5 flex items-center justify-between relative z-[1000] flex-shrink-0"
         style={{
@@ -904,6 +921,8 @@ function MobileShell({
         onTabChange={onTabChange}
         hidden={logoutModalOpen}
         consultUnreadCount={consultUnreadCount}
+        apptNotifCount={apptNotifCount}
+        recordNotifCount={recordNotifCount}
       />
     </div>
   );
@@ -925,6 +944,8 @@ export default function UserDashboardLayout({
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
   const [consultUnreadCount, setConsultUnreadCount] = useState(0);
+  const [apptNotifCount, setApptNotifCount] = useState(0);
+  const [recordNotifCount, setRecordNotifCount] = useState(0);
 
   const handleNotificationClick = () => {
     setShowNotifications(true);
@@ -934,7 +955,7 @@ export default function UserDashboardLayout({
     setShowNotifications(false);
   };
 
-  // ─── Notification unread count ───────────────────────────────────────────
+  // ─── Notification unread count (bell) ────────────────────────────────────
 
   useEffect(() => {
     const fetchUnreadCount = async () => {
@@ -953,65 +974,98 @@ export default function UserDashboardLayout({
     return () => clearInterval(interval);
   }, []);
 
-  // ─── Consultation unread count ───────────────────────────────────────────
+  const fetchTypedNotifCounts = useCallback(async () => {
+    try {
+      const notifs = await notificationsService.getNotifications(50);
+      const unread = (notifs || []).filter((n) => !(n.is_read ?? n.isRead));
+
+      setApptNotifCount(
+        unread.filter((n) => APPOINTMENT_NOTIF_TYPES.includes(n.type)).length
+      );
+      setRecordNotifCount(
+        unread.filter((n) => RECORD_NOTIF_TYPES.includes(n.type)).length
+      );
+    } catch (err) {
+      console.error("Error fetching typed notification counts:", err);
+    }
+  }, []);
 
   useEffect(() => {
-    const updateConsultUnreadCount = async () => {
-      try {
-        let count = parseInt(
-          localStorage.getItem("consultUnreadCount") || "0",
-          10
-        );
+    fetchTypedNotifCounts();
+    const interval = setInterval(fetchTypedNotifCounts, 30000);
+    return () => clearInterval(interval);
+  }, [fetchTypedNotifCounts]);
 
-        try {
-          const profileCache = JSON.parse(
-            sessionStorage.getItem("meditrack_user_profile") || "null"
-          );
+  // ─── Consultation unread count ───────────────────────────────────────────
 
-          const internalUserId = profileCache?.internalUserId;
+  const updateConsultUnreadCount = useCallback(async () => {
+    try {
+      let count = 0;
+      const profileCache = JSON.parse(sessionStorage.getItem("meditrack_user_profile") || "null");
+      const internalUserId = profileCache?.internalUserId;
 
-          if (internalUserId) {
-            const { data: consultations } = await supabase
-              .from("consultations")
-              .select("id")
-              .eq("patient_id", internalUserId)
-              .eq("status", "active");
+      if (internalUserId) {
+        const { data: consultations } = await supabase
+          .from("consultations")
+          .select("id")
+          .eq("patient_id", internalUserId);
 
-            if (consultations && consultations.length > 0) {
-              const consultIds = consultations.map((c) => c.id);
+        if (consultations && consultations.length > 0) {
+          const consultIds = consultations.map((c) => c.id);
+          const { data: unreadMsgs } = await supabase
+            .from("consultation_messages")
+            .select("id")
+            .in("consultation_id", consultIds)
+            .neq("sender_id", internalUserId)
+            .is("read_at", null);
 
-              const { data: unreadMsgs } = await supabase
-                .from("consultation_messages")
-                .select("id")
-                .in("consultation_id", consultIds)
-                .neq("sender_id", internalUserId)
-                .is("read_at", null);
-
-              if (unreadMsgs) {
-                count = unreadMsgs.length;
-              } else {
-                count = 0;
-              }
-            } else {
-              count = 0;
-            }
-          }
-        } catch (dbErr) {
-          // Database query failed; use localStorage value.
+          count = unreadMsgs ? unreadMsgs.length : 0;
         }
-
-        setConsultUnreadCount(count);
-      } catch {
-        // Ignore errors.
       }
+
+      setConsultUnreadCount(count);
+      localStorage.setItem("consultUnreadCount", String(count));
+    } catch (dbErr) {
+      // fallback to local storage if DB fails
+      setConsultUnreadCount(parseInt(localStorage.getItem("consultUnreadCount") || "0", 10));
+    }
+  }, []);
+
+  useEffect(() => {
+    updateConsultUnreadCount();
+    const interval = setInterval(updateConsultUnreadCount, 10000);
+
+    // Custom Event Listener to instantly drop to 0 when chat is opened
+    const handleInstantRead = () => {
+      setConsultUnreadCount(0);
+      localStorage.setItem("consultUnreadCount", "0");
+      // Note: We deliberately do NOT call updateConsultUnreadCount() here to avoid
+      // a race condition where the query hits the database before the backend commits.
     };
 
-    updateConsultUnreadCount();
+    window.addEventListener('consultationMessagesRead', handleInstantRead);
 
-    const interval = setInterval(updateConsultUnreadCount, 5000);
+    // Listen for ALL changes in consultation_messages
+    const channel = supabase
+      .channel("layout-consult-msgs")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "consultation_messages" },
+        () => {
+          // Add a slight delay to ensure DB commits from the backend API are fully visible
+          setTimeout(() => {
+            updateConsultUnreadCount();
+          }, 1200);
+        }
+      )
+      .subscribe();
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('consultationMessagesRead', handleInstantRead);
+      supabase.removeChannel(channel);
+    };
+  }, [updateConsultUnreadCount]);
 
   // ─── Real-time notification updates ─────────────────────────────────────
 
@@ -1045,6 +1099,7 @@ export default function UserDashboardLayout({
         () => {
           setNotificationCount((prev) => prev + 1);
           sessionStorage.removeItem("meditrack_notif_count");
+          fetchTypedNotifCounts();
         }
       )
       .on(
@@ -1062,6 +1117,19 @@ export default function UserDashboardLayout({
           setNotificationCount(count);
 
           sessionStorage.removeItem("meditrack_notif_count");
+          fetchTypedNotifCounts();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${authUserId}`,
+        },
+        () => {
+          fetchTypedNotifCounts();
         }
       )
       .subscribe();
@@ -1069,7 +1137,7 @@ export default function UserDashboardLayout({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchTypedNotifCounts]);
 
   // ─── Responsive breakpoint ───────────────────────────────────────────────
 
@@ -1097,6 +1165,8 @@ export default function UserDashboardLayout({
     notificationCount,
     onNotificationClick: handleNotificationClick,
     consultUnreadCount,
+    apptNotifCount,
+    recordNotifCount,
   };
 
   return (

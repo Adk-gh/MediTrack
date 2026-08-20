@@ -96,8 +96,13 @@ const ForgotPassword = () => {
           vertical-align: middle; margin-right: 8px;
         }
 
-        /* ── Visibility ── */
-        .lf-desktop-wrapper { display: block; }
+        /* ── Visibility & Scrolling ── */
+        .lf-desktop-wrapper {
+          display: block;
+          height: 100vh;
+          height: 100dvh;
+          overflow-y: auto;
+        }
         .lf-mobile-wrapper  { display: none; }
         @media (max-width: 640px) {
           .lf-desktop-wrapper { display: none !important; }
@@ -142,9 +147,11 @@ const ForgotPassword = () => {
         /* ── Mobile ── */
         @media (max-width: 640px) {
           .lf-mobile-wrapper {
-            width: 100%; min-height: 100dvh; display: flex; flex-direction: column;
+            width: 100%; min-height: 100vh; min-height: 100dvh;
+            display: flex; flex-direction: column;
             background: #F2F4F3; box-sizing: border-box; z-index: 10;
             padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+            overflow-y: auto;
           }
           .m-topbar {
             display: flex; align-items: center; justify-content: center;
@@ -228,7 +235,7 @@ const ForgotPassword = () => {
       {/* ══════════════════════ DESKTOP ══════════════════════ */}
       <div className="lf-desktop-wrapper">
         <AuthLayout>
-          <div className={`fp-container ${!isLoaded ? 'opacity-0' : ''}`} style={{ maxWidth: 420, margin: '0 auto', padding: '40px' }}>
+          <div className={`fp-container ${!isLoaded ? 'opacity-0' : ''}`} style={{ width: '100%', maxWidth: '480px', margin: '0 auto', padding: '48px 40px' }}>
             <div className="fp-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />

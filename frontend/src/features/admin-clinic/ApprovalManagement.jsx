@@ -1,6 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\ApprovalManagement.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom'; // Added for absolute top modals
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { logAdminAction } from '../../services/audit.service';
@@ -19,6 +19,12 @@ const STATUS_OPTIONS = [
   { value: 'approved', label: 'Approved' },
 ];
 
+const CERT_OPTIONS = [
+  { value: 'all', label: 'All Certificates' },
+  { value: 'issued', label: 'Issued' },
+  { value: 'not_issued', label: 'Not Issued' },
+];
+
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest First' },
   { value: 'oldest', label: 'Oldest First' },
@@ -26,8 +32,6 @@ const SORT_OPTIONS = [
   { value: 'name_desc', label: 'Name (Z-A)' },
 ];
 
-// Matches the route in App.jsx and the archiveType values Archives.jsx
-// filters on (medical_record / dental_record).
 const ARCHIVE_ROUTES = {
   medical: '/archives?type=medical_record',
   dental: '/archives?type=dental_record',
@@ -46,9 +50,6 @@ export const ApprovalManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = (currentUser.role || '').toLowerCase();
 
-  // Admin identity used for audit logging. Falls back through id -> uid ->
-  // 'system' so a log entry is still written even if the stored user object
-  // is incomplete. Kept consistent with AppointmentManagement.jsx.
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
   const [allFiltered, setAllFiltered] = useState([]);
@@ -58,19 +59,19 @@ export const ApprovalManagement = () => {
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [certFilter, setCertFilter] = useState('all'); // New filter state
   const [sortBy, setSortBy] = useState('newest');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0 });
+  // Expanded stats state
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, issued: 0, notIssued: 0 });
 
-  // message now optionally carries a `link` ({ label, path }) so the
-  // snackbar can offer a click-through action (e.g. "View in Archive").
   const [message, setMessage] = useState(null);
-
   const snackbarTimer = useRef(null);
+
   const showSnackbar = (msg, type = 'success', link = null) => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
     setMessage({ text: msg, type, link });
@@ -92,13 +93,12 @@ export const ApprovalManagement = () => {
   // Reset pagination to page 1 whenever filters or search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, typeFilter, statusFilter, sortBy]);
+  }, [searchInput, typeFilter, statusFilter, certFilter, sortBy]);
 
   const fetchRecords = useCallback(async (isRefresh = false) => {
     try {
       setLoading(true);
 
-      // Fetch both medical and dental records (only non-archived)
       const [medicalRes, dentalRes] = await Promise.all([
         supabase.from('medical_records').select('*, users(*)').eq('is_archived', false).order('created_at', { ascending: false }),
         supabase.from('dental_records').select('*, users(*)').eq('is_archived', false).order('created_at', { ascending: false })
@@ -107,38 +107,32 @@ export const ApprovalManagement = () => {
       if (medicalRes.error) throw medicalRes.error;
       if (dentalRes.error) throw dentalRes.error;
 
-      // Process medical records
+      const formatPatientName = (r) => r.users?.first_name
+        ? `${r.users.last_name || ''}, ${r.users.first_name}${r.users.middle_name ? ' ' + r.users.middle_name : ''}${r.users.suffix ? ' ' + r.users.suffix : ''}`.trim()
+        : r.patient_name || 'Unknown';
+
       const medicalData = (medicalRes.data || []).map(r => ({
         ...r,
         recordType: 'medical',
-        patientName: r.users?.first_name
-          ? `${r.users.last_name || ''}, ${r.users.first_name}${r.users.middle_name ? ' ' + r.users.middle_name : ''}${r.users.suffix ? ' ' + r.users.suffix : ''}`
-            .trim()
-          : r.patient_name || 'Unknown',
+        patientName: formatPatientName(r),
         patientUniversityId: r.users?.university_id || r.users?.student_id || '—',
         patientProgram: r.users?.program || r.users?.course || '—',
         patientEmail: r.users?.email || '—',
       }));
 
-      // Process dental records
       const dentalData = (dentalRes.data || []).map(r => ({
         ...r,
         recordType: 'dental',
-        patientName: r.users?.first_name
-          ? `${r.users.last_name || ''}, ${r.users.first_name}${r.users.middle_name ? ' ' + r.users.middle_name : ''}${r.users.suffix ? ' ' + r.users.suffix : ''}`
-            .trim()
-          : r.patient_name || 'Unknown',
+        patientName: formatPatientName(r),
         patientUniversityId: r.users?.university_id || r.users?.student_id || '—',
         patientProgram: r.users?.program || r.users?.course || '—',
         patientEmail: r.users?.email || '—',
       }));
 
-      // Combine and sort by created_at
       const combined = [...medicalData, ...dentalData].sort((a, b) =>
         new Date(b.created_at) - new Date(a.created_at)
       );
 
-      // Apply filters
       let filtered = combined;
 
       // Type filter
@@ -151,7 +145,14 @@ export const ApprovalManagement = () => {
         filtered = filtered.filter(r => (r.status || 'pending').toLowerCase() === statusFilter);
       }
 
-      // Search filter — only when there is an actual search term
+      // Certificate filter
+      if (certFilter === 'issued') {
+        filtered = filtered.filter(r => r.issue_cert === true);
+      } else if (certFilter === 'not_issued') {
+        filtered = filtered.filter(r => r.issue_cert !== true);
+      }
+
+      // Search filter
       const term = searchInput.trim().toLowerCase();
       if (term) {
         filtered = filtered.filter(r =>
@@ -177,12 +178,14 @@ export const ApprovalManagement = () => {
         }
       });
 
-      // Calculate stats from filtered data
+      // Calculate stats
       const total = filtered.length;
       const pending = filtered.filter(r => (r.status || 'pending').toLowerCase() === 'pending').length;
       const approved = filtered.filter(r => (r.status || 'pending').toLowerCase() === 'approved' || r.status?.toLowerCase() === 'done').length;
+      const issued = filtered.filter(r => r.issue_cert === true).length;
+      const notIssued = filtered.filter(r => r.issue_cert !== true).length;
 
-      setStats({ total, pending, approved });
+      setStats({ total, pending, approved, issued, notIssued });
 
       setAllFiltered(filtered);
       setTotalRecords(filtered.length);
@@ -194,9 +197,8 @@ export const ApprovalManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, statusFilter, sortBy, searchInput]);
+  }, [typeFilter, statusFilter, certFilter, sortBy, searchInput]);
 
-  // Derived paginated state
   const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
   const paginatedRecords = allFiltered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
@@ -204,13 +206,11 @@ export const ApprovalManagement = () => {
     setSearchInput(e.target.value);
   };
 
-  // Refetch immediately when filters/sort change
   useEffect(() => {
     fetchRecords(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeFilter, statusFilter, sortBy]);
+  }, [typeFilter, statusFilter, certFilter, sortBy]);
 
-  // Debounce the search box
   useEffect(() => {
     const handler = setTimeout(() => {
       fetchRecords(true);
@@ -219,7 +219,6 @@ export const ApprovalManagement = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
-  // Clean up the snackbar timer on unmount
   useEffect(() => {
     return () => {
       if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -243,11 +242,9 @@ export const ApprovalManagement = () => {
     if (!recordToDelete) return;
     setDeleting(true);
     try {
-      // Get current user info for deleted_by
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const name = localStorage.getItem('name') || '';
 
-      // Set is_archived to true instead of deleting
       const tableName = recordToDelete.recordType === 'medical' ? 'medical_records' : 'dental_records';
       const { error } = await supabase.from(tableName).update({
         is_archived: true,
@@ -257,7 +254,6 @@ export const ApprovalManagement = () => {
 
       if (error) throw error;
 
-      // ---- AUDIT LOG ----
       logAdminAction({
         action: 'record_archived',
         details: {
@@ -312,7 +308,7 @@ export const ApprovalManagement = () => {
   };
 
   const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 7;
+  const COL_COUNT = 8; // Updated for the new Document column
 
   if (userRole !== 'sysadmin') {
     return (
@@ -327,11 +323,13 @@ export const ApprovalManagement = () => {
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
         {[
           { label: 'Total', count: stats.total, color: 'text-slate-800' },
           { label: 'Pending', count: stats.pending, color: 'text-amber-600' },
           { label: 'Approved', count: stats.approved, color: 'text-emerald-600' },
+          { label: 'Issued Certs', count: stats.issued, color: 'text-blue-600' },
+          { label: 'Not Issued', count: stats.notIssued, color: 'text-slate-500' },
         ].map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
@@ -379,6 +377,16 @@ export const ApprovalManagement = () => {
             </select>
 
             <select
+              value={certFilter}
+              onChange={e => setCertFilter(e.target.value)}
+              className={`${filterSelectCls} w-full sm:w-36`}
+            >
+              {CERT_OPTIONS.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+
+            <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
               className={`${filterSelectCls} w-full sm:w-36`}
@@ -410,6 +418,7 @@ export const ApprovalManagement = () => {
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Document</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Submitted</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden lg:table-cell">Last Updated</th>
                 <th className="bg-slate-50 text-right p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
@@ -467,6 +476,17 @@ export const ApprovalManagement = () => {
                         <span className={`text-xs px-2 py-1 rounded-full font-semibold ${statusStyle.bg} ${statusStyle.text}`}>
                           {record.status || 'Pending'}
                         </span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {record.issue_cert ? (
+                          <span className="text-xs px-2 py-1 rounded-full font-semibold bg-blue-100 text-blue-700">
+                            Issued
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-1 rounded-full font-semibold bg-slate-100 text-slate-500">
+                            Not Issued
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 whitespace-nowrap hidden md:table-cell">
                         <div className="text-xs text-slate-500">{formatDate(record.created_at)}</div>

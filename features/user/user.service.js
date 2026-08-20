@@ -265,34 +265,65 @@ exports.updateProfile = async (userId, updates) => {
     dbUpdates.preferences = { ...DEFAULT_USER_PREFERENCES, ...normalizePreferences(currentUser.preferences), ...p };
   }
 
-  if (currentUser.role?.toLowerCase() === 'student' && (updates.yearLevel !== undefined || updates.section !== undefined)) {
-    const finalYearLevel = updates.yearLevel !== undefined ? updates.yearLevel : currentUser.year_level;
-    const finalSection = updates.section !== undefined ? updates.section : currentUser.section;
+// ─────────────────────────────────────────────────────────────
+// Academic Update Acknowledgment
+//
+// When a student successfully provides both Year Level and
+// Section, acknowledge the CURRENT global academic update
+// version.
+//
+// Example:
+//   Student version = 0
+//   Global version  = 5
+//
+//   After save:
+//   Student version = 5
+//
+// The student does NOT need to acknowledge versions 1, 2, 3,
+// and 4 individually.
+// ─────────────────────────────────────────────────────────────
+if (
+    currentUser.role?.toLowerCase() === 'student' &&
+    (updates.yearLevel !== undefined ||
+        updates.section !== undefined)
+) {
+    const finalYearLevel =
+        updates.yearLevel !== undefined
+            ? updates.yearLevel
+            : currentUser.year_level;
 
-    if (String(finalYearLevel || '').trim() && String(finalSection || '').trim()) {
-      try {
-        const sysConf = await getSystemConfig();
-        if (sysConf?.prompt_student_academic_update === true && sysConf?.academic_update_version != null) {
-          dbUpdates.academic_info_acknowledged_version = Number(sysConf.academic_update_version);
-        }
-      } catch (err) { console.error('[updateProfile] Academic acknowledgement config fetch failed:', err); }
-    }
-  }
+    const finalSection =
+        updates.section !== undefined
+            ? updates.section
+            : currentUser.section;
 
-  delete dbUpdates.academic_info_acknowledged_version; // Security wipe fallback
-  // Re-assign correctly according to the strict order defined in your original file
-  if (currentUser.role?.toLowerCase() === 'student' && (updates.yearLevel !== undefined || updates.section !== undefined)) {
-    const finalYearLevel = updates.yearLevel !== undefined ? updates.yearLevel : currentUser.year_level;
-    const finalSection = updates.section !== undefined ? updates.section : currentUser.section;
-    if (String(finalYearLevel || '').trim() && String(finalSection || '').trim()) {
-      try {
-        const sysConf = await getSystemConfig();
-        if (sysConf?.prompt_student_academic_update === true) {
-          dbUpdates.academic_info_acknowledged_version = Number(sysConf?.academic_update_version) || 1;
+    // Only acknowledge the update when both academic fields
+    // contain actual values.
+    if (
+        String(finalYearLevel || '').trim() &&
+        String(finalSection || '').trim()
+    ) {
+        try {
+            const sysConf = await getSystemConfig();
+
+            if (
+                sysConf?.prompt_student_academic_update === true &&
+                sysConf?.academic_update_version != null
+            ) {
+                dbUpdates.academic_info_acknowledged_version =
+                    Number(sysConf.academic_update_version);
+            }
+        } catch (err) {
+            // Do not prevent the student's academic information
+            // from being saved if the system configuration lookup
+            // fails.
+            console.error(
+                '[updateProfile] Academic acknowledgement config fetch failed:',
+                err
+            );
         }
-      } catch (err) { console.error('[updateProfile] Academic acknowledgement config fetch failed:', err); }
     }
-  }
+}
 
   if (Object.keys(dbUpdates).length === 0) return exports.getProfile(userId);
 

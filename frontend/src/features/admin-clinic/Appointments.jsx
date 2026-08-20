@@ -892,6 +892,9 @@ export const Appointments = () => {
 
   // ── Decline confirmation modal ──
   const [declineModal, setDeclineModal] = useState({ open: false, ids: [] });
+  const handleDeclineClick = () => {
+    setDeclineModal({ open: true, ids: Array.from(selectedIds) });
+  };
 
   // ── Detail / snackbar ──
   const [detailModal, setDetailModal] = useState(null);
@@ -941,7 +944,7 @@ export const Appointments = () => {
   const filteredPending = pendingRequests.filter(r => {
     const userData = getUserData(r);
     return !searchTerm ||
-      r.name.toLowerCase().includes(searchTerm)         ||
+      (r.name || '').toLowerCase().includes(searchTerm)         ||
       (r.idno || '').toLowerCase().includes(searchTerm) ||
       (userData.university_id || '').toLowerCase().includes(searchTerm) ||
       (userData.department || '').toLowerCase().includes(searchTerm) ||
@@ -965,7 +968,7 @@ export const Appointments = () => {
   const filteredRejected = rejectedAppts.filter(r => {
     const userData = getUserData(r);
     return !searchTerm ||
-      r.name.toLowerCase().includes(searchTerm)         ||
+      (r.name || '').toLowerCase().includes(searchTerm)         ||
       (r.idno || '').toLowerCase().includes(searchTerm) ||
       (userData.university_id || '').toLowerCase().includes(searchTerm) ||
       (userData.department || '').toLowerCase().includes(searchTerm)   ||
@@ -1002,7 +1005,7 @@ export const Appointments = () => {
     const matchStatus = filterStatus === 'All' || a.status === filterStatus;
     const userData = getUserData(a);
     const matchSearch = !searchTerm ||
-      a.name.toLowerCase().includes(searchTerm) ||
+      (a.name || '').toLowerCase().includes(searchTerm) ||
       (a.idno || '').toLowerCase().includes(searchTerm) ||
       (userData.university_id || '').toLowerCase().includes(searchTerm) ||
       (userData.department || '').toLowerCase().includes(searchTerm) ||
@@ -1013,7 +1016,7 @@ export const Appointments = () => {
     const dateA = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
     const dateB = new Date(Number(b.year), Number(b.month) - 1, Number(b.day));
     if (dateB.getTime() !== dateA.getTime()) return dateB.getTime() - dateA.getTime();
-    return a.time.localeCompare(b.time);
+    return (a.time || '').localeCompare(b.time || '');
   });
 
   const firstDayOfWeek = new Date(calYear, calMonth - 1, 1).getDay();
@@ -1026,21 +1029,22 @@ export const Appointments = () => {
       const oa = order[a.status] ?? 3;
       const ob = order[b.status] ?? 3;
       if (oa !== ob) return oa - ob;
-      return a.time.localeCompare(b.time);
+      return (a.time || '').localeCompare(b.time || '');
     });
 
   const groupedAppts = useMemo(() => {
     const groups = {};
     selectedDayAppts.forEach(a => {
-      if (!groups[a.time]) groups[a.time] = [];
-      groups[a.time].push(a);
+      const t = a.time || '';
+      if (!groups[t]) groups[t] = [];
+      groups[t].push(a);
     });
     return Object.keys(groups).sort().map(time => ({ time, appts: groups[time] }));
   }, [selectedDayAppts]);
 
   const activeByTime = scheduledAppts
     .filter(a => Number(a.year) === calYear && Number(a.month) === calMonth && Number(a.day) === selectedDay && a.status === 'approved')
-    .sort((a, b) => a.time.localeCompare(b.time));
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
   const selectedItems   = pendingRequests.filter(r => selectedIds.has(r.id));
   const chosenSlotLabel = HOUR_SLOTS.find(s => s.value === batchSlot)?.label ?? '';

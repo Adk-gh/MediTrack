@@ -1,12 +1,11 @@
 // frontend/src/features/admin-clinic/Record-Management.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom'; // Added for absolute top modals
+import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 import { logAdminAction } from '../../services/audit.service';
 import DatePicker from '../../components/Datepicker';
 
 const STATUS_OPTIONS = ['pending', 'approved'];
-// 'done' is an appointment-only status — records only ever cycle through these
 const EDIT_STATUS_OPTIONS = ['pending', 'approved'];
 const STATUS_STYLES = {
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
@@ -50,14 +49,13 @@ const StatusPill = ({ status }) => {
 // ── Record row ─────────────────────────────────────────────────────────────
 const RecordRow = ({ index, record, onEdit, onDelete }) => {
   const isMedical = record._kind === 'medical';
-  const vitals    = record.vital_records?.[0] || {};
   const name      = getFullName(record._user || record);
   const initials  = getInitials(name);
 
   return (
     <tr className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group">
       {/* Number Index */}
-      <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
+      <td className="p-3 pl-4 text-sm font-semibold text-slate-500 w-12 text-center">
         {index}
       </td>
 
@@ -88,16 +86,16 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
         </div>
       </td>
 
-      {/* ID */}
+      {/* ID (Enlarged and bolded for visibility) */}
       <td className="p-3 hidden sm:table-cell">
-        <span className="text-xs font-mono text-slate-500">
+        <span className="text-sm font-bold text-slate-700 tracking-wide">
           {record.university_id || record._user?.university_id || '—'}
         </span>
       </td>
 
       {/* Exam date */}
       <td className="p-3 hidden md:table-cell">
-        <span className="text-xs text-slate-500">
+        <span className="text-sm text-slate-500">
           {formatDate(record.exam_date || record.created_at)}
         </span>
       </td>
@@ -105,20 +103,27 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
       {/* Details */}
       <td className="p-3 hidden lg:table-cell">
         {isMedical ? (
-          <div className="flex flex-wrap gap-1">
-            {vitals.bp   && <span className="text-[10px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">BP: <strong className="text-[#466460]">{vitals.bp}</strong></span>}
-            {vitals.temp && <span className="text-[10px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">Temp: <strong className="text-[#466460]">{vitals.temp}</strong></span>}
-            {record.bmi  && <span className="text-[10px] bg-white border border-blue-100 rounded px-1.5 py-0.5 text-slate-600">BMI: <strong className="text-[#466460]">{record.bmi}</strong></span>}
-            {record.is_fit !== null && (
-              <span className={`text-[10px] rounded px-1.5 py-0.5 font-semibold ${record.is_fit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                {record.is_fit ? 'Fit' : 'Not Fit'}
+          <div className="flex flex-wrap gap-2">
+            {record.physician && (
+              <span className="text-xs bg-white border border-slate-200 rounded px-2.5 py-1.5 text-slate-500 shadow-sm">
+                MD: <strong className="text-slate-800 font-semibold">{record.physician}</strong>
+              </span>
+            )}
+            {record.nurse_on_duty && (
+              <span className="text-xs bg-white border border-slate-200 rounded px-2.5 py-1.5 text-slate-500 shadow-sm">
+                RN: <strong className="text-slate-800 font-semibold">{record.nurse_on_duty}</strong>
               </span>
             )}
           </div>
         ) : (
-          <div className="flex flex-wrap gap-1">
-            {record.finding1 && <span className="text-[10px] bg-white border border-purple-100 rounded px-1.5 py-0.5 text-slate-600">{record.finding1}</span>}
-            <span className="text-[10px] text-slate-400">{record.examined_by ? `Dr. ${record.examined_by}` : '—'}</span>
+          <div className="flex flex-wrap gap-2">
+            {record.examined_by ? (
+              <span className="text-xs bg-white border border-purple-200 rounded px-2.5 py-1.5 text-purple-600 shadow-sm">
+                DMD: <strong className="text-slate-800 font-semibold">{record.examined_by}</strong>
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">—</span>
+            )}
           </div>
         )}
       </td>
@@ -159,9 +164,6 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
 export const RecordManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  // Admin identity used for audit logging. Falls back through id -> uid ->
-  // 'system' so a log entry is still written even if the stored user object
-  // is incomplete. Kept consistent with the other admin-clinic screens.
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
   const [records, setRecords]           = useState([]);
@@ -170,7 +172,7 @@ export const RecordManagement = () => {
   const [filterType, setFilterType]     = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterDept, setFilterDept]     = useState('all');
-  const [filterDate, setFilterDate]     = useState(''); // 'YYYY-MM-DD' or ''
+  const [filterDate, setFilterDate]     = useState('');
   const [sortOrder, setSortOrder]       = useState('desc');
   const [message, setMessage]           = useState(null);
 
@@ -233,7 +235,6 @@ export const RecordManagement = () => {
 
   useEffect(() => { fetchAllRecords(); }, []);
 
-  // Reset pagination to page 1 whenever filters or search change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchInput, filterType, filterStatus, filterDept, filterDate, sortOrder]);
@@ -266,12 +267,11 @@ export const RecordManagement = () => {
       return sortOrder === 'desc' ? db.localeCompare(da) : da.localeCompare(db);
     });
 
-  // Calculate stats based on filtered results
-  const totalMed     = filtered.filter(r => r._kind === 'medical').length;
-  const totalDen     = filtered.filter(r => r._kind === 'dental').length;
-  const totalPending = filtered.filter(r => r.status === 'pending').length;
+  const totalMed      = filtered.filter(r => r._kind === 'medical').length;
+  const totalDen      = filtered.filter(r => r._kind === 'dental').length;
+  const totalPending  = filtered.filter(r => r.status === 'pending').length;
+  const totalApproved = filtered.filter(r => r.status === 'approved').length;
 
-  // Pagination Logic
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginatedRecords = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
@@ -280,7 +280,6 @@ export const RecordManagement = () => {
     const { error } = await supabase.from(table).update({ status: newStatus }).eq('id', record._id);
     if (error) { showSnackbar('Failed to update status', 'error'); throw error; }
 
-    // ---- AUDIT LOG ----
     logAdminAction({
       action: 'record_status_updated',
       details: {
@@ -297,7 +296,6 @@ export const RecordManagement = () => {
     showSnackbar('Status updated');
   };
 
-  // Edit modal handlers
   const openEditModal = (record) => {
     setEditRecord(record);
     setEditStatus(record.status || 'pending');
@@ -322,7 +320,6 @@ export const RecordManagement = () => {
     }
   };
 
-  // Delete modal handlers
   const openDeleteModal = (record) => {
     setRecordToDelete(record);
     setShowDeleteModal(true);
@@ -333,11 +330,9 @@ export const RecordManagement = () => {
     setDeleting(true);
 
     try {
-      // Get current user info for deleted_by
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const name = localStorage.getItem('name') || '';
 
-      // Set is_archived to true instead of deleting
       const table = recordToDelete._kind === 'medical' ? 'medical_records' : 'dental_records';
       const { error } = await supabase.from(table).update({
         is_archived: true,
@@ -346,7 +341,6 @@ export const RecordManagement = () => {
       }).eq('id', recordToDelete._id);
       if (error) { showSnackbar('Failed to delete record', 'error'); throw error; }
 
-      // ---- AUDIT LOG ----
       logAdminAction({
         action: 'record_archived',
         details: {
@@ -370,20 +364,21 @@ export const RecordManagement = () => {
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 8; // Increased for the new "#" column
+  const COL_COUNT = 8;
 
   const summaryStats = [
-    { label: 'Total',   count: filtered.length, color: 'text-slate-700'  },
-    { label: 'Medical', count: totalMed,       color: 'text-blue-700'    },
-    { label: 'Dental',  count: totalDen,       color: 'text-purple-700'  },
-    { label: 'Pending', count: totalPending,   color: 'text-amber-700'   },
+    { label: 'Total',    count: filtered.length, color: 'text-slate-700'   },
+    { label: 'Medical',  count: totalMed,        color: 'text-blue-700'    },
+    { label: 'Dental',   count: totalDen,        color: 'text-purple-700'  },
+    { label: 'Pending',  count: totalPending,    color: 'text-amber-700'   },
+    { label: 'Approved', count: totalApproved,   color: 'text-emerald-700' },
   ];
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
-      {/* Summary stats — its own row, separate from the toolbar/header, stretched full width */}
-      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {/* Summary stats */}
+      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
         {summaryStats.map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
@@ -413,13 +408,13 @@ export const RecordManagement = () => {
               />
             </div>
 
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} w-28`}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} min-w-[120px]`}>
               <option value="all">All types</option>
               <option value="medical">Medical</option>
               <option value="dental">Dental</option>
             </select>
 
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${selectCls} w-28`}>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${selectCls} min-w-[140px]`}>
               <option value="all">All statuses</option>
               {STATUS_OPTIONS.map(s => (
                 <option key={s} value={s} className="capitalize">
@@ -428,7 +423,7 @@ export const RecordManagement = () => {
               ))}
             </select>
 
-            <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className={`${selectCls} w-36`}>
+            <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className={`${selectCls} min-w-[160px]`}>
               <option value="all">All departments</option>
               {deptOptions.filter(d => d !== 'all').map(d => (
                 <option key={d} value={d}>{d}</option>

@@ -432,27 +432,92 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
     return sectionData;
   };
 
-  const saveProfileEdits = async () => {
-    setIsSaving(true);
-    try {
-      const token = localStorage.getItem('token');
-      let sectionData = extractSectionData(editData, editingSection, isStudent);
-      if (sectionData.firstName) sectionData.firstName = normalizeName(sectionData.firstName);
-      if (sectionData.middleName) sectionData.middleName = normalizeName(sectionData.middleName);
-      if (sectionData.lastName) sectionData.lastName = normalizeName(sectionData.lastName);
-      if (sectionData.emergencyContact?.name) sectionData.emergencyContact.name = normalizeName(sectionData.emergencyContact.name);
+const saveProfileEdits = async () => {
+  setIsSaving(true);
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(sectionData) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to update profile');
+  try {
+    const token = localStorage.getItem('token');
 
-      const updatedProfile = { ...profile };
-      Object.keys(data.data).forEach(key => { updatedProfile[key] = data.data[key]; });
-      setProfile(updatedProfile);
-      showToast(t('messages.profileUpdated'));
-      closeEdit();
-    } catch (err) { console.error('Error updating profile:', err); showToast(t('messages.profileUpdateFailed')); } finally { setIsSaving(false); }
-  };
+    let sectionData = extractSectionData(
+      editData,
+      editingSection,
+      isStudent
+    );
+
+    if (sectionData.firstName) {
+      sectionData.firstName = normalizeName(sectionData.firstName);
+    }
+
+    if (sectionData.middleName) {
+      sectionData.middleName = normalizeName(sectionData.middleName);
+    }
+
+    if (sectionData.lastName) {
+      sectionData.lastName = normalizeName(sectionData.lastName);
+    }
+
+    if (sectionData.emergencyContact?.name) {
+      sectionData.emergencyContact.name =
+        normalizeName(sectionData.emergencyContact.name);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Academic update acknowledgment
+    //
+    // If the student is saving the Academic section while an
+    // academic update cycle is active, acknowledge the CURRENT
+    // global version directly.
+    //
+    // Example:
+    // Student version: 0
+    // Global version: 5
+    // After saving:    5
+    // ─────────────────────────────────────────────────────────────
+    if (
+      isStudent &&
+      editingSection === 'academic' &&
+      configData?.prompt_student_academic_update === true
+    ) {
+      sectionData.academicInfoAcknowledgedVersion =
+        Number(configData.academic_update_version || 1);
+    }
+
+    const res = await fetch(
+      `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(sectionData),
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to update profile');
+    }
+
+    const updatedProfile = { ...profile };
+
+    Object.keys(data.data).forEach(key => {
+      updatedProfile[key] = data.data[key];
+    });
+
+    setProfile(updatedProfile);
+
+    showToast(t('messages.profileUpdated'));
+    closeEdit();
+
+  } catch (err) {
+    console.error('Error updating profile:', err);
+    showToast(t('messages.profileUpdateFailed'));
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   if ((loading || isConfigLoading) && !profile.email) return <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#466460', fontSize: 13, fontWeight: 600 }}>{t('messages.loadingProfile')}</div>;
   const clsColors = classificationColors[profile.studentClassification] || classificationColors.Regular;
