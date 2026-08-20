@@ -5,31 +5,6 @@ create table public.medical_records (
   last_name character varying(100) null,
   first_name character varying(100) null,
   middle_name character varying(50) null,
-  sex character varying(20) null,
-  birthday date null,
-  age integer null,
-  address text null,
-  contact_no character varying(20) null,
-  religion character varying(100) null,
-  nationality character varying(100) null,
-  civil_status character varying(50) null,
-  emergency_name character varying(100) null,
-  emergency_relation character varying(50) null,
-  emergency_address text null,
-  emergency_contact character varying(20) null,
-  vax1 character varying(50) null,
-  vax1_date date null,
-  vax1_remarks text null,
-  vax2 character varying(50) null,
-  vax2_date date null,
-  vax2_remarks text null,
-  booster1 character varying(50) null,
-  booster1_date date null,
-  booster1_remarks text null,
-  booster2 character varying(50) null,
-  booster2_date date null,
-  booster2_remarks text null,
-  covid_history text null,
   other_medical_history text null,
   other_family_history text null,
   smoking character varying(10) null,
@@ -39,22 +14,8 @@ create table public.medical_records (
   drugs character varying(10) null,
   drugs_details text null,
   questionnaire jsonb null default '{}'::jsonb,
-  height character varying(20) null,
-  weight character varying(20) null,
-  bmi character varying(20) null,
-  waist character varying(20) null,
-  lmp character varying(20) null,
-  lab_cbc character varying(50) null,
-  lab_cbc_facility character varying(100) null,
-  lab_cbc_date date null,
-  lab_ua character varying(50) null,
-  lab_ua_facility character varying(100) null,
-  lab_ua_date date null,
-  lab_xray character varying(50) null,
-  lab_xray_facility character varying(100) null,
-  lab_xray_date date null,
   physician character varying(100) null,
-  exam_date date null,
+  exam_date timestamp with time zone null,
   nurse_on_duty character varying(100) null,
   checked_medical jsonb null default '[]'::jsonb,
   checked_family jsonb null default '[]'::jsonb,
@@ -62,8 +23,6 @@ create table public.medical_records (
   vital_records jsonb null default '[]'::jsonb,
   status character varying(20) null default 'pending'::character varying,
   is_approved boolean null default false,
-  student_signature character varying(255) null,
-  date_signed date null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   approved_at timestamp with time zone null,
@@ -71,6 +30,17 @@ create table public.medical_records (
   remarks text null,
   is_fit boolean null default true,
   is_normal_findings boolean null default true,
+  school_year character varying(50) not null default ''::character varying,
+  is_archived boolean null default false,
+  deleted_by text null,
+  issue_cert boolean null default false,
+  patient_info jsonb null default '{}'::jsonb,
+  laboratory_results jsonb null default '{}'::jsonb,
+  covid_history jsonb null default '{}'::jsonb,
+  surgical_history jsonb null default '[]'::jsonb,
+  semester character varying(50) null,
+  cert_requested boolean null default false,
+  cert_requested_at timestamp with time zone null,
   constraint medical_records_pkey primary key (id),
   constraint medical_records_user_id_fkey foreign KEY (user_id) references users (id) on delete CASCADE
 ) TABLESPACE pg_default;
@@ -80,3 +50,12 @@ create index IF not exists idx_medical_records_status on public.medical_records 
 create index IF not exists idx_medical_records_university_id on public.medical_records using btree (university_id) TABLESPACE pg_default;
 
 create index IF not exists idx_medical_records_user on public.medical_records using btree (user_id) TABLESPACE pg_default;
+
+create index IF not exists idx_medical_records_is_archived on public.medical_records using btree (is_archived) TABLESPACE pg_default;
+
+create index IF not exists idx_medical_records_school_year on public.medical_records using btree (school_year) TABLESPACE pg_default;
+
+create trigger trg_normalize_medical_names BEFORE INSERT
+or
+update on medical_records for EACH row
+execute FUNCTION normalize_medical_names ();

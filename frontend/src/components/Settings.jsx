@@ -216,7 +216,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
   // ── Mobile layout ────────────────────────────────────────────────────────
   if (isMobile) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f4f8f6', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f4f8f6', overflow: 'hidden',  paddingTop: 'env(safe-area-inset-top, 0px)',boxSizing: 'border-box', }}>
         <div style={{ background: '#466460', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, height: 56, boxShadow: '0 2px 12px rgba(70,100,96,0.18)' }}>
           <button onClick={handleBack} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <BackIcon />

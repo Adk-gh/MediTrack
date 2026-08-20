@@ -2,43 +2,44 @@ import React, { useState } from 'react';
 // Make sure this relative path is correct based on your folder structure
 import logo from '../../assets/logo.jpg';
 
-// ─── HOW TO ADD REAL PHOTOS ──────────────────────────────────────────────────
-// 1. Put your team photos in your assets folder (e.g., src/assets/team/)
-// 2. Import them here like this:
-// import abdullaImg from '../../assets/team/abdulla.jpg';
-// import bermasImg from '../../assets/team/bermas.jpg';
-// 3. Replace the 'image' property in the array below with the imported variable!
+// ─── IMPORT REAL PHOTOS ──────────────────────────────────────────────────
+import abdullaImg from '../../assets/amad.jpg';
+import bermasImg from '../../assets/adi.jpg';
+import concibidoImg from '../../assets/shanaya.jpg';
+import deVeraImg from '../../assets/Jenny.jpg';
+import latinaImg from '../../assets/hanessa.jpg';
+import tenorioImg from '../../assets/paula.jpg';
 
 const TEAM_MEMBERS = [
   {
     name: "Abdulla, Mohammad A.",
     role: "QA Tester / Researcher",
-    image: "https://placehold.co/400x400/edf4f2/466460?text=MA"
+    image: abdullaImg
   },
   {
     name: "Bermas, Aderik P.",
     role: "Programmer & Assistant Project Manager / Researcher",
-    image: "https://placehold.co/400x400/edf4f2/466460?text=AB"
+    image: bermasImg
   },
   {
     name: "Concibido, Shanaya T.",
     role: "Technical Writer / Researcher",
-    image: "https://placehold.co/400x400/edf4f2/466460?text=SC"
+    image: concibidoImg
   },
   {
     name: "De Vera, Jenny L.",
     role: "Project Manager & UI/UX Designer / Researcher",
-    image: "https://placehold.co/400x400/edf4f2/466460?text=JD"
+    image: deVeraImg
   },
   {
     name: "Latina, Hanessa Kimberly O.",
     role: "System Analyst / Researcher",
-    image: "https://placehold.co/400x400/edf4f2/466460?text=HL"
+    image: latinaImg
   },
   {
     name: "Tenorio, Paula Eunice M.",
     role: "Technical Writer / Researcher",
-    image: "https://placehold.co/400x400/edf4f2/466460?text=PT"
+    image: tenorioImg
   }
 ];
 
@@ -133,7 +134,9 @@ export default function StudentAboutSettings({ isMobile }) {
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: '#f4f8f6', zIndex: 99999,
           display: 'flex', flexDirection: 'column',
-          animation: 'fadeIn 0.2s ease-out'
+          animation: 'fadeIn 0.2s ease-out',
+          paddingTop: 'env(safe-area-inset-top, 0px)', // respect the notch/status bar
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)', // respect the home-indicator/gesture bar
         }}>
           {/* Modal Header */}
           <div style={{

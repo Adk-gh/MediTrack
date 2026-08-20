@@ -73,28 +73,33 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
     signatureUrl: ''
   });
 
-  // Fetch dentist info from the database on mount
-  useEffect(() => {
-    const fetchDentistInfo = async () => {
-      try {
-        const response = await fetch(`${API_URL}/settings/dentist`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data) {
-            setDentistInfo({
-              name: data.name || 'DR. JOSELITO S. REYES',
-              title: data.title || 'DENTIST II',
-              signatureUrl: data.signatureUrl || ''
-            });
-          }
+useEffect(() => {
+  const fetchDentistInfo = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/settings/dentist`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          setDentistInfo({
+            name: data.name || 'DR. JOSELITO S. REYES',
+            title: data.title || 'DENTIST II',
+            signatureUrl: data.signatureUrl || ''
+          });
         }
-      } catch (err) {
-        console.error('[DentalExaminationReport] Failed to fetch dentist settings, using defaults:', err);
+      } else {
+        console.error('[DentalExaminationReport] Dentist settings fetch failed:', response.status);
       }
-    };
+    } catch (err) {
+      console.error('[DentalExaminationReport] Failed to fetch dentist settings, using defaults:', err);
+    }
+  };
 
-    fetchDentistInfo();
-  }, []);
+  fetchDentistInfo();
+}, []);
 
   // Extract restoration and extraction from toothData
   const extractToothConditions = (toothData, conditions) => {
@@ -287,8 +292,8 @@ export const DentalExaminationReport = ({ examination, onSubmit, onEdit, readOnl
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const W = 210;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [215.9, 330.2] });
+      const W = 215.9;
       const mar = 18;
       const cw = W - mar * 2;
       let y = 14;

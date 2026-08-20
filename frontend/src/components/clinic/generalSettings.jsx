@@ -1,6 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\components\clinic\generalSettings.jsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 const API_URL = (
   import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -29,7 +29,7 @@ const Toggle = ({ checked, onChange, disabled = false }) => (
 );
 
 const SectionCard = ({ children }) => (
-  <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #e2ebe8', overflow: 'hidden' }}>
+  <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #e2ebe8', overflow: 'visible' }}>
     {children}
   </div>
 );
@@ -55,6 +55,85 @@ const SectionLabel = ({ children }) => (
     {children}
   </p>
 );
+
+const ChevronIcon = ({ open }) => (
+  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#7a9e8e" strokeWidth="3"
+    style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+// Custom dropdown — replaces native <select> so mobile browsers don't fall back
+// to the OS-level picker UI (which ignores our styling).
+const CustomSelect = ({ value, onChange, options, disabled }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  const current = options.find(o => o.value === value) || options[0];
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: '#f4f8f6', border: '1px solid #e2ebe8', borderRadius: 10,
+          padding: '6px 10px', fontSize: 13, fontWeight: 600, color: '#1a2e22',
+          cursor: disabled ? 'wait' : 'pointer', outline: 'none',
+          opacity: disabled ? 0.6 : 1, fontFamily: 'inherit',
+        }}
+      >
+        <span>{current?.label}</span>
+        <ChevronIcon open={open} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 140,
+          background: '#fff', border: '1px solid #e2ebe8', borderRadius: 12,
+          boxShadow: '0 10px 28px rgba(42,72,68,0.16)', overflow: 'hidden',
+          zIndex: 50, maxHeight: 220, overflowY: 'auto',
+        }}>
+          {options.map(opt => {
+            const active = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '10px 14px', fontSize: 13, fontWeight: active ? 700 : 500,
+                  border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  background: active ? '#eef6f4' : 'transparent',
+                  color: active ? '#2d5c52' : '#1a2e22',
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f6faf9'; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ─── Main Component ────────────────────────────────────────────────
 
@@ -489,26 +568,15 @@ export default function GeneralSettings({ isMobile, activeRole }) {
           label="Language"
           sub="Choose your preferred language"
           right={
-            <select
+            <CustomSelect
               value={preferences.language}
               disabled={preferencesLoading || savingPreference === 'language'}
-              onChange={(e) => handlePreferenceChange('language', e.target.value)}
-              style={{
-                background: '#f4f8f6',
-                border: '1px solid #e2ebe8',
-                borderRadius: 10,
-                padding: '6px 10px',
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#1a2e22',
-                cursor: preferencesLoading ? 'wait' : 'pointer',
-                outline: 'none',
-                opacity: savingPreference === 'language' ? 0.6 : 1,
-              }}
-            >
-              <option value="English">English</option>
-              <option value="Filipino">Filipino</option>
-            </select>
+              onChange={(value) => handlePreferenceChange('language', value)}
+              options={[
+                { value: 'English', label: 'English' },
+                { value: 'Filipino', label: 'Filipino' },
+              ]}
+            />
           }
         />
 
@@ -517,27 +585,16 @@ export default function GeneralSettings({ isMobile, activeRole }) {
           sub="How dates are displayed across the app"
           last
           right={
-            <select
+            <CustomSelect
               value={preferences.dateFormat}
               disabled={preferencesLoading || savingPreference === 'dateFormat'}
-              onChange={(e) => handlePreferenceChange('dateFormat', e.target.value)}
-              style={{
-                background: '#f4f8f6',
-                border: '1px solid #e2ebe8',
-                borderRadius: 10,
-                padding: '6px 10px',
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#1a2e22',
-                cursor: preferencesLoading ? 'wait' : 'pointer',
-                outline: 'none',
-                opacity: savingPreference === 'dateFormat' ? 0.6 : 1,
-              }}
-            >
-              <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-              <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-              <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-            </select>
+              onChange={(value) => handlePreferenceChange('dateFormat', value)}
+              options={[
+                { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
+                { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
+                { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
+              ]}
+            />
           }
         />
       </SectionCard>

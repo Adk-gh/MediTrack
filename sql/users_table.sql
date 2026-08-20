@@ -2,7 +2,6 @@ create table public.users (
   id uuid not null default gen_random_uuid (),
   uid character varying(128) null,
   email character varying(255) not null,
-  password_hash character varying(255) null,
   first_name character varying(100) not null,
   middle_name character varying(100) null,
   last_name character varying(100) not null,
@@ -33,8 +32,26 @@ create table public.users (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   dental_history jsonb null default '{}'::jsonb,
+  is_archived boolean null default false,
+  deleted_by text null,
+  license_number text null,
+  surgical_history jsonb null default '[]'::jsonb,
+  documents jsonb null default '[]'::jsonb,
+  verification_token text null,
+  verification_token_expires_at timestamp with time zone null,
+  reset_password_token text null,
+  reset_password_expires_at timestamp with time zone null,
+  academic_info_acknowledged_version integer not null default 0,
+  preferences jsonb not null default '{"language": "English", "dateFormat": "MM/DD/YYYY"}'::jsonb,
   constraint users_pkey primary key (id),
   constraint users_email_key unique (email),
   constraint users_uid_key unique (uid),
   constraint users_university_id_key unique (university_id)
 ) TABLESPACE pg_default;
+
+create index IF not exists idx_users_is_archived on public.users using btree (is_archived) TABLESPACE pg_default;
+
+create trigger trg_normalize_user_names BEFORE INSERT
+or
+update on users for EACH row
+execute FUNCTION normalize_user_names ();

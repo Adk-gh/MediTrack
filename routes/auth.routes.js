@@ -29,7 +29,7 @@ const allowDynamicAdmin = async (req, res, next) => {
 
 // Rate Limiters
 const clientIpKey = (req) => ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown');
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyGenerator: clientIpKey, message: { success: false, message: 'Too many login attempts, please try again after 15 minutes.' }, standardHeaders: true, legacyHeaders: false });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyGenerator: clientIpKey, skipSuccessfulRequests: true, message: { success: false, message: 'Too many failed login attempts. Please try again after 15 minutes.'},standardHeaders: true,legacyHeaders: false});
 const emailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, keyGenerator: clientIpKey, message: { success: false, message: 'Too many email requests, please try again after an hour.' }, standardHeaders: true, legacyHeaders: false });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 50, keyGenerator: clientIpKey, message: { success: false, message: 'Too many accounts created from this network. Please try again later.' }, standardHeaders: true, legacyHeaders: false });
 

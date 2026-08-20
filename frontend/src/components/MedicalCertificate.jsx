@@ -1,5 +1,6 @@
 // frontend/src/components/MedicalCertificate.jsx
 import React, { useState, useEffect, useCallback, memo } from 'react';
+import { supabase } from '../supabase';
 import jsPDF from 'jspdf';
 import { savePdf } from '../utils/pdfDownload';
 
@@ -79,30 +80,40 @@ export const MedicalCertificate = ({
     signatureUrl: ''
   });
 
-  // Fetch doctor info from the database on mount
-  useEffect(() => {
-    const fetchDoctorInfo = async () => {
-      try {
-        const response = await fetch(`${API_URL}/settings/doctor`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data) {
-            setDoctorInfo({
-              name: data.name || 'CAREN NAVATA JOSE M.D.',
-              title: data.title || 'Medical Officer III',
-              licenseNo: data.licenseNo || '0114665',
-              ptrNo: data.ptrNo || '9978569',
-              signatureUrl: data.signatureUrl || ''
-            });
-          }
-        }
-      } catch (err) {
-        console.error('[MedicalCertificate] Failed to fetch doctor settings, using defaults:', err);
+useEffect(() => {
+  const fetchDoctorInfo = async () => {
+    try {
+      let token = localStorage.getItem('token');
+      if (!token) {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || null;
       }
-    };
 
-    fetchDoctorInfo();
-  }, []);
+      const response = await fetch(`${API_URL}/settings/doctor`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          setDoctorInfo({
+            name: data.name || 'CAREN NAVATA JOSE M.D.',
+            title: data.title || 'Medical Officer III',
+            licenseNo: data.licenseNo || '0114665',
+            ptrNo: data.ptrNo || '9978569',
+            signatureUrl: data.signatureUrl || ''
+          });
+        }
+      } else {
+        console.error('[MedicalCertificate] Doctor settings fetch failed:', response.status);
+      }
+    } catch (err) {
+      console.error('[MedicalCertificate] Failed to fetch doctor settings, using defaults:', err);
+    }
+  };
+
+  fetchDoctorInfo();
+}, []);
 
   const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
 
@@ -138,12 +149,13 @@ export const MedicalCertificate = ({
   };
   const examDate    = formatDateOnly(examination.examDate);
 
-  // ── PDF Generation (compact A4) ─────────────────────────────────────────
+ // ── PDF Generation (Philippine Short / 8.5 x 11 inches) ─────────────────
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const W   = 210;
+      // Set format to 215.9mm x 279.4mm
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [215.9, 279.4] });
+      const W   = 215.9;
       const mar = 18;
       const cw  = W - mar * 2;
       let   y   = 14;

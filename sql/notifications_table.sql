@@ -8,6 +8,7 @@ create table public.notifications (
   reference_type character varying(50) null,
   is_read boolean null default false,
   created_at timestamp with time zone null default now(),
+  is_archived boolean null default false,
   constraint notifications_pkey primary key (id),
   constraint notifications_user_id_fkey foreign KEY (user_id) references users (id) on delete CASCADE
 ) TABLESPACE pg_default;

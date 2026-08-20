@@ -1,5 +1,5 @@
 // frontend/src/components/LoginForm.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
 import { loginSchema, getFieldErrors } from '../validation/schemas.js';
@@ -20,6 +20,9 @@ const LoginForm = () => {
   const [fieldErrors, setFieldErrors] = useState({});
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [resendStatus, setResendStatus] = useState('');
+
+  // Ref to track if a paste event just occurred
+  const justPasted = useRef(false);
 
   useEffect(() => {
     setIsLoaded(true);
@@ -429,9 +432,20 @@ const LoginForm = () => {
             {error && <div className="lf-error-desktop">{error}</div>}
             <div className="lf-field">
               <label htmlFor="email-d" className="lf-label-desktop">Email</label>
-              <input id="email-d" type="email" required className="lf-input-desktop"
-                placeholder="Enter your email" value={email}
-                onChange={(e) => setEmail(e.target.value)} onBlur={() => handleBlur('email')} />
+              <input
+                id="email-d"
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+                autoCorrect="off"
+                spellCheck={false}
+                className="lf-input-desktop select-text"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => handleBlur('email')}
+              />
             </div>
             <div className="lf-field">
               <label htmlFor="password-d" className="lf-label-desktop">Password</label>
@@ -443,9 +457,17 @@ const LoginForm = () => {
                   className="lf-input-desktop"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onPaste={() => {
+                    justPasted.current = true;
+                  }}
+                  onChange={(e) => {
+                    if (justPasted.current) {
+                      justPasted.current = false;
+                      return;
+                    }
+                    setPassword(e.target.value);
+                  }}
                   onBlur={() => handleBlur('password')}
-                  onPaste={(e) => e.preventDefault()}
                 />
                 <button
                   type="button"
@@ -556,9 +578,18 @@ const LoginForm = () => {
                 </span>
                 <input type={showPassword ? 'text' : 'password'} className="m-pill-input"
                   placeholder="••••••••" value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onPaste={() => {
+                    justPasted.current = true;
+                  }}
+                  onChange={(e) => {
+                    if (justPasted.current) {
+                      justPasted.current = false;
+                      return;
+                    }
+                    setPassword(e.target.value);
+                  }}
                   onBlur={() => handleBlur('password')} required autoComplete="current-password"
-                  onPaste={(e) => e.preventDefault()} />
+                   />
                 <button type="button" className="m-pill-btn"
                   onClick={() => setShowPassword(v => !v)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}>

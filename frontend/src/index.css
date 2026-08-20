@@ -394,3 +394,18 @@ body,
     animation-iteration-count: 1;
   }
 }
+
+
+/* ─── Fix Mobile Long-Press / Paste Behavior ─────────────────────────────── */
+
+* {
+  -webkit-touch-callout: none; /* Disable default magnifying/link popup */
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-touch-callout: default !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}

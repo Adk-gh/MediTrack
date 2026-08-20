@@ -6,6 +6,7 @@ create table public.consultation_messages (
   sender_role character varying(50) null,
   message text not null,
   created_at timestamp with time zone null default now(),
+  read_at timestamp with time zone null,
   constraint consultation_messages_pkey primary key (id),
   constraint consultation_messages_consultation_id_fkey foreign KEY (consultation_id) references consultations (id) on delete CASCADE,
   constraint consultation_messages_sender_id_fkey foreign KEY (sender_id) references users (id) on delete set null

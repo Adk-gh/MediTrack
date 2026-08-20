@@ -71,11 +71,17 @@ router.get('/doctor', authorized, async (req, res, next) => {
       .from('doctor_settings')
       .select('name, title, licenseNo, ptrNo, signatureUrl')
       .eq('id', 1)
-      .single();
+      .maybeSingle(); // Changed from .single() to avoid crashing on 0 rows
 
-    if (error) {
-      console.error('Supabase fetch error:', error);
-      return res.status(404).json({ error: 'Doctor settings not found' });
+    // If RLS blocks the student or the row doesn't exist yet, serve defaults instead of a 404
+    if (error || !data) {
+      return res.status(200).json({
+        name: 'CAREN NAVATA JOSE M.D.',
+        title: 'Medical Officer III',
+        licenseNo: '0114665',
+        ptrNo: '9978569',
+        signatureUrl: ''
+      });
     }
 
     res.status(200).json(data);
@@ -209,11 +215,15 @@ router.get('/dentist', authorized, async (req, res, next) => {
       .from('dentist_settings')
       .select('name, title, signatureUrl')
       .eq('id', 1)
-      .single();
+      .maybeSingle(); // Changed from .single() to avoid crashing on 0 rows
 
-    if (error) {
-      console.error('Supabase fetch error:', error);
-      return res.status(404).json({ error: 'Dentist settings not found' });
+    // If RLS blocks the student or the row doesn't exist yet, serve defaults instead of a 404
+    if (error || !data) {
+      return res.status(200).json({
+        name: 'DR. JOSELITO S. REYES',
+        title: 'DENTIST II',
+        signatureUrl: ''
+      });
     }
 
     res.status(200).json(data);

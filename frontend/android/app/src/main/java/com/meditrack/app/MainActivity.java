@@ -13,6 +13,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // 1. Force Android to drop the splash screen theme for all native UI popups/magnifiers
+        setTheme(R.style.AppTheme);
+
         super.onCreate(savedInstanceState);
 
         Window window = getWindow();
@@ -54,7 +57,6 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-
         applySystemBarAppearance();
     }
 }
