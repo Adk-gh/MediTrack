@@ -161,7 +161,7 @@ const parseDateValue = (v) => {
 // `className` is optional. When omitted, the trigger button keeps its
 // original look (used everywhere else in the app). Pass a className to
 // make the trigger match a different surrounding design (e.g. a filter bar).
-export default function DatePicker({ value, onChange, error, placeholder = 'Select Date', className }) {
+export default function DatePicker({ value, onChange, error, placeholder = 'Select Date', className, disabled = false }) {
   const [open, setOpen] = useState(false);
 
   // Initialize state
@@ -184,8 +184,6 @@ export default function DatePicker({ value, onChange, error, placeholder = 'Sele
     if (selDay > max) setSelDay(max);
   }, [selMonth, selYear]);
 
-  // Sync state when external prop changes (e.g. once an async fetch resolves
-  // and hands us the saved date for the first time).
   useEffect(() => {
     const p = parseDateValue(value);
     if (p) {
@@ -200,6 +198,11 @@ export default function DatePicker({ value, onChange, error, placeholder = 'Sele
     setOpen(false);
   };
 
+  const handleTriggerClick = () => {
+    if (disabled) return;
+    setOpen(true);
+  };
+
   // Safe display label generator for MM/DD/YYYY
   const displayLabel = parsedValue
     ? `${String(parsedValue.m).padStart(2, '0')}/${String(parsedValue.d).padStart(2, '0')}/${parsedValue.y}`
@@ -212,10 +215,13 @@ export default function DatePicker({ value, onChange, error, placeholder = 'Sele
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}
-        className={`${inputCls} text-left flex items-center justify-between ${error ? 'border-red-400 bg-red-50' : ''}`}
-        style={{ cursor: 'pointer' }}>
-        <span style={{ color: isValidDate ? '#334155' : '#94a3b8' }}>{displayLabel}</span>
+      <button
+        type="button"
+        onClick={handleTriggerClick}
+        disabled={disabled}
+        className={`${inputCls} text-left flex items-center justify-between ${error ? 'border-red-400 bg-red-50' : ''} ${disabled ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+        style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}>
+        <span style={{ color: disabled ? '#94a3b8' : (isValidDate ? '#334155' : '#94a3b8') }}>{displayLabel}</span>
         <i className="fa-regular fa-calendar text-slate-500 text-sm"></i>
       </button>
 
@@ -225,7 +231,7 @@ export default function DatePicker({ value, onChange, error, placeholder = 'Sele
         </p>
       )}
 
-      {open && createPortal(
+      {open && !disabled && createPortal(
         <div onClick={(e) => e.target === e.currentTarget && setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 300, boxShadow: '0 20px 50px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px 8px', textAlign: 'center', borderBottom: '1px solid #e2f0ea' }}>

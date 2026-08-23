@@ -15,9 +15,11 @@
   "cap:sync": "npx cap sync",
   "cap:open:android": "npx cap open android",
   "cap:open:ios": "npx cap open ios",
+  "clean": "rimraf release",
   "electron": "electron .",
   "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-  "electron:build": "npm run build && electron-builder"
+  "electron:build": "npm run clean && npm run build && electron-builder",
+  "electron:dir": "npm run clean && npm run build && electron-builder --dir"
  },
  "dependencies": {
   "@capacitor/android": "^8.3.4",
@@ -42,6 +44,7 @@
   "i18next": "^26.3.6",
   "jspdf": "^4.2.1",
   "lucide-react": "^1.17.0",
+  "multer": "^2.2.0",
   "react": "^19.0.0",
   "react-chartjs-2": "^5.3.1",
   "react-datepicker": "^9.1.0",

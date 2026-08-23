@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Consultation-users.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
@@ -315,6 +316,7 @@ const PullIndicator = ({ indicatorRef }) => (
 
 export default function ConsultationUsers() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate(); // Added navigation hook
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const profileCacheRef = useRef(readProfileCache());
   const profileCache    = profileCacheRef.current;
@@ -1817,10 +1819,10 @@ export default function ConsultationUsers() {
             <p className="text-[13px] text-[#64748b]">
               {t('consultation.waitingApprovalDesc', "Your online consultation request has been submitted and is waiting for the clinic to review and approve it. You'll be able to chat here once it's approved.")}
             </p>
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
-              className="mt-4 inline-flex items-center gap-2 bg-white border border-[#c4dbd8] hover:border-[#466460] text-[#466460] text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
-            >
+<button
+  onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'booking' } }))}
+  className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
+>
               <i className="fa-solid fa-calendar-days"></i>
               {t('consultation.viewRequests', 'View My Requests')}
             </button>
@@ -1855,9 +1857,9 @@ export default function ConsultationUsers() {
               {t('consultation.bookOnlineDesc', 'Digital consultations open up once the clinic approves an online medical or dental appointment for you. Please request one from your Appointments page.')}
             </p>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'appointments' } }))}
-              className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
-            >
+  onClick={() => window.dispatchEvent(new CustomEvent('meditrack:navigate', { detail: { to: 'booking' } }))}
+  className="inline-flex items-center gap-2 bg-[#466460] hover:bg-[#364e4a] text-white text-[12px] font-bold px-4 py-2.5 rounded-full transition-colors"
+>
               <i className="fa-solid fa-calendar-plus"></i>
               {t('consultation.requestAppointment', 'Request Appointment')}
             </button>
@@ -1865,7 +1867,5 @@ export default function ConsultationUsers() {
         </div>
       )}
     </div>
-
   );
-
 }

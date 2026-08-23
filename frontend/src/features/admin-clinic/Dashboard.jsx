@@ -106,6 +106,10 @@ function DashboardContent() {
   const navigate = useNavigate();
   const { appointments } = useAppointments();
 
+  // Get current user details to check for sysadmin role
+  const currentUser = authService.getCurrentUser() || JSON.parse(localStorage.getItem('user') || '{}');
+  const userRole = (currentUser?.role || '').toLowerCase();
+
   // ── State ─────────────────────────────────────────────────
   const [users,          setUsers]          = useState([]);
   const [clinicStaffCount, setClinicStaffCount] = useState(0);
@@ -634,7 +638,7 @@ function DashboardContent() {
             </h3>
             {pendingAppointments.length > 0 && (
               <button
-                onClick={() => navigate('/appointments')}
+                onClick={() => navigate(userRole === 'sysadmin' ? '/appointment-management' : '/appointments')}
                 className="text-xs font-bold text-[#466460] hover:underline flex items-center gap-1"
               >
                 View All <i className="fa-solid fa-arrow-right"></i>

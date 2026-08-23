@@ -6,6 +6,7 @@ import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
 
 const DOCUMENTS_BUCKET = 'health-documents';
+const CONV_PAGE_SIZE = 25;
 
 const formatTime = (ts) => {
   if (!ts) return '';
@@ -919,6 +920,11 @@ export const Consultations = () => {
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [newConsultationAlert, setNewConsultationAlert] = useState(null);
 
+  // Infinite-scroll state for the conversation list (mirrors Records.jsx)
+  const [convPage, setConvPage] = useState(0);
+  const [hasMoreConvs, setHasMoreConvs] = useState(true);
+  const [loadingMoreConvs, setLoadingMoreConvs] = useState(false);
+
   const [internalStaffId, setInternalStaffId] = useState(null);
   const [internalStaffName, setInternalStaffName] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
@@ -929,6 +935,7 @@ export const Consultations = () => {
   const globalMsgChannelRef = useRef(null);
   const selectedConvIdRef = useRef(null);
   const isSendingRef = useRef(false);
+  const conversationsRef = useRef([]);
 
   const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
 
@@ -1072,37 +1079,106 @@ export const Consultations = () => {
     loadProfiles();
   }, [sessionReady]);
 
+  // Keep a ref mirror of conversations so the poll interval and other
+  // callbacks always see the latest loaded page without stale closures
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  // Fetches one page of consultations directly from Supabase (bypassing the
+  // service's fetch-everything helper) and enriches each row with its last
+  // message + unread count. Shared by the initial load and "load more".
+  const fetchConversationsPage = useCallback(async (offset, limit) => {
+    const { data, error } = await supabase
+      .from('consultations')
+      .select('*')
+      .or('is_archived.is.null,is_archived.eq.false')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw error;
+    const rows = data || [];
+
+    const enriched = await Promise.all(
+      rows.map(async (conv) => {
+        try {
+          const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
+          const lastMsg = lastVisibleMessage(msgs);
+          const unreadCount = internalStaffId
+            ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
+            : 0;
+          return {
+            ...conv,
+            last_message: lastMsg?.message || '',
+            last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
+            unread_count: unreadCount,
+          };
+        } catch {
+          return { ...conv, last_message: '', last_timestamp: 0, unread_count: 0 };
+        }
+      })
+    );
+
+    return { rows, enriched };
+  }, [internalStaffId]);
+
+  // Fetches the next page and appends — this is what powers infinite scroll
+  const loadMoreConversations = async () => {
+    if (loadingMoreConvs || !hasMoreConvs) return;
+    setLoadingMoreConvs(true);
+    try {
+      const offset = convPage * CONV_PAGE_SIZE;
+      const { rows, enriched } = await fetchConversationsPage(offset, CONV_PAGE_SIZE);
+
+      setConversations(prev => {
+        const existingIds = new Set(prev.map(c => c.id));
+        const deduped = enriched.filter(c => !existingIds.has(c.id));
+        const merged = [...prev, ...deduped];
+        merged.sort((a, b) => (b.last_timestamp || 0) - (a.last_timestamp || 0));
+        return merged;
+      });
+
+      setUnreadCounts(prev => {
+        const next = { ...prev };
+        enriched.forEach(c => {
+          if (c.unread_count > 0) next[c.id] = c.unread_count;
+        });
+        return next;
+      });
+
+      setHasMoreConvs(rows.length === CONV_PAGE_SIZE);
+      setConvPage(p => p + 1);
+    } catch (err) {
+      console.error('Failed to load more consultations:', err);
+      showToast('Could not load more consultations', 'error');
+    } finally {
+      setLoadingMoreConvs(false);
+    }
+  };
+
+  // Triggered by scrolling the conversation list near its bottom
+  const handleConvListScroll = (e) => {
+    const el = e.target;
+    const threshold = 150; // px from bottom
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+      loadMoreConversations();
+    }
+  };
+
   useEffect(() => {
     if (!sessionReady) return;
+
     const loadConsultations = async () => {
       try {
         await ensureValidSession();
-        const data = await consultationsService.getAllConsultations(null, true);
-
-        const consultationsWithLastMessage = await Promise.all(
-          (data || []).map(async (conv) => {
-            try {
-              const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
-              const lastMsg = lastVisibleMessage(msgs);
-              const unreadCount = internalStaffId
-                ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
-                : 0;
-              return {
-                ...conv,
-                last_message: lastMsg?.message || '',
-                last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
-                unread_count: unreadCount,
-              };
-            } catch {
-              return conv;
-            }
-          })
-        );
-        consultationsWithLastMessage.sort((a, b) => b.last_timestamp - a.last_timestamp);
-        setConversations(consultationsWithLastMessage);
+        const { rows, enriched } = await fetchConversationsPage(0, CONV_PAGE_SIZE);
+        enriched.sort((a, b) => (b.last_timestamp || 0) - (a.last_timestamp || 0));
+        setConversations(enriched);
+        setHasMoreConvs(rows.length === CONV_PAGE_SIZE);
+        setConvPage(1);
 
         const unreadMap = {};
-        consultationsWithLastMessage.forEach(c => {
+        enriched.forEach(c => {
           if (c.unread_count > 0) unreadMap[c.id] = c.unread_count;
         });
         setUnreadCounts(unreadMap);
@@ -1168,6 +1244,8 @@ export const Consultations = () => {
           }
 
           if (idx === -1) {
+            // Not currently loaded (could be further down an unfetched page) —
+            // only splice it in if it's active, so newly-reactivated threads surface.
             if (updatedConv.status === 'active') {
               return [{ ...updatedConv, last_message: '', last_timestamp: 0, unread_count: 0 }, ...prev];
             }
@@ -1211,15 +1289,19 @@ export const Consultations = () => {
       }
     });
 
+    // Polling now only refreshes conversations that are already loaded on the
+    // client (last message + unread count) instead of re-fetching the whole
+    // consultations table every 3s — new threads still arrive via the
+    // realtime INSERT subscription above.
     const pollInterval = setInterval(async () => {
       try {
         consultationsService.clearMessagesCache();
-        const data = await consultationsService.getAllConsultations(null, true);
-        if (!data) return;
+        const loaded = conversationsRef.current;
+        if (loaded.length === 0) return;
 
         const unreadMap = {};
-        const updatedConversations = await Promise.all(
-          (data || []).map(async (conv) => {
+        const updated = await Promise.all(
+          loaded.map(async (conv) => {
             try {
               const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
               const lastMsg = lastVisibleMessage(msgs);
@@ -1229,8 +1311,8 @@ export const Consultations = () => {
               if (unreadCount > 0) unreadMap[conv.id] = unreadCount;
               return {
                 ...conv,
-                last_message: lastMsg?.message || '',
-                last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
+                last_message: lastMsg?.message ?? conv.last_message ?? '',
+                last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : (conv.last_timestamp || 0),
                 unread_count: unreadCount,
               };
             } catch {
@@ -1238,8 +1320,8 @@ export const Consultations = () => {
             }
           })
         );
-        updatedConversations.sort((a, b) => b.last_timestamp - a.last_timestamp);
-        setConversations(updatedConversations);
+        updated.sort((a, b) => (b.last_timestamp || 0) - (a.last_timestamp || 0));
+        setConversations(updated);
         setUnreadCounts(unreadMap);
       } catch (err) {}
     }, 3000);
@@ -1248,7 +1330,30 @@ export const Consultations = () => {
       if (convChannelRef.current) convChannelRef.current();
       clearInterval(pollInterval);
     };
-  }, [sessionReady, selectedConvId, internalStaffId]);
+  }, [sessionReady, selectedConvId, internalStaffId, fetchConversationsPage]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    const loadPresence = async () => {
+      try {
+        const users = await consultationsService.getOnlineUsers();
+        const presenceMap = {};
+        users?.forEach(u => { presenceMap[u.user_id] = u; });
+        setOnlinePresence(presenceMap);
+      } catch (err) { console.error('Failed to load presence:', err); }
+    };
+    loadPresence();
+
+    presenceChannelRef.current = consultationsService.subscribeToPresence((payload) => {
+      if (payload.eventType === 'UPSERT') {
+        setOnlinePresence(prev => ({ ...prev, [payload.new.user_id]: payload.new }));
+      }
+    });
+
+    return () => {
+      if (presenceChannelRef.current) presenceChannelRef.current();
+    };
+  }, [sessionReady]);
 
   useEffect(() => {
     if (!sessionReady || !internalStaffId) return;
@@ -1309,29 +1414,6 @@ export const Consultations = () => {
     globalMsgChannelRef.current = channel;
     return () => supabase.removeChannel(channel);
   }, [sessionReady, internalStaffId]);
-
-  useEffect(() => {
-    if (!sessionReady) return;
-    const loadPresence = async () => {
-      try {
-        const users = await consultationsService.getOnlineUsers();
-        const presenceMap = {};
-        users?.forEach(u => { presenceMap[u.user_id] = u; });
-        setOnlinePresence(presenceMap);
-      } catch (err) { console.error('Failed to load presence:', err); }
-    };
-    loadPresence();
-
-    presenceChannelRef.current = consultationsService.subscribeToPresence((payload) => {
-      if (payload.eventType === 'UPSERT') {
-        setOnlinePresence(prev => ({ ...prev, [payload.new.user_id]: payload.new }));
-      }
-    });
-
-    return () => {
-      if (presenceChannelRef.current) presenceChannelRef.current();
-    };
-  }, [sessionReady]);
 
   useEffect(() => {
     if (!sessionReady) return;
@@ -1521,6 +1603,15 @@ export const Consultations = () => {
     return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
   });
 
+  // If an active filter/search is thinning the currently-loaded page down to
+  // very few results, keep paging in the background so matches further down
+  // aren't missed (same pattern as Records.jsx)
+  useEffect(() => {
+    if (sessionReady && hasMoreConvs && !loadingMoreConvs && visibleConversations.length < 15) {
+      loadMoreConversations();
+    }
+  }, [visibleConversations.length, hasMoreConvs, loadingMoreConvs, sessionReady]);
+
   const unreadByTab = {};
   allowedTabs.forEach(tab => {
     unreadByTab[tab.key] = 0;
@@ -1653,82 +1744,97 @@ export const Consultations = () => {
         </div>
 
         {/* Conversation list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onScroll={handleConvListScroll}>
           {visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 p-6 text-center">
               <i className="fa-regular fa-comment-dots text-5xl text-slate-200"></i>
               <p className="text-base">No {tabCfg.label.toLowerCase()} consultations yet</p>
               <p className="text-sm">Patients will appear here when they send a message</p>
             </div>
-          ) : visibleConversations.map(conv => {
-            const profile = patientProfiles[conv.patient_id] || {};
-            const displayName = formatNameForList(profile);
-            const initial = displayName.charAt(0).toUpperCase();
-            const isOnline = onlinePresence[conv.patient_id]?.status === 'online';
-            const isActive = selectedConvId === conv.id;
-            const tab = TABS.find(t => t.key === conv.consultation_type) || TABS[0];
-            const isEnded = conv.status === 'ended';
-            const unreadCount = conv.unread_count || 0;
-            const hasUnread = unreadCount > 0 && !isEnded;
+          ) : (
+            <>
+              {visibleConversations.map(conv => {
+                const profile = patientProfiles[conv.patient_id] || {};
+                const displayName = formatNameForList(profile);
+                const initial = displayName.charAt(0).toUpperCase();
+                const isOnline = onlinePresence[conv.patient_id]?.status === 'online';
+                const isActive = selectedConvId === conv.id;
+                const tab = TABS.find(t => t.key === conv.consultation_type) || TABS[0];
+                const isEnded = conv.status === 'ended';
+                const unreadCount = conv.unread_count || 0;
+                const hasUnread = unreadCount > 0 && !isEnded;
 
-            return (
-              <div
-                key={conv.id}
-                onClick={() => setSelectedConvId(conv.id)}
-                className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
-                  isActive ? 'md:bg-gradient-to-r md:from-[#e0eceb] md:to-white md:border-l-4 md:border-l-[#466460]' : ''
-                } ${hasUnread ? 'bg-yellow-50' : ''} ${isEnded ? 'opacity-70' : ''}`}
-              >
-                <div className="relative flex-shrink-0">
+                return (
                   <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${isEnded ? 'grayscale' : ''}`}
-                    style={{ backgroundColor: tab.light, color: tab.accent }}
+                    key={conv.id}
+                    onClick={() => setSelectedConvId(conv.id)}
+                    className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
+                      isActive ? 'md:bg-gradient-to-r md:from-[#e0eceb] md:to-white md:border-l-4 md:border-l-[#466460]' : ''
+                    } ${hasUnread ? 'bg-yellow-50' : ''} ${isEnded ? 'opacity-70' : ''}`}
                   >
-                    {initial}
-                  </div>
-                  {isOnline && !isEnded && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center">
-                    <p className={`font-bold text-base truncate flex items-center gap-2 ${hasUnread ? 'text-[#466460]' : 'text-slate-800'}`}>
-                      {displayName}
-                      {isEnded && (
-                        <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>
+                    <div className="relative flex-shrink-0">
+                      <div
+                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${isEnded ? 'grayscale' : ''}`}
+                        style={{ backgroundColor: tab.light, color: tab.accent }}
+                      >
+                        {initial}
+                      </div>
+                      {isOnline && !isEnded && (
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></span>
                       )}
-                    </p>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      {hasUnread && (
-                        <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                          {unreadCount}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <p className={`font-bold text-base truncate flex items-center gap-2 ${hasUnread ? 'text-[#466460]' : 'text-slate-800'}`}>
+                          {displayName}
+                          {isEnded && (
+                            <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase">Ended</span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          {hasUnread && (
+                            <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                              {unreadCount}
+                            </span>
+                          )}
+                          <span className="text-xs text-slate-400">
+                            {conv.last_timestamp ? formatTime(conv.last_timestamp) : ''}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-sm text-slate-500 truncate">
+                          {profile.university_id && `${profile.university_id} • `}
+                          {profile.program && `${profile.program}`}
+                          {profile.section && ` Sec ${profile.section}`}
                         </span>
-                      )}
-                      <span className="text-xs text-slate-400">
-                        {conv.last_timestamp ? formatTime(conv.last_timestamp) : ''}
-                      </span>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1">
+                        {getGenderIcon(profile.sex)}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(profile.role || conv.patient_role)}`}>
+                          {profile.role || conv.patient_role || 'patient'}
+                        </span>
+                        <p className={`text-sm truncate ${hasUnread ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
+                          {conv.last_message || 'No messages'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="text-sm text-slate-500 truncate">
-                      {profile.university_id && `${profile.university_id} • `}
-                      {profile.program && `${profile.program}`}
-                      {profile.section && ` Sec ${profile.section}`}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 mt-1">
-                    {getGenderIcon(profile.sex)}
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(profile.role || conv.patient_role)}`}>
-                      {profile.role || conv.patient_role || 'patient'}
-                    </span>
-                    <p className={`text-sm truncate ${hasUnread ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
-                      {conv.last_message || 'No messages'}
-                    </p>
-                  </div>
+                );
+              })}
+
+              {loadingMoreConvs && (
+                <div className="text-center text-slate-400 text-xs py-4">
+                  <i className="fa-solid fa-spinner fa-spin mr-1.5"></i> Loading more consultations...
                 </div>
-              </div>
-            );
-          })}
+              )}
+              {!hasMoreConvs && conversations.length > 0 && (
+                <div className="text-center text-slate-300 text-[10px] py-3 uppercase font-semibold tracking-wide">
+                  All consultations loaded
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 

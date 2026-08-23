@@ -117,6 +117,37 @@ const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm 
 const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tracking-wide";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared Unsaved Changes Modal
+// ─────────────────────────────────────────────────────────────────────────────
+const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-amber-600">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-slate-800">Unsaved Changes</h3>
+        </div>
+        <p className="text-sm text-slate-600 mb-6">You have unsaved changes. Are you sure you want to discard them? Any edits you made will be lost.</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
+            Keep Editing
+          </button>
+          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Toggle Component
 // ─────────────────────────────────────────────────────────────────────────────
 const Toggle = ({ checked, onChange }) => (
@@ -263,7 +294,9 @@ const getRoleOptions = (configData) => {
 const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
-  const [form, setForm] = useState({
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
+
+  const [initialForm] = useState({
     first_name: '', middle_name: '', last_name: '', suffix: '',
     university_id: '', email: '', phone_number: '', password: '',
     role: 'student',
@@ -274,6 +307,8 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
     year_level: '1st Year', section: '', student_classification: 'Regular',
     is_verified: true, profile_complete: false,
   });
+
+  const [form, setForm] = useState(initialForm);
 
   const deptAbbrToFull = Object.fromEntries(configData.departments.map(d => [d.abbr, d.full]));
   const programsByDeptAbbr = Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs]));
@@ -312,6 +347,14 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
     const m = today.getMonth() - birth.getMonth();
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
     setForm(f => ({ ...f, birthday: val, age: String(age) }));
+  };
+
+  const handleCloseRequest = () => {
+    if (JSON.stringify(form) !== JSON.stringify(initialForm)) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
   };
 
   const availablePrograms = form.departmentAbbr ? (programsByDeptAbbr[form.departmentAbbr] || []) : [];
@@ -401,145 +444,153 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
   const secHead = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
-        <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold">Create New User</h3>
-            <p className="text-xs text-white/70 mt-0.5">Fill in the details below</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6">
-          <form onSubmit={handleSubmit} id="create-form">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-              <div className={secHead}>Account</div>
-              <div><label className={labelCls}>Email <span className="text-red-400">*</span></label><input className={inputCls} type="email" value={form.email} autoComplete="off" onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required /></div>
-              <div className="flex flex-col">
-                <label className={labelCls}>Password <span className="text-red-400">*</span></label>
-                <div className="relative">
-                  <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={e => cf('password', e.target.value)} placeholder="Create a password" required />
-                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"><EyeIcon open={showPwd} /></button>
-                </div>
-                <PasswordRequirements password={form.password} rules={configData?.passwordRules} />
-              </div>
-
-              <div className={secHead}>Identity</div>
-              <div><label className={labelCls}>First Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.first_name} onChange={e => cf('first_name', e.target.value)} placeholder="First name" required /></div>
-              <div><label className={labelCls}>Last Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.last_name} onChange={e => cf('last_name', e.target.value)} placeholder="Last name" required /></div>
-              <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={form.middle_name} onChange={e => cf('middle_name', e.target.value)} placeholder="Middle name" /></div>
-              <div>
-                <label className={labelCls}>Suffix</label>
-                <CustomSelect value={form.suffix} onChange={v => cf('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
-              </div>
-              <div><label className={labelCls}>Birthday</label><DatePicker value={form.birthday} onChange={(val) => handleBirthdayChange(val)} /></div>
-              <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" /></div>
-              <div>
-                <label className={labelCls}>Sex</label>
-                <CustomSelect value={form.sex} onChange={v => cf('sex', v)} options={['Male', 'Female']} />
-              </div>
-              <div>
-                <label className={labelCls}>Civil Status</label>
-                <CustomSelect value={form.civil_status} onChange={v => cf('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
-              </div>
-              <div>
-                <label className={labelCls}>Religion</label>
-                <CustomSelect value={form.religion} onChange={v => cf('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
-              </div>
-              <div>
-                <label className={labelCls}>Nationality</label>
-                <CustomSelect value={form.nationality} onChange={v => cf('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
-              </div>
-              <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
-
-              <div className={secHead}>Role &amp; Work</div>
-              <div>
-                <label className={labelCls}>Role <span className="text-red-400">*</span></label>
-                <CustomSelect value={form.role} onChange={handleRoleChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
-              </div>
-              <div><label className={labelCls}>University ID <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
-
-              {isStudentRole && (
-                <>
-                  <div>
-                    <label className={labelCls}>Department <span className="text-red-400">*</span></label>
-                    <CustomSelect value={form.departmentAbbr} onChange={handleDeptChange} options={configData.departments.map(d => ({ value: d.abbr, label: d.abbr }))} />
-                    {form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}
-                  </div>
-                  <div>
-                    <label className={labelCls}>Program <span className="text-red-400">*</span></label>
-                    <CustomSelect value={form.program} onChange={v => cf('program', v)} options={availablePrograms} disabled={!form.departmentAbbr} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Year Level</label>
-                    <CustomSelect value={form.year_level} onChange={v => cf('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Section</label>
-                    <CustomSelect value={form.section} onChange={v => cf('section', v)} options={configData.sections || []} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Student Classification</label>
-                    <CustomSelect value={form.student_classification} onChange={v => cf('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
-                  </div>
-                </>
-              )}
-
-              {(isFacultyRole || isClinicRole || isAdminRole) && (
-                <>
-                  <div>
-                    <label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label>
-                    <CustomSelect value={form.department} onChange={v => cf('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
-                  </div>
-
-                  <div>
-                    <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
-                    <CustomSelect value={form.job_title} onChange={v => cf('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
-                  </div>
-
-                  {!isAdminRole && (
-                    <div>
-                      <label className={labelCls}>Classification</label>
-                      <CustomSelect value={form.classification} onChange={v => cf('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div className={secHead}>Account Flags</div>
-              {[
-                { key: 'is_verified',      label: 'Mark as Email Verified',   desc: 'User can log in without verifying email.' },
-                { key: 'profile_complete', label: 'Mark Profile as Complete', desc: 'Skips profile setup on first login.' },
-              ].map(({ key, label, desc }) => (
-                <div key={key} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <Toggle checked={form[key]} onChange={() => cf(key, !form[key])} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-700 truncate">{label}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{desc}</p>
-                  </div>
-                </div>
-              ))}
+    <>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && handleCloseRequest()}>
+        <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
+          <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+              </svg>
             </div>
-          </form>
-        </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-bold">Create New User</h3>
+              <p className="text-xs text-white/70 mt-0.5">Fill in the details below</p>
+            </div>
+            <button onClick={handleCloseRequest} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
 
-        <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-          <button type="button" onClick={onClose} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-          <button type="submit" form="create-form" disabled={loading} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
-            {loading && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
-            {loading ? 'Creating…' : '✓ Create User'}
-          </button>
+          <div className="flex-1 overflow-y-auto p-6">
+            <form onSubmit={handleSubmit} id="create-form">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                <div className={secHead}>Account</div>
+                <div><label className={labelCls}>Email <span className="text-red-400">*</span></label><input className={inputCls} type="email" value={form.email} autoComplete="off" onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required /></div>
+                <div className="flex flex-col">
+                  <label className={labelCls}>Password <span className="text-red-400">*</span></label>
+                  <div className="relative">
+                    <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={e => cf('password', e.target.value)} placeholder="Create a password" required />
+                    <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"><EyeIcon open={showPwd} /></button>
+                  </div>
+                  <PasswordRequirements password={form.password} rules={configData?.passwordRules} />
+                </div>
+
+                <div className={secHead}>Identity</div>
+                <div><label className={labelCls}>First Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.first_name} onChange={e => cf('first_name', e.target.value)} placeholder="First name" required /></div>
+                <div><label className={labelCls}>Last Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.last_name} onChange={e => cf('last_name', e.target.value)} placeholder="Last name" required /></div>
+                <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={form.middle_name} onChange={e => cf('middle_name', e.target.value)} placeholder="Middle name" /></div>
+                <div>
+                  <label className={labelCls}>Suffix</label>
+                  <CustomSelect value={form.suffix} onChange={v => cf('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
+                </div>
+                <div><label className={labelCls}>Birthday</label><DatePicker value={form.birthday} onChange={(val) => handleBirthdayChange(val)} /></div>
+                <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" /></div>
+                <div>
+                  <label className={labelCls}>Sex</label>
+                  <CustomSelect value={form.sex} onChange={v => cf('sex', v)} options={['Male', 'Female']} />
+                </div>
+                <div>
+                  <label className={labelCls}>Civil Status</label>
+                  <CustomSelect value={form.civil_status} onChange={v => cf('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
+                </div>
+                <div>
+                  <label className={labelCls}>Religion</label>
+                  <CustomSelect value={form.religion} onChange={v => cf('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
+                </div>
+                <div>
+                  <label className={labelCls}>Nationality</label>
+                  <CustomSelect value={form.nationality} onChange={v => cf('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
+                </div>
+                <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
+
+                <div className={secHead}>Role &amp; Work</div>
+                <div>
+                  <label className={labelCls}>Role <span className="text-red-400">*</span></label>
+                  <CustomSelect value={form.role} onChange={handleRoleChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
+                </div>
+                <div><label className={labelCls}>University ID <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
+
+                {isStudentRole && (
+                  <>
+                    <div>
+                      <label className={labelCls}>Department <span className="text-red-400">*</span></label>
+                      <CustomSelect value={form.departmentAbbr} onChange={handleDeptChange} options={configData.departments.map(d => ({ value: d.abbr, label: d.abbr }))} />
+                      {form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}
+                    </div>
+                    <div>
+                      <label className={labelCls}>Program <span className="text-red-400">*</span></label>
+                      <CustomSelect value={form.program} onChange={v => cf('program', v)} options={availablePrograms} disabled={!form.departmentAbbr} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Year Level</label>
+                      <CustomSelect value={form.year_level} onChange={v => cf('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Section</label>
+                      <CustomSelect value={form.section} onChange={v => cf('section', v)} options={configData.sections || []} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Student Classification</label>
+                      <CustomSelect value={form.student_classification} onChange={v => cf('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
+                    </div>
+                  </>
+                )}
+
+                {(isFacultyRole || isClinicRole || isAdminRole) && (
+                  <>
+                    <div>
+                      <label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label>
+                      <CustomSelect value={form.department} onChange={v => cf('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
+                      <CustomSelect value={form.job_title} onChange={v => cf('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
+                    </div>
+
+                    {!isAdminRole && (
+                      <div>
+                        <label className={labelCls}>Classification</label>
+                        <CustomSelect value={form.classification} onChange={v => cf('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className={secHead}>Account Flags</div>
+                {[
+                  { key: 'is_verified',      label: 'Mark as Email Verified',   desc: 'User can log in without verifying email.' },
+                  { key: 'profile_complete', label: 'Mark Profile as Complete', desc: 'Skips profile setup on first login.' },
+                ].map(({ key, label, desc }) => (
+                  <div key={key} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <Toggle checked={form[key]} onChange={() => cf(key, !form[key])} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-700 truncate">{label}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </form>
+          </div>
+
+          <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
+            <button type="button" onClick={handleCloseRequest} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
+            <button type="submit" form="create-form" disabled={loading} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+              {loading && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+              {loading ? 'Creating…' : '✓ Create User'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>,
+
+      <UnsavedChangesModal
+        isOpen={showConfirmClose}
+        onCancel={() => setShowConfirmClose(false)}
+        onConfirm={onClose}
+      />
+    </>,
     document.body
   );
 };
@@ -570,6 +621,7 @@ export const UserManagement = () => {
   const [editSaving, setEditSaving]     = useState(false);
 
   const [showEditModal, setShowEditModal]     = useState(false);
+  const [showEditCloseConfirm, setShowEditCloseConfirm] = useState(false);
   const [editTarget, setEditTarget]           = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget]       = useState(null);
@@ -588,6 +640,7 @@ export const UserManagement = () => {
     is_verified:false, profile_complete:false, is_profile_setup:false,
   };
   const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [initialEditForm, setInitialEditForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
     fetchUsers();
@@ -720,7 +773,8 @@ export const UserManagement = () => {
       }
     }
     setEditTarget(user);
-    setEditForm({
+
+    const newForm = {
       first_name: user.first_name || '', middle_name: user.middle_name || '',
       last_name: user.last_name || '', suffix: user.suffix || '',
       university_id: user.university_id || '', email: user.email || '',
@@ -735,10 +789,21 @@ export const UserManagement = () => {
       classification: user.classification || '',
       is_verified: user.is_verified ?? false, profile_complete: user.profile_complete ?? false,
       is_profile_setup: user.is_profile_setup ?? false,
-    });
+    };
+
+    setEditForm(newForm);
+    setInitialEditForm(newForm);
     setPhoneError('');
     setEditShowPwd(false);
     setShowEditModal(true);
+  };
+
+  const handleEditCloseRequest = () => {
+    if (JSON.stringify(editForm) !== JSON.stringify(initialEditForm)) {
+      setShowEditCloseConfirm(true);
+    } else {
+      setShowEditModal(false);
+    }
   };
 
   const calculateAge = (birthday) => {
@@ -1195,206 +1260,217 @@ export const UserManagement = () => {
       )}
 
       {showEditModal && editTarget && createPortal(
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
-            <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
-              <div className="overflow-hidden">
-                <h3 className="text-base font-bold truncate">Edit User — {getFullName(editTarget)}</h3>
-                <p className="text-xs text-white/70 mt-0.5 truncate">{editTarget.email}</p>
-              </div>
-              <button onClick={() => setShowEditModal(false)} className="ml-auto w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              <form onSubmit={saveEdit} id="edit-form">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-
-                  <div className="sm:col-span-2">
-                    <div className={sectionHeadCls}>Account Information</div>
-                  </div>
-                  <div><label className={labelCls}>University ID</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} required /></div>
-                  <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
-                  <div className="flex flex-col">
-                    <label className={labelCls}>New Password <span className="text-slate-400 font-normal">(leave blank to keep)</span></label>
-                    <div className="relative">
-                      <input className={inputCls} type={editShowPwd ? 'text' : 'password'} value={editForm.password || ''} onChange={e => field('password', e.target.value)} placeholder="Enter new password" />
-                      <button type="button" onClick={() => setEditShowPwd(!editShowPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                        <EyeIcon open={editShowPwd} />
-                      </button>
-                    </div>
-                    {editForm.password && <PasswordRequirements password={editForm.password} rules={configData.passwordRules} />}
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <div className={sectionHeadCls}>Personal Information</div>
-                  </div>
-                  <div><label className={labelCls}>First Name</label><input className={inputCls} value={editForm.first_name} onChange={e => field('first_name', e.target.value)} required /></div>
-                  <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={editForm.middle_name} onChange={e => field('middle_name', e.target.value)} /></div>
-                  <div><label className={labelCls}>Last Name</label><input className={inputCls} value={editForm.last_name} onChange={e => field('last_name', e.target.value)} required /></div>
-                  <div>
-                    <label className={labelCls}>Suffix</label>
-                    <CustomSelect value={editForm.suffix} onChange={v => field('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Phone Number</label>
-                    <input
-                      className={`${inputCls} ${phoneError ? 'border-red-400 bg-red-50' : ''}`}
-                      value={editForm.phone_number}
-                      onChange={e => handlePhoneChange(e.target.value)}
-                      placeholder="11 digits (e.g. 09123456789)"
-                      maxLength={11}
-                    />
-                    {phoneError && <p className="text-xs text-red-500 mt-1">{phoneError}</p>}
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <div className={sectionHeadCls}>Role &amp; Work Information</div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Role</label>
-                    <CustomSelect value={editForm.role} onChange={handleRoleEditChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
-                  </div>
-
-                  {isStudent(editForm.role) && (
-                    <>
-                      <div>
-                        <label className={labelCls}>Department</label>
-                        <CustomSelect value={editForm.departmentAbbr} onChange={handleDeptChange} options={configData?.departments?.map(d => ({ value: d.abbr, label: d.abbr }))} />
-                        {editForm.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[editForm.departmentAbbr]}</p>}
-                      </div>
-                      <div>
-                        <label className={labelCls}>Program</label>
-                        <CustomSelect value={editForm.program} onChange={v => field('program', v)} options={programsByDeptAbbr[editForm.departmentAbbr] || []} disabled={!editForm.departmentAbbr} />
-                      </div>
-                    </>
-                  )}
-
-                  {(isFaculty(editForm.role, configData) || isClinicStaff(editForm.role, configData) || isAdmin(editForm.role, configData)) && (
-                    <>
-                      <div>
-                        <label className={labelCls}>Department / Office</label>
-                        <CustomSelect value={editForm.department} onChange={v => field('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
-                      </div>
-
-                      <div>
-                        <label className={labelCls}>Job Title</label>
-                        <CustomSelect value={editForm.job_title} onChange={v => field('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
-                      </div>
-
-                      {!isAdmin(editForm.role, configData) && (
-                        <div>
-                          <label className={labelCls}>Classification</label>
-                          <CustomSelect value={editForm.classification} onChange={v => field('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  <div className="sm:col-span-2">
-                    <div className={sectionHeadCls}>Personal Details</div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Birthday</label>
-                    <DatePicker
-                      value={editForm.birthday}
-                      onChange={(val) => { field('birthday', val); field('age', calculateAge(val)); }}
-                    />
-                  </div>
-                  <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
-                  <div>
-                    <label className={labelCls}>Sex</label>
-                    <CustomSelect value={editForm.sex} onChange={v => field('sex', v)} options={['Male', 'Female']} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Civil Status</label>
-                    <CustomSelect value={editForm.civil_status} onChange={v => field('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Blood Type</label>
-                    <CustomSelect value={editForm.blood_type} onChange={v => field('blood_type', v)} options={['A+','A-','B+','B-','AB+','AB-','O+','O-']} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Religion</label>
-                    <CustomSelect value={editForm.religion} onChange={v => field('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Nationality</label>
-                    <CustomSelect value={editForm.nationality} onChange={v => field('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Home Address</label>
-                    <div className="flex gap-2">
-                      <input className={`${inputCls} bg-slate-50`} value={editForm.home_address} readOnly placeholder="Click to set address" />
-                      <button type="button" onClick={() => setShowAddressModal(true)} className="px-3 py-2 bg-[#466460] text-white rounded-lg text-sm font-semibold hover:bg-[#3a524f] transition">
-                        <i className="fa-solid fa-location-dot"></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  {(editForm.role === 'student') && (
-                    <>
-                      <div className="sm:col-span-2">
-                        <div className={sectionHeadCls}>Academic Information</div>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Year Level</label>
-                        <CustomSelect value={editForm.year_level} onChange={v => field('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Section</label>
-                        <CustomSelect value={editForm.section} onChange={v => field('section', v)} options={configData?.sections || []} />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Student Classification</label>
-                        <CustomSelect value={editForm.student_classification} onChange={v => field('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="sm:col-span-2">
-                    <div className={sectionHeadCls}>Account Status</div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <Toggle checked={editForm.is_verified} onChange={() => field('is_verified', !editForm.is_verified)} />
-                        <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-slate-700 truncate">Email Verified</span>
-                          {!editTarget?.is_verified && (
-                            <button
-                              type="button"
-                              onClick={() => resendVerificationEmail(editTarget)}
-                              disabled={resendingId === (editTarget.uid || editTarget.id)}
-                              className="text-[11px] text-[#466460] hover:text-[#3a524f] underline font-bold shrink-0 disabled:opacity-50 disabled:no-underline"
-                            >
-                              {resendingId === (editTarget.uid || editTarget.id) ? 'Sending...' : 'Resend Email'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <Toggle checked={editForm.profile_complete} onChange={toggleProfileComplete} />
-                        <span className="text-sm font-semibold text-slate-700 truncate">Profile Complete</span>
-                      </div>
-                    </div>
-                  </div>
+        <>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && handleEditCloseRequest()}>
+            <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
+              <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
+                <div className="overflow-hidden">
+                  <h3 className="text-base font-bold truncate">Edit User — {getFullName(editTarget)}</h3>
+                  <p className="text-xs text-white/70 mt-0.5 truncate">{editTarget.email}</p>
                 </div>
-              </form>
-            </div>
+                <button onClick={handleEditCloseRequest} className="ml-auto w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
 
-            <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-              <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-              <button type="submit" form="edit-form" disabled={editSaving} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
-                 {editSaving && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
-                 {editSaving ? 'Saving...' : 'Save Changes'}
-              </button>
+              <div className="flex-1 overflow-y-auto p-6">
+                <form onSubmit={saveEdit} id="edit-form">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+
+                    <div className="sm:col-span-2">
+                      <div className={sectionHeadCls}>Account Information</div>
+                    </div>
+                    <div><label className={labelCls}>University ID</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} required /></div>
+                    <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
+                    <div className="flex flex-col">
+                      <label className={labelCls}>New Password <span className="text-slate-400 font-normal">(leave blank to keep)</span></label>
+                      <div className="relative">
+                        <input className={inputCls} type={editShowPwd ? 'text' : 'password'} value={editForm.password || ''} onChange={e => field('password', e.target.value)} placeholder="Enter new password" />
+                        <button type="button" onClick={() => setEditShowPwd(!editShowPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                          <EyeIcon open={editShowPwd} />
+                        </button>
+                      </div>
+                      {editForm.password && <PasswordRequirements password={editForm.password} rules={configData.passwordRules} />}
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className={sectionHeadCls}>Personal Information</div>
+                    </div>
+                    <div><label className={labelCls}>First Name</label><input className={inputCls} value={editForm.first_name} onChange={e => field('first_name', e.target.value)} required /></div>
+                    <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={editForm.middle_name} onChange={e => field('middle_name', e.target.value)} /></div>
+                    <div><label className={labelCls}>Last Name</label><input className={inputCls} value={editForm.last_name} onChange={e => field('last_name', e.target.value)} required /></div>
+                    <div>
+                      <label className={labelCls}>Suffix</label>
+                      <CustomSelect value={editForm.suffix} onChange={v => field('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Phone Number</label>
+                      <input
+                        className={`${inputCls} ${phoneError ? 'border-red-400 bg-red-50' : ''}`}
+                        value={editForm.phone_number}
+                        onChange={e => handlePhoneChange(e.target.value)}
+                        placeholder="11 digits (e.g. 09123456789)"
+                        maxLength={11}
+                      />
+                      {phoneError && <p className="text-xs text-red-500 mt-1">{phoneError}</p>}
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className={sectionHeadCls}>Role &amp; Work Information</div>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Role</label>
+                      <CustomSelect value={editForm.role} onChange={handleRoleEditChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
+                    </div>
+
+                    {isStudent(editForm.role) && (
+                      <>
+                        <div>
+                          <label className={labelCls}>Department</label>
+                          <CustomSelect value={editForm.departmentAbbr} onChange={handleDeptChange} options={configData?.departments?.map(d => ({ value: d.abbr, label: d.abbr }))} />
+                          {editForm.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[editForm.departmentAbbr]}</p>}
+                        </div>
+                        <div>
+                          <label className={labelCls}>Program</label>
+                          <CustomSelect value={editForm.program} onChange={v => field('program', v)} options={programsByDeptAbbr[editForm.departmentAbbr] || []} disabled={!editForm.departmentAbbr} />
+                        </div>
+                      </>
+                    )}
+
+                    {(isFaculty(editForm.role, configData) || isClinicStaff(editForm.role, configData) || isAdmin(editForm.role, configData)) && (
+                      <>
+                        <div>
+                          <label className={labelCls}>Department / Office</label>
+                          <CustomSelect value={editForm.department} onChange={v => field('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
+                        </div>
+
+                        <div>
+                          <label className={labelCls}>Job Title</label>
+                          <CustomSelect value={editForm.job_title} onChange={v => field('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
+                        </div>
+
+                        {!isAdmin(editForm.role, configData) && (
+                          <div>
+                            <label className={labelCls}>Classification</label>
+                            <CustomSelect value={editForm.classification} onChange={v => field('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <div className="sm:col-span-2">
+                      <div className={sectionHeadCls}>Personal Details</div>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Birthday</label>
+                      <DatePicker
+                        value={editForm.birthday}
+                        onChange={(val) => { field('birthday', val); field('age', calculateAge(val)); }}
+                      />
+                    </div>
+                    <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
+                    <div>
+                      <label className={labelCls}>Sex</label>
+                      <CustomSelect value={editForm.sex} onChange={v => field('sex', v)} options={['Male', 'Female']} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Civil Status</label>
+                      <CustomSelect value={editForm.civil_status} onChange={v => field('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Blood Type</label>
+                      <CustomSelect value={editForm.blood_type} onChange={v => field('blood_type', v)} options={['A+','A-','B+','B-','AB+','AB-','O+','O-']} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Religion</label>
+                      <CustomSelect value={editForm.religion} onChange={v => field('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Nationality</label>
+                      <CustomSelect value={editForm.nationality} onChange={v => field('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>Home Address</label>
+                      <div className="flex gap-2">
+                        <input className={`${inputCls} bg-slate-50`} value={editForm.home_address} readOnly placeholder="Click to set address" />
+                        <button type="button" onClick={() => setShowAddressModal(true)} className="px-3 py-2 bg-[#466460] text-white rounded-lg text-sm font-semibold hover:bg-[#3a524f] transition">
+                          <i className="fa-solid fa-location-dot"></i>
+                        </button>
+                      </div>
+                    </div>
+
+                    {(editForm.role === 'student') && (
+                      <>
+                        <div className="sm:col-span-2">
+                          <div className={sectionHeadCls}>Academic Information</div>
+                        </div>
+                        <div>
+                          <label className={labelCls}>Year Level</label>
+                          <CustomSelect value={editForm.year_level} onChange={v => field('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Section</label>
+                          <CustomSelect value={editForm.section} onChange={v => field('section', v)} options={configData?.sections || []} />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Student Classification</label>
+                          <CustomSelect value={editForm.student_classification} onChange={v => field('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
+                        </div>
+                      </>
+                    )}
+
+                    <div className="sm:col-span-2">
+                      <div className={sectionHeadCls}>Account Status</div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <Toggle checked={editForm.is_verified} onChange={() => field('is_verified', !editForm.is_verified)} />
+                          <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-slate-700 truncate">Email Verified</span>
+                            {!editTarget?.is_verified && (
+                              <button
+                                type="button"
+                                onClick={() => resendVerificationEmail(editTarget)}
+                                disabled={resendingId === (editTarget.uid || editTarget.id)}
+                                className="text-[11px] text-[#466460] hover:text-[#3a524f] underline font-bold shrink-0 disabled:opacity-50 disabled:no-underline"
+                              >
+                                {resendingId === (editTarget.uid || editTarget.id) ? 'Sending...' : 'Resend Email'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <Toggle checked={editForm.profile_complete} onChange={toggleProfileComplete} />
+                          <span className="text-sm font-semibold text-slate-700 truncate">Profile Complete</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
+                <button type="button" onClick={handleEditCloseRequest} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
+                <button type="submit" form="edit-form" disabled={editSaving} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+                   {editSaving && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                   {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>,
-    document.body
+
+          <UnsavedChangesModal
+            isOpen={showEditCloseConfirm}
+            onCancel={() => setShowEditCloseConfirm(false)}
+            onConfirm={() => {
+              setShowEditCloseConfirm(false);
+              setShowEditModal(false);
+            }}
+          />
+        </>,
+        document.body
       )}
 
       {showAddressModal && (

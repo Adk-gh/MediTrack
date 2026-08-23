@@ -1,3 +1,4 @@
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Records.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -6,6 +7,7 @@ import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
 
 const DOCUMENTS_BUCKET = 'health-documents';
+const PAGE_SIZE = 50;
 
 // ============================================================
 // SNACKBAR
@@ -18,6 +20,37 @@ const Snackbar = ({ message, type, visible }) => (
     {message}
   </div>
 );
+
+// ============================================================
+// UNSAVED CHANGES MODAL (PORTAL)
+// ============================================================
+const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-amber-600">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-slate-800">Unsaved Changes</h3>
+        </div>
+        <p className="text-sm text-slate-600 mb-6">You have unsaved changes. Are you sure you want to discard them? Any edits you made will be lost.</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
+            Keep Editing
+          </button>
+          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
 
 // ============================================================
 // DOCUMENT PREVIEW MODAL (PORTAL)
@@ -227,6 +260,16 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
 
   const initials = getInitials(person.name);
 
+  const parseJsonField = (field) => {
+    if (!field) return {};
+    if (typeof field === 'object') return field;
+    try {
+      return JSON.parse(field);
+    } catch {
+      return {};
+    }
+  };
+
   return (
     <div className="animate-[fadeInSlide_0.3s_ease-out_forwards] flex flex-col">
       {onClose && (
@@ -369,82 +412,82 @@ const ProfilePanel = ({ person, onExamine, onClose, navigate, showSnackbar, curr
         </div>
       </div>
 
-{/* COVID-19 Vaccination History Table */}
-{(() => {
-  const vaxData = typeof person.vaccinations === 'string'
-    ? parseJsonField(person.vaccinations)
-    : (person.vaccinations || person._raw?.vaccinations || {});
+      {/* COVID-19 Vaccination History Table */}
+      {(() => {
+        const vaxData = typeof person.vaccinations === 'string'
+          ? parseJsonField(person.vaccinations)
+          : (person.vaccinations || person._raw?.vaccinations || {});
 
-  const doseRows = [
-    { key: 'dose1', label: '1st Dose' },
-    { key: 'dose2', label: '2nd Dose' },
-    { key: 'booster1', label: 'Booster (1)' },
-    { key: 'booster2', label: 'Booster (2)' },
-  ];
+        const doseRows = [
+          { key: 'dose1', label: '1st Dose' },
+          { key: 'dose2', label: '2nd Dose' },
+          { key: 'booster1', label: 'Booster (1)' },
+          { key: 'booster2', label: 'Booster (2)' },
+        ];
 
-  const declined = vaxData.declined || {};
-  const history = vaxData.history || '';
+        const declined = vaxData.declined || {};
+        const history = vaxData.history || '';
 
-  return (
-    <div className="mb-4">
-      <h4 className="text-xs font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
-        <i className="fa-solid fa-syringe"></i> COVID-19 Vaccination History
-      </h4>
+        return (
+          <div className="mb-4">
+            <h4 className="text-xs font-bold text-[#466460] uppercase mb-2 flex items-center gap-2">
+              <i className="fa-solid fa-syringe"></i> COVID-19 Vaccination History
+            </h4>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[#f8fafc] border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              <th className="py-2.5 px-4">Dose</th>
-              <th className="py-2.5 px-4">Vaccine</th>
-              <th className="py-2.5 px-4">Date</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
-            {doseRows.map(({ key, label }) => {
-              const dose = vaxData[key] || {};
-              const isDeclined = !!declined[key];
-              const vaccine = dose.vaccineName || '';
-              const date = dose.date || '';
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#f8fafc] border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-2.5 px-4">Dose</th>
+                    <th className="py-2.5 px-4">Vaccine</th>
+                    <th className="py-2.5 px-4">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                  {doseRows.map(({ key, label }) => {
+                    const dose = vaxData[key] || {};
+                    const isDeclined = !!declined[key];
+                    const vaccine = dose.vaccineName || '';
+                    const date = dose.date || '';
 
-              return (
-                <tr key={key} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-2.5 px-4 font-semibold text-slate-800">{label}</td>
-                  <td className="py-2.5 px-4">
-                    {isDeclined ? (
-                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-semibold border border-amber-200">
-                        N/A (Skipped)
-                      </span>
-                    ) : vaccine ? (
-                      vaccine
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-4 text-slate-600">
-                    {isDeclined ? (
-                      <span className="text-slate-400">—</span>
-                    ) : date ? (
-                      date
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    return (
+                      <tr key={key} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2.5 px-4 font-semibold text-slate-800">{label}</td>
+                        <td className="py-2.5 px-4">
+                          {isDeclined ? (
+                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                              N/A (Skipped)
+                            </span>
+                          ) : vaccine ? (
+                            vaccine
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600">
+                          {isDeclined ? (
+                            <span className="text-slate-400">—</span>
+                          ) : date ? (
+                            date
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
 
-        {/* COVID-19 History Note */}
-        <div className="px-4 py-2.5 bg-slate-50/60 border-t border-slate-100 text-[11px] text-slate-600 italic">
-          <strong className="not-italic text-slate-700 font-semibold">COVID-19 History: </strong>
-          {declined.history ? 'Not applicable / None' : history || 'None recorded'}
-        </div>
-      </div>
-    </div>
-  );
-})()}
+              {/* COVID-19 History Note */}
+              <div className="px-4 py-2.5 bg-slate-50/60 border-t border-slate-100 text-[11px] text-slate-600 italic">
+                <strong className="not-italic text-slate-700 font-semibold">COVID-19 History: </strong>
+                {declined.history ? 'Not applicable / None' : history || 'None recorded'}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Health Documents (Personnel Only) */}
       {!isStudent && (
@@ -504,14 +547,14 @@ const normalizePatientData = (uid, d) => {
     : firstName || '—';
 
   return {
-  uid: doc.uid || doc.id,
-  name,
-  firstName,
-  lastName,
-  middleName,
-  suffix,
-  universityId,
-  studentId: d.studentId || d.student_id || universityId || '',
+    uid: uid || d.uid || d.id,
+    name,
+    firstName,
+    lastName,
+    middleName,
+    suffix,
+    universityId,
+    studentId: d.studentId || d.student_id || universityId || '',
     role:             d.role       || '',
     prog:             d.program    || d.course       || '',
     program:          d.program    || d.course       || '',
@@ -550,6 +593,10 @@ const normalizePatientData = (uid, d) => {
 const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onExamSubmitted, resetKey, currentUserRole }) => {
   const [loading, setLoading] = useState(true);
   const [normalizedPatient, setNormalizedPatient] = useState(null);
+
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
+
   const [schoolYear, setSchoolYear] = useState(() => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -584,6 +631,7 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
   useEffect(() => {
     if (!isOpen || !patient) {
       setNormalizedPatient(null);
+      setHasUnsavedChanges(false);
       return;
     }
 
@@ -615,110 +663,140 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
     fetchPatientData();
   }, [isOpen, patient, resetKey]);
 
+  const handleCloseRequest = () => {
+    if (hasUnsavedChanges) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const confirmClose = () => {
+    setShowConfirmClose(false);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
   if (!isOpen || !patient) return null;
 
   const displayPatient = normalizedPatient || patient;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
+    <>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleCloseRequest}></div>
 
-      <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
-        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
-              <i className="fa-solid fa-user text-white text-lg"></i>
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-slate-800">{displayPatient.name}</h3>
-              <p className="text-sm text-slate-500 mt-0.5">
-                {displayPatient.id} • {displayPatient.department || ''} {displayPatient.prog ? `• ${displayPatient.prog}` : ''}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
-              <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
-            </svg>
-          </button>
-        </div>
-
-        <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
-          <div className="flex gap-2">
-            {availableTabs.map(({ key, icon, label }) => (
-              <button
-                key={key}
-                onClick={() => setExamType(key)}
-                className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
-                  examType === key
-                    ? 'bg-[#466460] text-white shadow-md'
-                    : 'text-slate-600 hover:bg-white hover:shadow-sm'
-                }`}
-              >
-                <i className={`fa-solid ${icon}`}></i>
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs font-semibold text-slate-500">School Year:</span>
-            <select
-              value={schoolYear}
-              onChange={(e) => setSchoolYear(e.target.value)}
-              className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
-            >
-              {schoolYearOptions.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-            <select
-              value={semester}
-              onChange={(e) => setSemester(e.target.value)}
-              className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
-            >
-              <option value="1st Semester">1st Semester</option>
-              <option value="2nd Semester">2nd Semester</option>
-              <option value="Mid Year">Mid Year</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center text-slate-400">
-                <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 block text-[#466460]"></i>
-                <p className="text-sm font-semibold">Loading patient data…</p>
+        <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+          <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
+                <i className="fa-solid fa-user text-white text-lg"></i>
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-slate-800">{displayPatient.name}</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  {displayPatient.id} • {displayPatient.department || ''} {displayPatient.prog ? `• ${displayPatient.prog}` : ''}
+                </p>
               </div>
             </div>
-          ) : (
-            <>
-              {examType === 'medical' && (
-                <Medical
-                  key={`medical-${resetKey}`}
-                  selectedPatient={displayPatient}
-                  showMessage={onExamSubmitted}
-                  defaultSchoolYear={schoolYear}
-                  defaultSemester={semester}
-                />
-              )}
-              {examType === 'dental' && (
-                <Dental
-                  key={`dental-${resetKey}`}
-                  selectedPatient={displayPatient}
-                  showMessage={onExamSubmitted}
-                  defaultSchoolYear={schoolYear}
-                  defaultSemester={semester}
-                />
-              )}
-            </>
-          )}
+            <button
+              onClick={handleCloseRequest}
+              className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
+                <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
+            <div className="flex gap-2">
+              {availableTabs.map(({ key, icon, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setExamType(key)}
+                  className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                    examType === key
+                      ? 'bg-[#466460] text-white shadow-md'
+                      : 'text-slate-600 hover:bg-white hover:shadow-sm'
+                  }`}
+                >
+                  <i className={`fa-solid ${icon}`}></i>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="text-xs font-semibold text-slate-500">School Year:</span>
+              <select
+                value={schoolYear}
+                onChange={(e) => {
+                  setSchoolYear(e.target.value);
+                  setHasUnsavedChanges(true);
+                }}
+                className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+              >
+                {schoolYearOptions.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <select
+                value={semester}
+                onChange={(e) => {
+                  setSemester(e.target.value);
+                  setHasUnsavedChanges(true);
+                }}
+                className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+              >
+                <option value="1st Semester">1st Semester</option>
+                <option value="2nd Semester">2nd Semester</option>
+                <option value="Mid Year">Mid Year</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center text-slate-400">
+                  <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 block text-[#466460]"></i>
+                  <p className="text-sm font-semibold">Loading patient data…</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {examType === 'medical' && (
+                  <Medical
+                    key={`medical-${resetKey}`}
+                    selectedPatient={displayPatient}
+                    showMessage={onExamSubmitted}
+                    defaultSchoolYear={schoolYear}
+                    defaultSemester={semester}
+                    onDirtyChange={setHasUnsavedChanges}
+                  />
+                )}
+                {examType === 'dental' && (
+                  <Dental
+                    key={`dental-${resetKey}`}
+                    selectedPatient={displayPatient}
+                    showMessage={onExamSubmitted}
+                    defaultSchoolYear={schoolYear}
+                    defaultSemester={semester}
+                    onDirtyChange={setHasUnsavedChanges}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      <UnsavedChangesModal
+        isOpen={showConfirmClose}
+        onCancel={() => setShowConfirmClose(false)}
+        onConfirm={confirmClose}
+      />
+    </>
   );
 };
 
@@ -741,6 +819,13 @@ export const Records = () => {
   const [sortOrder, setSortOrder]         = useState('asc');
   const [profileOpen, setProfileOpen]     = useState(false);
 
+  // Infinite scroll state
+  const [page, setPage]             = useState(0);
+  const [hasMore, setHasMore]       = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [filterOptionsData, setFilterOptionsData] = useState([]);
+
   // Document Viewer Modal State
   const [previewDoc, setPreviewDoc]       = useState(null);
   const [previewOpen, setPreviewOpen]     = useState(false);
@@ -761,33 +846,57 @@ export const Records = () => {
     }
   });
 
-  const loadUsers = async () => {
+  const isEligible = (doc) => {
+    if (doc.is_archived === true || doc.is_archived === 'true') return false;
+    const role = String(doc.role || doc.type || '').toLowerCase().trim();
+    return role !== 'sysadmin' && role !== 'administrator' && role !== 'admin';
+  };
+
+  const loadFilterOptions = async () => {
     try {
-      setLoading(true);
       const { data, error } = await supabase
         .from('users')
-        .select('*');
+        .select('department, role, program, year_level, section, is_archived');
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        setPeopleData([]);
-        setLoading(false);
-        return;
-      }
+      const cleaned = (data || [])
+        .filter(isEligible)
+        .map(doc => ({
+          department: doc.department || 'Unassigned',
+          role:       doc.role || doc.type || 'staff',
+          prog:       doc.program || doc.course || '',
+          year:       doc.year_level || doc.yearLevel || '',
+          section:    doc.section || '',
+        }));
+
+      setFilterOptionsData(cleaned);
+    } catch (err) {
+      console.error('Failed to load filter options:', err);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .range(0, PAGE_SIZE - 1);
+
+      if (error) throw error;
 
       const normalized = (data || [])
-        .filter(doc => {
-          if (doc.is_archived === true || doc.is_archived === 'true') return false;
-          const role = String(doc.role || doc.type || '').toLowerCase().trim();
-          return role !== 'sysadmin' && role !== 'administrator' && role !== 'admin';
-        })
+        .filter(isEligible)
         .map(doc => ({
           ...normalizeUser(doc),
           department: doc.department || 'Unassigned',
         }));
 
       setPeopleData(normalized);
+      setHasMore((data || []).length === PAGE_SIZE);
+      setPage(1);
     } catch (err) {
       console.error('Failed to load users:', err);
       showSnackbar('Could not load users from database', 'error');
@@ -796,22 +905,67 @@ export const Records = () => {
     }
   };
 
+  const loadMoreUsers = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .range(from, to);
+
+      if (error) throw error;
+
+      const normalized = (data || [])
+        .filter(isEligible)
+        .map(doc => ({
+          ...normalizeUser(doc),
+          department: doc.department || 'Unassigned',
+        }));
+
+      setPeopleData(prev => {
+        const existingIds = new Set(prev.map(p => p.uid));
+        const deduped = normalized.filter(p => !existingIds.has(p.uid));
+        return [...prev, ...deduped];
+      });
+      setHasMore((data || []).length === PAGE_SIZE);
+      setPage(p => p + 1);
+    } catch (err) {
+      console.error('Failed to load more users:', err);
+      showSnackbar('Could not load more records', 'error');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
     loadUsers();
+    loadFilterOptions();
   }, []);
 
-  const departments = ['All', ...new Set(peopleData.map(p => p.department).filter(Boolean))].sort((a, b) => {
+  const handleListScroll = (e) => {
+    const el = e.target;
+    const threshold = 150;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+      loadMoreUsers();
+    }
+  };
+
+  const departments = ['All', ...new Set(filterOptionsData.map(p => p.department).filter(Boolean))].sort((a, b) => {
     if (a === 'All') return -1;
     if (b === 'All') return 1;
     return a.localeCompare(b);
   });
 
   const uniqueYears = ['All', ...new Set(
-    peopleData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.year).map(p => p.year)
+    filterOptionsData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.year).map(p => p.year)
   )].sort();
 
   const uniqueSections = ['All', ...new Set(
-    peopleData
+    filterOptionsData
       .filter(p => (currentDept === 'All' || p.department === currentDept) && (filterYear === 'All' || p.year === filterYear) && p.section)
       .map(p => p.section)
   )].sort((a, b) => {
@@ -821,7 +975,7 @@ export const Records = () => {
   });
 
   const uniquePrograms = ['All', ...new Set(
-    peopleData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.prog).map(p => p.prog)
+    filterOptionsData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.prog).map(p => p.prog)
   )].sort((a, b) => {
     if (a === 'All') return -1;
     if (b === 'All') return 1;
@@ -829,7 +983,7 @@ export const Records = () => {
   });
 
   const uniqueRoles = ['All', ...new Set(
-    peopleData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.role).map(p => p.role)
+    filterOptionsData.filter(p => (currentDept === 'All' || p.department === currentDept) && p.role).map(p => p.role)
   )].sort((a, b) => {
     if (a === 'All') return -1;
     if (b === 'All') return 1;
@@ -872,6 +1026,12 @@ export const Records = () => {
       const nameB = b.name.toLowerCase();
       return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
     });
+
+  useEffect(() => {
+    if (!loading && hasMore && !loadingMore && filteredPeople.length < 20) {
+      loadMoreUsers();
+    }
+  }, [filteredPeople.length, hasMore, loadingMore, loading]);
 
   const handleSelectPerson = (person) => {
     setSelectedPerson(person);
@@ -932,6 +1092,24 @@ export const Records = () => {
         </select>
       </>
     );
+  };
+
+  const ListEndIndicator = () => {
+    if (loadingMore) {
+      return (
+        <div className="text-center text-slate-400 text-xs py-4">
+          <i className="fa-solid fa-spinner fa-spin mr-1.5"></i> Loading more records...
+        </div>
+      );
+    }
+    if (!hasMore && peopleData.length > 0) {
+      return (
+        <div className="text-center text-slate-300 text-[10px] py-3 uppercase font-semibold tracking-wide">
+          All records loaded
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -1022,7 +1200,10 @@ export const Records = () => {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto px-3 py-2 [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full"
+            onScroll={handleListScroll}
+          >
             {filteredPeople.length === 0 ? (
               <div className="text-center text-slate-400 text-sm py-12">No records found</div>
             ) : (
@@ -1053,6 +1234,7 @@ export const Records = () => {
                     </div>
                   </div>
                 ))}
+                <ListEndIndicator />
               </div>
             )}
           </div>
@@ -1128,7 +1310,10 @@ export const Records = () => {
                 </div>
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+            <div
+              className="flex-1 min-h-0 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-[#466460] [&::-webkit-scrollbar-thumb]:to-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full"
+              onScroll={handleListScroll}
+            >
               {filteredPeople.length === 0 ? (
                 <div className="text-center text-slate-400 text-sm py-12">No records found</div>
               ) : (
@@ -1154,6 +1339,7 @@ export const Records = () => {
                       </div>
                     </div>
                   ))}
+                  <ListEndIndicator />
                 </div>
               )}
             </div>

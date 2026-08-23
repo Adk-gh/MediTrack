@@ -77,8 +77,6 @@ import ConsultationManagement from "./features/admin-clinic/ConsultationManageme
 
 import AppointmentManagement from "./features/admin-clinic/AppointmentManagement.jsx";
 
-import ApprovalManagement from "./features/admin-clinic/ApprovalManagement.jsx";
-
 import Meditrack from "./features/users/Meditrack.jsx";
 
 
@@ -419,9 +417,6 @@ const ROUTE_TO_TAB = {
 
   "/appointment-management":
     "appointmentManagement",
-
-  "/approval-management":
-    "approvalManagement",
 
   "/announcements":
     "announcements",
@@ -1261,15 +1256,6 @@ function App() {
               element={
                 <AdminRoute>
                   <AppointmentManagement />
-                </AdminRoute>
-              }
-            />
-
-            <Route
-              path="/approval-management"
-              element={
-                <AdminRoute>
-                  <ApprovalManagement />
                 </AdminRoute>
               }
             />

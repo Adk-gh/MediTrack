@@ -339,10 +339,11 @@ exports.adminUpdateUser = async (targetUid, updates) => {
 
   const dbUpdates = { updated_at: new Date().toISOString() };
 
+  // 1. Remove 'email' from this map so it isn't updated manually
   const fieldMap = [
     [['firstName', 'first_name'], 'first_name', true], [['lastName', 'last_name'], 'last_name', true],
     [['middleName', 'middle_name'], 'middle_name', true], [['suffix'], 'suffix', false],
-    [['universityId', 'university_id'], 'university_id', false], [['email'], 'email', false],
+    [['universityId', 'university_id'], 'university_id', false],
     [['phoneNumber', 'phone_number'], 'phone_number', false], [['role'], 'role', false],
     [['department'], 'department', false], [['program'], 'program', false], [['jobTitle', 'job_title'], 'job_title', false],
     [['licenseNumber', 'license_number'], 'license_number', false], [['birthday'], 'birthday', false],
@@ -362,11 +363,25 @@ exports.adminUpdateUser = async (targetUid, updates) => {
     if (val !== undefined) dbUpdates[dbKey] = doNormalize ? normalizeName(val) : val;
   });
 
+  // 2. Handle Admin Password Update (Fixed to use updateUserById)
   if (updates.newPassword) {
-    const { error: authError } = await supabase.auth.admin.updateUser(targetUid, { password: updates.newPassword });
+    const { error: authError } = await supabase.auth.admin.updateUserById(targetUid, { password: updates.newPassword });
     if (authError) throw new Error('Failed to update password: ' + authError.message);
   }
 
+  // 3. Handle Admin Email Update
+  if (updates.email) {
+    // Setting email_confirm: true forces the change immediately for admins
+    const { error: authEmailError } = await supabase.auth.admin.updateUserById(targetUid, {
+      email: updates.email,
+      email_confirm: true
+    });
+    if (authEmailError) throw new Error('Failed to update auth email: ' + authEmailError.message);
+
+    // The Postgres Trigger will instantly handle copying it to public.users!
+  }
+
+  // 4. Update the rest of the fields in the public.users table
   let { data, error } = await supabase.from('users').update(dbUpdates).eq('uid', targetUid).select().single();
 
   if (!data && error?.code === 'PGRST116') {

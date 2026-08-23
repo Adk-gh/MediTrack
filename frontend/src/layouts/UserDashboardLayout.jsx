@@ -58,7 +58,7 @@ const ConsultIcon = ({ active }) => (
     strokeLinejoin="round"
     className="w-full h-full"
   >
-    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 4 4z" />
+    <circle cx="12" cy="8" r="4" />
     <path d="M18 21v-2a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v2" />
     <path d="M12 12v3" />
     <path d="M10.5 13.5h3" />

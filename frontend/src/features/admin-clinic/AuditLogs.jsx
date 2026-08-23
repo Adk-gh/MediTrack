@@ -1,9 +1,10 @@
-//C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\AuditLogs.jsx
+// C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\AuditLogs.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { supabase } from '../../supabase';
+import DatePicker from '../../components/Datepicker';
 
 // ─── Brand palette ────────────────────────────────────────────────────────────
 const BRAND = '466460';
@@ -134,18 +135,26 @@ const escapeCsvValue = (value) => {
   return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 };
 
-const downloadCsv = (rows, filename, isArchived) => {
-  const headers = ['Timestamp', 'User Name', 'User Email', 'User ID', 'Action', 'Type', 'Status', 'Description', 'Details'];
-  const csvRows = [headers.map(escapeCsvValue).join(',')];
-  rows.forEach((log) => {
-    csvRows.push([
-      formatDate(log.created_at || log.timestamp), log.userName || '', log.userEmail || '',
-      log.userId || '', log.action || '', log.type || '', isArchived ? 'Archived' : 'Live',
-      log.description || '', log.details || ''
-    ].map(escapeCsvValue).join(','));
-  });
-  const csvContent = '\uFEFF' + csvRows.join('\r\n');
-  saveAs(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }), filename);
+const parseDetails = (details) => {
+  if (!details) return [];
+  let parsed = details;
+
+  if (typeof details === 'string') {
+    try {
+      parsed = JSON.parse(details);
+    } catch (e) {
+      return [{ key: null, value: details }];
+    }
+  }
+
+  if (typeof parsed === 'object' && parsed !== null) {
+    return Object.entries(parsed).map(([k, v]) => ({
+      key: k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      value: typeof v === 'object' ? JSON.stringify(v) : String(v)
+    }));
+  }
+
+  return [{ key: null, value: String(parsed) }];
 };
 
 // ─── UI Pills ────────────────────────────────────────────────────────────────
@@ -175,6 +184,7 @@ export const AuditLogs = () => {
   const [archiving, setArchiving] = useState(false);
   const [viewMode, setViewMode] = useState('live');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -203,11 +213,25 @@ export const AuditLogs = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
-  useEffect(() => { setCurrentPage(1); }, [typeFilter, viewMode, debouncedSearch]);
+  useEffect(() => { setCurrentPage(1); }, [typeFilter, viewMode, debouncedSearch, dateFilter]);
 
   const buildQuery = useCallback((baseQuery) => {
     let q = baseQuery;
-    if (typeFilter !== 'all') q = isArchived ? q.eq('data->>type', typeFilter) : q.eq('type', typeFilter);
+
+    if (typeFilter !== 'all') {
+      q = isArchived ? q.eq('data->>type', typeFilter) : q.eq('type', typeFilter);
+    }
+
+    if (dateFilter) {
+      const startOfDay = new Date(dateFilter);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(dateFilter);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const dateColumn = isArchived ? 'data->>created_at' : 'created_at';
+      q = q.gte(dateColumn, startOfDay.toISOString()).lte(dateColumn, endOfDay.toISOString());
+    }
+
     if (debouncedSearch.trim()) {
       const term = `%${debouncedSearch.trim()}%`;
       q = isArchived
@@ -215,7 +239,7 @@ export const AuditLogs = () => {
         : q.or(`userName.ilike.${term},userEmail.ilike.${term},description.ilike.${term},action.ilike.${term}`);
     }
     return q;
-  }, [typeFilter, debouncedSearch, isArchived]);
+  }, [typeFilter, debouncedSearch, isArchived, dateFilter]);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -291,7 +315,7 @@ export const AuditLogs = () => {
     return isArchived ? allRows.map(normalizeArchiveRow) : allRows;
   }, [buildQuery, cursorField, isArchived, normalizeArchiveRow]);
 
-const exportComplianceReport = async () => {
+  const exportComplianceReport = async () => {
     try {
       showSnackbar(`Preparing all ${isArchived ? 'archived' : 'live'} audit logs...`);
       const exportLogs = await fetchAllAuditLogs();
@@ -300,11 +324,12 @@ const exportComplianceReport = async () => {
       const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const viewLabel = isArchived ? 'Archived Logs' : 'Live Logs';
       const typeLabel = ACTIVITY_TYPES.find(t => t.value === typeFilter)?.label || 'All Activities';
+      const dateLabel = dateFilter ? `Filtered Date: ${new Date(dateFilter).toLocaleDateString()}` : 'All Dates';
 
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
       workbook.created = new Date();
-      const subtitle = [`Generated: ${todayLabel}`, `View: ${viewLabel}`, `Type Filter: ${typeLabel}`, `Records Exported: ${exportLogs.length.toLocaleString()}`];
+      const subtitle = [`Generated: ${todayLabel}`, `View: ${viewLabel}`, `Type Filter: ${typeLabel}`, dateLabel, `Records Exported: ${exportLogs.length.toLocaleString()}`];
       if (debouncedSearch.trim()) subtitle.push(`Search: "${debouncedSearch.trim()}"`);
 
       const ws = workbook.addWorksheet('Audit Logs');
@@ -331,7 +356,7 @@ const exportComplianceReport = async () => {
       ws.views = [{ state: 'frozen', ySplit: headerRow }];
 
       const buffer = await workbook.xlsx.writeBuffer();
-      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `MediTrack_AuditLogs_${viewMode}_ALL_${new Date().toISOString().split('T')[0]}.xlsx`);
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `MediTrack_AuditLogs_${viewMode}_${dateFilter || 'ALL'}_${new Date().toISOString().split('T')[0]}.xlsx`);
       showSnackbar(`Exported ${exportLogs.length.toLocaleString()} audit logs as Excel`);
     } catch (err) {
       console.error('Error exporting audit logs:', err);
@@ -339,7 +364,7 @@ const exportComplianceReport = async () => {
     }
   };
 
-const handleArchiveClick = () => setConfirmAction('archive');
+  const handleArchiveClick = () => setConfirmAction('archive');
   const handleExportClick = () => setConfirmAction('export');
 
   const handleConfirm = async () => {
@@ -371,6 +396,7 @@ const handleArchiveClick = () => setConfirmAction('archive');
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
           <div className="flex flex-wrap gap-3 items-center flex-1 w-full xl:w-auto">
+
             <div className="relative w-full sm:w-60">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -391,6 +417,27 @@ const handleArchiveClick = () => setConfirmAction('archive');
             <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={`${selectCls} w-full sm:w-44`}>
               {ACTIVITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
+
+            <div className="relative w-full sm:w-40">
+              <DatePicker
+                value={dateFilter}
+                onChange={setDateFilter}
+                placeholder="All Dates"
+                className={`${selectCls} w-full pr-8`}
+              />
+              {dateFilter && (
+                <button
+                  onClick={() => setDateFilter('')}
+                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  title="Clear date filter"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
           </div>
 
           <div className="flex items-center gap-2">
@@ -476,8 +523,10 @@ const handleArchiveClick = () => setConfirmAction('archive');
                       </span>
                     </td>
                     <td className="p-3 text-xs text-slate-500 hidden lg:table-cell max-w-[150px]">
-                      <span className="truncate block" title={typeof log.details === 'object' ? JSON.stringify(log.details) : log.details}>
-                        {typeof log.details === 'object' ? JSON.stringify(log.details) : log.details || '—'}
+                      <span className="truncate block" title={
+                        parseDetails(log.details).map(d => d.key ? `${d.key}: ${d.value}` : d.value).join(' | ')
+                      }>
+                        {parseDetails(log.details).map(d => d.key ? `${d.key}: ${d.value}` : d.value).join(', ') || '—'}
                       </span>
                     </td>
                     <td className="p-3 pr-6 text-right">
@@ -545,13 +594,52 @@ const handleArchiveClick = () => setConfirmAction('archive');
                 <p className="text-sm text-slate-700 whitespace-pre-wrap">{typeof selectedLog.description === 'object' ? JSON.stringify(selectedLog.description) : selectedLog.description || '—'}</p>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase">Details</label>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">{typeof selectedLog.details === 'object' ? JSON.stringify(selectedLog.details) : selectedLog.details || '—'}</p>
+                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Details</label>
+                <div className="text-sm text-slate-700">
+                  {(() => {
+                    const parsed = parseDetails(selectedLog.details);
+                    if (!parsed || parsed.length === 0) return <p>—</p>;
+
+                    if (parsed.length === 1 && !parsed[0].key) return <p>{parsed[0].value}</p>;
+
+                    return (
+                      <ul className="list-none space-y-1.5 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                        {parsed.map((item, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="font-semibold text-slate-500 min-w-[70px]">{item.key}:</span>
+                            <span className="text-slate-800 break-all">{item.value}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
+                </div>
               </div>
-              <details className="group">
-                <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460]">View Full Data</summary>
-                <pre className="mt-2 p-3 bg-slate-50 rounded-lg text-xs font-mono overflow-auto max-h-48 whitespace-pre-wrap">{JSON.stringify(selectedLog, null, 2)}</pre>
-              </details>
+              <details className="group mt-4 border-t border-slate-100 pt-4">
+  <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460] flex items-center gap-1.5 transition-colors">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 group-open:rotate-90 transition-transform">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+    </svg>
+    View Full Data
+  </summary>
+  <div className="mt-3 bg-slate-50 rounded-lg border border-slate-200 max-h-64 overflow-y-auto">
+    <ul className="list-none text-xs divide-y divide-slate-200">
+      {Object.entries(selectedLog).map(([key, value]) => (
+        <li key={key} className="flex flex-col sm:flex-row p-3 hover:bg-slate-100/50 transition-colors">
+          <span className="font-bold text-slate-500 uppercase sm:w-1/3 shrink-0 mb-1 sm:mb-0">
+            {/* Converts camelCase and underscores to spaced words (e.g., "userId" -> "user Id") */}
+            {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
+          </span>
+          <span className="text-slate-800 break-all sm:w-2/3">
+            {typeof value === 'object' && value !== null
+              ? JSON.stringify(value)
+              : String(value || '—')}
+          </span>
+        </li>
+      ))}
+    </ul>
+  </div>
+</details>
             </div>
             <div className="p-6 border-t border-slate-100 flex gap-3">
               <button onClick={() => setShowViewModal(false)} className="w-full px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition">Close</button>
@@ -589,6 +677,7 @@ const handleArchiveClick = () => setConfirmAction('archive');
                   <div className="mt-2 text-xs text-slate-500">
                     {isArchived ? 'Archived audit logs' : 'Live audit logs'} {' • '} {ACTIVITY_TYPES.find(t => t.value === typeFilter)?.label || 'All Activities'}
                   </div>
+                  {dateFilter && <div className="mt-1 text-xs text-slate-500">Date: <span className="font-medium">{new Date(dateFilter).toLocaleDateString()}</span></div>}
                   {debouncedSearch.trim() && <div className="mt-1 text-xs text-slate-400">Search: <span className="font-medium">"{debouncedSearch.trim()}"</span></div>}
                 </div>
 

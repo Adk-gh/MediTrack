@@ -1,7 +1,7 @@
 // C:\Users\HP\MediTrack\frontend\src\features\admin-clinic\Examination\Dental.jsx
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../../supabase'; // Adjusted path for the Examination folder
+import { supabase } from '../../../supabase';
 import DatePicker from '../../../components/Datepicker';
 import DateTimePicker from '../../../components/DateTimePicker';
 
@@ -52,26 +52,23 @@ const toothOperations = [
   { value: 'P',   label: 'Pontic (P)'                    },
 ];
 
-// Helper to convert operation abbreviation to full name
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const getOperationFullName = (abbr) => {
   const op = toothOperations.find(o => o.value === abbr);
   return op ? op.label : abbr;
 };
 
-// Helper to convert condition abbreviation to full name
 const getConditionFullName = (abbr) => {
   const cond = toothConditions.find(c => c.value === abbr);
   return cond ? cond.label : abbr;
 };
 
-// Helper to convert full name back to abbreviation (for display in visit history)
 const getConditionAbbr = (fullName) => {
   if (!fullName) return '';
-  // 1) Exact match against value or label
   const exact = toothConditions.find(c => c.value === fullName || c.label === fullName);
   if (exact) return exact.value;
 
-  // 2) Fallback: extract the abbreviation in trailing parentheses
   const match = fullName.match(/\(([A-Za-z-]+)\)$/);
   if (match) {
     const abbr = match[1].toLowerCase();
@@ -81,28 +78,9 @@ const getConditionAbbr = (fullName) => {
     });
     if (byAbbr) return byAbbr.value;
   }
-
   return fullName;
 };
 
-const getOperationAbbr = (fullName) => {
-  if (!fullName) return '';
-  // Extract abbreviation from format like "Amalgam (AM)"
-  const match = fullName.match(/\(([A-Za-z]+)\)$/);
-  if (match) return match[1];
-  // Check if it's already an abbreviation
-  const found = toothOperations.find(o => o.value === fullName || o.label === fullName);
-  return found ? found.value : fullName;
-};
-
-// ── Shared style tokens ────────────────────────────────────────────────────────
-const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
-const readOnlyInputClass = inputClass + " bg-slate-100 cursor-not-allowed text-slate-600";
-const labelClass   = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1";
-const requiredLabelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1";
-const sectionClass = "bg-slate-50 border-l-4 border-[#466460] px-4 py-2 text-xs font-bold uppercase my-4 flex justify-between items-center text-slate-700";
-
-// ── Helper: Fetch dentists for dropdown ───────────────────────────────────────
 const fetchDentists = async () => {
   try {
     const { data, error } = await supabase
@@ -111,27 +89,77 @@ const fetchDentists = async () => {
       .eq('role', 'dentist')
       .order('last_name', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching dentists:', error);
-      return [];
-    }
-
-    // Format: "LastName, FirstName D.M.D / License no. XXXXXX"
+    if (error) return [];
     return (data || []).map(doc => ({
       id: doc.id,
       uid: doc.uid,
       display: `${doc.last_name || ''}, ${doc.first_name || ''} D.M.D / License no. ${doc.license_number || ''}`.trim(),
-      licenseNumber: doc.license_number || '',
-      firstName: doc.first_name || '',
-      lastName: doc.last_name || '',
     }));
   } catch (err) {
-    console.error('Error fetching dentists:', err);
     return [];
   }
 };
 
-// ── Tooth condition → style map ────────────────────────────────────────────────
+const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
+  const existingRecord = p?.existingRecord || null;
+
+  const lastName  = p?.lastName  || (p?.name ? p.name.split(', ')[0] : '') || existingRecord?.last_name || '';
+  const firstName = p?.firstName || (p?.name ? (p.name.split(', ')[1] || '') : '') || existingRecord?.first_name || '';
+  const middleName = p?.middleName || existingRecord?.middle_name || '';
+
+  const vax = p?.vaccinations || {};
+  const vaxDate = (key) => vax[key]?.date || '';
+
+  const dh = p?.dentalHistory || existingRecord?.dental_history || {};
+  const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
+
+  return {
+    dRecordId:   existingRecord?.id || '',
+    dId:         p?.id || existingRecord?.university_id || existingRecord?.student_id || '',
+    dLastName:   lastName,
+    dFirstName:  firstName,
+    dMiddle:     middleName,
+    dSex:        p?.gender || p?.sex || existingRecord?.sex || 'Male',
+    dAge:        p?.age ? String(p.age) : existingRecord?.age ? String(existingRecord.age) : '',
+    dBirthday:   p?.birthday || p?.birthdate || existingRecord?.birthday || '',
+    dAddress:    p?.homeAddress || existingRecord?.address || '',
+    dCellphone:  p?.phoneNumber || existingRecord?.cellphone || '',
+    dCourseYear: [p?.program || p?.prog || existingRecord?.course_year || '', p?.yearLevel || p?.year || existingRecord?.year_level || '', p?.section || existingRecord?.section || ''].filter(Boolean).join(' '),
+    dOfficeAddress: existingRecord?.office_address || '',
+    dTelNo:      existingRecord?.tel_no || '',
+    dNationality: p?.nationality || existingRecord?.nationality || 'Filipino',
+    dLastVisit: parsedDH?.lastVisit || parsedDH?.last_visit || existingRecord?.last_visit || '',
+    dPrevDentist: parsedDH?.prevDentist || parsedDH?.prev_dentist || existingRecord?.prev_dentist || '',
+    dTeethUpper: parsedDH?.teethUpper || parsedDH?.teeth_upper || existingRecord?.teeth_upper || '',
+    dTeethLower: parsedDH?.teethLower || parsedDH?.teeth_lower || existingRecord?.teeth_lower || '',
+
+    dVax1Date:      vaxDate('dose1'),
+    dVax2Date:      vaxDate('dose2'),
+    dBoosterDate:   vaxDate('booster1'),
+    dExamDate: existingRecord?.exam_date ? existingRecord.exam_date.slice(0, 16) : (new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)),
+    dExaminedBy: existingRecord?.examined_by || '',
+    dSchoolYear: existingRecord?.school_year || defaultSchoolYear,
+    dSemester: existingRecord?.semester || defaultSemester || '1st Semester',
+  };
+};
+
+const buildDentalHistoryProcedures = (p) => {
+  const existingRecord = p?.existingRecord || null;
+  const dh = p?.dentalHistory || existingRecord?.dental_history || {};
+  const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
+  const procedures = parsedDH?.procedures || parsedDH || {};
+
+  return Object.fromEntries(
+    dentalProcedures.map(proc => [proc, procedures[proc] === 'Yes' ? 'Yes' : 'No'])
+  );
+};
+
+// ── Shared style tokens ────────────────────────────────────────────────────────
+const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white";
+const labelClass   = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1";
+const requiredLabelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1";
+const sectionClass = "bg-slate-50 border-l-4 border-[#466460] px-4 py-2 text-xs font-bold uppercase my-4 flex justify-between items-center text-slate-700";
+
 const toothConditionStyle = {
   caries:          'bg-red-100 border-red-400 text-red-600',
   filled:          'bg-yellow-100 border-yellow-500 text-yellow-700',
@@ -173,73 +201,174 @@ const SumSection = ({ icon, title, children }) => (
   </div>
 );
 
-// ── Helper: build initial dental form from patient ─────────────────────────────
-const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
-  // Support passing existingRecord in the patient object (for editing)
-  const existingRecord = p?.existingRecord || null;
-
-  const lastName  = p?.lastName  || (p?.name ? p.name.split(', ')[0] : '') || existingRecord?.last_name || '';
-  const firstName = p?.firstName || (p?.name ? (p.name.split(', ')[1] || '') : '') || existingRecord?.first_name || '';
-  const middleName = p?.middleName || existingRecord?.middle_name || '';
-
-  // Pull vaccination dates from user or existing record
-  const vax = p?.vaccinations || {};
-  const vaxDate = (key) => vax[key]?.date || '';
-
-  // Pull existing dental history from patient or existingRecord
-  const dh = p?.dentalHistory || existingRecord?.dental_history || {};
-
-  // Parse dental history if it's a string
-  const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
-
-  return {
-    // Row primary key from dental_records (null for a brand-new exam).
-    // handleFinalSubmit uses this to decide UPDATE vs INSERT so that
-    // resubmitting from the Approvals "View" modal edits the same row
-    // instead of creating a duplicate.
-    dRecordId:   existingRecord?.id || '',
-
-    dId:         p?.id || existingRecord?.university_id || existingRecord?.student_id || '', // University ID
-    dLastName:   lastName,
-    dFirstName:  firstName,
-    dMiddle:     middleName,
-    dSex:        p?.gender || p?.sex || existingRecord?.sex || 'Male',
-    dAge:        p?.age ? String(p.age) : existingRecord?.age ? String(existingRecord.age) : '',
-    dBirthday:   p?.birthday || p?.birthdate || existingRecord?.birthday || '',
-    dAddress:    p?.homeAddress || existingRecord?.address || '',
-    dCellphone:  p?.phoneNumber || existingRecord?.cellphone || '',
-    dCourseYear: [p?.program || p?.prog || existingRecord?.course_year || '', p?.yearLevel || p?.year || existingRecord?.year_level || '', p?.section || existingRecord?.section || ''].filter(Boolean).join(' '),
-    dOfficeAddress: existingRecord?.office_address || '',
-    dTelNo:      existingRecord?.tel_no || '',
-    dNationality: p?.nationality || existingRecord?.nationality || 'Filipino',
-
-    // MAP FIELDS FROM EXISTING RECORD OR USER'S DENTAL HISTORY
-    dLastVisit: parsedDH?.lastVisit || parsedDH?.last_visit || existingRecord?.last_visit || '',
-    dPrevDentist: parsedDH?.prevDentist || parsedDH?.prev_dentist || existingRecord?.prev_dentist || '',
-    dTeethUpper: parsedDH?.teethUpper || parsedDH?.teeth_upper || existingRecord?.teeth_upper || '',
-    dTeethLower: parsedDH?.teethLower || parsedDH?.teeth_lower || existingRecord?.teeth_lower || '',
-
-    dVax1Date:      vaxDate('dose1'),
-    dVax2Date:      vaxDate('dose2'),
-    dBoosterDate:   vaxDate('booster1'),
-    dExamDate: existingRecord?.exam_date ? existingRecord.exam_date.slice(0, 16) : (new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)),
-    dExaminedBy: existingRecord?.examined_by || '',
-    dSchoolYear: existingRecord?.school_year || defaultSchoolYear,
-    dSemester: existingRecord?.semester || defaultSemester || '1st Semester',
+const HistoryStatusBadge = ({ status }) => {
+  const map = {
+    approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    rejected: 'bg-red-100 text-red-700 border-red-200',
   };
+  return (
+    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+      {status || 'unknown'}
+    </span>
+  );
 };
 
-// ── Helper: build initial dental-history procedures table from patient ─────────
-const buildDentalHistoryProcedures = (p) => {
-  const existingRecord = p?.existingRecord || null;
-  const dh = p?.dentalHistory || existingRecord?.dental_history || {};
-  // Parse if string
-  const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
+const HistorySectionLabel = ({ icon, color, children }) => (
+  <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
+    <i className={`fa-solid ${icon} mr-1 ${color}`}></i>{children}
+  </h5>
+);
 
-  const procedures = parsedDH?.procedures || parsedDH || {};
+const DentalVisitCard = ({ record, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
 
-  return Object.fromEntries(
-    dentalProcedures.map(proc => [proc, procedures[proc] === 'Yes' ? 'Yes' : 'No'])
+  const parseJson = (str, fallback = {}) => {
+    if (!str) return fallback;
+    if (typeof str === 'object') return str;
+    try { return JSON.parse(str); } catch { return fallback; }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const month = d.toLocaleDateString('en-US', { month: 'long' });
+    const day = String(d.getDate()).padStart(2, '0');
+    const year = d.getFullYear();
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${month} ${day}, ${year} ${time}`;
+  };
+
+  const intraoral = parseJson(record.intraoral, {});
+  const toothData = parseJson(record.tooth_data, {});
+  const dentalHistory = parseJson(record.dental_history, {});
+
+  const hasIntraoral = intraoral && Object.keys(intraoral).some(k => intraoral[k]);
+  const hasToothData = toothData && Object.keys(toothData).length > 0;
+  const hasProcedures = dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes');
+
+  return (
+    <div className="relative">
+      <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#3b82f6] ring-4 ring-white"></div>
+
+      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+        >
+          <div className="flex items-center gap-3">
+            <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}></i>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{record._datetime}</p>
+              <p className="text-xs text-slate-500">
+                Examined by: <span className="font-medium text-slate-600">{record.examined_by || 'Unknown'}</span>
+              </p>
+            </div>
+          </div>
+          <HistoryStatusBadge status={record.status} />
+        </button>
+
+        {open && (
+          <div className="p-4 space-y-4 border-t border-slate-100 text-xs">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{record.examined_by || '-'}</p></div>
+              <div><p className="text-[7px] text-slate-400 uppercase">Exam Date</p><p className="font-medium">{formatDate(record.exam_date)}</p></div>
+              <div><p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p><p className="font-mono">{record.teeth_upper || '-'}</p></div>
+              <div><p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p><p className="font-mono">{record.teeth_lower || '-'}</p></div>
+            </div>
+
+            {/* Intraoral Examination */}
+            {hasIntraoral && (
+              <div className="border-t border-slate-100 pt-3">
+                <HistorySectionLabel icon="fa-teeth" color="text-[#3b82f6]">Intraoral Examination</HistorySectionLabel>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
+                    <div key={key} className="bg-slate-50 rounded px-2 py-1">
+                      <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
+                      <span className="font-medium text-slate-700">{String(val)}</span>
+                    </div>
+                  ))}
+                  {intraoral.tmjExam && (
+                    <div className="bg-slate-50 rounded px-2 py-1">
+                      <span className="text-[9px] text-slate-400">TMJ: </span>
+                      <span className="font-medium text-slate-700">Examined</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tooth Conditions Chart */}
+            {hasToothData && (
+              <div className="border-t border-slate-100 pt-3">
+                <HistorySectionLabel icon="fa-teeth-open" color="text-[#3b82f6]">Tooth Conditions Chart</HistorySectionLabel>
+
+                <div className="flex gap-2 mb-3 text-xs">
+                  {(() => {
+                    const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
+                    Object.values(toothData).forEach(d => {
+                      const condAbbr = getConditionAbbr(d.condition);
+                      if (condAbbr && conditions.hasOwnProperty(condAbbr)) {
+                        conditions[condAbbr]++;
+                      }
+                    });
+                    return (
+                      <>
+                        <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
+                        <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
+                        <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
+                      </>
+                    );
+                  })()}
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {Object.entries(toothData).map(([tooth, data]) => {
+                    const condAbbr = getConditionAbbr(data.condition);
+                    const conditionColors = {
+                      'caries': 'bg-red-100 text-red-700 border-red-300',
+                      'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+                      'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
+                      'missing': 'bg-slate-100 text-slate-600 border-slate-300',
+                      'improved': 'bg-blue-100 text-blue-700 border-blue-300',
+                    };
+
+                    return (
+                      <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[condAbbr] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                        <span className="block font-bold text-xs">#{tooth}</span>
+                        <span className="block text-[9px]">{data.condition || '-'}</span>
+                        {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Dental History / Procedures */}
+            {hasProcedures && (
+              <div className="border-t border-slate-100 pt-3">
+                <HistorySectionLabel icon="fa-clipboard-list" color="text-[#3b82f6]">Procedures Done</HistorySectionLabel>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
+                    <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
+                      {key}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!hasIntraoral && !hasToothData && !hasProcedures && (
+              <p className="text-xs text-slate-400 italic">No additional details recorded for this visit.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -264,7 +393,10 @@ const DentalVisitHistory = ({ selectedPatient }) => {
 
         const denRecords = (denData || []).map(r => {
           const dateStr = r.exam_date || r.created_at;
-          const _datetime = dateStr ? formatDate(dateStr) : '-';
+          const _datetime = dateStr ? new Date(dateStr).toLocaleString('en-US', {
+            year: 'numeric', month: 'long', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true
+          }) : '-';
           return {
             ...r,
             kind: 'dental',
@@ -284,36 +416,6 @@ const DentalVisitHistory = ({ selectedPatient }) => {
     fetchRecords();
   }, [selectedPatient?.uid]);
 
-  const StatusBadge = ({ status }) => {
-    const map = {
-      approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-      pending: 'bg-amber-100 text-amber-700 border-amber-200',
-      rejected: 'bg-red-100 text-red-700 border-red-200',
-    };
-    return (
-      <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${map[status?.toLowerCase()] || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-        {status || 'unknown'}
-      </span>
-    );
-  };
-
-  const parseJson = (str, fallback = {}) => {
-    if (!str) return fallback;
-    if (typeof str === 'object') return str;
-    try { return JSON.parse(str); } catch { return fallback; }
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const month = d.toLocaleDateString('en-US', { month: 'long' });
-    const day = String(d.getDate()).padStart(2, '0');
-    const year = d.getFullYear();
-    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    return `${month} ${day}, ${year} ${time}`;
-  };
-
   if (loading) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -323,159 +425,44 @@ const DentalVisitHistory = ({ selectedPatient }) => {
     );
   }
 
-  if (records.length === 0) {
-    return (
-      <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
-        <i className="fa-solid fa-file-medical text-4xl mb-3 block opacity-30"></i>
-        <p>No visit history found</p>
-      </div>
-    );
-  }
-
-  const dentalRecords = records;
-
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#3b82f6]/10 to-transparent">
         <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
           <i className="fa-solid fa-tooth text-[#3b82f6]"></i> Dental Visit History
         </h4>
-        {dentalRecords.length > 0 && (
+        {records.length > 0 && (
           <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-            {dentalRecords.length} record{dentalRecords.length !== 1 ? 's' : ''}
+            {records.length} record{records.length !== 1 ? 's' : ''}
           </span>
         )}
       </div>
 
       <div className="p-5">
-        <div className="relative pl-6">
-          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
-          <div className="space-y-6">
-            {dentalRecords.map((r) => {
-              const intraoral = parseJson(r.intraoral, {});
-              const toothData = parseJson(r.tooth_data, {});
-              const dentalHistory = parseJson(r.dental_history, {});
-
-              return (
-                <div key={r.id} className="relative">
-                  <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#3b82f6] ring-4 ring-white"></div>
-
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="bg-gradient-to-r from-[#3b82f6]/10 to-[#2563eb]/5 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-700">{r._datetime}</span>
-                      <StatusBadge status={r.status} />
-                    </div>
-
-                    <div className="p-4 text-xs space-y-4">
-                      {/* Basic Info */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{r.examined_by || '-'}</p></div>
-                        <div><p className="text-[7px] text-slate-400 uppercase">Exam Date</p><p className="font-medium">{formatDate(r.exam_date)}</p></div>
-                        <div><p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p><p className="font-mono">{r.teeth_upper || '-'}</p></div>
-                        <div><p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p><p className="font-mono">{r.teeth_lower || '-'}</p></div>
-                      </div>
-
-                      {/* Intraoral Examination */}
-                      {intraoral && Object.keys(intraoral).some(k => intraoral[k]) && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-teeth mr-1"></i>Intraoral Examination
-                          </h5>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
-                              <div key={key} className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
-                                <span className="font-medium text-slate-700">{String(val)}</span>
-                              </div>
-                            ))}
-                            {intraoral.tmjExam && (
-                              <div className="bg-slate-50 rounded px-2 py-1">
-                                <span className="text-[9px] text-slate-400">TMJ: </span>
-                                <span className="font-medium text-slate-700">Examined</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Tooth Conditions Chart */}
-                      {toothData && Object.keys(toothData).length > 0 && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-teeth-open mr-1"></i>Tooth Conditions Chart
-                          </h5>
-
-                          <div className="flex gap-2 mb-3 text-xs">
-                            {(() => {
-                              const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
-                              Object.values(toothData).forEach(d => {
-                                const condAbbr = getConditionAbbr(d.condition);
-                                if (condAbbr && conditions.hasOwnProperty(condAbbr)) {
-                                  conditions[condAbbr]++;
-                                }
-                              });
-                              return (
-                                <>
-                                  <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                                  <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                                  <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                                </>
-                              );
-                            })()}
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-2">
-                            {Object.entries(toothData).map(([tooth, data]) => {
-                              const condAbbr = getConditionAbbr(data.condition);
-                              const conditionColors = {
-                                'caries': 'bg-red-100 text-red-700 border-red-300',
-                                'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                                'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                                'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                                'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                              };
-
-                              return (
-                                <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[condAbbr] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-                                  <span className="block font-bold text-xs">#{tooth}</span>
-                                  <span className="block text-[9px]">{data.condition || '-'}</span>
-                                  {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Dental History / Procedures */}
-                      {dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes') && (
-                        <div className="border-t border-slate-100 pt-3">
-                          <h5 className="text-[10px] font-bold text-[#466460] uppercase mb-2">
-                            <i className="fa-solid fa-clipboard-list mr-1"></i>Procedures Done
-                          </h5>
-                          <div className="flex flex-wrap gap-1.5">
-                            {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
-                              <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-                                {key}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        {records.length === 0 ? (
+          <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+            <i className="fa-solid fa-file-medical text-2xl text-slate-300 mb-2 block"></i>
+            <p className="text-sm text-slate-400">No visit history found</p>
           </div>
-        </div>
+        ) : (
+          <div className="relative pl-6">
+            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+            <div className="space-y-4">
+              {records.map((r, idx) => (
+                <DentalVisitCard key={r.id} record={r} defaultOpen={idx === 0} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false, onSaved }) => {
+// MAIN DENTAL COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false, onSaved, onDirtyChange }) => {
   const [toothModal, setToothModal]         = useState({ open: false, toothNum: null });
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
@@ -485,14 +472,13 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
   const [validationErrors, setValidationErrors] = useState({});
   const [dentists, setDentists]             = useState([]);
 
-  // Custom Validation Alert Modal State
+  // Alert Modal
   const [alertModal, setAlertModal] = useState({ open: false, title: '', message: '' });
 
-  // 1. DECLARE ALL STATES FIRST
+  // Form states
   const [dentalHistory, setDentalHistory]   = useState(() => buildDentalHistoryProcedures(selectedPatient));
 
   const [intraoral, setIntraoral] = useState(() => {
-    // Load existing intraoral data from selectedPatient if available
     const existingIntraoral = selectedPatient?.intraoral || selectedPatient?.existingRecord?.intraoral || {};
     if (typeof existingIntraoral === 'string') {
       try {
@@ -504,23 +490,20 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     return existingIntraoral || { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false };
   });
 
-  // Load existing tooth data
   const [toothData, setToothData] = useState(() => {
     const existingToothData = selectedPatient?.toothData || selectedPatient?.tooth_data || selectedPatient?.existingRecord?.tooth_data || {};
     if (typeof existingToothData === 'string') {
-      try {
-        return JSON.parse(existingToothData);
-      } catch {
-        return {};
-      }
+      try { return JSON.parse(existingToothData); } catch { return {}; }
     }
     return existingToothData || {};
   });
 
   const [dentalFormData, setDentalFormData] = useState(() => buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester));
 
-  // 2. NOW RUN EFFECTS
-  // Fetch dentists on mount
+  // ── Bulletproof Dirty State Management via Hash Comparison ──
+  const [initialStateHash, setInitialStateHash] = useState(null);
+
+  // Fetch dentists
   useEffect(() => {
     const loadDentists = async () => {
       const docs = await fetchDentists();
@@ -529,73 +512,87 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     loadDentists();
   }, []);
 
-  // Set default selections once lists are available
+  // Re-populate when a *new* patient is selected
   useEffect(() => {
-    const setDefaults = async () => {
-      // Auto-select dentist if only one available
-      if (dentists.length === 1 && !dentalFormData.dExaminedBy) {
-        setDentalFormData(prev => ({ ...prev, dExaminedBy: dentists[0].display }));
-      }
-
-      // Auto-select dentist matching logged-in user
-      const { data, error } = await supabase.auth.getSession();
-      const session = data?.session;
-      const currentUserId = session?.user?.id;
-
-      if (currentUserId && dentists.length > 0 && !dentalFormData.dExaminedBy) {
-        // 1. Try to find exact match by UID
-        let targetDentist = dentists.find(d => d.uid === currentUserId);
-
-        // 2. Fallback: check metadata role if direct UID match fails
-        const userRole = session?.user?.role || session?.user?.user_metadata?.role || session?.user?.app_metadata?.role;
-
-        if (!targetDentist && userRole === 'dentist') {
-          targetDentist = dentists[0]; // Default to the first dentist in the list
-        }
-
-        // 3. Actually update the state if a dentist was found
-        if (targetDentist) {
-          setDentalFormData(prev => ({ ...prev, dExaminedBy: targetDentist.display }));
-        }
-      }
-    };
-
-    setDefaults();
-  }, [dentists, dentalFormData.dExaminedBy]);
-
-  // Re-populate when selectedPatient changes
-  useEffect(() => {
-    setDentalFormData(buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester));
-    setDentalHistory(buildDentalHistoryProcedures(selectedPatient));
+    const newFormData = buildDentalForm(selectedPatient, defaultSchoolYear, defaultSemester);
+    const newDentalHistory = buildDentalHistoryProcedures(selectedPatient);
 
     const existingToothData = selectedPatient?.toothData || selectedPatient?.tooth_data || selectedPatient?.existingRecord?.tooth_data || {};
-    const parsedToothData = typeof existingToothData === 'string' ? JSON.parse(existingToothData || '{}') : existingToothData;
-    setToothData(parsedToothData || {});
+    let parsedToothData = {};
+    try { parsedToothData = typeof existingToothData === 'string' ? JSON.parse(existingToothData || '{}') : existingToothData; } catch { parsedToothData = {}; }
 
     const existingIntraoral = selectedPatient?.intraoral || selectedPatient?.existingRecord?.intraoral || {};
-    const parsedIntraoral = typeof existingIntraoral === 'string' ? JSON.parse(existingIntraoral || '{}') : existingIntraoral;
-    setIntraoral(parsedIntraoral || { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false });
+    let parsedIntraoral = {};
+    try { parsedIntraoral = typeof existingIntraoral === 'string' ? JSON.parse(existingIntraoral || '{}') : existingIntraoral; } catch { parsedIntraoral = {}; }
 
+    const defaultIntraoral = { gingiva: '', oralHygiene: '', gingivalColor: '', occlusion: '', lymph: '', status: '', otherFindings: '', tmjExam: false };
+
+    setDentalFormData(newFormData);
+    setDentalHistory(newDentalHistory);
+    setToothData(parsedToothData || {});
+    setIntraoral(parsedIntraoral || defaultIntraoral);
     setActiveTab('patientProfile');
-  }, [selectedPatient?.uid, selectedPatient?.id]);
+
+    // Create the hash of the INITIAL clean state
+    const hash = JSON.stringify({
+      form: newFormData,
+      history: newDentalHistory,
+      tooth: parsedToothData || {},
+      intra: parsedIntraoral || defaultIntraoral
+    });
+    setInitialStateHash(hash);
+
+    if (typeof onDirtyChange === 'function') {
+      onDirtyChange(false);
+    }
+  }, [selectedPatient?.uid, selectedPatient?.id]); // Strictly depends on patient ID
+
+  // Continuous effect to check if current state deviates from the initial snapshot
+  useEffect(() => {
+    if (!initialStateHash || readOnly) return;
+
+    const currentHash = JSON.stringify({
+      form: dentalFormData,
+      history: dentalHistory,
+      tooth: toothData,
+      intra: intraoral
+    });
+
+    const isCurrentlyDirty = currentHash !== initialStateHash;
+
+    if (typeof onDirtyChange === 'function') {
+      onDirtyChange(isCurrentlyDirty);
+    }
+  }, [dentalFormData, dentalHistory, toothData, intraoral, initialStateHash, readOnly, onDirtyChange]);
+
+
+  // ONLY update school year / semester specifically if changed via modal header
+  useEffect(() => {
+    setDentalFormData(prev => ({ ...prev, dSchoolYear: defaultSchoolYear, dSemester: defaultSemester }));
+  }, [defaultSchoolYear, defaultSemester]);
+
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleDentalChange = (e) => {
+    if (readOnly) return;
     const { id, value, name } = e.target;
     setDentalFormData(prev => ({ ...prev, [id || name]: value }));
   };
 
   const handleDentalDateChange = (field, value) => {
+    if (readOnly) return;
     setDentalFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const openToothModal = (num) => {
+    if (readOnly) return;
     setToothModal({ open: true, toothNum: num });
     setToothCondition(toothData[num]?.condition || '');
     setToothOperation(toothData[num]?.operation || '');
   };
 
   const saveToothStatus = () => {
+    if (readOnly) return;
     if (toothModal.toothNum) {
       setToothData(prev => ({
         ...prev,
@@ -609,13 +606,14 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     const condition = toothData[num]?.condition;
     return conditionLabel[condition] || '/';
   };
+
   const getToothClass = (num) => toothConditionStyle[toothData[num]?.condition] || 'bg-white border-slate-300 text-slate-400';
 
   const renderToothRow = (teeth) => teeth.map(n => (
     <div key={n} className="flex flex-col items-center">
       <span className="text-[9px] text-slate-500 mb-1">{n}</span>
       <div
-        className={`w-7 h-7 border-2 flex items-center justify-center cursor-pointer text-[10px] font-bold rounded transition-all hover:scale-110 ${getToothClass(n)}`}
+        className={`w-7 h-7 border-2 flex items-center justify-center text-[10px] font-bold rounded transition-all ${readOnly ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:scale-110'} ${getToothClass(n)}`}
         onClick={() => openToothModal(n)}
         title={`Tooth #${n}`}
       >
@@ -629,7 +627,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
 
   const handleOpenSummary = () => {
-    // Validate required fields
     const errors = {};
 
     if (!dentalFormData.dExamDate?.trim()) errors.dExamDate = 'Examination Date is required';
@@ -660,11 +657,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
   // ── Database Submit Handler ──────────────────────────────────────────────────
   const handleFinalSubmit = async () => {
     if (!selectedPatient?.uid) {
-      setAlertModal({
-        open: true,
-        title: 'Error',
-        message: 'No patient selected. Cannot save record.'
-      });
+      setAlertModal({ open: true, title: 'Error', message: 'No patient selected. Cannot save record.' });
       return;
     }
 
@@ -692,11 +685,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
       };
 
       const userId = selectedPatient.uid;
-
-      if (!userId) {
-        throw new Error("Could not find user ID. Please ensure the patient is registered in the system.");
-      }
-
       const supabasePayload = {
         user_id: userId,
         university_id: payload.dId || payload.studentId || null,
@@ -732,47 +720,43 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         approved_at: null,
       };
 
-      // Decide UPDATE vs INSERT. selectedPatient.existingRecord.id is set
-      // whenever this component is opened from Approvals' "View" button on
-      // an already-saved record; dentalFormData.dRecordId mirrors the same
-      // value (set in buildDentalForm) as a fallback. If neither is present
-      // this is a brand-new exam and we insert a fresh row.
       const recordId = selectedPatient?.existingRecord?.id || dentalFormData.dRecordId || null;
 
       let error;
       if (recordId) {
-        // Editing an existing record: update it in place. Deliberately do
-        // NOT touch status / is_approved / created_at / approved_at here —
-        // those reflect the record's approval lifecycle and shouldn't be
-        // reset just because someone reopened and resaved exam details
-        // from the View modal.
         const { status, is_approved, created_at, approved_at, ...updatePayload } = supabasePayload;
         ({ error } = await supabase.from('dental_records').update(updatePayload).eq('id', recordId));
       } else {
         ({ error } = await supabase.from('dental_records').insert(supabasePayload));
       }
+
       if (error) throw error;
+
+      // Update the "Clean" snapshot so if the user edits further it knows it's a fresh edit
+      setInitialStateHash(JSON.stringify({
+        form: dentalFormData,
+        history: dentalHistory,
+        tooth: toothData,
+        intra: intraoral
+      }));
+
+      if (typeof onDirtyChange === 'function') {
+        onDirtyChange(false);
+      }
 
       setShowSummary(false);
       showMessage(recordId ? 'Dental record updated successfully!' : 'Dental record saved successfully! Waiting for approval.');
       onSaved?.();
 
     } catch (error) {
-      console.error("Error saving dental record: ", error);
-      setAlertModal({
-        open: true,
-        title: 'Database Error',
-        message: 'Failed to save the record to the database. Check console for details.'
-      });
+      setAlertModal({ open: true, title: 'Database Error', message: 'Failed to save the record to the database.' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Tabs - Outside the form so they remain clickable in read-only mode */}
       <div className="flex gap-2 mb-4">
         <button
           type="button"
@@ -804,7 +788,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
       )}
 
       <form
-        onSubmit={e => { e.preventDefault(); handleOpenSummary(); }}
+        onSubmit={e => { e.preventDefault(); if (!readOnly) handleOpenSummary(); }}
         className={`overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
           [&::-webkit-scrollbar]:w-[5px]
           [&::-webkit-scrollbar-thumb]:bg-gradient-to-b
@@ -827,9 +811,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
           <DentalVisitHistory selectedPatient={selectedPatient} />
         ) : activeTab === 'patientProfile' ? (
         <>
-          {/* ════ PATIENT PROFILE TAB ════ */}
-
-          {/* ─── Patient Information (read-only) ─────────────────────────────── */}
           <div className={sectionClass}>Patient Information</div>
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-3"><label className={labelClass}>Last Name</label><input type="text" id="dLastName" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dLastName} readOnly /></div>
@@ -849,13 +830,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             </div>
             <div className="col-span-4">
               <label className={labelClass}>Address</label>
-              <input
-                type="text"
-                id="dAddress"
-                className={`${inputClass} bg-slate-50 cursor-not-allowed`}
-                value={dentalFormData.dAddress}
-                readOnly
-              />
+              <input type="text" id="dAddress" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dAddress} readOnly />
             </div>
             <div className="col-span-4"><label className={labelClass}>Cellphone No.</label><input type="text" id="dCellphone" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dCellphone} readOnly /></div>
             <div className="col-span-3"><label className={labelClass}>Course / Year / Section</label><input type="text" id="dCourseYear" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dCourseYear} readOnly /></div>
@@ -864,14 +839,25 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             <div className="col-span-3"><label className={labelClass}>Nationality</label><input type="text" id="dNationality" className={`${inputClass} bg-slate-50 cursor-not-allowed`} value={dentalFormData.dNationality} readOnly /></div>
           </div>
 
-          {/* ─── Dental History ───────────────────────────────────────────────── */}
-          <div className={sectionClass}>Dental History</div>
+<div className={sectionClass}>Dental History</div>
           <div className="grid grid-cols-12 gap-4 mb-4">
             <div className="col-span-4">
               <label className={labelClass}>Last Dental Visit</label>
-              <DatePicker value={dentalFormData.dLastVisit} onChange={(val) => handleDentalDateChange('dLastVisit', val)} />
+              <DatePicker
+                value={dentalFormData.dLastVisit}
+                disabled={true}
+              />
             </div>
-            <div className="col-span-4"><label className={labelClass}>Previous Dentist: Dr.</label><input type="text" id="dPrevDentist" className={inputClass} value={dentalFormData.dPrevDentist} onChange={handleDentalChange} /></div>
+            <div className="col-span-4">
+              <label className={labelClass}>Previous Dentist: Dr.</label>
+              <input
+                type="text"
+                id="dPrevDentist"
+                className={`${inputClass} bg-slate-50 cursor-not-allowed`}
+                value={dentalFormData.dPrevDentist}
+                readOnly
+              />
+            </div>
           </div>
           <p className="text-xs font-bold text-slate-700 mb-3">Dental History — Check if applicable (Yes / No):</p>
           <div className="overflow-x-auto mb-4">
@@ -888,21 +874,32 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
                   <tr key={proc}>
                     <td className="border border-slate-300 p-2 font-medium">{proc}</td>
                     <td className="border border-slate-300 p-2 text-center">
-                      <input type="radio" name={`dh_${proc.replace(/\W/g,'')}`} value="Yes"
+                      <input
+                        type="radio"
+                        name={`dh_${proc.replace(/\W/g,'')}`}
+                        value="Yes"
                         checked={dentalHistory[proc] === 'Yes'}
-                        onChange={() => setDentalHistory(prev => ({ ...prev, [proc]: 'Yes' }))} />
+                        disabled
+                        className="cursor-not-allowed"
+                        readOnly
+                      />
                     </td>
                     <td className="border border-slate-300 p-2 text-center">
-                      <input type="radio" name={`dh_${proc.replace(/\W/g,'')}`} value="No"
+                      <input
+                        type="radio"
+                        name={`dh_${proc.replace(/\W/g,'')}`}
+                        value="No"
                         checked={dentalHistory[proc] === 'No'}
-                        onChange={() => setDentalHistory(prev => ({ ...prev, [proc]: 'No' }))} />
+                        disabled
+                        className="cursor-not-allowed"
+                        readOnly
+                      />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-
 
           <div className="mt-8 flex justify-end">
             <button type="button" onClick={() => setActiveTab('examination')} className="bg-[#466460] text-white px-8 py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all">
@@ -912,9 +909,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         </>
         ) : (
         <>
-          {/* ════ EXAMINATION TAB ════ */}
-
-          {/* ─── Intraoral Findings ───────────────────────────────────────────── */}
           <div className={sectionClass}>Intraoral Findings</div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             {[
@@ -933,7 +927,8 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
                     <label key={opt} className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name={`intra_${name}`} value={opt}
                         checked={intraoral[name] === opt}
-                        onChange={() => setIntraoral(prev => ({ ...prev, [name]: opt }))} />
+                        disabled={readOnly}
+                        onChange={() => { if (!readOnly) setIntraoral(prev => ({ ...prev, [name]: opt })); }} />
                       {opt}
                     </label>
                   ))}
@@ -941,7 +936,8 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
                 {name === 'otherFindings' && (
                   <label className="flex items-center gap-2 text-xs cursor-pointer mt-2">
                     <input type="checkbox" checked={intraoral.tmjExam}
-                      onChange={e => setIntraoral(prev => ({ ...prev, tmjExam: e.target.checked }))} />
+                      disabled={readOnly}
+                      onChange={e => { if (!readOnly) setIntraoral(prev => ({ ...prev, tmjExam: e.target.checked })); }} />
                     TMJ Examination
                   </label>
                 )}
@@ -953,13 +949,12 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             <div className="col-span-4">
               <label className={labelClass}>Number of Teeth Present</label>
               <div className="flex gap-4">
-                <div><label className="text-xs block mb-1">Upper</label><input type="number" id="dTeethUpper" className={inputClass} style={{ width: '80px' }} min="0" max="16" value={dentalFormData.dTeethUpper} onChange={handleDentalChange} /></div>
-                <div><label className="text-xs block mb-1">Lower</label><input type="number" id="dTeethLower" className={inputClass} style={{ width: '80px' }} min="0" max="16" value={dentalFormData.dTeethLower} onChange={handleDentalChange} /></div>
+                <div><label className="text-xs block mb-1">Upper</label><input type="number" id="dTeethUpper" className={`${inputClass} ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`} style={{ width: '80px' }} min="0" max="16" value={dentalFormData.dTeethUpper} readOnly={readOnly} onChange={handleDentalChange} /></div>
+                <div><label className="text-xs block mb-1">Lower</label><input type="number" id="dTeethLower" className={`${inputClass} ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`} style={{ width: '80px' }} min="0" max="16" value={dentalFormData.dTeethLower} readOnly={readOnly} onChange={handleDentalChange} /></div>
               </div>
             </div>
           </div>
 
-          {/* ─── Patient Dental Chart ─────────────────────────────────────────── */}
           <div className={sectionClass}>Patient Dental Chart</div>
           <p className="text-xs text-slate-500 mb-3">Click on any tooth to set its condition and operation.</p>
 
@@ -984,7 +979,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             ))}
           </div>
 
-          {/* ─── Legend ───────────────────────────────────────────────────────── */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden mb-6">
             <div className="bg-[#e8f2f1] px-4 py-2 border-b border-slate-200">
               <p className="text-[9px] font-extrabold text-[#466460] uppercase tracking-widest">Legend — Condition</p>
@@ -1024,22 +1018,23 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             </div>
           </div>
 
-          {/* ─── Signature ────────────────────────────────────────────────────── */}
           <div className={sectionClass}>Signature & Examiner <span className="text-[10px] font-normal text-red-500">* Required</span></div>
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6">
               <label className={requiredLabelClass}>Examination Date & Time <span className="text-red-500">*</span></label>
               <DateTimePicker
                 value={dentalFormData.dExamDate}
-                onChange={(val) => { handleDentalDateChange('dExamDate', val); setValidationErrors(prev => ({ ...prev, dExamDate: '' })); }}
+                disabled={readOnly}
+                onChange={(val) => { if (!readOnly) { handleDentalDateChange('dExamDate', val); setValidationErrors(prev => ({ ...prev, dExamDate: '' })); } }}
               />
             </div>
             <div className="col-span-6">
               <label className={requiredLabelClass}>Examined By <span className="text-red-500">*</span></label>
               <select
                 id="dExaminedBy"
-                className={inputClass}
+                className={`${inputClass} ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`}
                 value={dentalFormData.dExaminedBy}
+                disabled={readOnly}
                 onChange={handleDentalChange}
               >
                 <option value="">Select Dentist</option>
@@ -1050,7 +1045,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             </div>
           </div>
 
-          {/* ─── Action Footer ────────────────────────────────────────────────── */}
           {!readOnly ? (
             <div className="mt-9 px-6 py-5 bg-gradient-to-r from-[#f0f7f6] to-[#e8f2f1] rounded-2xl border border-[#d1e7e5] flex justify-between items-center flex-wrap gap-4">
               <div>
@@ -1150,7 +1144,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
                   <SumItem label="TMJ Examination"        value={intraoral.tmjExam ? 'Yes' : 'No'} />
                 </div>
               </SumSection>
-
 
               <SumSection icon="fa-teeth" title={`Dental Chart — ${affectedTeeth.length} tooth/teeth with noted conditions`}>
                 {affectedTeeth.length === 0 ? (

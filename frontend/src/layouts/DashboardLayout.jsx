@@ -178,7 +178,6 @@ const ROLE_MOBILE_NAV = {
     { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
     { id: 'consultationManagement', label: 'Consultations', Icon: NavConsultMgmtIcon },
     { id: 'appointmentManagement', label: 'Appointments', Icon: NavApptMgmtIcon },
-    { id: 'approvalManagement', label: 'Approvals', Icon: NavApprovalMgmtIcon },
     { id: 'users', label: 'Users', Icon: NavUsersIcon },
     { id: 'ocrSettings', label: 'OCR Settings', Icon: NavOcrIcon },
     { id: 'reports', label: 'Reports', Icon: NavReportsIcon },

@@ -70,76 +70,90 @@ const allowDynamicAdmin = async (req, res, next) => {
 };
 
 // ==========================================
-// GET: LIST ALL STORAGE BUCKETS (Guaranteed)
+// GET: LIST ALL STORAGE BUCKETS
 // ==========================================
 
 router.get('/buckets', authorized, allowDynamicAdmin, async (req, res) => {
   try {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
+    console.log('\n========== STORAGE BUCKET DEBUG ==========');
+    console.log('[Storage] Request received');
+    console.log('[Storage] SUPABASE_URL:', process.env.SUPABASE_URL);
+    console.log(
+      '[Storage] Service key configured:',
+      Boolean(process.env.SUPABASE_SERVICE_KEY)
+    );
+    console.log(
+      '[Storage] Service key length:',
+      process.env.SUPABASE_SERVICE_KEY?.length || 0
+    );
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      console.error('[Storage] Missing Supabase configuration');
+
       return res.status(500).json({
         success: false,
         error: 'Supabase credentials are not fully configured on the backend.'
       });
     }
 
-    let buckets = [];
+    const { data, error } = await withTimeout(
+      supabase.storage.listBuckets(),
+      10000
+    );
 
-    // 1. Primary Attempt: Standard Storage API
-    try {
-      const { data, error } = await withTimeout(supabase.storage.listBuckets(), 8000);
-      if (!error && Array.isArray(data) && data.length > 0) {
-        buckets = data;
-      }
-    } catch (err) {
-      console.warn('[Storage] listBuckets() attempt failed or timed out:', err.message);
+    console.log('[Storage] Raw listBuckets data:', data);
+    console.log('[Storage] Raw listBuckets error:', error);
+
+    if (error) {
+      console.error(
+        '[Storage] listBuckets() failed:',
+        getErrorMessage(error)
+      );
+
+      return res.status(502).json({
+        success: false,
+        error: 'Failed to retrieve storage buckets from Supabase.',
+        details: getErrorMessage(error)
+      });
     }
 
-    // 2. Secondary Fallback: Query storage schema directly via database client
-    if (buckets.length === 0) {
-      try {
-        const { data: dbBuckets, error: dbErr } = await supabase
-          .schema('storage')
-          .from('buckets')
-          .select('*');
+    if (!Array.isArray(data)) {
+      console.error('[Storage] Unexpected bucket response:', data);
 
-        if (!dbErr && Array.isArray(dbBuckets) && dbBuckets.length > 0) {
-          buckets = dbBuckets;
-        }
-      } catch (err) {
-        console.warn('[Storage] Database query for storage.buckets failed:', err.message);
-      }
+      return res.status(502).json({
+        success: false,
+        error: 'Supabase returned an invalid bucket list.'
+      });
     }
 
-    // 3. Tertiary Safety Net: Fallback to predefined application buckets
-    if (buckets.length === 0) {
-      const KNOWN_BUCKETS = ['MediStorage'];
+    console.log(`[Storage] Found ${data.length} bucket(s)`);
 
-      for (const bucketName of KNOWN_BUCKETS) {
-        try {
-          const { error } = await supabase.storage.from(bucketName).list('', { limit: 1 });
-          if (!error) {
-            buckets.push({
-              id: bucketName,
-              name: bucketName,
-              public: true,
-              created_at: new Date().toISOString()
-            });
-          }
-        } catch {}
-      }
-    }
+    data.forEach((bucket, index) => {
+      console.log(
+        `[Storage] ${index + 1}. ${bucket.name} | public: ${bucket.public}`
+      );
+    });
+
+    console.log('==========================================\n');
 
     return res.status(200).json({
       success: true,
-      buckets
+      buckets: data,
+      count: data.length
     });
 
   } catch (error) {
-    console.error('[Storage] Unexpected error loading buckets:', error);
+    console.error(
+      '[Storage] Unexpected error loading buckets:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
       error: 'Unexpected error while loading storage buckets.',
@@ -351,5 +365,87 @@ router.delete('/buckets/:bucketId/folder', authorized, allowDynamicAdmin, async 
     });
   }
 });
+
+// ==========================================
+// GET: GENERATE TEMPORARY FILE VIEW URL
+// ==========================================
+router.get(
+  '/buckets/:bucketId/view',
+  authorized,
+  allowDynamicAdmin,
+  async (req, res) => {
+    try {
+      const { bucketId } = req.params;
+      const { path } = req.query;
+
+      if (!bucketId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bucket ID is required.'
+        });
+      }
+
+      if (!path || typeof path !== 'string' || !path.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'File path is required.'
+        });
+      }
+
+      const filePath = path.trim();
+
+      console.log(
+        `[Storage] Creating signed URL for ${bucketId}/${filePath}`
+      );
+
+      // URL is valid for 5 minutes.
+      // The file itself remains private in Supabase.
+      const { data, error } = await withTimeout(
+        supabase.storage
+          .from(bucketId)
+          .createSignedUrl(filePath, 300),
+        10000
+      );
+
+      if (error) {
+        console.error(
+          '[Storage] Failed to create signed URL:',
+          error
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: 'Failed to generate file preview URL.',
+          details: getErrorMessage(error)
+        });
+      }
+
+      if (!data?.signedUrl) {
+        return res.status(502).json({
+          success: false,
+          error: 'Supabase did not return a signed URL.'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        url: data.signedUrl,
+        expiresIn: 300
+      });
+
+    } catch (error) {
+      console.error(
+        '[Storage] Unexpected error generating signed URL:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: 'Unexpected error while preparing file preview.',
+        details: error.message
+      });
+    }
+  }
+);
 
 module.exports = router;

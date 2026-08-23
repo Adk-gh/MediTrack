@@ -7,6 +7,12 @@ import DatePicker from '../../components/Datepicker';
 
 const STATUS_OPTIONS = ['pending', 'approved'];
 const EDIT_STATUS_OPTIONS = ['pending', 'approved'];
+const CERT_OPTIONS = [
+  { value: 'all', label: 'All Certificates' },
+  { value: 'issued', label: 'Issued' },
+  { value: 'not_issued', label: 'Not Issued' },
+];
+
 const STATUS_STYLES = {
   approved: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   pending:  { bg: 'bg-amber-100',   text: 'text-amber-700',   dot: 'bg-amber-400'   },
@@ -133,6 +139,19 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
         <StatusPill status={record.status} />
       </td>
 
+      {/* Document (Issued / Not Issued) */}
+      <td className="p-3 whitespace-nowrap hidden sm:table-cell">
+        {record.issue_cert ? (
+          <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-blue-100 text-blue-700">
+            Issued
+          </span>
+        ) : (
+          <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-slate-100 text-slate-500">
+            Not Issued
+          </span>
+        )}
+      </td>
+
       {/* Actions */}
       <td className="p-3 pr-4">
         <div className="flex justify-end gap-2">
@@ -168,11 +187,14 @@ export const RecordManagement = () => {
 
   const [records, setRecords]           = useState([]);
   const [loading, setLoading]           = useState(true);
+
+  // Filters
   const [searchInput, setSearchInput]   = useState('');
   const [filterType, setFilterType]     = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterDept, setFilterDept]     = useState('all');
   const [filterDate, setFilterDate]     = useState('');
+  const [filterCert, setFilterCert]     = useState('all');
   const [sortOrder, setSortOrder]       = useState('desc');
   const [message, setMessage]           = useState(null);
 
@@ -187,10 +209,11 @@ export const RecordManagement = () => {
   const [recordToDelete, setRecordToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Edit (status change) modal state
+  // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editRecord, setEditRecord]       = useState(null);
   const [editStatus, setEditStatus]       = useState('pending');
+  const [editIssueCert, setEditIssueCert] = useState(false);
   const [savingEdit, setSavingEdit]       = useState(false);
 
   const showSnackbar = (msg, type = 'success') => {
@@ -237,7 +260,7 @@ export const RecordManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, filterType, filterStatus, filterDept, filterDate, sortOrder]);
+  }, [searchInput, filterType, filterStatus, filterDept, filterDate, filterCert, sortOrder]);
 
   const deptOptions = ['all', ...new Set(
     records.map(r => r._user?.department).filter(Boolean)
@@ -248,6 +271,8 @@ export const RecordManagement = () => {
       if (filterType   !== 'all' && r._kind            !== filterType)   return false;
       if (filterStatus !== 'all' && r.status           !== filterStatus) return false;
       if (filterDept   !== 'all' && r._user?.department !== filterDept)   return false;
+      if (filterCert === 'issued' && r.issue_cert !== true) return false;
+      if (filterCert === 'not_issued' && r.issue_cert === true) return false;
       if (filterDate) {
         const recDateStr = (r.exam_date || r.created_at || '').split('T')[0];
         if (recDateStr !== filterDate) return false;
@@ -270,35 +295,17 @@ export const RecordManagement = () => {
   const totalMed      = filtered.filter(r => r._kind === 'medical').length;
   const totalDen      = filtered.filter(r => r._kind === 'dental').length;
   const totalPending  = filtered.filter(r => r.status === 'pending').length;
-  const totalApproved = filtered.filter(r => r.status === 'approved').length;
+  const totalApproved = filtered.filter(r => r.status === 'approved' || r.status === 'done').length;
+  const totalIssued   = filtered.filter(r => r.issue_cert === true).length;
+  const totalNotIssue = filtered.filter(r => r.issue_cert !== true).length;
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginatedRecords = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleStatusChange = async (record, newStatus) => {
-    const table = record._kind === 'medical' ? 'medical_records' : 'dental_records';
-    const { error } = await supabase.from(table).update({ status: newStatus }).eq('id', record._id);
-    if (error) { showSnackbar('Failed to update status', 'error'); throw error; }
-
-    logAdminAction({
-      action: 'record_status_updated',
-      details: {
-        recordId: record._id,
-        recordType: record._kind,
-        previousStatus: record.status || 'pending',
-        newStatus,
-        table,
-      },
-      adminUid,
-    });
-
-    setRecords(prev => prev.map(r => r._id === record._id ? { ...r, status: newStatus } : r));
-    showSnackbar('Status updated');
-  };
-
   const openEditModal = (record) => {
     setEditRecord(record);
     setEditStatus(record.status || 'pending');
+    setEditIssueCert(record.issue_cert || false);
     setShowEditModal(true);
   };
 
@@ -311,10 +318,35 @@ export const RecordManagement = () => {
     if (!editRecord) return;
     setSavingEdit(true);
     try {
-      await handleStatusChange(editRecord, editStatus);
+      const table = editRecord._kind === 'medical' ? 'medical_records' : 'dental_records';
+      const updates = {
+        status: editStatus,
+        is_approved: editStatus === 'approved',
+        approved_at: editStatus === 'approved' ? new Date().toISOString() : null,
+        issue_cert: editIssueCert,
+      };
+
+      const { error } = await supabase.from(table).update(updates).eq('id', editRecord._id);
+      if (error) throw error;
+
+      logAdminAction({
+        action: 'record_updated',
+        details: {
+          recordId: editRecord._id,
+          recordType: editRecord._kind,
+          newStatus: editStatus,
+          issueCert: editIssueCert,
+          table,
+        },
+        adminUid,
+      });
+
+      setRecords(prev => prev.map(r => r._id === editRecord._id ? { ...r, ...updates } : r));
+      showSnackbar('Record updated successfully');
       closeEditModal();
-    } catch {
-      // handleStatusChange already showed an error snackbar
+    } catch (err) {
+      console.error('Failed to update record:', err);
+      showSnackbar('Failed to update record', 'error');
     } finally {
       setSavingEdit(false);
     }
@@ -364,25 +396,27 @@ export const RecordManagement = () => {
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 8;
+  const COL_COUNT = 9; // Updated for the new Document column
 
-  const summaryStats = [
-    { label: 'Total',    count: filtered.length, color: 'text-slate-700'   },
-    { label: 'Medical',  count: totalMed,        color: 'text-blue-700'    },
-    { label: 'Dental',   count: totalDen,        color: 'text-purple-700'  },
-    { label: 'Pending',  count: totalPending,    color: 'text-amber-700'   },
-    { label: 'Approved', count: totalApproved,   color: 'text-emerald-700' },
+const summaryStats = [
+    { label: 'Total',      count: filtered.length, color: 'text-slate-800'   },
+    { label: 'Medical',    count: totalMed,        color: 'text-blue-600'    },
+    { label: 'Dental',     count: totalDen,        color: 'text-purple-600'  },
+    { label: 'Pending',    count: totalPending,    color: 'text-amber-600'   },
+    { label: 'Approved',   count: totalApproved,   color: 'text-emerald-600' },
+    { label: 'Issued Cert',count: totalIssued,     color: 'text-sky-600'     },
+    { label: 'Not Issued', count: totalNotIssue,   color: 'text-slate-400'   },
   ];
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
 
       {/* Summary stats */}
-      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
+      <div className="shrink-0 mb-4 flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-[4px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
         {summaryStats.map(s => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
-            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
-            <span className="text-xs text-slate-400 font-medium">{s.label}</span>
+          <div key={s.label} className="flex-1 min-w-[110px] bg-white border border-slate-200 rounded-lg px-2 py-3 shadow-sm flex flex-col items-center justify-center">
+            <span className={`text-xl font-bold leading-none mb-1.5 ${s.color}`}>{s.count}</span>
+            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider whitespace-nowrap">{s.label}</span>
           </div>
         ))}
       </div>
@@ -420,6 +454,12 @@ export const RecordManagement = () => {
                 <option key={s} value={s} className="capitalize">
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </option>
+              ))}
+            </select>
+
+            <select value={filterCert} onChange={e => setFilterCert(e.target.value)} className={`${selectCls} min-w-[140px]`}>
+              {CERT_OPTIONS.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
 
@@ -484,6 +524,7 @@ export const RecordManagement = () => {
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Exam Date</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden lg:table-cell">Details</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
+                <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden sm:table-cell">Document</th>
                 <th className="text-left p-3 pr-4 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
@@ -550,7 +591,7 @@ export const RecordManagement = () => {
 
       </div>
 
-      {/* Edit (Change Status) Modal using Portal */}
+      {/* Edit Modal using Portal */}
       {showEditModal && createPortal(
         <div
           className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
@@ -574,26 +615,58 @@ export const RecordManagement = () => {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
-              <div className="flex gap-2">
-                {EDIT_STATUS_OPTIONS.map(s => {
-                  const style = getStatusStyle(s);
-                  const isSelected = editStatus === s;
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => setEditStatus(s)}
-                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold capitalize transition ${
-                        isSelected
-                          ? `${style.bg} ${style.text} border-2 border-current`
-                          : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  );
-                })}
+            <div className="space-y-4">
+              {/* Status Toggle */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
+                <div className="flex gap-2">
+                  {EDIT_STATUS_OPTIONS.map(s => {
+                    const style = getStatusStyle(s);
+                    const isSelected = editStatus === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setEditStatus(s)}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold capitalize transition ${
+                          isSelected
+                            ? `${style.bg} ${style.text} border-2 border-current`
+                            : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Issue Cert Toggle */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                  {editRecord?._kind === 'dental' ? 'Dental Report Sent' : 'Certificate Issued'}
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditIssueCert(false)}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      !editIssueCert
+                        ? 'bg-red-100 text-red-700 border-2 border-red-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-xmark mr-1"></i> No
+                  </button>
+                  <button
+                    onClick={() => setEditIssueCert(true)}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                      editIssueCert
+                        ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                  >
+                    <i className="fa-solid fa-check mr-1"></i> Yes
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -607,7 +680,7 @@ export const RecordManagement = () => {
               </button>
               <button
                 onClick={handleEditSave}
-                disabled={savingEdit || !editRecord || editStatus === editRecord?.status}
+                disabled={savingEdit || !editRecord}
                 className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {savingEdit ? (

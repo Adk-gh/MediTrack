@@ -372,6 +372,19 @@ export default function MediTrack() {
     )
   );
 
+  // ─────────────────────────────────────────────
+  // CUSTOM NAVIGATION LISTENER
+  // ─────────────────────────────────────────────
+  useEffect(() => {
+    const handleNavigate = (e) => {
+      if (e.detail && e.detail.to) {
+        setActiveTab(e.detail.to);
+      }
+    };
+
+    window.addEventListener('meditrack:navigate', handleNavigate);
+    return () => window.removeEventListener('meditrack:navigate', handleNavigate);
+  }, []);
 
   const [
     preview,

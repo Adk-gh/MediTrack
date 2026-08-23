@@ -433,91 +433,102 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
   };
 
 const saveProfileEdits = async () => {
-  setIsSaving(true);
+    setIsSaving(true);
+    console.log("=== SAVE PROFILE START ===");
+    console.log("Editing Section:", editingSection);
 
-  try {
-    const token = localStorage.getItem('token');
+    try {
+      const token = localStorage.getItem('token');
+      let sectionData = extractSectionData(editData, editingSection, isStudent);
 
-    let sectionData = extractSectionData(
-      editData,
-      editingSection,
-      isStudent
-    );
+      if (sectionData.firstName) sectionData.firstName = normalizeName(sectionData.firstName);
+      if (sectionData.middleName) sectionData.middleName = normalizeName(sectionData.middleName);
+      if (sectionData.lastName) sectionData.lastName = normalizeName(sectionData.lastName);
+      if (sectionData.emergencyContact?.name) sectionData.emergencyContact.name = normalizeName(sectionData.emergencyContact.name);
 
-    if (sectionData.firstName) {
-      sectionData.firstName = normalizeName(sectionData.firstName);
-    }
-
-    if (sectionData.middleName) {
-      sectionData.middleName = normalizeName(sectionData.middleName);
-    }
-
-    if (sectionData.lastName) {
-      sectionData.lastName = normalizeName(sectionData.lastName);
-    }
-
-    if (sectionData.emergencyContact?.name) {
-      sectionData.emergencyContact.name =
-        normalizeName(sectionData.emergencyContact.name);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Academic update acknowledgment
-    //
-    // If the student is saving the Academic section while an
-    // academic update cycle is active, acknowledge the CURRENT
-    // global version directly.
-    //
-    // Example:
-    // Student version: 0
-    // Global version: 5
-    // After saving:    5
-    // ─────────────────────────────────────────────────────────────
-    if (
-      isStudent &&
-      editingSection === 'academic' &&
-      configData?.prompt_student_academic_update === true
-    ) {
-      sectionData.academicInfoAcknowledgedVersion =
-        Number(configData.academic_update_version || 1);
-    }
-
-    const res = await fetch(
-      `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(sectionData),
+      if (isStudent && editingSection === 'academic' && configData?.prompt_student_academic_update === true) {
+        sectionData.academicInfoAcknowledgedVersion = Number(configData.academic_update_version || 1);
       }
-    );
 
-    const data = await res.json();
+      let isEmailUpdatePending = false;
 
-    if (!res.ok) {
-      throw new Error(data.message || 'Failed to update profile');
+      // 1. Isolate the email logic ONLY if we are editing the Contact section
+      if (editingSection === 'contact') {
+        const { email: newEmail, ...backendData } = sectionData;
+
+        console.log("Old Email:", profile.email);
+        console.log("New Email Typed:", newEmail);
+
+        if (newEmail && newEmail.toLowerCase() !== profile.email?.toLowerCase()) {
+          console.log(">>> [Auth] Email changed! Triggering Supabase Auth update...");
+
+          const { error: emailErr } = await supabase.auth.updateUser(
+              { email: newEmail },
+              {
+                emailRedirectTo:
+                  "https://meditrack-2-tvck.onrender.com/#/login",
+              }
+            );
+
+          if (emailErr) {
+            console.error(">>> [Auth] Supabase Email Update Error:", emailErr);
+            showToast(`Error updating email: ${emailErr.message}`);
+            setIsSaving(false);
+            return;
+          }
+          console.log(">>> [Auth] Supabase Auth update successful. Email sent.");
+          isEmailUpdatePending = true;
+        } else {
+          console.log(">>> [Auth] Email was identical or empty. Skipping Auth update.");
+        }
+
+        // Overwrite sectionData so the backend only gets the phone number, not the email
+        sectionData = backendData;
+      }
+
+      let updatedProfile = { ...profile };
+
+      // 2. Send the rest of the data (like phone number, names, etc.) to your Node backend
+      if (Object.keys(sectionData).length > 0) {
+        console.log(">>> [Backend] Sending to backend:", sectionData);
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(sectionData),
+          }
+        );
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to update profile');
+
+        Object.keys(data.data).forEach(key => {
+          updatedProfile[key] = data.data[key];
+        });
+      }
+
+      // 3. Show the correct success message
+      if (isEmailUpdatePending) {
+        showToast("Verification link sent! Please check your new email inbox to confirm.");
+      } else {
+        showToast(t('messages.profileUpdated'));
+      }
+
+      setProfile(updatedProfile);
+      closeEdit();
+
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      showToast(t('messages.profileUpdateFailed'));
+    } finally {
+      console.log("=== SAVE PROFILE END ===");
+      setIsSaving(false);
     }
-
-    const updatedProfile = { ...profile };
-
-    Object.keys(data.data).forEach(key => {
-      updatedProfile[key] = data.data[key];
-    });
-
-    setProfile(updatedProfile);
-
-    showToast(t('messages.profileUpdated'));
-    closeEdit();
-
-  } catch (err) {
-    console.error('Error updating profile:', err);
-    showToast(t('messages.profileUpdateFailed'));
-  } finally {
-    setIsSaving(false);
-  }
-};
+  };
 
   if ((loading || isConfigLoading) && !profile.email) return <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#466460', fontSize: 13, fontWeight: 600 }}>{t('messages.loadingProfile')}</div>;
   const clsColors = classificationColors[profile.studentClassification] || classificationColors.Regular;
@@ -900,9 +911,20 @@ const saveProfileEdits = async () => {
             </div>
 
             <div style={{ padding: '16px 24px', borderTop: '1px solid #edf3f0', display: 'flex', gap: 12, background: '#fff' }}>
-              <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577', transition: 'background 0.2s' }}>{t('common.cancel')}</button>
-              <button onClick={saveProfileEdits} disabled={isSaving} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1, transition: 'background 0.2s' }}>{isSaving ? t('common.saving') : t('common.save')}</button>
-            </div>
+  <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577' }}>{t('common.cancel')}</button>
+
+  <button
+    type="button"
+    onClick={async () => {
+      console.log(">>> BUTTON CLICKED EXPLICITLY");
+      await saveProfileEdits();
+    }}
+    disabled={isSaving}
+    style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1 }}
+  >
+    {isSaving ? t('common.saving') : t('common.save')}
+  </button>
+</div>
           </div>
         </div>, document.body
       )}

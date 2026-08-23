@@ -644,7 +644,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
     });
   };
 
-  const saveProfileEdits = async () => {
+const saveProfileEdits = async () => {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token');
@@ -663,14 +663,21 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         return;
       }
 
-      if (sectionData.email && sectionData.email !== formData.email) {
+      let isEmailUpdatePending = false;
+
+      // 1. Separate the email from the data destined for your backend
+      const { email: newEmail, ...backendData } = sectionData;
+
+      // 2. Handle Supabase Auth Email Update separately
+      if (newEmail && newEmail !== formData.email) {
         try {
-          const { error: emailErr } = await supabase.auth.updateUser({ email: sectionData.email });
+          const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail });
           if (emailErr) {
             alert(`Error updating email: ${emailErr.message}`);
             setIsSaving(false);
             return;
           }
+          isEmailUpdatePending = true;
         } catch (emailErr) {
           alert(`Error updating email: ${emailErr.message}`);
           setIsSaving(false);
@@ -678,20 +685,32 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         }
       }
 
-      const res = await fetch(`${API_URL}/user/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(sectionData),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to update profile');
+      // 3. Send the REST of the data to your backend API
+      let updatedProfile = { ...formData };
 
-      const updatedProfile = { ...formData, ...data.data };
+      if (Object.keys(backendData).length > 0) {
+        const res = await fetch(`${API_URL}/user/profile`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          // Only send backendData (email is stripped out)
+          body: JSON.stringify(backendData),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to update profile');
+
+        updatedProfile = { ...updatedProfile, ...data.data };
+      }
+
+      // 4. Alert the user if they need to check their inbox
+      if (isEmailUpdatePending) {
+        alert("A confirmation link has been sent to your new email address. Your email will be updated in your profile once you verify it.");
+        // We do NOT update the email in the local UI state yet, because the change isn't official until verified.
+      }
+
       setFormData(withProfileDefaults(updatedProfile));
-
       if (onProfileUpdate) onProfileUpdate(updatedProfile);
 
       closeEdit();
@@ -1188,46 +1207,48 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         </div>
       )}
 
-      {/* Edit Profile Modal */}
+{/* Edit Profile Modal */}
       {editingSection && (
-        <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-4">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+        <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-4 py-8">
+          {/* Changed max-w-md to max-w-3xl and removed max-h-[85vh] and overflow-hidden to let it size naturally without internal scrolling */}
+          <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col shadow-2xl">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <span className="text-base font-extrabold text-[#466460] capitalize">Edit {editingSection} Info</span>
               <button onClick={closeEdit} className="bg-none border-none text-slate-400 cursor-pointer text-lg flex items-center justify-center hover:text-slate-600">✕</button>
             </div>
 
-            <div className="px-6 py-4 overflow-y-auto flex-1">
+            {/* Removed overflow-y-auto and flex-1 to remove the scrollable function inside the modal body */}
+            <div className="px-6 py-5">
               {editingSection === 'personal' && (
-                <>
-                  <div className="mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">First Name</label>
                     <input type="text" value={editData.firstName || ''} onChange={e => handleChange('firstName', toTitleCase(e.target.value))} placeholder="First Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Middle Name</label>
                     <input type="text" value={editData.middleName || ''} onChange={e => handleChange('middleName', toTitleCase(e.target.value))} placeholder="Middle Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Name</label>
                     <input type="text" value={editData.lastName || ''} onChange={e => handleChange('lastName', toTitleCase(e.target.value))} placeholder="Last Name" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Suffix</label>
                     <select value={editData.suffix || ''} onChange={e => handleChange('suffix', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {SUFFIXES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Birthday</label>
                     <DatePicker value={editData.birthday || ''} onChange={val => handleChange('birthday', val)} />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Age (Auto-calculated)</label>
                     <input type="text" value={editData.age || ''} readOnly className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-500 cursor-not-allowed" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Sex</label>
                     <select value={editData.sex || ''} onChange={e => handleChange('sex', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
@@ -1235,153 +1256,154 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                       <option value="Female">Female</option>
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Blood Type</label>
                     <select value={editData.bloodType || ''} onChange={e => handleChange('bloodType', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bt => <option key={bt} value={bt}>{bt}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Civil Status</label>
                     <select value={editData.civilStatus || ''} onChange={e => handleChange('civilStatus', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['Single', 'Married', 'Widowed', 'Separated'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Religion</label>
                     <select value={editData.religion || ''} onChange={e => handleChange('religion', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['Roman Catholic', 'Islam', 'Iglesia ni Cristo', 'Seventh-day Adventist', 'Protestant', 'Born Again Christian', 'Buddhism', 'Hinduism', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Nationality</label>
                     <select value={editData.nationality || ''} onChange={e => handleChange('nationality', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['Filipino', 'American', 'Chinese', 'Japanese', 'Korean', 'Indian', 'British', 'Australian', 'Canadian', 'Other'].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Home Address</label>
                     <button type="button" onClick={() => { setAddressType('personal'); setShowAddressModal(true); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50">
-                      {editData.homeAddress ? <span className="text-slate-700">{editData.homeAddress}</span> : <span className="text-slate-400">Click to set address</span>}
+                      {editData.homeAddress ? <span className="text-slate-700 truncate block">{editData.homeAddress}</span> : <span className="text-slate-400">Click to set address</span>}
                     </button>
                   </div>
-                </>
+                </div>
               )}
 
               {editingSection === 'professional' && !isStudent && (
-                <>
-                  <div className="mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Employee ID</label>
                     <input type="text" value={editData.universityId || ''} onChange={e => handleChange('universityId', e.target.value)} placeholder="e.g., 2021-00001" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Classification</label>
                     <select value={editData.classification || ''} onChange={e => handleChange('classification', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Department</label>
                     <select value={editData.department || ''} onChange={e => handleChange('department', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {NON_ACADEMIC_OFFICES.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Job Title</label>
                     <select value={editData.jobTitle || ''} onChange={e => handleChange('jobTitle', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {JOB_TITLES.map(j => <option key={j} value={j}>{j}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">License Number</label>
                     <input type="text" value={editData.licenseNumber || ''} onChange={e => handleChange('licenseNumber', e.target.value.toUpperCase())} placeholder="e.g., PRC-123456" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                </>
+                </div>
               )}
 
               {editingSection === 'professional' && isStudent && (
-                <>
-                  <div className="mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Student No.</label>
                     <input type="text" value={editData.universityId || ''} onChange={e => handleChange('universityId', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Department</label>
                     <input type="text" value={editData.department || ''} onChange={e => handleChange('department', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Program</label>
                     <input type="text" value={editData.program || ''} onChange={e => handleChange('program', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Year Level</label>
                     <select value={editData.yearLevel || ''} onChange={e => handleChange('yearLevel', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Section</label>
                     <select value={editData.section || ''} onChange={e => handleChange('section', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['A', 'B', 'C', 'D', 'E', 'F'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                </>
+                </div>
               )}
 
               {editingSection === 'contact' && (
-                <>
-                  <div className="mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Email Address</label>
                     <input type="email" value={editData.email || ''} onChange={e => handleChange('email', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
                     <input type="tel" value={editData.phoneNumber || ''} onChange={e => { const formatted = formatPhoneNumber(e.target.value); handleChange('phoneNumber', formatted); }} onBlur={e => { if (e.target.value && !isValidPhoneNumber(e.target.value)) { alert('Phone number must be exactly 11 digits (e.g., 09123456789)'); } }} placeholder="09123456789" maxLength={11} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                </>
+                </div>
               )}
 
               {editingSection === 'emergency' && (
-                <>
-                  <div className="mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Contact Name</label>
                     <input type="text" value={editData.emergencyContact?.name || ''} onChange={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} onBlur={e => handleNestedChange('emergencyContact', 'name', toTitleCase(e.target.value))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Relationship</label>
                     <select value={editData.emergencyContact?.relationship || ''} onChange={e => handleNestedChange('emergencyContact', 'relationship', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]">
                       <option value="">Select</option>
                       {['Parent', 'Spouse', 'Sibling', 'Child', 'Grandparent', 'Relative', 'Guardian', 'Friend', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Phone Number (11 digits)</label>
                     <input type="tel" value={editData.emergencyContact?.phone || ''} onChange={e => { const formatted = formatPhoneNumber(e.target.value); handleNestedChange('emergencyContact', 'phone', formatted); }} onBlur={e => { if (e.target.value && !isValidPhoneNumber(e.target.value)) { alert('Phone number must be exactly 11 digits (e.g., 09123456789)'); } }} placeholder="09123456789" maxLength={11} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
                   </div>
-                  <div className="mb-4">
+                  <div>
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Address</label>
                     <button type="button" onClick={() => { setAddressType('emergency'); setShowAddressModal(true); }} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-left focus:outline-none focus:border-[#466460] bg-white hover:bg-slate-50">
-                      {editData.emergencyContact?.address ? <span className="text-slate-700">{editData.emergencyContact.address}</span> : <span className="text-slate-400">Click to set address</span>}
+                      {editData.emergencyContact?.address ? <span className="text-slate-700 truncate block">{editData.emergencyContact.address}</span> : <span className="text-slate-400">Click to set address</span>}
                     </button>
                   </div>
-                </>
+                </div>
               )}
 
+              {/* Keep Medical/Surgical/Vaccine layouts intact with gap styles if needed */}
               {editingSection === 'vaccinations' && (
-                <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {VACCINE_DOSE_KEYS.map(({ key, label }) => {
                     const isDeclined = vaccinationsDeclined[key];
                     return (
-                      <div key={key} className={`p-4 rounded-xl mb-4 border ${isDeclined ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                      <div key={key} className={`p-4 rounded-xl border ${isDeclined ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
                         <div className="flex justify-between items-center mb-3">
                           <span className="text-[11px] font-extrabold text-[#466460] uppercase">{label}</span>
                           <label className="flex items-center gap-2 cursor-pointer">
@@ -1408,7 +1430,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                       </div>
                     );
                   })}
-                  <div className={`p-4 rounded-xl mb-4 border ${vaccinationsDeclined.history ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className={`p-4 rounded-xl md:col-span-2 border ${vaccinationsDeclined.history ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-[11px] font-extrabold text-[#466460] uppercase">COVID-19 History</span>
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -1427,7 +1449,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                       <span className="text-[11px] font-semibold text-amber-700">Skipped / Not applicable</span>
                     )}
                   </div>
-                </>
+                </div>
               )}
 
               {editingSection === 'dental' && (
@@ -1447,33 +1469,37 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                   </label>
                   {!dentalDeclined && (
                     <>
-                      <div className="mb-4">
-                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Dental Visit</label>
-                        <DatePicker value={editData.dentalHistory?.lastVisit || ''} onChange={val => handleDentalHistoryUpdate({ ...editData.dentalHistory, lastVisit: val })} />
-                      </div>
-                      <div className="mb-4">
-                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Previous Dentist (Dr.)</label>
-                        <input type="text" value={editData.dentalHistory?.prevDentist || ''} onChange={e => handleDentalHistoryUpdate({ ...editData.dentalHistory, prevDentist: e.target.value })} placeholder="e.g. Smith" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Last Dental Visit</label>
+                          <DatePicker value={editData.dentalHistory?.lastVisit || ''} onChange={val => handleDentalHistoryUpdate({ ...editData.dentalHistory, lastVisit: val })} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Previous Dentist (Dr.)</label>
+                          <input type="text" value={editData.dentalHistory?.prevDentist || ''} onChange={e => handleDentalHistoryUpdate({ ...editData.dentalHistory, prevDentist: e.target.value })} placeholder="e.g. Smith" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                        </div>
                       </div>
 
                       <p className="text-[10px] font-extrabold text-[#466460] uppercase tracking-wide mt-6 mb-3 pt-5 border-t border-slate-100">Procedures History</p>
-                      {DENTAL_PROCEDURES.map(proc => {
-                        const isYes = editData.dentalHistory?.procedures?.[proc] === 'Yes';
-                        const isNo = editData.dentalHistory?.procedures?.[proc] === 'No' || !editData.dentalHistory?.procedures?.[proc];
-                        return (
-                          <div key={proc} className="flex items-center justify-between mb-3 text-xs text-slate-800 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg">
-                            <span className="font-semibold">{proc}</span>
-                            <div className="flex gap-4">
-                              <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
-                                <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} className="accent-[#466460]" /> Yes
-                              </label>
-                              <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
-                                <input type="radio" name={`modal_dh_${proc}`} checked={isNo} onChange={() => handleDentalProcChange(proc, 'No')} className="accent-[#466460]" /> No
-                              </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {DENTAL_PROCEDURES.map(proc => {
+                          const isYes = editData.dentalHistory?.procedures?.[proc] === 'Yes';
+                          const isNo = editData.dentalHistory?.procedures?.[proc] === 'No' || !editData.dentalHistory?.procedures?.[proc];
+                          return (
+                            <div key={proc} className="flex items-center justify-between text-xs text-slate-800 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg">
+                              <span className="font-semibold truncate mr-2">{proc}</span>
+                              <div className="flex gap-4 shrink-0">
+                                <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
+                                  <input type="radio" name={`modal_dh_${proc}`} checked={isYes} onChange={() => handleDentalProcChange(proc, 'Yes')} className="accent-[#466460]" /> Yes
+                                </label>
+                                <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
+                                  <input type="radio" name={`modal_dh_${proc}`} checked={isNo} onChange={() => handleDentalProcChange(proc, 'No')} className="accent-[#466460]" /> No
+                                </label>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </>
                   )}
                 </>
@@ -1500,44 +1526,46 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                       {(editData.surgicalHistory?.operations || []).length === 0 ? (
                         <p className="text-[11px] text-slate-400 italic text-center py-3">No operations added yet.</p>
                       ) : (
-                        editData.surgicalHistory.operations.map(op => (
-                          <div key={op.id} className="relative bg-slate-50 border border-slate-200 rounded-lg p-4 mb-3">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveOperation(op.id)}
-                              className="absolute top-2.5 right-2.5 bg-[#e07a5f] text-white w-5 h-5 rounded-md text-xs leading-none flex items-center justify-center"
-                            >×</button>
-                            <div className="mb-3">
-                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Operation Name</label>
-                              <input
-                                type="text"
-                                placeholder="Operation/Procedure Name"
-                                value={op.operation}
-                                onChange={e => handleOperationChange(op.id, 'operation', e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                              />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {editData.surgicalHistory.operations.map(op => (
+                            <div key={op.id} className="relative bg-slate-50 border border-slate-200 rounded-lg p-4">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveOperation(op.id)}
+                                className="absolute top-2.5 right-2.5 bg-[#e07a5f] text-white w-5 h-5 rounded-md text-xs leading-none flex items-center justify-center"
+                              >×</button>
+                              <div className="mb-3">
+                                <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Operation Name</label>
+                                <input
+                                  type="text"
+                                  placeholder="Operation/Procedure Name"
+                                  value={op.operation}
+                                  onChange={e => handleOperationChange(op.id, 'operation', e.target.value)}
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                                />
+                              </div>
+                              <div className="mb-3">
+                                <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Date</label>
+                                <DatePicker value={op.date || ''} onChange={val => handleOperationChange(op.id, 'date', val)} />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Notes</label>
+                                <input
+                                  type="text"
+                                  placeholder="Hospital / complications"
+                                  value={op.notes}
+                                  onChange={e => handleOperationChange(op.id, 'notes', e.target.value)}
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
+                                />
+                              </div>
                             </div>
-                            <div className="mb-3">
-                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Date</label>
-                              <DatePicker value={op.date || ''} onChange={val => handleOperationChange(op.id, 'date', val)} />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Notes</label>
-                              <input
-                                type="text"
-                                placeholder="Hospital / complications"
-                                value={op.notes}
-                                onChange={e => handleOperationChange(op.id, 'notes', e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#466460]"
-                              />
-                            </div>
-                          </div>
-                        ))
+                          ))}
+                        </div>
                       )}
                       <button
                         type="button"
                         onClick={handleAddOperation}
-                        className="w-full bg-[#81b29a] text-white border-none py-2.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#6a9a83] transition-colors"
+                        className="w-full mt-4 bg-[#81b29a] text-white border-none py-2.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#6a9a83] transition-colors"
                       >
                         + Add Operation
                       </button>
@@ -1547,9 +1575,9 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-              <button onClick={closeEdit} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors">Cancel</button>
-              <button onClick={saveProfileEdits} disabled={isSaving} className="flex-1 py-3 bg-[#466460] text-white rounded-xl font-bold text-sm hover:bg-[#38524d] transition-colors shadow-md disabled:opacity-70 flex justify-center items-center gap-2">
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-2xl mt-auto">
+              <button onClick={closeEdit} className="w-[120px] py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors">Cancel</button>
+              <button onClick={saveProfileEdits} disabled={isSaving} className="w-[160px] py-3 bg-[#466460] text-white rounded-xl font-bold text-sm hover:bg-[#38524d] transition-colors shadow-md disabled:opacity-70 flex justify-center items-center gap-2">
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
@@ -1805,7 +1833,6 @@ export const DesktopHeader = ({ onOpenQR }) => {
 const ROLE_NAV_CONFIG = {
   sysadmin: [
     { to: '/dashboard', label: 'Dashboard' },
-    { to: '/approval-management', label: 'Approvals' },
     { to: '/appointment-management', label: 'Appointments' },
     { to: '/record-management', label: 'Records' },
     { to: '/consultation-management', label: 'Consultations' },
@@ -2002,7 +2029,6 @@ const ROLE_MOBILE_NAV_CONFIG = {
     { id: 'announcements', label: 'Announcements', icon: AnnouncementIcon },
     { id: 'consultationManagement', label: 'Consultations', icon: ConsultIcon },
     { id: 'appointmentManagement', label: 'Appointments', icon: CalendarIcon },
-    { id: 'approvalManagement', label: 'Approvals', icon: ApprovalsIcon },
     { id: 'users', label: 'Users', icon: UsersIcon },
   ],
   doctor: [
