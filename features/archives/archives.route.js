@@ -1,37 +1,344 @@
 // C:\Users\HP\MediTrack\features\archives\archives.route.js
 
 const express = require('express');
+
 const router = express.Router();
 
 const archivesController = require('./archives.controller');
-const { authorized } = require('../../middleware/authorized');
-const { auditLog } = require('../../middleware/auditLogger');
-const { getSystemConfig } = require('../../services/systemConfig.service');
+
+const {
+  authorized,
+} = require('../../middleware/authorized');
+
+const {
+  auditLog,
+} = require('../../middleware/auditLogger');
+
+const {
+  getSystemConfig,
+} = require('../../services/systemConfig.service');
+
 const supabase = require('../../configs/database');
 
 // =========================================================
-// DYNAMIC ROLE MIDDLEWARES
+// HELPERS
 // =========================================================
 
-// Allows Admin Roles ONLY (for archives management)
-const allowDynamicAdmin = async (req, res, next) => {
+const normalizeRole = (role) => {
+  return String(role || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeConfiguredRoles = (roles) => {
+  if (!Array.isArray(roles)) {
+    return [];
+  }
+
+  return roles
+    .map(normalizeRole)
+    .filter(Boolean);
+};
+
+const ALLOWED_ARCHIVE_TABLES = new Set([
+  'users',
+  'announcements',
+  'appointments',
+  'consultations',
+  'medical_records',
+  'dental_records',
+  'notifications',
+]);
+
+const buildFullName = (record = {}) => {
+  return [
+    record.first_name || record.firstName,
+    record.middle_name || record.middleName,
+    record.last_name || record.lastName,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .join(' ');
+};
+
+const buildArchiveItemDetails = (
+  tableName,
+  record = {}
+) => {
+  const fullName = buildFullName(record);
+
+  switch (tableName) {
+    case 'users':
+      return {
+        recordName:
+          fullName ||
+          record.email ||
+          'Unknown user',
+
+        userName:
+          fullName || null,
+
+        universityId:
+          record.university_id || null,
+
+        email:
+          record.email || null,
+
+        role:
+          record.role || null,
+      };
+
+    case 'appointments':
+      return {
+        recordName:
+          record.patient_name ||
+          fullName ||
+          record.reason ||
+          'Appointment',
+
+        patientName:
+          record.patient_name ||
+          fullName ||
+          null,
+
+        serviceType:
+          record.service_type ||
+          record.serviceType ||
+          record.type ||
+          null,
+
+        scheduleDate:
+          record.schedule_date ||
+          record.scheduleDate ||
+          record.appointment_date ||
+          null,
+
+        scheduleTime:
+          record.schedule_time ||
+          record.scheduleTime ||
+          record.appointment_time ||
+          null,
+
+        reason:
+          record.reason || null,
+
+        status:
+          record.status || null,
+      };
+
+    case 'consultations':
+      return {
+        recordName:
+          record.patient_name ||
+          fullName ||
+          'Consultation',
+
+        patientName:
+          record.patient_name ||
+          fullName ||
+          null,
+
+        consultationType:
+          record.consultation_type ||
+          record.consultationType ||
+          record.type ||
+          null,
+
+        status:
+          record.status || null,
+      };
+
+    case 'medical_records':
+      return {
+        recordName:
+          fullName ||
+          record.patient_name ||
+          'Medical Record',
+
+        patientName:
+          fullName ||
+          record.patient_name ||
+          null,
+
+        universityId:
+          record.university_id || null,
+
+        examDate:
+          record.exam_date ||
+          record.examDate ||
+          null,
+
+        recordType: 'medical',
+      };
+
+    case 'dental_records':
+      return {
+        recordName:
+          fullName ||
+          record.patient_name ||
+          'Dental Record',
+
+        patientName:
+          fullName ||
+          record.patient_name ||
+          null,
+
+        universityId:
+          record.university_id || null,
+
+        examDate:
+          record.exam_date ||
+          record.examDate ||
+          null,
+
+        recordType: 'dental',
+      };
+
+    case 'announcements':
+      return {
+        recordName:
+          record.title ||
+          'Announcement',
+
+        title:
+          record.title || null,
+
+        category:
+          record.category || null,
+
+        priority:
+          record.priority || null,
+      };
+
+    case 'notifications':
+      return {
+        recordName:
+          record.title ||
+          'Notification',
+
+        title:
+          record.title || null,
+
+        notificationType:
+          record.type || null,
+
+        recipientId:
+          record.user_id || null,
+
+        message:
+          record.message || null,
+      };
+
+    default:
+      return {
+        recordName:
+          record.title ||
+          record.name ||
+          fullName ||
+          'Archived item',
+      };
+  }
+};
+
+const loadArchiveItemForAudit = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const tableName = String(
+      req.query?.table || ''
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!ALLOWED_ARCHIVE_TABLES.has(tableName)) {
+      return next();
+    }
+
+    const requestedId =
+      req.params.id;
+
+    const idColumn =
+      tableName === 'users'
+        ? 'uid'
+        : 'id';
+
+    const {
+      data: record,
+      error,
+    } = await supabase
+      .from(tableName)
+      .select('*')
+      .eq(idColumn, requestedId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(
+        '[Archives Audit] Failed to retrieve item details:',
+        error.message
+      );
+
+      return next();
+    }
+
+    if (record) {
+      req.archiveAuditTarget = {
+        tableName,
+        itemId: requestedId,
+        ...buildArchiveItemDetails(
+          tableName,
+          record
+        ),
+      };
+    }
+
+    return next();
+  } catch (error) {
+    console.warn(
+      '[Archives Audit] Item-detail lookup failed:',
+      error.message
+    );
+
+    return next();
+  }
+};
+
+// =========================================================
+// DYNAMIC ADMIN ROLE MIDDLEWARE
+// =========================================================
+
+const allowDynamicAdmin = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const userRole = normalizeRole(
+      req.user?.role
+    );
+
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
     const config = await getSystemConfig();
 
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const adminRoles =
+      normalizeConfiguredRoles(
+        config?.admin_roles
+      );
 
-    // Safety net: Keep sysadmin and core clinical roles as hardcoded fallbacks
     const allowedRoles = [
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse"
+      ...new Set([
+        ...adminRoles,
+        'sysadmin',
+      ]),
     ];
 
     if (allowedRoles.includes(userRole)) {
@@ -39,205 +346,190 @@ const allowDynamicAdmin = async (req, res, next) => {
     }
 
     return res.status(403).json({
-      message: "Access denied. Admin privileges required."
+      success: false,
+      message:
+        'Access denied. Admin privileges required.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Admin verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Admin verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
 
-// ---------------------------------------------------------
-// ADMIN-ONLY ARCHIVE ROUTES
-// ---------------------------------------------------------
+// =========================================================
+// AUTHENTICATION AND AUTHORIZATION
+// =========================================================
 
-// Archive an item
-router.post(
-  '/',
+router.use(
   authorized,
-  allowDynamicAdmin,
-  auditLog(
-    'create',
-    'archive',
-    (req) => `Archived item: ${req.body.type || 'unknown'}`
-  ),
-  archivesController.archiveItem
+  allowDynamicAdmin
 );
 
-// Get all archives
-router.get(
-  '/',
-  authorized,
-  allowDynamicAdmin,
-  archivesController.getArchives
-);
+// =========================================================
+// GET ARCHIVE STATISTICS
+// =========================================================
 
-// Get archive statistics
 router.get(
   '/stats',
-  authorized,
-  allowDynamicAdmin,
   archivesController.getArchiveStats
 );
 
-// Get archive by ID
-router.get(
-  '/:id',
-  authorized,
-  allowDynamicAdmin,
-  archivesController.getArchiveById
-);
-
-// ---------------------------------------------------------
-// RESTORE ARCHIVE
-// ---------------------------------------------------------
-
-router.post(
-  '/:id/restore',
-  authorized,
-  allowDynamicAdmin,
-  async (req, res, next) => {
-    let itemDetails = '';
-    const { table } = req.query;
-
-    if (table) {
-      const idColumn = table === 'users' ? 'uid' : 'id';
-
-      try {
-        let selectFields = '*';
-
-        if (table === 'users') {
-          selectFields =
-            'first_name, middle_name, last_name, university_id';
-        } else if (table === 'announcements') {
-          selectFields = 'title';
-        } else if (table === 'consultations') {
-          selectFields = 'patient_name, consultation_type';
-        } else if (table === 'appointments') {
-          selectFields = 'patient_name, service_type';
-        }
-
-        const { data: item } = await supabase
-          .from(table)
-          .select(selectFields)
-          .eq(idColumn, req.params.id)
-          .single();
-
-        if (item) {
-          if (table === 'users') {
-            itemDetails =
-              `${item.first_name || ''} ${item.middle_name || ''} ${item.last_name || ''}`
-                .trim()
-                .replace(/\s+/g, ' ') +
-              (item.university_id
-                ? ` (${item.university_id})`
-                : '');
-          } else if (table === 'announcements') {
-            itemDetails = item.title || '';
-          } else if (table === 'consultations') {
-            itemDetails =
-              `${item.patient_name || ''} (${item.consultation_type || 'consultation'})`
-                .trim();
-          } else if (table === 'appointments') {
-            itemDetails =
-              `${item.patient_name || ''} - ${item.service_type || ''}`
-                .trim();
-          }
-        }
-      } catch (e) {
-        // Keep archive restore working even if audit details cannot be fetched
-      }
-    }
-
-    req.itemDetails = itemDetails;
-    next();
-  },
-  auditLog('restore', 'archive', (req) => {
-    const details = req.itemDetails
-      ? ` - ${req.itemDetails}`
-      : '';
-
-    return `Restored archive ID: ${req.params.id}${details}`;
-  }),
-  archivesController.restoreFromArchives
-);
-
-// ---------------------------------------------------------
-// PERMANENT DELETE
-// ---------------------------------------------------------
-
-router.delete(
-  '/:id/delete',
-  authorized,
-  allowDynamicAdmin,
-  async (req, res, next) => {
-    let itemDetails = '';
-    const { table } = req.query;
-
-    if (table) {
-      const idColumn = table === 'users' ? 'uid' : 'id';
-
-      try {
-        let selectFields = '*';
-
-        if (table === 'users') {
-          selectFields =
-            'first_name, middle_name, last_name, university_id';
-        } else if (table === 'announcements') {
-          selectFields = 'title';
-        }
-
-        const { data: item } = await supabase
-          .from(table)
-          .select(selectFields)
-          .eq(idColumn, req.params.id)
-          .single();
-
-        if (item) {
-          if (table === 'users') {
-            itemDetails =
-              `${item.first_name || ''} ${item.middle_name || ''} ${item.last_name || ''}`
-                .trim()
-                .replace(/\s+/g, ' ') +
-              (item.university_id
-                ? ` (${item.university_id})`
-                : '');
-          } else if (table === 'announcements') {
-            itemDetails = item.title || '';
-          }
-        }
-      } catch (e) {
-        // Keep deletion working even if audit details cannot be fetched
-      }
-    }
-
-    req.itemDetails = itemDetails;
-    next();
-  },
-  auditLog('delete', 'archive', (req) => {
-    const details = req.itemDetails
-      ? ` - ${req.itemDetails}`
-      : '';
-
-    return `Permanently deleted archive ID: ${req.params.id}${details}`;
-  }),
-  archivesController.permanentDelete
-);
-
-// ---------------------------------------------------------
+// =========================================================
 // CLEANUP OLD ARCHIVES
-// ---------------------------------------------------------
+// =========================================================
 
 router.post(
   '/cleanup',
-  authorized,
-  allowDynamicAdmin,
+
   auditLog(
-    'cleanup',
-    'archive',
-    'Cleaned up old archives'
+    'Cleanup Old Archives',
+    'ARCHIVE',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        'Cleaned up expired archive entries.'
+      );
+    }
   ),
+
   archivesController.cleanupOldArchives
+);
+
+// =========================================================
+// ARCHIVE AN ITEM
+// =========================================================
+
+router.post(
+  '/',
+
+  auditLog(
+    'Archive Item',
+    'ARCHIVE',
+    (req, res) => {
+      if (res.locals.auditDescription) {
+        return res.locals.auditDescription;
+      }
+
+      const archiveType =
+        req.body?.type ||
+        'unknown';
+
+      const originalId =
+        req.body?.originalId ||
+        'unknown';
+
+      return (
+        `Archived ${archiveType} item ` +
+        `with original ID ${originalId}.`
+      );
+    }
+  ),
+
+  archivesController.archiveItem
+);
+
+// =========================================================
+// GET ALL ARCHIVES
+// =========================================================
+
+router.get(
+  '/',
+  archivesController.getArchives
+);
+
+// =========================================================
+// RESTORE ARCHIVE
+// =========================================================
+
+router.post(
+  '/:id/restore',
+
+  loadArchiveItemForAudit,
+
+  auditLog(
+    'Restore Archive',
+    'ARCHIVE',
+    (req, res) => {
+      if (res.locals.auditDescription) {
+        return res.locals.auditDescription;
+      }
+
+      const table =
+        req.query?.table ||
+        'unknown';
+
+      const recordName =
+        req.archiveAuditTarget?.recordName;
+
+      return recordName
+        ? (
+            `Restored archived ${table} item ` +
+            `"${recordName}" with ID ${req.params.id}.`
+          )
+        : (
+            `Restored archived ${table} item ` +
+            `with ID ${req.params.id}.`
+          );
+    }
+  ),
+
+  archivesController.restoreFromArchives
+);
+
+// =========================================================
+// PERMANENTLY DELETE ARCHIVE
+// =========================================================
+
+router.delete(
+  '/:id/delete',
+
+  loadArchiveItemForAudit,
+
+  auditLog(
+    'Permanently Delete Archive',
+    'ARCHIVE',
+    (req, res) => {
+      if (res.locals.auditDescription) {
+        return res.locals.auditDescription;
+      }
+
+      const table =
+        req.query?.table ||
+        'unknown';
+
+      const recordName =
+        req.archiveAuditTarget?.recordName;
+
+      return recordName
+        ? (
+            `Permanently deleted archived ${table} item ` +
+            `"${recordName}" with ID ${req.params.id}.`
+          )
+        : (
+            `Permanently deleted archived ${table} item ` +
+            `with ID ${req.params.id}.`
+          );
+    }
+  ),
+
+  archivesController.permanentDelete
+);
+
+// =========================================================
+// GET ARCHIVE BY ID
+// =========================================================
+
+router.get(
+  '/:id',
+  archivesController.getArchiveById
 );
 
 module.exports = router;

@@ -1,89 +1,110 @@
 // C:\Users\HP\MediTrack\features\consultations\consultations.route.js
 
-const express = require("express");
+const express = require('express');
+
 const router = express.Router();
 
-const consultationsController = require("./consultations.controller");
+const consultationsController = require('./consultations.controller');
 
-const { authorized: authorize } = require("../../middleware/authorized");
+const {
+  authorized: authorize,
+} = require('../../middleware/authorized');
 
-const { auditLog } = require("../../middleware/auditLogger");
-const { getSystemConfig } = require("../../services/systemConfig.service");
+const {
+  auditLog,
+} = require('../../middleware/auditLogger');
 
+const {
+  getSystemConfig,
+} = require('../../services/systemConfig.service');
+
+// =========================================================
+// HELPERS
+// =========================================================
+
+const normalizeRole = (role) => {
+  return String(role || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeConfiguredRoles = (roles) => {
+  if (!Array.isArray(roles)) {
+    return [];
+  }
+
+  return roles
+    .map(normalizeRole)
+    .filter(Boolean);
+};
+
+const getAuditDescription = (
+  fallbackDescription
+) => {
+  return (req, res) => {
+    return (
+      res.locals.auditDescription ||
+      fallbackDescription
+    );
+  };
+};
 
 // =========================================================
 // DYNAMIC ROLE MIDDLEWARES
 // =========================================================
 
-// Allows Students + Dynamic Database Roles + Core Clinical Fallbacks
-const allowDynamicPatients = async (req, res, next) => {
+// Allows students, configured faculty/clinic/admin roles,
+// and core clinical fallbacks.
+const allowDynamicPatients = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const userRole = normalizeRole(
+      req.user?.role
+    );
 
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
-    // "student" is a static role. Let them through immediately.
-    if (userRole === "student") {
+    if (userRole === 'student') {
       return next();
-    }
-
-    // Fetch the JSONB arrays from system_config
-    const config = await getSystemConfig();
-
-    // Safely extract and format arrays from the database configuration
-    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
-    const facultyRoles = (config.faculty_roles || []).map(r => r.toLowerCase());
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
-
-    // Combine database configuration arrays with core master safety nets
-    const allowedRoles = [
-      ...clinicRoles,
-      ...facultyRoles,
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse",
-      "faculty"
-    ];
-
-    // Check if the user's role exists in the allowed dynamic lists
-    if (allowedRoles.includes(userRole)) {
-      return next();
-    }
-
-    return res.status(403).json({
-      message: "Access denied. You do not have permission to perform this action."
-    });
-
-  } catch (error) {
-    console.error("[DynamicRoleCheck] Failed to verify role:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
-  }
-};
-
-// Allows Admin Roles + Clinic Staffs (for ending consultations)
-const allowDynamicClinicStaffs = async (req, res, next) => {
-  try {
-    const userRole = req.user?.role?.toLowerCase();
-    if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
     }
 
     const config = await getSystemConfig();
 
-    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const clinicRoles =
+      normalizeConfiguredRoles(
+        config?.clinic_roles
+      );
+
+    const facultyRoles =
+      normalizeConfiguredRoles(
+        config?.faculty_roles
+      );
+
+    const adminRoles =
+      normalizeConfiguredRoles(
+        config?.admin_roles
+      );
 
     const allowedRoles = [
-      ...clinicRoles,
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse"
+      ...new Set([
+        ...clinicRoles,
+        ...facultyRoles,
+        ...adminRoles,
+        'sysadmin',
+        'doctor',
+        'dentist',
+        'nurse',
+        'faculty',
+      ]),
     ];
 
     if (allowedRoles.includes(userRole)) {
@@ -91,32 +112,64 @@ const allowDynamicClinicStaffs = async (req, res, next) => {
     }
 
     return res.status(403).json({
-      message: "Access denied. Clinic staff or Admin privileges required."
+      success: false,
+      message:
+        'Access denied. You do not have permission to perform this action.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Failed to verify role:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
 
-// Allows Admin Roles ONLY (for archiving consultations)
-const allowDynamicAdmin = async (req, res, next) => {
+// Allows configured clinic staff and admin roles.
+const allowDynamicClinicStaffs = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const userRole = normalizeRole(
+      req.user?.role
+    );
+
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
     const config = await getSystemConfig();
 
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const clinicRoles =
+      normalizeConfiguredRoles(
+        config?.clinic_roles
+      );
+
+    const adminRoles =
+      normalizeConfiguredRoles(
+        config?.admin_roles
+      );
 
     const allowedRoles = [
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse"
+      ...new Set([
+        ...clinicRoles,
+        ...adminRoles,
+        'sysadmin',
+        'doctor',
+        'dentist',
+        'nurse',
+      ]),
     ];
 
     if (allowedRoles.includes(userRole)) {
@@ -124,162 +177,324 @@ const allowDynamicAdmin = async (req, res, next) => {
     }
 
     return res.status(403).json({
-      message: "Access denied. Admin privileges required."
+      success: false,
+      message:
+        'Access denied. Clinic staff or Admin privileges required.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Admin verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Clinic staffs verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
 
+// Allows configured admin roles only.
+//
+// Clinic staff should not be called "admin" unless you
+// intentionally want doctors, dentists, and nurses to archive.
+const allowDynamicAdmin = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const userRole = normalizeRole(
+      req.user?.role
+    );
+
+    if (!userRole) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
+    }
+
+    const config = await getSystemConfig();
+
+    const adminRoles =
+      normalizeConfiguredRoles(
+        config?.admin_roles
+      );
+
+    const allowedRoles = [
+      ...new Set([
+        ...adminRoles,
+        'sysadmin',
+      ]),
+    ];
+
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message:
+        'Access denied. Admin privileges required.',
+    });
+  } catch (error) {
+    console.error(
+      '[DynamicRoleCheck] Admin verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
+  }
+};
 
 // =========================================================
 // AUTHENTICATION
 // =========================================================
 
+// Every consultation route below requires authentication.
 router.use(authorize);
-
 
 // =========================================================
 // PRESENCE
 // =========================================================
 
 router.post(
-  "/presence",
+  '/presence',
   consultationsController.setPresence
 );
 
 router.get(
-  "/presence/online",
+  '/presence/online',
   consultationsController.getOnlineUsers
 );
 
 router.get(
-  "/presence",
+  '/presence',
   consultationsController.getPresence
 );
-
-
-// =========================================================
-// CONSULTATIONS
-// =========================================================
-
-router.get(
-  "/",
-  consultationsController.getAllConsultations
-);
-
-router.get(
-  "/patient",
-  consultationsController.getConsultationsByPatient
-);
-
-router.post(
-  "/",
-  allowDynamicPatients,
-  auditLog(
-    "create",
-    "consultation",
-    (req) =>
-      `Created new consultation: ${
-        req.body.consultation_type || "Unknown"
-      }`
-  ),
-  consultationsController.createConsultation
-);
-
-router.get(
-  "/:id",
-  consultationsController.getConsultationById
-);
-
-router.put(
-  "/:id",
-  allowDynamicPatients,
-  auditLog(
-    "update",
-    "consultation",
-    (req) =>
-      `Updated consultation ID: ${req.params.id}`
-  ),
-  consultationsController.updateConsultation
-);
-
-router.put(
-  "/:id/reactivate",
-  allowDynamicPatients,
-  auditLog(
-    "update",
-    "consultation",
-    (req) =>
-      `Reactivated consultation ID: ${req.params.id}`
-  ),
-  consultationsController.reactivateConsultation
-);
-
-router.put(
-  "/:id/end",
-  allowDynamicClinicStaffs,
-  auditLog(
-    "end",
-    "consultation",
-    (req) =>
-      `Ended consultation ID: ${req.params.id}`
-  ),
-  consultationsController.endConsultation
-);
-
-router.patch(
-  "/:id/end",
-  allowDynamicClinicStaffs,
-  auditLog(
-    "end",
-    "consultation",
-    (req) =>
-      `Ended consultation ID: ${req.params.id}`
-  ),
-  consultationsController.endConsultation
-);
-
-router.delete(
-  "/:id",
-  allowDynamicAdmin,
-  auditLog(
-    "delete",
-    "consultation",
-    (req) =>
-      `Archived consultation ID: ${req.params.id}`
-  ),
-  consultationsController.deleteConsultation
-);
-
 
 // =========================================================
 // CONSULTATION MESSAGES
 // =========================================================
 
+// Keep message routes before general "/:id" routes for clarity.
+
 router.get(
-  "/:consultationId/messages",
+  '/:consultationId/messages',
   consultationsController.getMessages
 );
 
 router.post(
-  "/:consultationId/messages",
+  '/:consultationId/messages',
   auditLog(
-    "create",
-    "message",
-    (req) =>
-      `Sent message in consultation: ${
-        req.params.consultationId
-      }`
+    'Send Consultation Message',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Sent a message in consultation ${req.params.consultationId}.`
+      );
+    }
   ),
   consultationsController.sendMessage
 );
 
 router.post(
-  "/:consultationId/messages/read",
+  '/:consultationId/messages/read',
   consultationsController.markMessagesAsRead
 );
 
+// =========================================================
+// CONSULTATION LISTS
+// =========================================================
+
+router.get(
+  '/',
+  consultationsController.getAllConsultations
+);
+
+// Keep "/patient" before "/:id".
+router.get(
+  '/patient',
+  consultationsController.getConsultationsByPatient
+);
+
+// =========================================================
+// CREATE CONSULTATION
+// =========================================================
+
+router.post(
+  '/',
+  allowDynamicPatients,
+  auditLog(
+    'Create Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      if (res.locals.auditDescription) {
+        return res.locals.auditDescription;
+      }
+
+      const consultationType =
+        req.body?.consultation_type ||
+        req.body?.consultationType ||
+        req.body?.type ||
+        'Unknown';
+
+      return (
+        `Created a new ${consultationType} ` +
+        'consultation.'
+      );
+    }
+  ),
+  consultationsController.createConsultation
+);
+
+// =========================================================
+// REACTIVATE CONSULTATION
+// =========================================================
+
+router.put(
+  '/:id/reactivate',
+  allowDynamicPatients,
+  auditLog(
+    'Reactivate Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Reactivated consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.reactivateConsultation
+);
+
+// Optional PATCH alias for frontend compatibility.
+router.patch(
+  '/:id/reactivate',
+  allowDynamicPatients,
+  auditLog(
+    'Reactivate Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Reactivated consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.reactivateConsultation
+);
+
+// =========================================================
+// END CONSULTATION
+// =========================================================
+
+// Retained PUT support for existing frontend calls.
+router.put(
+  '/:id/end',
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Complete Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Completed consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.endConsultation
+);
+
+// Preferred endpoint because this is a partial state change.
+router.patch(
+  '/:id/end',
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Complete Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Completed consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.endConsultation
+);
+
+// =========================================================
+// GET CONSULTATION BY ID
+// =========================================================
+
+router.get(
+  '/:id',
+  consultationsController.getConsultationById
+);
+
+// =========================================================
+// UPDATE CONSULTATION
+// =========================================================
+
+router.put(
+  '/:id',
+  allowDynamicPatients,
+  auditLog(
+    'Update Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Updated consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.updateConsultation
+);
+
+// Optional PATCH support for partial updates.
+router.patch(
+  '/:id',
+  allowDynamicPatients,
+  auditLog(
+    'Update Consultation',
+    'CONSULTATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Updated consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.updateConsultation
+);
+
+// =========================================================
+// DELETE / ARCHIVE CONSULTATION
+// =========================================================
+
+router.delete(
+  '/:id',
+  allowDynamicAdmin,
+  auditLog(
+    'Archive Consultation',
+    'ARCHIVE',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Archived consultation with ID ${req.params.id}.`
+      );
+    }
+  ),
+  consultationsController.deleteConsultation
+);
 
 module.exports = router;

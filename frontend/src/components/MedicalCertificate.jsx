@@ -7,6 +7,119 @@ import { savePdf } from '../utils/pdfDownload';
 // ─── Environment Variable for API URL ────────────────────────────────────────
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
+const DEFAULT_LOGO_URL = '/plsp-logo.jpg';
+const BRANDING_LOGO_EVENT = 'meditrack:branding-logo-updated';
+const BRANDING_LOGO_STORAGE_KEY = 'meditrack_branding_logo_updated';
+
+const appendCacheBuster = (url) => {
+  if (!url) return DEFAULT_LOGO_URL;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${Date.now()}`;
+};
+
+const loadImageForPdf = (src, fallbackSrc = null) =>
+  new Promise((resolve) => {
+    if (!src) {
+      resolve(null);
+      return;
+    }
+
+    const image = new Image();
+    image.crossOrigin = 'Anonymous';
+
+    image.onload = () => resolve(image);
+
+    image.onerror = () => {
+      if (!fallbackSrc || fallbackSrc === src) {
+        resolve(null);
+        return;
+      }
+
+      const fallback = new Image();
+      fallback.crossOrigin = 'Anonymous';
+      fallback.onload = () => resolve(fallback);
+      fallback.onerror = () => resolve(null);
+      fallback.src = fallbackSrc;
+    };
+
+    image.src = src;
+  });
+
+const getPdfImageFormat = (url = '') => {
+  const cleanUrl = String(url).split('?')[0].toLowerCase();
+
+  if (cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg')) {
+    return 'JPEG';
+  }
+
+  if (cleanUrl.endsWith('.webp')) {
+    return 'WEBP';
+  }
+
+  return 'PNG';
+};
+
+const useDynamicBrandingLogo = () => {
+  const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLogo = async () => {
+      try {
+        const response = await fetch(`${API_URL}/storage/branding/logo`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Branding logo request failed with status ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!cancelled && result?.success && result?.url) {
+          setLogoUrl(appendCacheBuster(result.url));
+        }
+      } catch (error) {
+        console.warn('[Branding] Failed to load dynamic logo. Using fallback.', error);
+
+        if (!cancelled) {
+          setLogoUrl(DEFAULT_LOGO_URL);
+        }
+      }
+    };
+
+    const handleLogoUpdated = (event) => {
+      if (event?.detail?.url) {
+        setLogoUrl(appendCacheBuster(event.detail.url));
+      } else {
+        loadLogo();
+      }
+    };
+
+    const handleStorage = (event) => {
+      if (event.key === BRANDING_LOGO_STORAGE_KEY) {
+        loadLogo();
+      }
+    };
+
+    loadLogo();
+
+    window.addEventListener(BRANDING_LOGO_EVENT, handleLogoUpdated);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(BRANDING_LOGO_EVENT, handleLogoUpdated);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  return logoUrl;
+};
+
+
 // ── Stable input components (memoized so they never re-mount on parent re-render)
 const DoctorTextarea = memo(({ value, onChange, placeholder, readOnly }) => (
   <textarea
@@ -114,8 +227,7 @@ useEffect(() => {
 
   fetchDoctorInfo();
 }, []);
-
-  const logoUrl = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
+  const logoUrl = useDynamicBrandingLogo();
 
   const handleFinding1 = useCallback((v) => setFinding1(v), []);
   const handleRemarks  = useCallback((v) => setRemarks(v),  []);
@@ -215,45 +327,26 @@ useEffect(() => {
         }
       };
 
-      // ── Load logo + doctor signature images in parallel ──────────────────
-      const logoUrlPdf = 'https://wfwaycugvpujhqchxtdl.supabase.co/storage/v1/object/public/MediStorage/plsp-logo.jpg';
-      const logo = new Image();
-      logo.crossOrigin = 'Anonymous';
-      logo.src = logoUrlPdf;
-
-      const sigImage = doctorInfo.signatureUrl ? new Image() : null;
-      if (sigImage) {
-        sigImage.crossOrigin = 'Anonymous';
-        sigImage.src = doctorInfo.signatureUrl;
-      }
-
-      await Promise.all([
-        new Promise((resolve) => {
-          logo.onload = resolve;
-          logo.onerror = (e) => {
-            console.warn('Could not load logo for PDF generation:', e);
-            const fallbackLogo = new Image();
-            fallbackLogo.src = '/plsp-logo.jpg';
-            fallbackLogo.onload = resolve;
-            fallbackLogo.onerror = resolve;
-          };
-        }),
-        sigImage
-          ? new Promise((resolve) => {
-              sigImage.onload = resolve;
-              sigImage.onerror = (e) => {
-                console.warn('Could not load signature image for PDF generation:', e);
-                resolve();
-              };
-            })
-          : Promise.resolve()
+      // Load the active branding logo and doctor signature in parallel.
+      const [logo, sigImage] = await Promise.all([
+        loadImageForPdf(logoUrl, DEFAULT_LOGO_URL),
+        doctorInfo.signatureUrl
+          ? loadImageForPdf(doctorInfo.signatureUrl)
+          : Promise.resolve(null),
       ]);
 
-      if (logo.complete && logo.naturalWidth > 0) {
+      if (logo && logo.naturalWidth > 0) {
         try {
-          doc.addImage(logo, 'JPEG', mar, y - 2, 16, 16);
+          doc.addImage(
+            logo,
+            getPdfImageFormat(logo.src || logoUrl),
+            mar,
+            y - 2,
+            16,
+            16
+          );
         } catch (e) {
-          console.warn('Error adding logo to PDF:', e);
+          console.warn('Error adding dynamic logo to PDF:', e);
         }
       }
 

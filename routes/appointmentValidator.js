@@ -1,4 +1,4 @@
-// utils/appointmentValidator.js
+// C:\Users\HP\MediTrack\routes\appointmentValidator.js
 const { supabase } = require('../config/supabase');
 
 const verifyAppointmentWindow = async (patientId, consultType) => {

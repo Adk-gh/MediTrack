@@ -1,46 +1,127 @@
 // C:\Users\HP\MediTrack\features\announcements\announcements.route.js
 
-const express = require("express");
+const express = require('express');
+const multer = require('multer');
+
 const router = express.Router();
 
-const announcementsController = require("./announcements.controller");
-const { authorized } = require("../../middleware/authorized");
-const { getSystemConfig } = require("../../services/systemConfig.service");
+const announcementsController = require('./announcements.controller');
 
-const validateData = require("../../validation/validate-data");
+const {
+  authorized,
+} = require('../../middleware/authorized');
+
+const {
+  getSystemConfig,
+} = require('../../services/systemConfig.service');
+
+const validateData = require('../../validation/validate-data');
 
 const {
   createAnnouncementSchema,
-  updateAnnouncementSchema
-} = require("./announcements.validation");
+  updateAnnouncementSchema,
+} = require('./announcements.validation');
 
-const { auditLog } = require("../../middleware/auditLogger");
+const {
+  auditLog,
+} = require('../../middleware/auditLogger');
 
 // =========================================================
-// DYNAMIC ROLE MIDDLEWARES
+// HELPERS
 // =========================================================
 
-// Allows Admin Roles + Clinic Staffs (for managing announcements)
-const allowDynamicClinicStaffs = async (req, res, next) => {
+const normalizeRole = (role) => {
+  return String(role || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeConfiguredRoles = (roles) => {
+  if (!Array.isArray(roles)) {
+    return [];
+  }
+
+  return roles
+    .map(normalizeRole)
+    .filter(Boolean);
+};
+
+// =========================================================
+// MULTER CONFIGURATION
+// =========================================================
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+  },
+
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/bmp',
+      'image/svg+xml',
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      return cb(
+        new Error(
+          'Invalid image type. Allowed types: JPEG, PNG, WEBP, GIF, BMP, SVG.'
+        )
+      );
+    }
+
+    return cb(null, true);
+  },
+});
+
+// =========================================================
+// DYNAMIC ROLE MIDDLEWARE
+// =========================================================
+
+const allowDynamicClinicStaffs = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const userRole = normalizeRole(
+      req.user?.role
+    );
+
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
     const config = await getSystemConfig();
 
-    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const clinicRoles =
+      normalizeConfiguredRoles(
+        config?.clinic_roles
+      );
 
-    // Safety net: Keep core clinical roles and sysadmin as hardcoded fallbacks
+    const adminRoles =
+      normalizeConfiguredRoles(
+        config?.admin_roles
+      );
+
     const allowedRoles = [
-      ...clinicRoles,
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse"
+      ...new Set([
+        ...clinicRoles,
+        ...adminRoles,
+        'sysadmin',
+        'doctor',
+        'dentist',
+        'nurse',
+      ]),
     ];
 
     if (allowedRoles.includes(userRole)) {
@@ -48,86 +129,177 @@ const allowDynamicClinicStaffs = async (req, res, next) => {
     }
 
     return res.status(403).json({
-      message: "Access denied. Clinic staff or Admin privileges required."
+      success: false,
+      message:
+        'Access denied. Clinic staff or Admin privileges required.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Clinic staffs verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
 
-// ─────────────────────────────────────────────────────────────
+// =========================================================
 // READ ANNOUNCEMENTS
-// ─────────────────────────────────────────────────────────────
+// =========================================================
 
-// Get all announcements
-// Anyone can view announcements
+// Anyone can view all announcements.
 router.get(
-  "/",
+  '/',
   announcementsController.getAllAnnouncements
 );
 
-// Get a specific announcement
-// Anyone can view announcements
+// Anyone can view a specific announcement.
 router.get(
-  "/:id",
+  '/:id',
   announcementsController.getAnnouncementById
 );
 
-// ─────────────────────────────────────────────────────────────
+// =========================================================
 // CREATE ANNOUNCEMENT
-// ─────────────────────────────────────────────────────────────
+// =========================================================
 
-// Only sysadmin/clinic staffs can create announcements
 router.post(
-  "/",
+  '/',
   authorized,
   allowDynamicClinicStaffs,
-  auditLog(
-    "create",
-    "announcement",
-    (req) =>
-      `Created announcement: ${req.body.title || "Untitled"}`
-  ),
+
+  // Multer must run before validation and audit callbacks
+  // so multipart fields are available in req.body.
+  upload.single('image'),
+
   validateData(createAnnouncementSchema),
+
+  auditLog(
+    'Create Announcement',
+    'ANNOUNCEMENT',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Created announcement "${
+          req.body?.title || 'Untitled'
+        }".`
+      );
+    }
+  ),
+
   announcementsController.createAnnouncement
 );
 
-// ─────────────────────────────────────────────────────────────
+// =========================================================
 // UPDATE ANNOUNCEMENT
-// ─────────────────────────────────────────────────────────────
+// =========================================================
 
-// Only sysadmin/clinic staffs can update announcements
 router.put(
-  "/:id",
+  '/:id',
   authorized,
   allowDynamicClinicStaffs,
-  auditLog(
-    "update",
-    "announcement",
-    (req) =>
-      `Updated announcement ID: ${req.params.id}`
-  ),
+
+  upload.single('image'),
+
   validateData(updateAnnouncementSchema),
+
+  auditLog(
+    'Update Announcement',
+    'ANNOUNCEMENT',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Updated announcement with ID ${req.params.id}.`
+      );
+    }
+  ),
+
   announcementsController.updateAnnouncement
 );
 
-// ─────────────────────────────────────────────────────────────
-// DELETE / ARCHIVE ANNOUNCEMENT
-// ─────────────────────────────────────────────────────────────
-
-// Only sysadmin/clinic staffs can archive announcements
-router.delete(
-  "/:id",
+// Optional PATCH support for partial updates.
+router.patch(
+  '/:id',
   authorized,
   allowDynamicClinicStaffs,
+
+  upload.single('image'),
+
   auditLog(
-    "delete",
-    "announcement",
-    (req) =>
-      `Archived announcement ID: ${req.params.id}`
+    'Update Announcement',
+    'ANNOUNCEMENT',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Updated announcement with ID ${req.params.id}.`
+      );
+    }
   ),
+
+  announcementsController.updateAnnouncement
+);
+
+// =========================================================
+// DELETE / ARCHIVE ANNOUNCEMENT
+// =========================================================
+
+router.delete(
+  '/:id',
+  authorized,
+  allowDynamicClinicStaffs,
+
+  auditLog(
+    'Archive Announcement',
+    'ARCHIVE',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Archived announcement with ID ${req.params.id}.`
+      );
+    }
+  ),
+
   announcementsController.deleteAnnouncement
 );
+
+// =========================================================
+// MULTER ERROR HANDLER
+// =========================================================
+
+// Handles invalid file type and file-size errors cleanly.
+router.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Announcement image must not exceed 20 MB.',
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error.message || 'File upload failed.',
+    });
+  }
+
+  if (
+    error?.message?.startsWith(
+      'Invalid image type'
+    )
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+
+  return next(error);
+});
 
 module.exports = router;

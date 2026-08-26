@@ -371,7 +371,7 @@ async notifyRecordRequest(requestData) {
 
       const notifications = targetUsers.map(user => ({
         type: 'announcement',
-        title: `📢 ${announcementData.title}`,
+        title: announcementData.title,
         message:
           announcementData.content?.substring(0, 140) ||
           'A new announcement has been posted.',

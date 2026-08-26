@@ -4,7 +4,6 @@ import { supabase } from '../../supabase';
 import { createPortal } from 'react-dom';
 import DatePicker from '../../components/Datepicker';
 import AddressModal from '../../components/AddressModal';
-import { logAdminAction } from '../../services/audit.service';
 
 // ── Frontend Email Validation Helper ──────────────────────────────────────────
 const validateEmailWithEasyEmail = async (email) => {
@@ -415,18 +414,6 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
       const { data: inserted, error: insertError } = await supabase.from('users').insert(newUser).select().single();
       if (insertError) throw insertError;
 
-      logAdminAction({
-        action: 'user_created',
-        details: {
-          userId: inserted.id,
-          uid: inserted.uid,
-          email: inserted.email,
-          role: inserted.role,
-          universityId: inserted.university_id,
-        },
-        adminUid,
-      });
-
       onCreated(inserted);
       showSnackbar('User created successfully', 'success');
       onClose();
@@ -665,10 +652,22 @@ export const UserManagement = () => {
     }
   };
 
-  const fetchConfig = async () => {
+const fetchConfig = async () => {
     try {
       setIsConfigLoading(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
+
+      // 1. Retrieve the token
+      const token = localStorage.getItem('token');
+
+      // 2. Attach the headers to the fetch request
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
       const result = await res.json();
       if (result.success) {
         const data = result.data;
@@ -910,18 +909,6 @@ export const UserManagement = () => {
 
       if (!response.ok) throw new Error(result.message || result.error || 'Failed to update user');
 
-      logAdminAction({
-        action: 'user_updated',
-        details: {
-          userId: targetUid,
-          email: editForm.email,
-          previousRole: editTarget?.role,
-          newRole: editForm.role,
-          passwordChanged: !!editForm.password,
-        },
-        adminUid,
-      });
-
       showSnackbar('User updated successfully', 'success');
       setShowEditModal(false);
       fetchUsers();
@@ -947,11 +934,7 @@ export const UserManagement = () => {
       const data = await response.json();
 
       if (data.success) {
-        logAdminAction({
-          action: 'verification_email_resent',
-          details: { userId: targetId, email: user.email },
-          adminUid,
-        });
+
 
         showSnackbar(`Verification email sent successfully to ${user.email}`, 'success');
         setShowEditModal(false);
@@ -980,15 +963,7 @@ export const UserManagement = () => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || 'Failed to archive user');
 
-      logAdminAction({
-        action: 'user_archived',
-        details: {
-          userId: deleteTarget.uid,
-          email: deleteTarget.email,
-          role: deleteTarget.role,
-        },
-        adminUid,
-      });
+
 
       setUsers(users.filter(u => u.uid !== deleteTarget.uid));
       showSnackbar('User archived successfully. You can restore them from the Archives page.', 'success');

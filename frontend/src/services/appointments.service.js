@@ -139,19 +139,15 @@ export const updateAppointment = async (id, appointmentData) => {
 };
 
 export const deleteAppointment = async (id) => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const name = localStorage.getItem('name') || '';
+  console.log(`[Appointments] Sending archive request to backend for ID: ${id}`);
 
-  const { error } = await supabase
-    .from('appointments')
-    .update({
-      is_archived: true,
-      deleted_by: name || user.email || 'Admin',
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', id);
+  const res = await fetch(`${API_URL}/appointments/${id}`, {
+    method: "DELETE", // Ensure your backend route for DELETE points to archiveAppointment
+    headers: await getAuthHeaders(),
+  });
 
-  if (error) throw new Error(error.message || "Failed to archive appointment");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Failed to archive appointment");
 
   clearAppointmentsCache();
 

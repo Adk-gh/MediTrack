@@ -7,13 +7,10 @@ import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker.jsx';
 import AddressModal from '../../components/AddressModal.jsx';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
-import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
+import { useTranslation } from 'react-i18next';
+import { useDocumentManager } from '../../hooks/useDocumentManager'; // <-- Imported hook
 
 // ─── Constants & Icons ────────────────────────────────────────────────────────
-const DOCUMENTS_BUCKET = 'health-documents';
-const ALLOWED_DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-const MAX_DOC_SIZE = 5 * 1024 * 1024;
-
 const DocIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" /></svg>);
 const EditIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>);
 
@@ -21,7 +18,7 @@ const EditIcon = () => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 const fmt = (val) => (!val || val === '') ? '—' : val;
 
 const SectionHeader = ({ label, onEdit, hasEmpty }) => {
-  const { t, i18n } = useTranslation(); // <-- Hook for shared component
+  const { t, i18n } = useTranslation();
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -91,7 +88,6 @@ const SUFFIXES = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 const SEX_OPTIONS = ['Male', 'Female'];
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 const DENTAL_PROCEDURES = ['Oral Prophylaxis', 'Filling / Restoration', 'Extraction', 'Drug Sensitivity / Allergy', 'Pulp Therapy', 'Periodontal Therapy', 'Orthodontic Therapy', 'TMJ Treatment', 'Prosthodontic Therapy'];
-// Note: DOSE_LABELS relies on dynamic keys, handled in render.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -178,16 +174,75 @@ const mapDbToProfile = (db, fallbackEmail = '') => ({
 });
 
 const getActiveUid = async () => {
-  const token = localStorage.getItem('token'), refresh = localStorage.getItem('refresh_token') || '';
-  if (token) await supabase.auth.setSession({ access_token: token, refresh_token: refresh });
-  const { data: { user } } = await supabase.auth.getUser();
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  return user?.id || currentUser?.uid;
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error(
+        '[ProfileUsers] Failed to get Supabase session:',
+        sessionError.message
+      );
+      return null;
+    }
+
+    if (session?.user?.id) {
+      return session.user.id;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      console.error(
+        '[ProfileUsers] Failed to get Supabase user:',
+        userError.message
+      );
+    }
+
+    return user?.id || null;
+  } catch (error) {
+    console.error(
+      '[ProfileUsers] getActiveUid error:',
+      error
+    );
+
+    return null;
+  }
+};
+
+const getAuthenticatedApiHeaders = async () => {
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new Error(
+      error.message || 'Unable to retrieve authentication session.'
+    );
+  }
+
+  if (!session?.access_token) {
+    throw new Error(
+      'Your session has expired. Please sign in again.'
+    );
+  }
+
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session.access_token}`,
+  };
 };
 
 // ─── Document Preview Modal ───────────────────────────────────────────────────
-const DocViewerModal = ({ isOpen, onClose, doc, preferences }) => {
-const { t, i18n } = useTranslation();
+// Passed getSignedUrl from the hook so we use the single source of truth for URLs
+const DocViewerModal = ({ isOpen, onClose, doc, preferences, getSignedUrl }) => {
+  const { t, i18n } = useTranslation();
   const [signedUrl, setSignedUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -199,14 +254,12 @@ const { t, i18n } = useTranslation();
     const fetchSignedUrl = async () => {
       setLoading(true); setLoadError(false);
       try {
-        if (doc.url && !doc.path) { setSignedUrl(doc.url); setLoading(false); return; }
-        const { data, error } = await supabase.storage.from(DOCUMENTS_BUCKET).createSignedUrl(doc.path, 300);
-        if (error) throw error;
-        setSignedUrl(data.signedUrl);
+        const url = await getSignedUrl(doc, 300);
+        setSignedUrl(url);
       } catch (err) { console.error('[DocViewerModal] Error:', err); setLoadError(true); } finally { setLoading(false); }
     };
     fetchSignedUrl();
-  }, [isOpen, doc]);
+  }, [isOpen, doc, getSignedUrl]);
 
   if (!isOpen || !doc) return null;
   const isPdf = doc.type === 'application/pdf' || doc.name?.toLowerCase().endsWith('.pdf');
@@ -238,7 +291,7 @@ const { t, i18n } = useTranslation();
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProfileUsers({ onLogout }) {
- const { t, i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate(), location = useLocation();
   const [loading, setLoading] = useState(true);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
@@ -253,16 +306,30 @@ export default function ProfileUsers({ onLogout }) {
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [addressModalTarget, setAddressModalTarget] = useState(null);
   const [configData, setConfigData] = useState({ departments: [], non_academic_offices: [], classifications: {}, job_titles: {}, sections: [], prompt_student_academic_update: false, academic_update_version: 1 });
-  const [uploadingDocs, setUploadingDocs] = useState(false);
-  const [docToDelete, setDocToDelete] = useState(null);
-  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+
   const [previewDoc, setPreviewDoc] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const documentsInputRef = useRef(null);
 
   const [profile, setProfile] = useState({ firstName: '', middleName: '', lastName: '', suffix: '', birthday: '', age: '', sex: '', bloodType: '', homeAddress: '', addressCountry: '', addressRegion: '', addressRegionCode: '', addressProvince: '', addressProvinceCode: '', addressCity: '', addressCityCode: '', addressBarangay: '', addressBarangayCode: '', addressStreet: '', addressZipCode: '', religion: '', nationality: '', civilStatus: '', universityId: '', role: '', studentId: '', department: '', program: '', yearLevel: '', section: '', academicInfoAcknowledgedVersion: 0, studentClassification: '', classification: '', jobTitle: '', licenseNumber: '', email: '', phoneNumber: '', preferences: { language: 'English', dateFormat: 'MM/DD/YYYY' }, emergencyContact: {}, vaccinations: { dose1: {}, dose2: {}, booster1: {}, booster2: {}, history: '', declined: {} }, dentalHistory: { procedures: {} }, surgicalHistory: { operations: [] }, documents: [] });
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); };
+
+  // ─── Document Manager Hook ───
+  const {
+    uploadingDocs,
+    docToDelete,
+    setDocToDelete,
+    isDeletingDoc,
+    documentsInputRef,
+    handleDocumentUpload,
+    confirmDeleteDocument,
+    getSignedUrl,
+  } = useDocumentManager(
+    profile.documents,
+    (newDocuments) => setProfile(prev => ({ ...prev, documents: newDocuments })),
+    (msg, type) => showToast(msg) // ignores type, always uses toast
+  );
+  // ─────────────────────────────
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -276,12 +343,27 @@ export default function ProfileUsers({ onLogout }) {
     } catch (err) { console.error('[ProfileUsers] Fetch error:', err); } finally { setLoading(false); }
   }, []);
 
-  const fetchSystemConfig = useCallback(async () => {
+const fetchSystemConfig = useCallback(async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
+      // 1. Get the token from storage (change 'token' if you named it something else)
+      const token = localStorage.getItem('token');
+
+      // 2. Add the headers object to the fetch request
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
       const result = await res.json();
       if (result.success) setConfigData(prev => ({ ...prev, ...result.data }));
-    } catch (error) { console.error('Failed config:', error); } finally { setIsConfigLoading(false); }
+    } catch (error) {
+      console.error('Failed config:', error);
+    } finally {
+      setIsConfigLoading(false);
+    }
   }, []);
 
   const { scrollElRef, indicatorRef } = usePullToRefresh(async () => { await Promise.all([fetchProfile(), fetchSystemConfig()]); });
@@ -301,7 +383,7 @@ export default function ProfileUsers({ onLogout }) {
 
 useEffect(() => { document.body.style.overflow = (editingSection || docToDelete || addressModalOpen) ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [editingSection, docToDelete, addressModalOpen]);
 
-  // ADD THIS BLOCK RIGHT HERE: Sync i18next with the user's database preference
+  // Sync i18next with the user's database preference
   useEffect(() => {
     if (profile?.preferences?.language) {
       const langCode = profile.preferences.language.toLowerCase() === 'filipino' ? 'fil' : 'en';
@@ -348,53 +430,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
 
   const addressInitialData = addressModalTarget === 'personal' ? { addressCountry: editData.addressCountry, addressRegion: editData.addressRegion, addressRegionCode: editData.addressRegionCode, addressProvince: editData.addressProvince, addressProvinceCode: editData.addressProvinceCode, addressCity: editData.addressCity, addressCityCode: editData.addressCityCode, addressBarangay: editData.addressBarangay, addressBarangayCode: editData.addressBarangayCode, addressStreet: editData.addressStreet, addressZipCode: editData.addressZipCode } : addressModalTarget === 'emergency' ? { addressCountry: editData.emergencyContact?.addressCountry, addressRegion: editData.emergencyContact?.addressRegion, addressRegionCode: editData.emergencyContact?.addressRegionCode, addressProvince: editData.emergencyContact?.addressProvince, addressProvinceCode: editData.emergencyContact?.addressProvinceCode, addressCity: editData.emergencyContact?.addressCity, addressCityCode: editData.emergencyContact?.addressCityCode, addressBarangay: editData.emergencyContact?.addressBarangay, addressBarangayCode: editData.emergencyContact?.addressBarangayCode, addressStreet: editData.emergencyContact?.addressStreet, addressZipCode: editData.emergencyContact?.addressZipCode } : {};
 
-  const handleDocumentUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
-    const invalid = files.find(f => !ALLOWED_DOC_TYPES.includes(f.type) || f.size > MAX_DOC_SIZE);
-    if (invalid) return showToast(`"${invalid.name}" is invalid. PDF/JPG/PNG only, max 5MB.`);
-    setUploadingDocs(true);
-    const uploadedPaths = [];
-    try {
-      const uid = await getActiveUid();
-      if (!uid) throw new Error('Not authenticated');
-      const uploadedDocs = [];
-      for (const file of files) {
-        const ext = file.name.split('.').pop(), path = `${uid}/${crypto.randomUUID()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from(DOCUMENTS_BUCKET).upload(path, file, { cacheControl: '3600', upsert: false });
-        if (uploadError) throw uploadError;
-        uploadedPaths.push(path);
-        uploadedDocs.push({ id: crypto.randomUUID(), name: file.name, path, type: file.type, uploadedAt: new Date().toISOString() });
-      }
-      const newDocuments = [...(profile.documents || []), ...uploadedDocs];
-      const { error: updateError } = await supabase.from('users').update({ documents: newDocuments }).eq('uid', uid);
-      if (updateError) throw updateError;
-      setProfile(prev => ({ ...prev, documents: newDocuments }));
-      showToast(t('messages.uploadSuccessful'));
-    } catch (err) {
-      console.error('[ProfileUsers] Document upload error:', err);
-      if (uploadedPaths.length > 0) await supabase.storage.from(DOCUMENTS_BUCKET).remove(uploadedPaths);
-      showToast(t('messages.uploadFailed'));
-    } finally { setUploadingDocs(false); }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!docToDelete) return;
-    setIsDeletingDoc(true);
-    try {
-      const uid = await getActiveUid();
-      if (!uid) throw new Error('Not authenticated');
-      if (docToDelete.path) await supabase.storage.from(DOCUMENTS_BUCKET).remove([docToDelete.path]);
-      const newDocuments = (profile.documents || []).filter(d => d.id !== docToDelete.id);
-      const { error: updateError } = await supabase.from('users').update({ documents: newDocuments }).eq('uid', uid);
-      if (updateError) throw updateError;
-      setProfile(prev => ({ ...prev, documents: newDocuments }));
-      showToast(t('messages.documentRemoved'));
-      setDocToDelete(null);
-    } catch (err) { console.error('Delete error:', err); showToast(t('messages.documentRemoveFailed')); } finally { setIsDeletingDoc(false); }
-  };
-
   const handleViewDocument = (doc) => { setPreviewDoc(doc); setPreviewOpen(true); };
 
   const openEdit = (section) => {
@@ -432,19 +467,59 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
     return sectionData;
   };
 
-const saveProfileEdits = async () => {
+  const saveProfileEdits = async () => {
+    if (isSaving) return;
+
     setIsSaving(true);
-    console.log("=== SAVE PROFILE START ===");
-    console.log("Editing Section:", editingSection);
+
+    console.log('=== SAVE PROFILE START ===');
+    console.log('Editing Section:', editingSection);
 
     try {
-      const token = localStorage.getItem('token');
+      // ==========================================================
+      // GET CURRENT SUPABASE SESSION
+      // ==========================================================
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw new Error(
+          sessionError.message ||
+          'Unable to retrieve your authentication session.'
+        );
+      }
+
+      if (!session?.user?.id || !session.access_token) {
+        throw new Error(
+          'Your session has expired. Please sign in again.'
+        );
+      }
+
+      const activeUid = session.user.id;
+
+      console.log('>>> [Auth] Active Supabase Auth UID:', activeUid);
+
+      // ==========================================================
+      // EXTRACT SECTION DATA
+      // ==========================================================
+
       let sectionData = extractSectionData(editData, editingSection, isStudent);
+
+      // ==========================================================
+      // NORMALIZE NAMES
+      // ==========================================================
 
       if (sectionData.firstName) sectionData.firstName = normalizeName(sectionData.firstName);
       if (sectionData.middleName) sectionData.middleName = normalizeName(sectionData.middleName);
       if (sectionData.lastName) sectionData.lastName = normalizeName(sectionData.lastName);
       if (sectionData.emergencyContact?.name) sectionData.emergencyContact.name = normalizeName(sectionData.emergencyContact.name);
+
+      // ==========================================================
+      // ACADEMIC UPDATE ACKNOWLEDGMENT
+      // ==========================================================
 
       if (isStudent && editingSection === 'academic' && configData?.prompt_student_academic_update === true) {
         sectionData.academicInfoAcknowledgedVersion = Number(configData.academic_update_version || 1);
@@ -452,80 +527,227 @@ const saveProfileEdits = async () => {
 
       let isEmailUpdatePending = false;
 
-      // 1. Isolate the email logic ONLY if we are editing the Contact section
+      // ==========================================================
+      // EMAIL CHANGE
+      // ==========================================================
+      //
+      // IMPORTANT:
+      //
+      // Email is controlled by Supabase Auth.
+      //
+      // We DO NOT send email to /user/profile.
+      //
+      // We DO NOT modify public.users.uid.
+      //
+      // We DO NOT manually modify public.users.email before
+      // the verification process completes.
+      //
+      // Supabase will send the confirmation email according
+      // to the project's Auth email-change configuration.
+      // ==========================================================
+
       if (editingSection === 'contact') {
         const { email: newEmail, ...backendData } = sectionData;
 
-        console.log("Old Email:", profile.email);
-        console.log("New Email Typed:", newEmail);
+        const normalizedNewEmail = String(newEmail || '').trim().toLowerCase();
+        const normalizedCurrentEmail = String(profile.email || '').trim().toLowerCase();
 
-        if (newEmail && newEmail.toLowerCase() !== profile.email?.toLowerCase()) {
-          console.log(">>> [Auth] Email changed! Triggering Supabase Auth update...");
+        console.log('>>> [Email] Current:', normalizedCurrentEmail);
+        console.log('>>> [Email] Requested:', normalizedNewEmail);
 
-          const { error: emailErr } = await supabase.auth.updateUser(
-              { email: newEmail },
-              {
-                emailRedirectTo:
-                  "https://meditrack-2-tvck.onrender.com/#/login",
-              }
-            );
+        // --------------------------------------------------------
+        // EMAIL WAS CHANGED
+        // --------------------------------------------------------
 
-          if (emailErr) {
-            console.error(">>> [Auth] Supabase Email Update Error:", emailErr);
-            showToast(`Error updating email: ${emailErr.message}`);
-            setIsSaving(false);
-            return;
+        if (normalizedNewEmail && normalizedNewEmail !== normalizedCurrentEmail) {
+          // ------------------------------------------------------
+          // BASIC EMAIL VALIDATION
+          // ------------------------------------------------------
+
+          const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+          if (!emailPattern.test(normalizedNewEmail)) {
+            throw new Error('Please enter a valid email address.');
           }
-          console.log(">>> [Auth] Supabase Auth update successful. Email sent.");
+
+          // ------------------------------------------------------
+          // CHECK public.users FOR DUPLICATE ACTIVE EMAIL
+          // ------------------------------------------------------
+
+          console.log('>>> [Email] Checking public.users for duplicate email...');
+
+          const {
+            data: existingEmailUser,
+            error: emailCheckError,
+          } = await supabase
+            .from('users')
+            .select('id, uid, email, is_archived')
+            .eq('email', normalizedNewEmail)
+            .eq('is_archived', false)
+            .maybeSingle();
+
+          if (emailCheckError) {
+            console.error('>>> [Email] Duplicate email check failed:', emailCheckError);
+            throw new Error(
+              emailCheckError.message ||
+              'Unable to verify whether this email is available.'
+            );
+          }
+
+          if (existingEmailUser && existingEmailUser.uid !== activeUid) {
+            throw new Error('That email is already in use.');
+          }
+
+          // ------------------------------------------------------
+          // UPDATE SUPABASE AUTH
+          // ------------------------------------------------------
+
+          console.log('>>> [Auth] Requesting Supabase Auth email change...');
+
+          const {
+            data: emailUpdateData,
+            error: emailUpdateError,
+          } = await supabase.auth.updateUser(
+            { email: normalizedNewEmail },
+            { emailRedirectTo: 'https://meditrack-2-tvck.onrender.com/#/login' }
+          );
+
+          if (emailUpdateError) {
+            console.error('>>> [Auth] Supabase email update failed:', emailUpdateError);
+            throw new Error(emailUpdateError.message || 'Failed to request email change.');
+          }
+
+          console.log('>>> [Auth] Email change requested successfully:', emailUpdateData);
+
           isEmailUpdatePending = true;
-        } else {
-          console.log(">>> [Auth] Email was identical or empty. Skipping Auth update.");
         }
 
-        // Overwrite sectionData so the backend only gets the phone number, not the email
+        // --------------------------------------------------------
+        // NEVER SEND EMAIL TO BACKEND
+        // --------------------------------------------------------
+
         sectionData = backendData;
       }
 
+      // ==========================================================
+      // UPDATE OTHER PROFILE DATA
+      // ==========================================================
+
       let updatedProfile = { ...profile };
 
-      // 2. Send the rest of the data (like phone number, names, etc.) to your Node backend
       if (Object.keys(sectionData).length > 0) {
-        console.log(">>> [Backend] Sending to backend:", sectionData);
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/user/profile`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(sectionData),
-          }
-        );
+        console.log('>>> [Backend] Sending profile update:', sectionData);
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Failed to update profile');
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const headers = await getAuthenticatedApiHeaders();
 
-        Object.keys(data.data).forEach(key => {
-          updatedProfile[key] = data.data[key];
+        const res = await fetch(`${apiUrl}/user/profile`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(sectionData),
         });
+
+        let responseData;
+
+        try {
+          responseData = await res.json();
+        } catch {
+          throw new Error('The server returned an invalid response.');
+        }
+
+        if (!res.ok) {
+          throw new Error(responseData?.message || 'Failed to update profile.');
+        }
+
+        if (responseData?.data) {
+          updatedProfile = { ...updatedProfile, ...responseData.data };
+        }
       }
 
-      // 3. Show the correct success message
+      // ==========================================================
+      // REFRESH PROFILE FROM DATABASE
+      // ==========================================================
+      //
+      // This keeps the UI synchronized with public.users.
+      //
+      // IMPORTANT:
+      // If an email change is pending verification,
+      // public.users.email may intentionally still contain
+      // the old email.
+      // ==========================================================
+
+      try {
+        const {
+          data: refreshedProfile,
+          error: refreshedProfileError,
+        } = await supabase
+          .from('users')
+          .select('*')
+          .eq('uid', activeUid)
+          .eq('is_archived', false)
+          .maybeSingle();
+
+        if (!refreshedProfileError && refreshedProfile) {
+          const currentLocalUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+          updatedProfile = mapDbToProfile(
+            refreshedProfile,
+            currentLocalUser?.email || profile.email || ''
+          );
+        }
+      } catch (refreshError) {
+        console.warn('>>> [Profile] Could not refresh profile after update:', refreshError);
+      }
+
+      // ==========================================================
+      // SUCCESS MESSAGE
+      // ==========================================================
+
       if (isEmailUpdatePending) {
-        showToast("Verification link sent! Please check your new email inbox to confirm.");
+        showToast('Verification link sent! Please check your new email inbox to confirm the change.');
       } else {
         showToast(t('messages.profileUpdated'));
       }
 
+      // ==========================================================
+      // UPDATE LOCAL UI
+      // ==========================================================
+
       setProfile(updatedProfile);
+
+      // Keep the UI user cache synchronized.
+      //
+      // Do NOT store access_token or refresh_token here.
+      // Supabase manages those tokens.
+      try {
+        const existingLocalUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+        localStorage.setItem('user', JSON.stringify({
+          ...existingLocalUser,
+          uid: activeUid,
+          email: isEmailUpdatePending ? (existingLocalUser.email || profile.email) : updatedProfile.email,
+          firstName: updatedProfile.firstName,
+          lastName: updatedProfile.lastName,
+          middleName: updatedProfile.middleName,
+          suffix: updatedProfile.suffix,
+          role: updatedProfile.role,
+          universityId: updatedProfile.universityId,
+          department: updatedProfile.department,
+          program: updatedProfile.program,
+          section: updatedProfile.section,
+        }));
+      } catch (storageError) {
+        console.warn('[ProfileUsers] Failed to update local user cache:', storageError);
+      }
+
       closeEdit();
 
+      console.log('>>> [Profile] Profile update completed successfully.');
     } catch (err) {
-      console.error('Error updating profile:', err);
-      showToast(t('messages.profileUpdateFailed'));
+      console.error('>>> [Profile] Error updating profile:', err);
+      showToast(err?.message || t('messages.profileUpdateFailed'));
     } finally {
-      console.log("=== SAVE PROFILE END ===");
+      console.log('=== SAVE PROFILE END ===');
       setIsSaving(false);
     }
   };
@@ -701,7 +923,7 @@ const saveProfileEdits = async () => {
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
               <button type="button" disabled={isDeletingDoc} onClick={() => setDocToDelete(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid #c4dbd8', background: '#fbfcfc', color: '#6b8577', fontSize: 12, fontWeight: 700, cursor: isDeletingDoc ? 'not-allowed' : 'pointer' }}>{t('common.cancel')}</button>
-              <button type="button" disabled={isDeletingDoc} onClick={handleConfirmDelete} style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: 'none', background: '#e07a5f', color: '#fff', fontSize: 12, fontWeight: 700, cursor: isDeletingDoc ? 'not-allowed' : 'pointer', opacity: isDeletingDoc ? 0.7 : 1 }}>{isDeletingDoc ? t('common.removing') : t('common.remove')}</button>
+              <button type="button" disabled={isDeletingDoc} onClick={confirmDeleteDocument} style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: 'none', background: '#e07a5f', color: '#fff', fontSize: 12, fontWeight: 700, cursor: isDeletingDoc ? 'not-allowed' : 'pointer', opacity: isDeletingDoc ? 0.7 : 1 }}>{isDeletingDoc ? t('common.removing') : t('common.remove')}</button>
             </div>
           </div>
         </div>, document.body
@@ -911,26 +1133,26 @@ const saveProfileEdits = async () => {
             </div>
 
             <div style={{ padding: '16px 24px', borderTop: '1px solid #edf3f0', display: 'flex', gap: 12, background: '#fff' }}>
-  <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577' }}>{t('common.cancel')}</button>
+              <button onClick={closeEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', fontWeight: 600, color: '#6b8577' }}>{t('common.cancel')}</button>
 
-  <button
-    type="button"
-    onClick={async () => {
-      console.log(">>> BUTTON CLICKED EXPLICITLY");
-      await saveProfileEdits();
-    }}
-    disabled={isSaving}
-    style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1 }}
-  >
-    {isSaving ? t('common.saving') : t('common.save')}
-  </button>
-</div>
+              <button
+                type="button"
+                onClick={async () => {
+                  console.log(">>> BUTTON CLICKED EXPLICITLY");
+                  await saveProfileEdits();
+                }}
+                disabled={isSaving}
+                style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: isSaving ? 0.7 : 1 }}
+              >
+                {isSaving ? t('common.saving') : t('common.save')}
+              </button>
+            </div>
           </div>
         </div>, document.body
       )}
 
       <AddressModal isOpen={addressModalOpen} onClose={closeAddressModal} onConfirm={handleAddressConfirm} initialData={addressInitialData} zIndex={100000} />
-      <DocViewerModal isOpen={previewOpen} onClose={() => { setPreviewOpen(false); setPreviewDoc(null); }} doc={previewDoc} preferences={profile.preferences} />
+      <DocViewerModal isOpen={previewOpen} onClose={() => { setPreviewOpen(false); setPreviewDoc(null); }} doc={previewDoc} preferences={profile.preferences} getSignedUrl={getSignedUrl} />
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#466460', color: '#fff', padding: '12px 24px', borderRadius: 40, fontSize: 13, fontWeight: 600, zIndex: 5000, whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>

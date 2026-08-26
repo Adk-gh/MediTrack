@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
-import { logAdminAction } from '../../services/audit.service';
 import DatePicker from '../../components/Datepicker';
+import { archiveRecord, updateRecord } from '../../services/records.service';
 
 const STATUS_OPTIONS = ['pending', 'approved'];
 const EDIT_STATUS_OPTIONS = ['pending', 'approved'];
@@ -92,7 +92,7 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
         </div>
       </td>
 
-      {/* ID (Enlarged and bolded for visibility) */}
+      {/* ID */}
       <td className="p-3 hidden sm:table-cell">
         <span className="text-sm font-bold text-slate-700 tracking-wide">
           {record.university_id || record._user?.university_id || '—'}
@@ -139,7 +139,7 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
         <StatusPill status={record.status} />
       </td>
 
-      {/* Document (Issued / Not Issued) */}
+      {/* Document */}
       <td className="p-3 whitespace-nowrap hidden sm:table-cell">
         {record.issue_cert ? (
           <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-blue-100 text-blue-700">
@@ -182,7 +182,6 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
 // ── Main component ─────────────────────────────────────────────────────────
 export const RecordManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
   const [records, setRecords]           = useState([]);
@@ -201,7 +200,6 @@ export const RecordManagement = () => {
   // Pagination State
   const [currentPage, setCurrentPage]   = useState(1);
   const ITEMS_PER_PAGE = 100;
-
   const snackbarTimer = useRef(null);
 
   // Delete modal state
@@ -318,30 +316,25 @@ export const RecordManagement = () => {
     if (!editRecord) return;
     setSavingEdit(true);
     try {
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
       const table = editRecord._kind === 'medical' ? 'medical_records' : 'dental_records';
-      const updates = {
+
+      await updateRecord(editRecord._id, {
+        recordType: editRecord._kind,
         status: editStatus,
         is_approved: editStatus === 'approved',
         approved_at: editStatus === 'approved' ? new Date().toISOString() : null,
         issue_cert: editIssueCert,
-      };
-
-      const { error } = await supabase.from(table).update(updates).eq('id', editRecord._id);
-      if (error) throw error;
-
-      logAdminAction({
-        action: 'record_updated',
-        details: {
-          recordId: editRecord._id,
-          recordType: editRecord._kind,
-          newStatus: editStatus,
-          issueCert: editIssueCert,
-          table,
-        },
-        adminUid,
       });
 
-      setRecords(prev => prev.map(r => r._id === editRecord._id ? { ...r, ...updates } : r));
+      setRecords(prev => prev.map(r => r._id === editRecord._id ? {
+        ...r,
+        status: editStatus,
+        is_approved: editStatus === 'approved',
+        issue_cert: editIssueCert
+      } : r));
+
       showSnackbar('Record updated successfully');
       closeEditModal();
     } catch (err) {
@@ -362,26 +355,12 @@ export const RecordManagement = () => {
     setDeleting(true);
 
     try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const name = localStorage.getItem('name') || '';
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
+
+      await archiveRecord(recordToDelete._id, recordToDelete._kind);
 
       const table = recordToDelete._kind === 'medical' ? 'medical_records' : 'dental_records';
-      const { error } = await supabase.from(table).update({
-        is_archived: true,
-        deleted_by: name || user.email || 'Admin',
-        updated_at: new Date().toISOString()
-      }).eq('id', recordToDelete._id);
-      if (error) { showSnackbar('Failed to delete record', 'error'); throw error; }
-
-      logAdminAction({
-        action: 'record_archived',
-        details: {
-          recordId: recordToDelete._id,
-          recordType: recordToDelete._kind,
-          table,
-        },
-        adminUid,
-      });
 
       setRecords(prev => prev.filter(r => r._id !== recordToDelete._id));
       showSnackbar('Record archived successfully. You can restore it from the Archives page.');
@@ -396,9 +375,9 @@ export const RecordManagement = () => {
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 9; // Updated for the new Document column
+  const COL_COUNT = 9;
 
-const summaryStats = [
+  const summaryStats = [
     { label: 'Total',      count: filtered.length, color: 'text-slate-800'   },
     { label: 'Medical',    count: totalMed,        color: 'text-blue-600'    },
     { label: 'Dental',     count: totalDen,        color: 'text-purple-600'  },
@@ -410,7 +389,6 @@ const summaryStats = [
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
-
       {/* Summary stats */}
       <div className="shrink-0 mb-4 flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-[4px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
         {summaryStats.map(s => (
@@ -423,12 +401,9 @@ const summaryStats = [
 
       {/* Table container */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
-
         {/* Combined Inline Toolbar */}
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-
           <div className="flex flex-wrap gap-3 items-center flex-1">
-
             <div className="relative w-full sm:w-60">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -442,13 +417,13 @@ const summaryStats = [
               />
             </div>
 
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} min-w-[120px]`}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} w-full sm:w-32`}>
               <option value="all">All types</option>
               <option value="medical">Medical</option>
               <option value="dental">Dental</option>
             </select>
 
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${selectCls} min-w-[140px]`}>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${selectCls} w-full sm:w-36`}>
               <option value="all">All statuses</option>
               {STATUS_OPTIONS.map(s => (
                 <option key={s} value={s} className="capitalize">
@@ -457,13 +432,18 @@ const summaryStats = [
               ))}
             </select>
 
-            <select value={filterCert} onChange={e => setFilterCert(e.target.value)} className={`${selectCls} min-w-[140px]`}>
+            <select value={filterCert} onChange={e => setFilterCert(e.target.value)} className={`${selectCls} w-full sm:w-36`}>
               {CERT_OPTIONS.map(c => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
 
-            <select value={filterDept} onChange={e => setFilterDept(e.target.value)} className={`${selectCls} min-w-[160px]`}>
+            <select
+              value={filterDept}
+              onChange={e => setFilterDept(e.target.value)}
+              className={`${selectCls} w-full sm:w-44 truncate`}
+              title={filterDept === 'all' ? 'All departments' : filterDept}
+            >
               <option value="all">All departments</option>
               {deptOptions.filter(d => d !== 'all').map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -588,7 +568,6 @@ const summaryStats = [
             </div>
           </div>
         )}
-
       </div>
 
       {/* Edit Modal using Portal */}

@@ -5,6 +5,73 @@ import { supabase } from '../../../supabase';
 import DatePicker from '../../../components/Datepicker';
 import DateTimePicker from '../../../components/DateTimePicker';
 
+
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:5000/api'
+).replace(/\/$/, '');
+
+const BRANDING_LOGO_EVENT = 'meditrack:branding-logo-updated';
+const BRANDING_LOGO_STORAGE_KEY = 'meditrack_branding_logo_updated';
+
+const useBrandingLogo = () => {
+  const [logoUrl, setLogoUrl] = useState('');
+
+  const loadLogo = async () => {
+    try {
+      const response = await fetch(`${API_URL}/storage/branding/logo`, {
+        cache: 'no-store',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.url) {
+        throw new Error(
+          data?.error ||
+            `Branding endpoint returned ${response.status}`
+        );
+      }
+
+      const separator = data.url.includes('?') ? '&' : '?';
+      setLogoUrl(`${data.url}${separator}v=${Date.now()}`);
+    } catch (error) {
+      console.error('[Branding] Failed to load active logo:', error);
+      setLogoUrl('');
+    }
+  };
+
+  useEffect(() => {
+    loadLogo();
+
+    const handleLogoUpdate = (event) => {
+      const nextUrl = event?.detail?.url;
+
+      if (nextUrl) {
+        const separator = nextUrl.includes('?') ? '&' : '?';
+        setLogoUrl(`${nextUrl}${separator}v=${Date.now()}`);
+      } else {
+        loadLogo();
+      }
+    };
+
+    const handleStorage = (event) => {
+      if (event.key === BRANDING_LOGO_STORAGE_KEY) {
+        loadLogo();
+      }
+    };
+
+    window.addEventListener(BRANDING_LOGO_EVENT, handleLogoUpdate);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener(BRANDING_LOGO_EVENT, handleLogoUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  return logoUrl;
+};
+
 // ── Static data ────────────────────────────────────────────────────────────────
 
 const dentalProcedures = [
@@ -463,6 +530,7 @@ const DentalVisitHistory = ({ selectedPatient }) => {
 // MAIN DENTAL COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false, onSaved, onDirtyChange }) => {
+  const logoUrl = useBrandingLogo();
   const [toothModal, setToothModal]         = useState({ open: false, toothNum: null });
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
@@ -1093,10 +1161,27 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
               >
                 <i className="fa-solid fa-xmark text-lg"></i>
               </button>
-              <h3 className="text-lg font-extrabold flex items-center gap-3 mb-1 pr-8">
-                <i className="fa-solid fa-tooth"></i> Dental Record Summary
-              </h3>
-              <p className="text-[11px] opacity-70">Review all entries carefully before submitting.</p>
+
+              <div className="flex items-center gap-4 pr-10">
+                {logoUrl && (
+                  <div className="w-14 h-14 rounded-xl bg-white p-1.5 shrink-0 shadow-sm">
+                    <img
+                      src={logoUrl}
+                      alt="Active university logo"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="text-lg font-extrabold flex items-center gap-3 mb-1">
+                    <i className="fa-solid fa-tooth"></i> Dental Record Summary
+                  </h3>
+                  <p className="text-[11px] opacity-70">
+                    Review all entries carefully before submitting.
+                  </p>
+                </div>
+              </div>
             </div>
             <div className="overflow-y-auto flex-1 px-7 py-5">
               <SumSection icon="fa-user" title="Patient Information">

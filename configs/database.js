@@ -1,6 +1,4 @@
-//C:\Users\HP\MediTrack\configs\database.js
 require('dotenv').config();
-
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -13,9 +11,17 @@ if (!supabaseUrl || !supabaseServiceKey) {
   process.exit(1);
 }
 
+// Explicitly disable session management for the server environment
 const supabase = createClient(
   supabaseUrl,
-  supabaseServiceKey
+  supabaseServiceKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  }
 );
 
 console.log('📂 Supabase client initialized...');

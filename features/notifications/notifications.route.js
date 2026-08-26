@@ -1,150 +1,247 @@
 // C:\Users\HP\MediTrack\features\notifications\notifications.route.js
 
-const express = require("express");
+const express = require('express');
+
 const router = express.Router();
 
-const notificationsController = require("./notifications.controller");
+const notificationsController = require('./notifications.controller');
 
-const { authorized } = require("../../middleware/authorized");
+const {
+  authorized,
+} = require('../../middleware/authorized');
 
-// Audit logger
-const { auditLog } = require("../../middleware/auditLogger");
-const { getSystemConfig } = require("../../services/systemConfig.service");
+const {
+  auditLog,
+} = require('../../middleware/auditLogger');
 
+const {
+  getSystemConfig,
+} = require('../../services/systemConfig.service');
 
 // =========================================================
-// DYNAMIC ROLE MIDDLEWARES
+// HELPERS
 // =========================================================
 
-// Allows Admin Roles ONLY (for test notifications)
-const allowDynamicAdmin = async (req, res, next) => {
+const normalizeRole = (role) => {
+  return String(role || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeConfiguredRoles = (roles) => {
+  if (!Array.isArray(roles)) {
+    return [];
+  }
+
+  return roles
+    .map(normalizeRole)
+    .filter(Boolean);
+};
+
+// =========================================================
+// DYNAMIC ADMIN ROLE MIDDLEWARE
+// =========================================================
+
+const allowDynamicAdmin = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const userRole = normalizeRole(
+      req.user?.role
+    );
+
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
     const config = await getSystemConfig();
 
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const adminRoles =
+      normalizeConfiguredRoles(
+        config?.admin_roles
+      );
 
-    // Keep "sysadmin" as a hardcoded fallback
-    const allowedRoles = [...adminRoles, "sysadmin"];
+    const allowedRoles = [
+      ...new Set([
+        ...adminRoles,
+        'sysadmin',
+      ]),
+    ];
 
     if (allowedRoles.includes(userRole)) {
       return next();
     }
 
     return res.status(403).json({
-      message: "Access denied. Admin privileges required."
+      success: false,
+      message:
+        'Access denied. Admin privileges required.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Admin verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Admin verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
-
 
 // =========================================================
 // GET NOTIFICATIONS
 // =========================================================
 
-// Get current user's notifications
-// Any authenticated user
 router.get(
-  "/",
+  '/',
   authorized,
   notificationsController.getNotifications
 );
 
-
-// Get unread notification count
-// Any authenticated user
+// Keep this static route before "/:id".
 router.get(
-  "/unread-count",
+  '/unread-count',
   authorized,
   notificationsController.getUnreadCount
 );
-
 
 // =========================================================
 // TEST NOTIFICATION
 // =========================================================
 
-// Test endpoint
-// ADMIN ONLY (Dynamic)
-//
-// Previously this endpoint had NO authentication.
-// Do not leave it publicly accessible in production.
 router.post(
-  "/test",
+  '/test',
   authorized,
   allowDynamicAdmin,
+
   auditLog(
-    "create",
-    "system",
-    "Created test notification"
+    'Create Test Notification',
+    'NOTIFICATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Created a test notification for user ${
+          req.body?.userId || 'unknown'
+        }.`
+      );
+    }
   ),
+
   notificationsController.createTestNotification
 );
 
-
 // =========================================================
-// MARK AS READ
+// MARK ALL AS READ
 // =========================================================
 
-// Mark one notification as read
-// Any authenticated user
+// Keep this static route before "/:id/read".
 router.put(
-  "/:id/read",
+  '/read-all',
   authorized,
 
   auditLog(
-    "read",
-    "system",
-    (req) =>
-      `Marked notification ID ${req.params.id} as read`
-  ),
-
-  notificationsController.markAsRead
-);
-
-
-// Mark all notifications as read
-// Any authenticated user
-router.put(
-  "/read-all",
-  authorized,
-
-  auditLog(
-    "update",
-    "system",
-    "Marked all notifications as read"
+    'Mark All Notifications Read',
+    'NOTIFICATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        'Marked all notifications as read.'
+      );
+    }
   ),
 
   notificationsController.markAllAsRead
 );
 
+// Optional PATCH alias.
+router.patch(
+  '/read-all',
+  authorized,
+
+  auditLog(
+    'Mark All Notifications Read',
+    'NOTIFICATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        'Marked all notifications as read.'
+      );
+    }
+  ),
+
+  notificationsController.markAllAsRead
+);
+
+// =========================================================
+// MARK ONE AS READ
+// =========================================================
+
+router.put(
+  '/:id/read',
+  authorized,
+
+  auditLog(
+    'Mark Notification Read',
+    'NOTIFICATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Marked notification ${req.params.id} as read.`
+      );
+    }
+  ),
+
+  notificationsController.markAsRead
+);
+
+// Optional PATCH alias.
+router.patch(
+  '/:id/read',
+  authorized,
+
+  auditLog(
+    'Mark Notification Read',
+    'NOTIFICATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Marked notification ${req.params.id} as read.`
+      );
+    }
+  ),
+
+  notificationsController.markAsRead
+);
 
 // =========================================================
 // DELETE NOTIFICATION
 // =========================================================
 
-// Delete a notification
-// Any authenticated user
 router.delete(
-  "/:id",
+  '/:id',
   authorized,
 
   auditLog(
-    "delete",
-    "system",
-    (req) =>
-      `Deleted notification ID ${req.params.id}`
+    'Delete Notification',
+    'NOTIFICATION',
+    (req, res) => {
+      return (
+        res.locals.auditDescription ||
+        `Deleted notification with ID ${req.params.id}.`
+      );
+    }
   ),
 
   notificationsController.deleteNotification
 );
-
 
 module.exports = router;

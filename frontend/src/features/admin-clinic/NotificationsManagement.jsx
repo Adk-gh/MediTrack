@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
-import { logAdminAction } from '../../services/audit.service';
 import DatePicker from '../../components/Datepicker';
 
 // ── Static config ────────────────────────────────────────────────────────
@@ -124,13 +123,17 @@ const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
       </td>
 
       {/* Reference */}
+      {/* Reference */}
       <td className="p-3 hidden lg:table-cell">
         {notification.reference_type ? (
           <span className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 font-mono">
             {notification.reference_type}
           </span>
         ) : (
-          <span className="text-xs text-slate-300">—</span>
+          // 🔴 NEW: Red "Deleted" badge
+          <span className="text-[10px] bg-red-100 border border-red-200 rounded px-1.5 py-0.5 text-red-600 font-bold uppercase tracking-wider">
+            Deleted
+          </span>
         )}
       </td>
 
@@ -240,9 +243,19 @@ export const NotificationsManagement = () => {
   });
 
   // Global Config fetch
+ // Global Config fetch
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`);
+      const token = localStorage.getItem('token'); // Retrieve your token
+
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Attach token here
+        }
+      });
+
       const result = await res.json();
       if (result.success) setConfigData(result.data);
     } catch (e) {
@@ -389,16 +402,6 @@ export const NotificationsManagement = () => {
     // Refresh global stats silently
     fetchStats();
 
-    // Audit Log
-    logAdminAction({
-      action: 'notification_status_updated',
-      details: {
-        notificationId: notification.id,
-        newStatus: newIsRead ? 'read' : 'unread'
-      },
-      adminUid,
-    });
-
     showSnackbar(newIsRead ? 'Marked as read' : 'Marked as unread');
   };
 
@@ -448,16 +451,6 @@ export const NotificationsManagement = () => {
       setNotifications(prev => prev.filter(n => n.id !== notifToDelete.id));
       fetchStats();
 
-      // Audit Log
-      logAdminAction({
-        action: 'notification_archived',
-        details: {
-          notificationId: notifToDelete.id,
-          type: notifToDelete.type,
-          recipientName: getFullName(notifToDelete._user)
-        },
-        adminUid,
-      });
 
       showSnackbar('Notification archived successfully', 'success', { label: 'View in Archives', path: '/archives' });
     } catch (err) {

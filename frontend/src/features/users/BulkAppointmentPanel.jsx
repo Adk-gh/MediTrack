@@ -7,12 +7,13 @@ import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Bulk requests are always face-to-face (the whole class visits the clinic
+// together), so only the two checkup types are offered here — both can be
+// selected at once. The actual occasion (educational tour, group screening,
+// etc.) is captured separately as free text since it varies per request.
 const BULK_PURPOSES_OPTS = [
-  { value: 'Educational Tour', key: 'educationalTour' },
-  { value: 'Class Medical Exam', key: 'classMedicalExam' },
-  { value: 'Class Dental Exam', key: 'classDentalExam' },
-  { value: 'Group Health Screening', key: 'groupHealthScreening' },
-  { value: 'Other', key: 'other' },
+  { value: 'Medical Check-up', key: 'medicalCheckup' },
+  { value: 'Dental Check-up', key: 'dentalCheckup' },
 ];
 
 const STATUS_STYLES = {
@@ -117,7 +118,7 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
   const [studentIds, setStudentIds]     = useState([]);
   const [parseError, setParseError]     = useState('');
   const [selectedPurposes, setSelectedPurposes] = useState([]);
-  const [otherPurpose, setOtherPurpose]         = useState('');
+  const [occasion, setOccasion]         = useState('');
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState('');
   const [result, setResult]             = useState(null);
@@ -205,12 +206,12 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const canSubmit = studentIds.length > 0 && selectedPurposes.length > 0 && !(selectedPurposes.includes('Other') && !otherPurpose.trim()) && !submitting;
+  const canSubmit = studentIds.length > 0 && selectedPurposes.length > 0 && occasion.trim().length > 0 && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
-    const parts = selectedPurposes.map((p) => (p === 'Other' && otherPurpose.trim() ? `Other: ${otherPurpose.trim()}` : p));
-    const reason = parts.join(', ');
+
+    const reason = `${selectedPurposes.join(', ')} — ${occasion.trim()}`;
 
     setSubmitting(true);
     setSubmitError('');
@@ -234,7 +235,7 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
       setStudentIds([]);
       setFileName('');
       setSelectedPurposes([]);
-      setOtherPurpose('');
+      setOccasion('');
       if (fileInputRef.current) fileInputRef.current.value = '';
 
       setTimeout(() => setShowForm(false), 2500);
@@ -308,10 +309,15 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                 )}
               </div>
 
+              {/* ── PURPOSE: face-to-face checkup type(s) ── */}
               <div className="flex flex-col gap-2 mt-2">
                 <label className="text-[12px] font-bold text-[#466460] uppercase tracking-widest">
                   {t('appointments.purpose', 'Purpose')} <span className="normal-case font-medium text-[#9bb5a5]">{t('appointments.selectAllThatApply', '* select all that apply')}</span>
                 </label>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#6b8577] uppercase tracking-wider">
+                  <i className="fa-solid fa-hospital text-[10px]"></i>
+                  {t('bulk.f2fOnlyLabel', 'Face-to-face — class visits the clinic together')}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {BULK_PURPOSES_OPTS.map((p) => {
                     const checked = selectedPurposes.includes(p.value);
@@ -326,17 +332,22 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
                     );
                   })}
                 </div>
-                {selectedPurposes.includes('Other') && (
-                  <textarea
-                    placeholder={t('bulk.specifyPurpose', 'Please specify the purpose...')}
-                    value={otherPurpose}
-                    onChange={(e) => setOtherPurpose(e.target.value)}
-                    onPaste={(e) => e.preventDefault()}
-                    disabled={submitting}
-                    className="mt-2 border border-[#ddeee5] rounded-2xl px-4 py-3 text-[13px] bg-white outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors"
-                    rows="2"
-                  />
-                )}
+              </div>
+
+              {/* ── OCCASION: free text for the actual reason (educational tour, screening, etc.) ── */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-bold text-[#466460] uppercase tracking-widest">
+                  {t('bulk.occasion', 'Occasion / Reason')} <span className="normal-case font-medium text-[#9bb5a5]">{t('bulk.occasionHint', '* e.g. Educational Tour, Group Health Screening')}</span>
+                </label>
+                <textarea
+                  placeholder={t('bulk.occasionPlaceholder', 'Describe the occasion for this class request...')}
+                  value={occasion}
+                  onChange={(e) => setOccasion(e.target.value)}
+                  onPaste={(e) => e.preventDefault()}
+                  disabled={submitting}
+                  className="border border-[#ddeee5] rounded-2xl px-4 py-3 text-[13px] bg-white outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors"
+                  rows="2"
+                />
               </div>
 
               <div className="flex items-start gap-3 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-5 py-4 text-[12px] text-[#854F0B] mt-2">

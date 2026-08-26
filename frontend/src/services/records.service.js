@@ -143,6 +143,35 @@ export const deleteRecord = async (id) => {
   return data;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ARCHIVE (SOFT DELETE) RECORD
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const archiveRecord = async (id, recordType) => {
+  if (!id || !recordType) {
+    throw new Error("Record ID and recordType ('medical' or 'dental') are required");
+  }
+
+  const endpoint = recordType === 'medical' ? 'medical' : 'dental';
+
+  console.log(`[RecordsService] Sending archive request for ${endpoint} record ID: ${id}`);
+
+  const res = await fetch(`${API_URL}/records/${endpoint}/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(
+      data.message || `Failed to archive ${endpoint} record`
+    );
+  }
+
+  return data;
+};
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REQUEST MEDICAL CERTIFICATE / DENTAL REPORT
@@ -297,6 +326,7 @@ export default {
   createRecord,
   updateRecord,
   deleteRecord,
+  archiveRecord, // <-- This is now correctly exported!
   requestCertificate,
   requestMedicalCertificate,
   requestDentalReport,

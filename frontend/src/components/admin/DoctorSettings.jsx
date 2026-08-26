@@ -70,6 +70,204 @@ const halfFieldInputStyle = {
   ...fieldInputStyle, width: 160,
 };
 
+
+// ─── Reusable Confirmation Modal ──────────────────────────────────────────────
+const ActionConfirmModal = ({
+  open,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  tone = 'save',
+  loading = false,
+  onConfirm,
+  onCancel,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !loading) onCancel?.();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, loading, onCancel]);
+
+  if (!open) return null;
+
+  const palette = {
+    save: {
+      accent: '#466460',
+      soft: '#e8f5ee',
+      icon: '✓',
+    },
+    edit: {
+      accent: '#2563eb',
+      soft: '#dbeafe',
+      icon: '✎',
+    },
+    delete: {
+      accent: '#e5262d',
+      soft: '#fee2e2',
+      icon: '↪',
+    },
+    warning: {
+      accent: '#d97706',
+      soft: '#fef3c7',
+      icon: '!',
+    },
+  };
+
+  const colors = palette[tone] || palette.save;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-confirm-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !loading) onCancel?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 20000,
+        background: 'rgba(15, 23, 42, 0.54)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 384,
+          background: '#fff',
+          borderRadius: 18,
+          padding: '24px 24px 22px',
+          boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            margin: '0 auto 17px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: colors.soft,
+            color: colors.accent,
+            fontSize: 26,
+            fontWeight: 800,
+          }}
+        >
+          {colors.icon}
+        </div>
+
+        <h3
+          id="settings-confirm-title"
+          style={{
+            margin: 0,
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </h3>
+
+        <p
+          style={{
+            margin: '12px 0 22px',
+            color: '#718096',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          {message}
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: '#f1f5f9',
+              color: '#526277',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.65 : 1,
+            }}
+          >
+            {cancelText}
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: colors.accent,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'Please wait...' : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmableRemoveButton = ({
+  label = 'Remove',
+  itemLabel = 'this item',
+  onConfirm,
+  style,
+}) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} style={style}>
+        {label}
+      </button>
+
+      <ActionConfirmModal
+        open={open}
+        title="Delete Item?"
+        message={`Are you sure you want to delete ${itemLabel}? This change will be applied when you save.`}
+        confirmText="Delete"
+        tone="delete"
+        onCancel={() => setOpen(false)}
+        onConfirm={() => {
+          setOpen(false);
+          onConfirm?.();
+        }}
+      />
+    </>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const DoctorSettings = ({ isMobile }) => {
   const [config, setConfig] = useState({
@@ -80,6 +278,7 @@ export const DoctorSettings = ({ isMobile }) => {
   const [signatureFile, setSignatureFile] = useState(null);
   const [sigPreview, setSigPreview] = useState(null);
   const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const hasFetched = useRef(false);
   const sigFileInputRef = useRef(null);
 
@@ -130,7 +329,8 @@ const fetchConfig = async () => {
     setSigPreview(URL.createObjectURL(file));
   };
 
-const handleSave = async () => {
+const performSave = async () => {
+    setShowSaveConfirm(false);
     setSaving(true);
     try {
       const jsonHeaders = await getAuthHeaders();
@@ -201,7 +401,7 @@ const handleSave = async () => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <SectionLabel>Doctor Settings</SectionLabel>
         <button
-          onClick={handleSave}
+          onClick={() => setShowSaveConfirm(true)}
           disabled={saving}
           style={{
             background: '#466460', color: '#fff', border: 'none',
@@ -315,6 +515,17 @@ const handleSave = async () => {
           }
         />
       </SectionCard>
+
+      <ActionConfirmModal
+        open={showSaveConfirm}
+        title="Save Doctor Settings?"
+        message="This will update the medical officer details and digital signature used on generated certificates."
+        confirmText="Save Changes"
+        tone="save"
+        loading={saving}
+        onCancel={() => setShowSaveConfirm(false)}
+        onConfirm={performSave}
+      />
     </div>
   );
 };

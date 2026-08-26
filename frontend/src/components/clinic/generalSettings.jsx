@@ -135,6 +135,204 @@ const CustomSelect = ({ value, onChange, options, disabled }) => {
   );
 };
 
+
+// ─── Reusable Confirmation Modal ──────────────────────────────────────────────
+const ActionConfirmModal = ({
+  open,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  tone = 'save',
+  loading = false,
+  onConfirm,
+  onCancel,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !loading) onCancel?.();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, loading, onCancel]);
+
+  if (!open) return null;
+
+  const palette = {
+    save: {
+      accent: '#466460',
+      soft: '#e8f5ee',
+      icon: '✓',
+    },
+    edit: {
+      accent: '#2563eb',
+      soft: '#dbeafe',
+      icon: '✎',
+    },
+    delete: {
+      accent: '#e5262d',
+      soft: '#fee2e2',
+      icon: '↪',
+    },
+    warning: {
+      accent: '#d97706',
+      soft: '#fef3c7',
+      icon: '!',
+    },
+  };
+
+  const colors = palette[tone] || palette.save;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-confirm-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !loading) onCancel?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 20000,
+        background: 'rgba(15, 23, 42, 0.54)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 384,
+          background: '#fff',
+          borderRadius: 18,
+          padding: '24px 24px 22px',
+          boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            margin: '0 auto 17px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: colors.soft,
+            color: colors.accent,
+            fontSize: 26,
+            fontWeight: 800,
+          }}
+        >
+          {colors.icon}
+        </div>
+
+        <h3
+          id="settings-confirm-title"
+          style={{
+            margin: 0,
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </h3>
+
+        <p
+          style={{
+            margin: '12px 0 22px',
+            color: '#718096',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          {message}
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: '#f1f5f9',
+              color: '#526277',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.65 : 1,
+            }}
+          >
+            {cancelText}
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: colors.accent,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'Please wait...' : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmableRemoveButton = ({
+  label = 'Remove',
+  itemLabel = 'this item',
+  onConfirm,
+  style,
+}) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} style={style}>
+        {label}
+      </button>
+
+      <ActionConfirmModal
+        open={open}
+        title="Delete Item?"
+        message={`Are you sure you want to delete ${itemLabel}? This change will be applied when you save.`}
+        confirmText="Delete"
+        tone="delete"
+        onCancel={() => setOpen(false)}
+        onConfirm={() => {
+          setOpen(false);
+          onConfirm?.();
+        }}
+      />
+    </>
+  );
+};
+
 // ─── Main Component ────────────────────────────────────────────────
 
 export default function GeneralSettings({ isMobile, activeRole }) {
@@ -152,6 +350,7 @@ export default function GeneralSettings({ isMobile, activeRole }) {
 
   const [error, setError] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [pendingAction, setPendingAction] = useState(null);
 
   const isStaffOrAdmin = [
     'sysadmin', 'administrator', 'nurse', 'doctor',
@@ -182,14 +381,22 @@ export default function GeneralSettings({ isMobile, activeRole }) {
     fetchSystemConfig();
   }, [isStaffOrAdmin]);
 
-  const fetchSystemConfig = async () => {
+const fetchSystemConfig = async () => {
     setLoading(true);
     setError('');
 
     try {
+      // 1. Grab the token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found.');
+
       const response = await fetch(`${API_URL}/system-config`, {
         method: 'GET',
         cache: 'no-store',
+        // 2. Attach the token to the headers
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
 
       const result = await response.json();
@@ -253,16 +460,24 @@ export default function GeneralSettings({ isMobile, activeRole }) {
   // Academic Update Prompt
   // ─────────────────────────────────────────────────────────────────────────
 
-  const handleAcademicPromptToggle = async (nextValue) => {
+const performAcademicPromptToggle = async (nextValue) => {
     if (savingAcademicPrompt) return;
 
     setSavingAcademicPrompt(true);
     setError('');
 
     try {
+      // 1. Grab the token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found.');
+
       const response = await fetch(`${API_URL}/system-config`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // 2. Attach the Authorization header
+          Authorization: `Bearer ${token}`
+        },
         body: JSON.stringify({
           prompt_student_academic_update: nextValue,
         }),
@@ -302,7 +517,7 @@ export default function GeneralSettings({ isMobile, activeRole }) {
   // Save Language / Date Format
   // ─────────────────────────────────────────────────────────────────────────
 
-  const handlePreferenceChange = async (key, value) => {
+  const performPreferenceChange = async (key, value) => {
     if (savingPreference) return;
 
     const previousPreferences = { ...preferences };
@@ -348,6 +563,50 @@ export default function GeneralSettings({ isMobile, activeRole }) {
       showToast(err.message || 'Failed to save preference.', 'error');
     } finally {
       setSavingPreference('');
+    }
+  };
+
+  const requestAcademicPromptToggle = (nextValue) => {
+    setPendingAction({
+      type: 'academic',
+      nextValue,
+      title: nextValue
+        ? 'Enable Academic Update Prompt?'
+        : 'Disable Academic Update Prompt?',
+      message: nextValue
+        ? 'Students will be required to review and acknowledge their academic information.'
+        : 'Students will no longer be prompted to review their academic information.',
+      confirmText: nextValue ? 'Enable' : 'Disable',
+      tone: nextValue ? 'save' : 'warning',
+    });
+  };
+
+  const requestPreferenceChange = (key, value) => {
+    const label = key === 'language' ? 'language' : 'date format';
+    setPendingAction({
+      type: 'preference',
+      key,
+      value,
+      title: `Change ${key === 'language' ? 'Language' : 'Date Format'}?`,
+      message: `This will change your ${label} to "${value}" across MediTrack.`,
+      confirmText: 'Apply Change',
+      tone: 'edit',
+    });
+  };
+
+  const confirmPendingAction = async () => {
+    const action = pendingAction;
+    if (!action) return;
+
+    setPendingAction(null);
+
+    if (action.type === 'academic') {
+      await performAcademicPromptToggle(action.nextValue);
+      return;
+    }
+
+    if (action.type === 'preference') {
+      await performPreferenceChange(action.key, action.value);
     }
   };
 
@@ -410,6 +669,17 @@ export default function GeneralSettings({ isMobile, activeRole }) {
           {toast.message}
         </div>
       )}
+
+      <ActionConfirmModal
+        open={Boolean(pendingAction)}
+        title={pendingAction?.title || 'Confirm Change'}
+        message={pendingAction?.message || ''}
+        confirmText={pendingAction?.confirmText || 'Confirm'}
+        tone={pendingAction?.tone || 'edit'}
+        loading={savingAcademicPrompt || Boolean(savingPreference)}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={confirmPendingAction}
+      />
 
       {/* ── Confirmation Modal for Clear Cache ── */}
       {showClearCacheModal && (
@@ -508,7 +778,7 @@ export default function GeneralSettings({ isMobile, activeRole }) {
                   <Toggle
                     checked={notifyProfileUpdate}
                     disabled={savingAcademicPrompt}
-                    onChange={handleAcademicPromptToggle}
+                    onChange={requestAcademicPromptToggle}
                   />
                 )
               }
@@ -571,7 +841,7 @@ export default function GeneralSettings({ isMobile, activeRole }) {
             <CustomSelect
               value={preferences.language}
               disabled={preferencesLoading || savingPreference === 'language'}
-              onChange={(value) => handlePreferenceChange('language', value)}
+              onChange={(value) => requestPreferenceChange('language', value)}
               options={[
                 { value: 'English', label: 'English' },
                 { value: 'Filipino', label: 'Filipino' },
@@ -588,7 +858,7 @@ export default function GeneralSettings({ isMobile, activeRole }) {
             <CustomSelect
               value={preferences.dateFormat}
               disabled={preferencesLoading || savingPreference === 'dateFormat'}
-              onChange={(value) => handlePreferenceChange('dateFormat', value)}
+              onChange={(value) => requestPreferenceChange('dateFormat', value)}
               options={[
                 { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
                 { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },

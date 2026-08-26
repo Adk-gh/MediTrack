@@ -506,8 +506,8 @@ export const AuditLogs = () => {
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-xs shrink-0">
-                          {getInitials(log.userName || log.userEmail)}
-                        </div>
+                        {getInitials(log.userName || log.userEmail || log.userId || '?')}
+                      </div>
                         <div>
                           <div className="text-sm text-slate-700 font-medium whitespace-nowrap">{log.userName || '—'}</div>
                           <div className="text-xs text-slate-400">{log.userEmail || log.userId || '—'}</div>
@@ -518,8 +518,8 @@ export const AuditLogs = () => {
                     <td className="p-3 whitespace-nowrap"><TypePill type={log.type} /></td>
                     <td className="p-3 whitespace-nowrap"><StatusPill isArchived={isArchived} /></td>
                     <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[200px]">
-                      <span className="truncate block" title={typeof log.description === 'object' ? JSON.stringify(log.description) : log.description}>
-                        {typeof log.description === 'object' ? JSON.stringify(log.description) : log.description || '—'}
+                      <span className="truncate block" title={log.description ? (typeof log.description === 'object' ? JSON.stringify(log.description) : log.description) : ''}>
+                        {log.description ? (typeof log.description === 'object' ? JSON.stringify(log.description) : log.description) : '—'}
                       </span>
                     </td>
                     <td className="p-3 text-xs text-slate-500 hidden lg:table-cell max-w-[150px]">
@@ -591,7 +591,7 @@ export const AuditLogs = () => {
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase">Description</label>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">{typeof selectedLog.description === 'object' ? JSON.stringify(selectedLog.description) : selectedLog.description || '—'}</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedLog.description ? (typeof selectedLog.description === 'object' ? JSON.stringify(selectedLog.description) : selectedLog.description) : '—'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Details</label>

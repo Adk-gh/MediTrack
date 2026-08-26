@@ -63,6 +63,104 @@ function getRecordTimestamp(record) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Date Formatting
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatDateFriendly(dateString) {
+  if (!dateString) return '';
+  const options = { month: 'short', day: 'numeric', year: 'numeric' };
+  return new Date(dateString).toLocaleDateString('en-US', options);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Record type / table helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RECORD_TABLES = {
+  medical: 'medical_records',
+  dental: 'dental_records',
+};
+
+function getRecordTable(recordType) {
+  return RECORD_TABLES[recordType] || RECORD_TABLES.medical;
+}
+
+function getRecordLabel(recordType) {
+  return recordType === 'dental' ? 'dental record' : 'medical record';
+}
+
+function getRecordReferenceType(recordType) {
+  return recordType === 'dental' ? 'dental_record' : 'medical_record';
+}
+
+// Fields clinic staff should never be able to move via a generic "edit"
+// payload — these are managed by their own dedicated flows
+// (status/approval, archiving, certificate requests, timestamps).
+const PROTECTED_RECORD_FIELDS = new Set([
+  'id',
+  'user_id',
+  'created_at',
+  'updated_at',
+  'status',
+  'approved_at',
+  'is_archived',
+  'cert_requested',
+  'cert_requested_at',
+]);
+
+function sanitizeRecordUpdates(updates = {}) {
+  const clean = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (!PROTECTED_RECORD_FIELDS.has(key) && value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
+function buildRecordStatusNotification(recordType, status, existingRecord) {
+  const label = getRecordLabel(recordType);
+  const examDate = existingRecord?.exam_date || existingRecord?.created_at;
+  const dateContext = examDate ? ` from ${formatDateFriendly(examDate)}` : '';
+
+  switch (status) {
+    case 'approved':
+      return {
+        title: 'Record Approved',
+        message: `Your ${label}${dateContext} has been reviewed and approved by the clinic staff.`,
+      };
+    case 'rejected':
+      return {
+        title: 'Record Rejected',
+        message: `Your ${label}${dateContext} was reviewed and declined. Please consult the clinic staff.`,
+      };
+    case 'pending':
+      return {
+        title: 'Record Pending Review',
+        message: `Your ${label}${dateContext} is pending review by the clinic staff.`,
+      };
+    default:
+      return {
+        title: 'Record Status Updated',
+        message: `Your ${label}${dateContext} status has been updated to: ${status}`,
+      };
+  }
+}
+
+async function notifyPatientAboutRecord(userId, payload) {
+  if (!userId) return;
+
+  try {
+    await notificationsService.createNotification({
+      ...payload,
+      userId,
+    });
+  } catch (notifyErr) {
+    console.error('[RecordsService] Notification insert failed:', notifyErr.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // User lookup
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -261,12 +359,6 @@ exports.getUserRecords = async (authUserId) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Public: certificate / report request
 // ─────────────────────────────────────────────────────────────────────────────
-//
-// Matches records.controller.js exactly:
-//   recordsService.requestCertificate(req.params.id, req.body, requester)
-//
-// req.body   → { recordType: 'medical' | 'dental', requestType: 'certificate' | 'report' }
-// requester  → { uid, id, email } from req.user (auth middleware)
 
 exports.requestCertificate = async (recordId, body, requester) => {
   console.log('[RecordsService] requestCertificate called:', {
@@ -281,9 +373,8 @@ exports.requestCertificate = async (recordId, body, requester) => {
   if (!authUid) throw new Error('Unable to identify requesting user.');
 
   const recordType = body?.recordType === 'dental' ? 'dental' : 'medical';
-  const table = recordType === 'dental' ? 'dental_records' : 'medical_records';
+  const table = getRecordTable(recordType);
 
-  // Resolve the internal user id from the auth uid, then confirm ownership.
   const user = await getUserProfile(authUid);
   if (!user) {
     const error = new Error('User not found');
@@ -334,7 +425,6 @@ exports.requestCertificate = async (recordId, body, requester) => {
     throw new Error('Failed to submit certificate request: ' + updateError.message);
   }
 
-  // ── Notify clinic staff ────────────────────────────────────────────────
   const requestType =
     body?.requestType || (recordType === 'dental' ? 'report' : 'certificate');
 
@@ -349,16 +439,14 @@ exports.requestCertificate = async (recordId, body, requester) => {
 
   try {
     const notifyResult = await notificationsService.notifyRecordRequest({
-  requestId: recordId,
-  requestType,
-  recordType,
-  patientName,
-});
+      requestId: recordId,
+      requestType,
+      recordType,
+      patientName,
+    });
 
     console.log('[RecordsService] notifyRecordRequest result:', notifyResult);
   } catch (notifyError) {
-    // Notification failure should not fail the certificate request itself,
-    // but we still want it loud in the logs.
     console.error('[RecordsService] notifyRecordRequest threw an error:', notifyError);
   }
 
@@ -367,6 +455,204 @@ exports.requestCertificate = async (recordId, body, requester) => {
     cert_requested: data.cert_requested,
     cert_requested_at: data.cert_requested_at,
   };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public: update record status (approve / reject / etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.updateRecordStatus = async (recordId, recordType, status) => {
+  if (!recordId) throw new Error('recordId is required for updateRecordStatus');
+
+  const table = getRecordTable(recordType);
+  const normalizedStatus = String(status || '').toLowerCase().trim();
+
+  if (!normalizedStatus) {
+    const err = new Error('status is required for updateRecordStatus');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const { data: existing, error: fetchError } = await supabase
+    .from(table)
+    .select('*')
+    .eq('id', recordId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+
+  if (!existing) {
+    const err = new Error('Record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const updatePayload = {
+    status: normalizedStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (normalizedStatus === 'approved') {
+    updatePayload.approved_at = new Date().toISOString();
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .update(updatePayload)
+    .eq('id', recordId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  const statusChanged = normalizedStatus !== String(existing.status || '').toLowerCase();
+
+  if (statusChanged) {
+    const { title, message } = buildRecordStatusNotification(recordType, normalizedStatus, existing);
+
+    await notifyPatientAboutRecord(existing.user_id, {
+      type: 'record_status',
+      title,
+      message,
+      referenceId: recordId,
+      referenceType: getRecordReferenceType(recordType),
+    });
+  }
+
+  return data;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public: edit clinical record fields
+// Notifies the patient when status or certificate issuance changes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.updateRecord = async (recordId, recordType, updates) => {
+  if (!recordId) throw new Error('recordId is required for updateRecord');
+
+  const table = getRecordTable(recordType);
+
+  const { data: existing, error: fetchError } = await supabase
+    .from(table)
+    .select('*')
+    .eq('id', recordId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!existing) {
+    const err = new Error('Record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const allowedUpdates = { ...updates };
+  delete allowedUpdates.id;
+  delete allowedUpdates.user_id;
+  delete allowedUpdates.created_at;
+  delete allowedUpdates.recordType;
+
+  const payload = {
+    ...allowedUpdates,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from(table)
+    .update(payload)
+    .eq('id', recordId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // ── NOTIFICATION LOGIC ──
+  const statusChanged = updates.status && updates.status !== existing.status;
+  const certIssuedChanged = updates.issue_cert !== undefined && updates.issue_cert !== existing.issue_cert;
+
+  const examDate = existing.exam_date || existing.created_at;
+  const dateContext = examDate ? ` from ${formatDateFriendly(examDate)}` : '';
+  const docName = recordType === 'dental' ? 'dental report' : 'medical certificate';
+
+  if (statusChanged) {
+    const { title, message } = buildRecordStatusNotification(recordType, updates.status, existing);
+    await notifyPatientAboutRecord(existing.user_id, {
+      type: 'record_status',
+      title,
+      message,
+      referenceId: recordId,
+      referenceType: getRecordReferenceType(recordType),
+    });
+  } else if (certIssuedChanged) {
+    const isIssued = updates.issue_cert === true;
+    await notifyPatientAboutRecord(existing.user_id, {
+      type: 'record_updated',
+      title: isIssued ? 'Document Ready' : 'Document Status Updated',
+      message: isIssued
+        ? `Good news! Your ${docName} for the checkup on ${formatDateFriendly(examDate)} is now ready and has been issued.`
+        : `The ${docName} for your checkup on ${formatDateFriendly(examDate)} has been marked as not issued.`,
+      referenceId: recordId,
+      referenceType: getRecordReferenceType(recordType),
+    });
+  } else if (Object.keys(allowedUpdates).length > 2) {
+    await notifyPatientAboutRecord(existing.user_id, {
+      type: 'record_updated',
+      title: 'Record Details Updated',
+      message: `The clinical details of your ${getRecordLabel(recordType)}${dateContext} have been updated by the staff.`,
+      referenceId: recordId,
+      referenceType: getRecordReferenceType(recordType),
+    });
+  }
+
+  return data;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public: archive a record (soft delete)
+// Always notifies the patient.
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.archiveRecord = async (recordId, recordType) => {
+  if (!recordId) throw new Error('recordId is required for archiveRecord');
+
+  const table = getRecordTable(recordType);
+
+  const { data: existing, error: fetchError } = await supabase
+    .from(table)
+    .select('*')
+    .eq('id', recordId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+
+  if (!existing) {
+    const err = new Error('Record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .update({
+      is_archived: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', recordId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  const label = getRecordLabel(recordType);
+
+  await notifyPatientAboutRecord(existing.user_id, {
+    type: 'record_archived',
+    title: 'Record Archived',
+    message: `Your ${label} has been archived.`,
+    referenceId: recordId,
+    referenceType: getRecordReferenceType(recordType),
+  });
+
+  return data;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

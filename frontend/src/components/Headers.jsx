@@ -11,11 +11,9 @@ import Settings from './Settings.jsx';
 import { supabase } from '../supabase';
 import logo from '../assets/logo.jpg';
 import logo1 from '../assets/logo1.png';
+import { useDocumentManager } from '../hooks/useDocumentManager'; // <-- Imported hook
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const DOCUMENTS_BUCKET = 'health-documents';
-const ALLOWED_DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-const MAX_DOC_SIZE = 5 * 1024 * 1024; // 5MB
 
 // ─── Synchronous Role Helper ─────────────────────────────────────────────────
 const getStoredUserRole = () => {
@@ -257,11 +255,153 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [showAddressModal, setShowAddressModal] = React.useState(false);
   const [addressType, setAddressType] = React.useState(null);
 
-  // Document states
-  const [uploadingDocs, setUploadingDocs] = React.useState(false);
-  const [docToDelete, setDocToDelete] = React.useState(null);
-  const [isDeletingDoc, setIsDeletingDoc] = React.useState(false);
-  const documentsInputRef = React.useRef(null);
+  // ── Document Manager Hook ──
+  const {
+    uploadingDocs,
+    docToDelete,
+    setDocToDelete,
+    isDeletingDoc,
+    documentsInputRef,
+    uploadDocuments,
+    confirmDeleteDocument,
+    getSignedUrl,
+  } = useDocumentManager(
+    formData.documents,
+    (newDocuments) => {
+      const updated = { ...formData, documents: newDocuments };
+      setFormData(updated);
+      if (onProfileUpdate) onProfileUpdate(updated);
+    }
+  );
+
+  // ── Staged document upload flow ──────────────────────────────────────────────
+  const [showDocumentUploadModal, setShowDocumentUploadModal] = React.useState(false);
+  const [showDocumentPreviewModal, setShowDocumentPreviewModal] = React.useState(false);
+  const [showDocumentConfirmation, setShowDocumentConfirmation] = React.useState(false);
+  const [pendingDocumentFiles, setPendingDocumentFiles] = React.useState([]);
+  const [previewDocumentIndex, setPreviewDocumentIndex] = React.useState(0);
+  const [isDocumentDragActive, setIsDocumentDragActive] = React.useState(false);
+  const [previewDocumentUrls, setPreviewDocumentUrls] = React.useState([]);
+
+  const formatDocumentSize = (bytes) => {
+    if (!Number.isFinite(bytes)) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const clearPreviewDocumentUrls = React.useCallback(() => {
+    setPreviewDocumentUrls((currentUrls) => {
+      currentUrls.forEach((url) => URL.revokeObjectURL(url));
+      return [];
+    });
+  }, []);
+
+  const closeDocumentUploadFlow = React.useCallback(() => {
+    if (uploadingDocs) return;
+    clearPreviewDocumentUrls();
+    setPendingDocumentFiles([]);
+    setPreviewDocumentIndex(0);
+    setShowDocumentUploadModal(false);
+    setShowDocumentPreviewModal(false);
+    setShowDocumentConfirmation(false);
+    setIsDocumentDragActive(false);
+    if (documentsInputRef.current) documentsInputRef.current.value = '';
+  }, [clearPreviewDocumentUrls, documentsInputRef, uploadingDocs]);
+
+  const validatePendingDocuments = (files) => {
+    const accepted = [];
+    const rejected = [];
+
+    files.forEach((file) => {
+      if (!['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) {
+        rejected.push(`${file.name}: unsupported file type`);
+      } else if (file.size > 5 * 1024 * 1024) {
+        rejected.push(`${file.name}: exceeds the 5MB limit`);
+      } else {
+        accepted.push(file);
+      }
+    });
+
+    if (rejected.length) alert(`Some files were not added:
+
+${rejected.join('\n')}`);
+    return accepted;
+  };
+
+  const addPendingDocuments = (source) => {
+    const accepted = validatePendingDocuments(Array.from(source || []));
+    if (!accepted.length) return;
+
+    setPendingDocumentFiles((currentFiles) => {
+      const combined = [...currentFiles];
+      accepted.forEach((file) => {
+        const duplicate = combined.some(
+          (existing) =>
+            existing.name === file.name &&
+            existing.size === file.size &&
+            existing.lastModified === file.lastModified
+        );
+        if (!duplicate) combined.push(file);
+      });
+      return combined;
+    });
+  };
+
+  const handlePendingDocumentSelection = (event) => {
+    addPendingDocuments(event.target.files);
+    event.target.value = '';
+  };
+
+  const handleDocumentDrop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDocumentDragActive(false);
+    addPendingDocuments(event.dataTransfer?.files);
+  };
+
+  const removePendingDocument = (indexToRemove) => {
+    setPendingDocumentFiles((currentFiles) =>
+      currentFiles.filter((_, index) => index !== indexToRemove)
+    );
+    setPreviewDocumentIndex((currentIndex) =>
+      Math.max(0, currentIndex > indexToRemove ? currentIndex - 1 : currentIndex)
+    );
+  };
+
+  const openPendingDocumentPreview = (index) => {
+    clearPreviewDocumentUrls();
+    setPreviewDocumentUrls(pendingDocumentFiles.map((file) => URL.createObjectURL(file)));
+    setPreviewDocumentIndex(index);
+    setShowDocumentPreviewModal(true);
+  };
+
+  const requestDocumentUploadConfirmation = () => {
+    if (!pendingDocumentFiles.length) {
+      alert('Please select at least one document.');
+      return;
+    }
+    setShowDocumentConfirmation(true);
+  };
+
+  const confirmPendingDocumentUpload = async () => {
+    const success = await uploadDocuments(pendingDocumentFiles);
+    if (success) closeDocumentUploadFlow();
+  };
+
+  React.useEffect(() => () => {
+    previewDocumentUrls.forEach((url) => URL.revokeObjectURL(url));
+  }, [previewDocumentUrls]);
+
+  const handleViewDocument = async (doc) => {
+    try {
+      const signedUrl = await getSignedUrl(doc);
+      window.open(signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Error opening document:', err);
+      alert('Failed to open document.');
+    }
+  };
 
   const [dragY, setDragY] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -319,119 +459,6 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       onClose();
     } else {
       setDragY(0);
-    }
-  };
-
-  // ── Documents Management Handlers ─────────────────────────────────────────
-  const handleDocumentUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
-
-    const invalid = files.find(f => !ALLOWED_DOC_TYPES.includes(f.type) || f.size > MAX_DOC_SIZE);
-    if (invalid) {
-      alert(`"${invalid.name}" is invalid. PDF/JPG/PNG only, max 5MB.`);
-      return;
-    }
-
-    setUploadingDocs(true);
-    const uploadedPaths = [];
-
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const uid = user?.uid || user?.id;
-      if (!uid) throw new Error('Not authenticated');
-
-      const uploadedDocs = [];
-
-      for (const file of files) {
-        const ext = file.name.split('.').pop();
-        const path = `${uid}/${crypto.randomUUID()}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(DOCUMENTS_BUCKET)
-          .upload(path, file, { cacheControl: '3600', upsert: false });
-
-        if (uploadError) throw uploadError;
-        uploadedPaths.push(path);
-
-        uploadedDocs.push({
-          id: crypto.randomUUID(),
-          name: file.name,
-          path,
-          type: file.type,
-          uploadedAt: new Date().toISOString(),
-        });
-      }
-
-      const newDocuments = [...(formData.documents || []), ...uploadedDocs];
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ documents: newDocuments })
-        .eq('uid', uid);
-
-      if (updateError) throw updateError;
-
-      const updated = { ...formData, documents: newDocuments };
-      setFormData(updated);
-      if (onProfileUpdate) onProfileUpdate(updated);
-    } catch (err) {
-      console.error('[ProfileDrawer] Document upload error:', err);
-      if (uploadedPaths.length > 0) {
-        await supabase.storage.from(DOCUMENTS_BUCKET).remove(uploadedPaths);
-      }
-      alert('Failed to upload document(s).');
-    } finally {
-      setUploadingDocs(false);
-    }
-  };
-
-  const handleConfirmDeleteDoc = async () => {
-    if (!docToDelete) return;
-    setIsDeletingDoc(true);
-
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const uid = user?.uid || user?.id;
-      if (!uid) throw new Error('Not authenticated');
-
-      if (docToDelete.path) {
-        await supabase.storage.from(DOCUMENTS_BUCKET).remove([docToDelete.path]);
-      }
-
-      const newDocuments = (formData.documents || []).filter(d => d.id !== docToDelete.id);
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ documents: newDocuments })
-        .eq('uid', uid);
-
-      if (updateError) throw updateError;
-
-      const updated = { ...formData, documents: newDocuments };
-      setFormData(updated);
-      if (onProfileUpdate) onProfileUpdate(updated);
-      setDocToDelete(null);
-    } catch (err) {
-      console.error('[ProfileDrawer] Document delete error:', err);
-      alert('Failed to remove document.');
-    } finally {
-      setIsDeletingDoc(false);
-    }
-  };
-
-  const handleViewDocument = async (doc) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from(DOCUMENTS_BUCKET)
-        .createSignedUrl(doc.path, 300);
-
-      if (error) throw error;
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      console.error('Error opening document:', err);
-      alert('Failed to open document.');
     }
   };
 
@@ -1120,7 +1147,7 @@ const saveProfileEdits = async () => {
 
               <button
                 type="button"
-                onClick={() => documentsInputRef.current?.click()}
+                onClick={() => setShowDocumentUploadModal(true)}
                 disabled={uploadingDocs}
                 className="w-full py-2 bg-[#466460] text-white rounded-lg text-xs font-bold hover:bg-[#38524d] transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
               >
@@ -1130,17 +1157,12 @@ const saveProfileEdits = async () => {
                     Uploading...
                   </>
                 ) : (
-                  '+ Add Document(s)'
+                  <>
+                    <i className="fa-solid fa-cloud-arrow-up"></i>
+                    Add Document(s)
+                  </>
                 )}
               </button>
-              <input
-                ref={documentsInputRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                multiple
-                hidden
-                onChange={handleDocumentUpload}
-              />
             </div>
           )}
         </div>
@@ -1172,6 +1194,160 @@ const saveProfileEdits = async () => {
         </div>
       </div>
 
+      {/* Health Document Upload Modal */}
+      {showDocumentUploadModal && (
+        <div
+          className="fixed inset-0 z-[5000] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4 py-6"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !uploadingDocs) closeDocumentUploadFlow();
+          }}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-extrabold text-[#466460]">Upload Health Documents</h3>
+                <p className="text-xs text-slate-500 mt-1">PDF, JPG, JPEG, or PNG · maximum 5MB per file.</p>
+              </div>
+              <button type="button" onClick={closeDocumentUploadFlow} disabled={uploadingDocs} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 border-0 disabled:opacity-50">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6 overflow-y-auto">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => documentsInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') documentsInputRef.current?.click();
+                }}
+                onDragEnter={(event) => { event.preventDefault(); setIsDocumentDragActive(true); }}
+                onDragOver={(event) => { event.preventDefault(); setIsDocumentDragActive(true); }}
+                onDragLeave={(event) => { event.preventDefault(); setIsDocumentDragActive(false); }}
+                onDrop={handleDocumentDrop}
+                className={`border-2 border-dashed rounded-2xl px-5 py-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                  isDocumentDragActive
+                    ? 'border-[#466460] bg-[#eef7f3] scale-[1.01]'
+                    : 'border-slate-300 bg-slate-50 hover:border-[#466460] hover:bg-[#f6faf8]'
+                }`}
+              >
+                <div className="w-14 h-14 rounded-full bg-[#e8f5ee] text-[#466460] flex items-center justify-center text-xl mb-3">
+                  <i className="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <p className="text-sm font-bold text-slate-700">Drag and drop documents here</p>
+                <p className="text-xs text-slate-400 mt-1">or click to browse from your device</p>
+                <span className="mt-4 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-[#466460] shadow-sm">Browse Documents</span>
+              </div>
+
+              <input
+                ref={documentsInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                multiple
+                hidden
+                onChange={handlePendingDocumentSelection}
+              />
+
+              {pendingDocumentFiles.length > 0 && (
+                <div className="mt-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Selected Documents</h4>
+                    <span className="text-[10px] font-bold bg-[#e8f5ee] text-[#466460] px-2 py-1 rounded-full">
+                      {pendingDocumentFiles.length} {pendingDocumentFiles.length === 1 ? 'file' : 'files'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {pendingDocumentFiles.map((file, index) => (
+                      <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white">
+                        <button type="button" onClick={() => openPendingDocumentPreview(index)} className="flex items-center gap-3 min-w-0 flex-1 text-left bg-transparent border-0 cursor-pointer">
+                          <div className="w-10 h-10 rounded-lg bg-[#e8f5ee] text-[#466460] flex items-center justify-center shrink-0">
+                            <i className={`fa-solid ${file.type === 'application/pdf' ? 'fa-file-pdf' : 'fa-file-image'}`}></i>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-700 truncate">{file.name}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">{formatDocumentSize(file.size)} · Click to preview</p>
+                          </div>
+                        </button>
+                        <button type="button" onClick={() => removePendingDocument(index)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 border-0 shrink-0" aria-label={`Remove ${file.name}`}>
+                          <i className="fa-solid fa-trash text-xs"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-col-reverse sm:flex-row justify-end gap-3">
+              <button type="button" onClick={closeDocumentUploadFlow} disabled={uploadingDocs} className="px-5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={requestDocumentUploadConfirmation} disabled={uploadingDocs || pendingDocumentFiles.length === 0} className="px-5 py-2.5 rounded-lg bg-[#466460] text-white text-xs font-bold hover:bg-[#38524d] disabled:opacity-50 flex items-center justify-center gap-2">
+                <i className="fa-solid fa-floppy-disk"></i>
+                Save Documents
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Selected Document Preview Modal */}
+      {showDocumentPreviewModal && pendingDocumentFiles[previewDocumentIndex] && previewDocumentUrls[previewDocumentIndex] && (
+        <div className="fixed inset-0 z-[5100] bg-black/70 backdrop-blur-sm flex items-center justify-center px-3 py-4" onClick={(event) => { if (event.target === event.currentTarget) setShowDocumentPreviewModal(false); }}>
+          <div className="bg-white rounded-2xl w-full max-w-4xl h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-extrabold text-[#466460] truncate">{pendingDocumentFiles[previewDocumentIndex].name}</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">{previewDocumentIndex + 1} of {pendingDocumentFiles.length} · {formatDocumentSize(pendingDocumentFiles[previewDocumentIndex].size)}</p>
+              </div>
+              <button type="button" onClick={() => setShowDocumentPreviewModal(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 border-0 shrink-0">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 bg-slate-900 flex items-center justify-center overflow-hidden">
+              {pendingDocumentFiles[previewDocumentIndex].type === 'application/pdf' ? (
+                <iframe src={previewDocumentUrls[previewDocumentIndex]} title={pendingDocumentFiles[previewDocumentIndex].name} className="w-full h-full border-0 bg-white" />
+              ) : (
+                <img src={previewDocumentUrls[previewDocumentIndex]} alt={pendingDocumentFiles[previewDocumentIndex].name} className="max-w-full max-h-full object-contain" />
+              )}
+            </div>
+
+            <div className="px-4 sm:px-6 py-3 border-t border-slate-100 flex items-center justify-between gap-3">
+              <button type="button" disabled={previewDocumentIndex === 0} onClick={() => setPreviewDocumentIndex((index) => Math.max(0, index - 1))} className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                <i className="fa-solid fa-chevron-left mr-2"></i>Previous
+              </button>
+              <button type="button" onClick={() => setShowDocumentPreviewModal(false)} className="px-4 py-2 rounded-lg bg-[#466460] text-white text-xs font-bold hover:bg-[#38524d]">Done</button>
+              <button type="button" disabled={previewDocumentIndex === pendingDocumentFiles.length - 1} onClick={() => setPreviewDocumentIndex((index) => Math.min(pendingDocumentFiles.length - 1, index + 1))} className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                Next<i className="fa-solid fa-chevron-right ml-2"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Final Upload Confirmation Modal */}
+      {showDocumentConfirmation && (
+        <div className="fixed inset-0 z-[5200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={(event) => { if (event.target === event.currentTarget && !uploadingDocs) setShowDocumentConfirmation(false); }}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-[#e8f5ee] text-[#466460] flex items-center justify-center text-xl mx-auto mb-4">
+              <i className="fa-solid fa-cloud-arrow-up"></i>
+            </div>
+            <div className="text-center">
+              <h3 className="text-base font-extrabold text-slate-800">Confirm Document Upload</h3>
+              <p className="text-xs text-slate-500 leading-relaxed mt-2">
+                Upload <strong className="text-slate-700">{pendingDocumentFiles.length} {pendingDocumentFiles.length === 1 ? 'document' : 'documents'}</strong> to your health record?
+              </p>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button type="button" disabled={uploadingDocs} onClick={() => setShowDocumentConfirmation(false)} className="flex-1 py-2.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 disabled:opacity-50">Go Back</button>
+              <button type="button" disabled={uploadingDocs} onClick={confirmPendingDocumentUpload} className="flex-1 py-2.5 rounded-lg bg-[#466460] text-white text-xs font-bold hover:bg-[#38524d] disabled:opacity-50 flex items-center justify-center gap-2">
+                {uploadingDocs ? (<><i className="fa-solid fa-spinner fa-spin"></i>Uploading...</>) : (<><i className="fa-solid fa-check"></i>Confirm</>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Document Confirmation Modal */}
       {docToDelete && (
         <div
@@ -1197,7 +1373,7 @@ const saveProfileEdits = async () => {
               <button
                 type="button"
                 disabled={isDeletingDoc}
-                onClick={handleConfirmDeleteDoc}
+                onClick={confirmDeleteDocument}
                 className="flex-1 py-2.5 rounded-lg bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
               >
                 {isDeletingDoc ? 'Removing...' : 'Remove'}

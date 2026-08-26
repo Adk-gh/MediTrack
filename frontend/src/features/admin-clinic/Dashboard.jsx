@@ -33,6 +33,8 @@ const TYPE_COLORS = {
   guard:         '#e76f51',
 };
 
+
+
 const RECORD_COLORS = ['#466460', '#e07a5f'];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -99,6 +101,64 @@ const SectionLabel = ({ icon, children }) => (
   </p>
 );
 
+
+const normalizeValue = (value) =>
+  value === null || value === undefined
+    ? ''
+    : String(value).trim().toLowerCase();
+
+const findAppointmentUser = (users, appointment) => {
+  const appointmentIds = [
+    appointment?.user_id,
+    appointment?.userId,
+    appointment?.uid,
+    appointment?.auth_uid,
+    appointment?.authUid,
+    appointment?.patient_id,
+    appointment?.patientId,
+    appointment?.student_id,
+    appointment?.studentId,
+
+    appointment?.user?.id,
+    appointment?.user?.uid,
+    appointment?.patient?.id,
+    appointment?.patient?.uid,
+    appointment?.student?.id,
+    appointment?.student?.uid,
+  ]
+    .map(normalizeValue)
+    .filter(Boolean);
+
+  const appointmentEmail = normalizeValue(
+    appointment?.email ||
+    appointment?.user_email ||
+    appointment?.userEmail ||
+    appointment?.patient_email ||
+    appointment?.patientEmail ||
+    appointment?.user?.email ||
+    appointment?.patient?.email
+  );
+
+  return users.find((user) => {
+    const userIds = [
+      user?.id,
+      user?.uid,
+    ]
+      .map(normalizeValue)
+      .filter(Boolean);
+
+    const idMatches = userIds.some((id) =>
+      appointmentIds.includes(id)
+    );
+
+    const emailMatches =
+      appointmentEmail &&
+      normalizeValue(user?.email) === appointmentEmail;
+
+    return idMatches || emailMatches;
+  });
+};
+
 // ============================================================
 // DASHBOARD CONTENT
 // ============================================================
@@ -138,34 +198,85 @@ function DashboardContent() {
 
       // ── Users / Patient Records ──────────────────────────
       if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        const raw = usersData.data || usersData || [];
-        // Exclude archived users and sysadmin (but keep clinic staff to count separately)
-        const activeRaw = raw.filter(u => {
-          const role = (u.role || '').toLowerCase();
-          return u.is_archived !== true && role !== 'sysadmin';
-        });
+  const usersData = await usersRes.json();
+  const raw = usersData.data || usersData || [];
 
-        // Separate patients (students + faculty + general/support staff) from clinic staff
-        const patients = activeRaw.filter(u => !isClinicStaff(u.role));
-        const clinicStaff = activeRaw.filter(u => isClinicStaff(u.role));
+  console.log('[Dashboard] Raw users count:', raw.length);
+console.log(
+  '[Dashboard] Raw user IDs:',
+  raw.map((u) => ({
+    id: u.id,
+    uid: u.uid,
+    name: `${u.first_name || ''} ${u.last_name || ''}`,
+  }))
+);
+  // Exclude archived users and sysadmin.
+  const activeRaw = raw.filter((u) => {
+    const role = String(u.role || '').toLowerCase();
 
-        setUsers(patients.map(u => ({
-          uid:          u.id, // Explicitly mapped to 'id' from users table
-          universityId: u.university_id || u.universityId || u.idno || '',
-          name:         `${u.last_name || u.lastName || ''}, ${u.first_name || u.firstName || ''}`.replace(/^,\s*/, '') || u.name || 'Unknown',
-          type:         normaliseRole(u.role || u.type || u.user_type || 'student'),
-          role:         u.role || 'student',
-          prog:         u.program || u.course || '',
-          year:         u.year_level || u.yearLevel || '',
-          section:      u.section || '',
-          email:        u.email || '',
-          department:   u.department || '',
-          createdAt:    u.created_at ||  '',
-        })));
-        setClinicStaffCount(clinicStaff.length);
-      }
+    return u.is_archived !== true && role !== 'sysadmin';
+  });
 
+  // Separate patients from clinic staff.
+  const patients = activeRaw.filter(
+    (u) => !isClinicStaff(u.role)
+  );
+
+  const clinicStaff = activeRaw.filter(
+    (u) => isClinicStaff(u.role)
+  );
+
+  setUsers(
+    patients.map((u) => ({
+      // Preserve both IDs from the users table.
+      id: u.id,
+      uid: u.uid,
+
+      // These fields come directly from users table.
+      universityId:
+        u.university_id ||
+        u.universityId ||
+        '',
+
+      prog:
+        u.program ||
+        '',
+
+      name:
+        `${u.last_name || u.lastName || ''}, ${
+          u.first_name || u.firstName || ''
+        }`
+          .replace(/^,\s*/, '')
+          .trim() ||
+        u.name ||
+        'Unknown',
+
+      type: normaliseRole(
+        u.role ||
+        u.type ||
+        u.user_type ||
+        'student'
+      ),
+
+      role: u.role || 'student',
+
+      year:
+        u.year_level ||
+        u.yearLevel ||
+        '',
+
+      section: u.section || '',
+      email: u.email || '',
+      department: u.department || '',
+      createdAt:
+        u.created_at ||
+        u.createdAt ||
+        '',
+    }))
+  );
+
+  setClinicStaffCount(clinicStaff.length);
+}
       // ── Medical Records ──────────────────────────────────
       let medData = [];
       if (medRes && medRes.ok) {
@@ -667,58 +778,92 @@ function DashboardContent() {
               </div>
             ) : (
               <div className="space-y-2">
-                {pendingAppointments.map((appt, i) => {
-                  const bTime = new Date(
-                    appt?.bookedAt || appt?.createdAt || appt?.created_at || appt?.date || Date.now()
-                  ).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  {pendingAppointments.map((appt, i) => {
+    const bTime = new Date(
+      appt?.bookedAt ||
+      appt?.createdAt ||
+      appt?.created_at ||
+      appt?.date ||
+      Date.now()
+    ).toLocaleString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
 
-                  const matchedUser = users.find(u =>
-                    String(u.uid) === String(appt?.user_id || appt?.userId || appt?.patient_id || appt?.patientId || appt?.student_id)
-                  );
+const appointmentUserId =
+  appt?.user_id ||
+  appt?.userId ||
+  appt?.patient_id ||
+  appt?.patientId ||
+  appt?.student_id;
 
-                  const patientName = matchedUser?.name || appt?.name || appt?.patientName || appt?.student_name || appt?.studentName || 'Unknown Patient';
-                  const patientId   = matchedUser?.universityId || appt?.university_id || appt?.universityId || appt?.idno || 'No ID';
-                  const patientProg = matchedUser?.prog || appt?.prog || appt?.program || appt?.dept || appt?.department || 'N/A';
-                  const reason      = appt?.reason || appt?.consultation_type || appt?.type || 'Consultation';
+const matchedUser = users.find(
+  (user) => String(user.id) === String(appointmentUserId)
+);
 
-                  return (
-                    <div
-                      key={appt?.id || i}
-                      className="grid grid-cols-12 items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-[#8aacaa] hover:shadow-sm transition-all group"
-                    >
-                      {/* Grid Column 1: # and Patient Name */}
-                      <div className="col-span-5 flex items-center gap-3 min-w-0">
-                        <div className="font-['DM_Mono',monospace] text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-1.5 py-0.5 shrink-0">
-                          #{i + 1}
-                        </div>
-                        <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">
-                          {patientName}
-                        </div>
-                      </div>
+const patientName =
+  matchedUser?.name ||
+  appt?.name ||
+  appt?.patient_name ||
+  appt?.patientName ||
+  'Unknown Patient';
 
-                      {/* Grid Column 2: ID & Program */}
-                      <div className="col-span-3 text-[10px] text-[#64748b] truncate">
-                        {patientId} &middot; {patientProg}
-                      </div>
 
-                      {/* Grid Column 3: Consultation Reason Badge */}
-                      <div className="col-span-2 truncate">
-                        <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2 py-0.5 rounded-full inline-block font-medium truncate max-w-full">
-                          {reason}
-                        </span>
-                      </div>
+const patientId =
+  matchedUser?.universityId ||
+  'No ID';
 
-                      {/* Grid Column 4: Date & Time */}
-                      <div className="col-span-2 text-right shrink-0">
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
-                          <i className="fa-regular fa-clock"></i>
-                          {bTime.split(',')[0]}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+const patientProg =
+  matchedUser?.prog ||
+  'N/A';
+
+    const reason =
+      appt?.reason ||
+      appt?.consultation_type ||
+      appt?.type ||
+      'Consultation';
+
+    return (
+      <div
+        key={appt?.id || i}
+        className="grid grid-cols-12 items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-[#8aacaa] hover:shadow-sm transition-all group"
+      >
+        {/* Grid Column 1: Number and patient name */}
+        <div className="col-span-5 flex items-center gap-3 min-w-0">
+          <div className="font-['DM_Mono',monospace] text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-1.5 py-0.5 shrink-0">
+            #{i + 1}
+          </div>
+
+          <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">
+            {patientName}
+          </div>
+        </div>
+
+        {/* Grid Column 2: University ID and program */}
+        <div className="col-span-3 text-[10px] text-[#64748b] truncate">
+          {patientId} &middot; {patientProg}
+        </div>
+
+        {/* Grid Column 3: Consultation reason */}
+        <div className="col-span-2 truncate">
+          <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2 py-0.5 rounded-full inline-block font-medium truncate max-w-full">
+            {reason}
+          </span>
+        </div>
+
+        {/* Grid Column 4: Date and time */}
+        <div className="col-span-2 text-right shrink-0">
+          <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
+            <i className="fa-regular fa-clock"></i>
+            {bTime.split(',')[0]}
+          </div>
+        </div>
+      </div>
+    );
+  })}
+</div>
             )}
           </div>
         </GlassCard>

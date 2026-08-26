@@ -57,6 +57,204 @@ const Snackbar = ({ message, type, onClose }) => {
   );
 };
 
+
+// ─── Reusable Confirmation Modal ──────────────────────────────────────────────
+const ActionConfirmModal = ({
+  open,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  tone = 'save',
+  loading = false,
+  onConfirm,
+  onCancel,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !loading) onCancel?.();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, loading, onCancel]);
+
+  if (!open) return null;
+
+  const palette = {
+    save: {
+      accent: '#466460',
+      soft: '#e8f5ee',
+      icon: '✓',
+    },
+    edit: {
+      accent: '#2563eb',
+      soft: '#dbeafe',
+      icon: '✎',
+    },
+    delete: {
+      accent: '#e5262d',
+      soft: '#fee2e2',
+      icon: '↪',
+    },
+    warning: {
+      accent: '#d97706',
+      soft: '#fef3c7',
+      icon: '!',
+    },
+  };
+
+  const colors = palette[tone] || palette.save;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-confirm-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !loading) onCancel?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 20000,
+        background: 'rgba(15, 23, 42, 0.54)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 384,
+          background: '#fff',
+          borderRadius: 18,
+          padding: '24px 24px 22px',
+          boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            margin: '0 auto 17px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: colors.soft,
+            color: colors.accent,
+            fontSize: 26,
+            fontWeight: 800,
+          }}
+        >
+          {colors.icon}
+        </div>
+
+        <h3
+          id="settings-confirm-title"
+          style={{
+            margin: 0,
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </h3>
+
+        <p
+          style={{
+            margin: '12px 0 22px',
+            color: '#718096',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          {message}
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: '#f1f5f9',
+              color: '#526277',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.65 : 1,
+            }}
+          >
+            {cancelText}
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: colors.accent,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'Please wait...' : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmableRemoveButton = ({
+  label = 'Remove',
+  itemLabel = 'this item',
+  onConfirm,
+  style,
+}) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} style={style}>
+        {label}
+      </button>
+
+      <ActionConfirmModal
+        open={open}
+        title="Delete Item?"
+        message={`Are you sure you want to delete ${itemLabel}? This change will be applied when you save.`}
+        confirmText="Delete"
+        tone="delete"
+        onCancel={() => setOpen(false)}
+        onConfirm={() => {
+          setOpen(false);
+          onConfirm?.();
+        }}
+      />
+    </>
+  );
+};
+
 const SectionCard = ({ children }) => (
   <div
     style={{
@@ -215,7 +413,12 @@ const ConfigArrayEditor = ({ title, description, items = [], onChange, placehold
           {safeItems.map((item, idx) => (
             <span key={`${item}-${idx}`} style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '4px 12px', borderRadius: 9999, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
               {item}
-              <button type="button" onClick={() => handleRemove(idx)} style={{ background: 'none', border: 'none', color: '#064e3b', cursor: 'pointer', padding: 0 }}>✕</button>
+              <ConfirmableRemoveButton
+                label="✕"
+                itemLabel={`"${item}"`}
+                onConfirm={() => handleRemove(idx)}
+                style={{ background: 'none', border: 'none', color: '#064e3b', cursor: 'pointer', padding: 0 }}
+              />
             </span>
           ))}
         </div>
@@ -256,7 +459,12 @@ const SectionsEditor = ({ sections = [], onChange }) => {
           {safeSections.map((section, idx) => (
             <span key={`${section}-${idx}`} style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '4px 12px', borderRadius: 9999, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
               {section}
-              <button type="button" onClick={() => handleRemove(idx)} style={{ background: 'none', border: 'none', color: '#064e3b', cursor: 'pointer', padding: 0 }}>✕</button>
+              <ConfirmableRemoveButton
+                label="✕"
+                itemLabel={`"${section}"`}
+                onConfirm={() => handleRemove(idx)}
+                style={{ background: 'none', border: 'none', color: '#064e3b', cursor: 'pointer', padding: 0 }}
+              />
             </span>
           ))}
         </div>
@@ -297,7 +505,16 @@ const ConfigObjectEditor = ({ title, description, obj = {}, onChange, keyPlaceho
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', border: '1px solid #e2ebe8', padding: '8px 14px', borderRadius: 10 }}>
               <span style={{ fontWeight: 700, color: '#466460', fontSize: 13, width: 120 }}>{key}</span>
               <span style={{ color: '#1a2e22', fontSize: 13, flex: 1 }}>{val}</span>
-              <button type="button" onClick={() => { const copy = { ...safeObject }; delete copy[key]; onChange(copy); }} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', padding: '0 12px', height: 28, borderRadius: 14, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Delete</button>
+              <ConfirmableRemoveButton
+                label="Delete"
+                itemLabel={`the "${key}" mapping`}
+                onConfirm={() => {
+                  const copy = { ...safeObject };
+                  delete copy[key];
+                  onChange(copy);
+                }}
+                style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', padding: '0 12px', height: 28, borderRadius: 14, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
+              />
             </div>
           ))}
         </div>
@@ -344,7 +561,12 @@ const ConfigDeptEditor = ({ departments = [], onChange }) => {
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>Full Name</label>
                 <input type="text" value={dept.full || ''} onChange={(e) => updateDept(idx, 'full', e.target.value)} placeholder="e.g. College of Computer Engineering" style={{ ...inputStyle }} />
               </div>
-              <button type="button" onClick={() => removeDept(idx)} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', padding: '0 16px', height: 38, borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Remove</button>
+              <ConfirmableRemoveButton
+                label="Remove"
+                itemLabel={`the "${dept.abbr || dept.full || 'unnamed'}" department`}
+                onConfirm={() => removeDept(idx)}
+                style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', padding: '0 16px', height: 38, borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              />
             </div>
 
             <div style={{ background: '#fff', border: '1px solid #e2ebe8', padding: 20, borderRadius: 12 }}>
@@ -462,6 +684,7 @@ export default function SystemConfigSettings({ isMobile }) {
 
   // Modals visibility state
   const [activeModal, setActiveModal] = useState(null);
+  const [pendingSaveFields, setPendingSaveFields] = useState(null);
 
   const showToast = (text, type = 'success') => {
     setToast({ show: true, text, type });
@@ -478,10 +701,21 @@ export default function SystemConfigSettings({ isMobile }) {
     fetchConfig();
   }, []);
 
-  const fetchConfig = async () => {
+const fetchConfig = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/system-config`, { cache: 'no-store' });
+      // 1. Get the token
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found.');
+
+      // 2. Attach the Authorization header
+      const res = await fetch(`${API_URL}/system-config`, {
+        cache: 'no-store',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
       const result = await res.json();
       if (!result.success) throw new Error(result.message || 'Failed to load configuration.');
@@ -508,15 +742,22 @@ export default function SystemConfigSettings({ isMobile }) {
     }
   };
 
-  const handleSaveModal = async (updatedFields) => {
+const performSaveModal = async (updatedFields) => {
     if (!config || saving) return;
     setSaving(true);
 
     try {
-      // Send ONLY the fields that were actually modified in the modal
+      // 1. Get the token
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found.');
+
+      // 2. Attach the Authorization header alongside Content-Type
       const res = await fetch(`${API_URL}/system-config`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(updatedFields),
       });
 
@@ -536,6 +777,18 @@ export default function SystemConfigSettings({ isMobile }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const requestSaveModal = (updatedFields) => {
+    if (!updatedFields || saving) return;
+    setPendingSaveFields(updatedFields);
+  };
+
+  const confirmSaveModal = async () => {
+    if (!pendingSaveFields) return;
+    const fieldsToSave = pendingSaveFields;
+    setPendingSaveFields(null);
+    await performSaveModal(fieldsToSave);
   };
 
   // Summary generators
@@ -604,17 +857,28 @@ export default function SystemConfigSettings({ isMobile }) {
 
       {/* Render Active Modal */}
       {activeModal === 'password' && (
-        <PasswordRulesModal isMobile={isMobile} initialRules={config.password_rules} onClose={() => setActiveModal(null)} onSave={handleSaveModal} saving={saving} />
+        <PasswordRulesModal isMobile={isMobile} initialRules={config.password_rules} onClose={() => setActiveModal(null)} onSave={requestSaveModal} saving={saving} />
       )}
       {activeModal === 'departments' && (
-        <DepartmentsModal isMobile={isMobile} initialDepartments={config.departments} onClose={() => setActiveModal(null)} onSave={handleSaveModal} saving={saving} />
+        <DepartmentsModal isMobile={isMobile} initialDepartments={config.departments} onClose={() => setActiveModal(null)} onSave={requestSaveModal} saving={saving} />
       )}
       {activeModal === 'offices' && (
-        <OfficesSectionsModal isMobile={isMobile} initialOffices={config.non_academic_offices} initialSections={config.sections} onClose={() => setActiveModal(null)} onSave={handleSaveModal} saving={saving} />
+        <OfficesSectionsModal isMobile={isMobile} initialOffices={config.non_academic_offices} initialSections={config.sections} onClose={() => setActiveModal(null)} onSave={requestSaveModal} saving={saving} />
       )}
       {activeModal === 'roles' && (
-        <RolesModal isMobile={isMobile} config={config} onClose={() => setActiveModal(null)} onSave={handleSaveModal} saving={saving} />
+        <RolesModal isMobile={isMobile} config={config} onClose={() => setActiveModal(null)} onSave={requestSaveModal} saving={saving} />
       )}
+
+      <ActionConfirmModal
+        open={Boolean(pendingSaveFields)}
+        title="Save System Configuration?"
+        message="This will apply the edited configuration across MediTrack. Existing users and forms may immediately use the new values."
+        confirmText="Save Changes"
+        tone="save"
+        loading={saving}
+        onCancel={() => setPendingSaveFields(null)}
+        onConfirm={confirmSaveModal}
+      />
     </div>
   );
 }

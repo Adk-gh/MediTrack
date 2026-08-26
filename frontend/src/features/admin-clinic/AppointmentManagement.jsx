@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { supabase } from '../../supabase';
 import * as appointmentsService from '../../services/appointments.service';
 import DatePicker from '../../components/Datepicker';
-import { logAdminAction } from '../../services/audit.service';
 
 const ITEMS_PER_PAGE = 100;
 
@@ -274,15 +273,6 @@ export const AppointmentManagement = () => {
     setDeleting(true);
     try {
       await appointmentsService.deleteAppointment(appointmentToDelete.id);
-      logAdminAction({
-        action: 'appointment_deleted',
-        type: 'appointment',
-        description: `Archived appointment ${appointmentToDelete.id}`,
-        details: { appointmentId: appointmentToDelete.id },
-        adminUid,
-        userEmail: adminEmail,
-        userName: adminName,
-      });
       showSnackbar('Appointment archived successfully. You can restore it from the Archives page.');
       setShowDeleteModal(false);
       setAppointmentToDelete(null);
@@ -357,19 +347,6 @@ export const AppointmentManagement = () => {
 
       const previousStatus = (appointmentToEdit.status || 'pending').toLowerCase();
 
-      logAdminAction({
-        action: 'appointment_updated',
-        type: 'appointment',
-        description: `Updated appointment ${appointmentToEdit.id} (status: ${previousStatus} -> ${editForm.status})`,
-        details: {
-          appointmentId: appointmentToEdit.id,
-          previousStatus,
-          updates,
-        },
-        adminUid,
-        userEmail: adminEmail,
-        userName: adminName,
-      });
 
       showSnackbar('Appointment updated successfully');
       setShowEditModal(false);
@@ -536,19 +513,6 @@ export const AppointmentManagement = () => {
         if (notifyError) console.error('[handleBulkReschedule] Failed to create bulk notifications:', notifyError);
       }
 
-      logAdminAction({
-        action: 'appointments_bulk_rescheduled',
-        type: 'appointment',
-        description: `Bulk rescheduled ${bulkMatches.length} appointment(s) from ${bulkFromDate} to ${bulkToDate}`,
-        details: {
-          ids: bulkMatches.map(a => a.id),
-          fromDate: bulkFromDate,
-          newDate: { year: ty, month: tm, day: td },
-        },
-        adminUid,
-        userEmail: adminEmail,
-        userName: adminName,
-      });
 
       showSnackbar(`Rescheduled ${bulkMatches.length} approved appointment${bulkMatches.length !== 1 ? 's' : ''} to ${formatDate(ty, tm, td)}`);
       setShowBulkModal(false);

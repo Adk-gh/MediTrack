@@ -3,8 +3,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom'; // Added for absolute top modals
 import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
-import { logAdminAction } from '../../services/audit.service';
-
 const ITEMS_PER_PAGE = 100;
 
 const TYPE_OPTIONS = [
@@ -232,17 +230,6 @@ export const ConsultationManagement = () => {
       // 3. Archive the consultation
       await consultationsService.deleteConsultation(consultationToDelete.id);
 
-      // 4. ---- AUDIT LOG ----
-      logAdminAction({
-        action: 'consultation_archived',
-        details: {
-          consultationId: consultationToDelete.id,
-          consultationType: consultationToDelete.consultation_type,
-          patientId: consultationToDelete.patient_id,
-        },
-        adminUid,
-      });
-
       showSnackbar('Consultation archived successfully. You can restore it from the Archives page.');
       setShowDeleteModal(false);
       setConsultationToDelete(null);
@@ -298,17 +285,6 @@ export const ConsultationManagement = () => {
         is_read: false
       });
 
-      // 4. ---- AUDIT LOG ----
-      logAdminAction({
-        action: 'consultation_status_updated',
-        details: {
-          consultationId: consultationToEdit.id,
-          consultationType: consultationToEdit.consultation_type,
-          previousStatus: consultationToEdit.status || 'active',
-          newStatus: editStatus,
-        },
-        adminUid,
-      });
 
       showSnackbar('Consultation status updated successfully');
       setShowEditModal(false);

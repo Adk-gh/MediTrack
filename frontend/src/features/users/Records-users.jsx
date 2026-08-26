@@ -7,6 +7,7 @@ import { DentalExaminationReport } from '../../components/DentalExaminationRepor
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { formatUserDate } from '../../utils/dateFormat';
 import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
+import { useDocumentManager } from '../../hooks/useDocumentManager';
 
 // =============================================================================
 // CACHE
@@ -332,21 +333,17 @@ const SectionHead = ({ label }) => (
   </div>
 );
 
-const RequestCertificateCard = ({ requested, requestedAt, onRequest, label, loading, preferences }) => {
+const RequestHeaderButton = ({ requested, onRequest, label, loading }) => {
   const { t } = useTranslation();
 
   if (requested) {
     return (
-      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 16, padding: '14px 16px', marginTop: 6, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 32, height: 32, background: '#f59e0b', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span style={{ color: '#fff', fontSize: 14 }}>⏳</span>
-        </div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#92400e' }}>{t('records.requestSent', 'Request Sent')}</div>
-          <div style={{ fontSize: 10, color: '#b45309', marginTop: 2 }}>
-            {t('records.requestSentDesc', `You requested your ${label.toLowerCase()} on {{date}}. The clinic will notify you once it's ready.`).replace('{{date}}', requestedAt ? formatDisplayDateWithMonth(requestedAt, preferences) : '—')}
-          </div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '6px 10px' }}>
+        {/* Replaced emoji with FontAwesome icon */}
+        <i className="fa-solid fa-clock" style={{ color: '#b45309', fontSize: 12 }} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', whiteSpace: 'nowrap' }}>
+          {t('records.requestSent', 'Request Sent')}
+        </span>
       </div>
     );
   }
@@ -356,9 +353,27 @@ const RequestCertificateCard = ({ requested, requestedAt, onRequest, label, load
       type="button"
       onClick={onRequest}
       disabled={loading}
-      style={{ width: '100%', background: '#fff', color: '#466460', border: '1.5px dashed #466460', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: loading ? 'default' : 'pointer', marginTop: 6, opacity: loading ? 0.6 : 1 }}
+      style={{
+        background: '#466460',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 10,
+        padding: '6px 14px',
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: loading ? 'default' : 'pointer',
+        opacity: loading ? 0.6 : 1,
+        whiteSpace: 'nowrap',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        boxShadow: '0 2px 8px rgba(70, 100, 96, 0.2)'
+      }}
     >
-      {loading ? t('records.sendingRequest', 'Sending request…') : t('records.requestLabel', `Request ${label} →`)}
+      {loading
+        ? t('records.sendingRequest', 'Sending…')
+        : t('records.requestLabel', 'Request {{label}} →', { label })
+      }
     </button>
   );
 };
@@ -860,19 +875,28 @@ export default function RecordsUsers() {
           <div style={{ fontSize: 13, fontWeight: 800, color: '#1a2e22' }}>{isMedical ? t('records.medicalExamination', 'Medical Examination') : t('records.dentalExamination', 'Dental Examination')}</div>
           <div style={{ fontSize: 10, color: '#6b8577' }}>{formatDisplayDateWithMonth(rec.approved_at || rec.created_at, preferences)}</div>
         </div>
-        {tabs.length > 1 && (
-          <div style={{ display: 'flex', background: '#f4f7f5', borderRadius: 12, padding: 3, gap: 2 }}>
-            {tabs.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setView(key)}
-                style={{ border: 'none', borderRadius: 9, padding: '6px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', background: view === key ? '#466460' : 'transparent', color: view === key ? '#fff' : '#6b8577' }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        {rec.issue_cert ? (
+          tabs.length > 1 && (
+            <div style={{ display: 'flex', background: '#f4f7f5', borderRadius: 12, padding: 3, gap: 2 }}>
+              {tabs.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setView(key)}
+                  style={{ border: 'none', borderRadius: 9, padding: '6px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', background: view === key ? '#466460' : 'transparent', color: view === key ? '#fff' : '#6b8577' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <RequestHeaderButton
+            requested={rec.certRequested}
+            onRequest={() => handleRequestCertificate(rec)}
+            loading={requestingId === rec.id}
+            label={isMedical ? t('records.certificate', 'Certificate') : t('records.report', 'Report')}
+          />
         )}
       </div>
 
@@ -1042,12 +1066,10 @@ export default function RecordsUsers() {
                   </div>
                 )}
 
-                {rec.issue_cert ? (
+                {rec.issue_cert && (
                   <button type="button" onClick={() => setView('certificate')} style={{ width: '100%', background: '#466460', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}>
                     {t('records.viewMedicalCert', 'View Medical Certificate →')}
                   </button>
-                ) : (
-                  <RequestCertificateCard requested={rec.certRequested} requestedAt={rec.certRequestedAt} onRequest={() => handleRequestCertificate(rec)} loading={requestingId === rec.id} label={t('records.certificate', 'Medical Certificate')} preferences={preferences} />
                 )}
               </>
             ) : (
@@ -1087,12 +1109,10 @@ export default function RecordsUsers() {
                   <TagList items={affectedTeeth} color="amber" />
                 </div>
 
-                {rec.issue_cert ? (
+                {rec.issue_cert && (
                   <button type="button" onClick={() => setView('certificate')} style={{ width: '100%', background: '#466460', color: '#fff', border: 'none', borderRadius: 16, padding: '14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 6 }}>
                     {t('records.viewDentalReport', 'View Dental Report →')}
                   </button>
-                ) : (
-                  <RequestCertificateCard requested={rec.certRequested} requestedAt={rec.certRequestedAt} onRequest={() => handleRequestCertificate(rec)} loading={requestingId === rec.id} label={t('records.report', 'Dental Report')} preferences={preferences} />
                 )}
               </>
             )}

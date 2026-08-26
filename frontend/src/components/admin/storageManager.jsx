@@ -636,6 +636,158 @@ const FileViewerModal = ({
   );
 };
 
+
+// ─── Delete Confirmation Modal ────────────────────────────────────────────────
+
+const DeleteConfirmModal = ({
+  isOpen,
+  title,
+  message,
+  deleting,
+  onConfirm,
+  onCancel,
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !deleting) {
+          onCancel();
+        }
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 12000,
+        background: 'rgba(15, 23, 42, 0.52)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="storage-delete-title"
+    >
+      <div
+        style={{
+          width: 'min(384px, 100%)',
+          background: '#fff',
+          borderRadius: 18,
+          boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)',
+          padding: '24px 24px 22px',
+          textAlign: 'center',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            margin: '0 auto 16px',
+            borderRadius: '50%',
+            background: '#fee2e2',
+            color: '#dc2626',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ width: 26, height: 26 }}
+            aria-hidden="true"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v5" />
+            <path d="M14 11v5" />
+            <path d="M9 6V4h6v2" />
+          </svg>
+        </div>
+
+        <h3
+          id="storage-delete-title"
+          style={{
+            margin: 0,
+            color: '#1e293b',
+            fontSize: 17,
+            fontWeight: 800,
+          }}
+        >
+          {title || 'Confirm Delete'}
+        </h3>
+
+        <p
+          style={{
+            margin: '10px auto 22px',
+            maxWidth: 300,
+            color: '#64748b',
+            fontSize: 13,
+            lineHeight: 1.55,
+          }}
+        >
+          {message}
+        </p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            style={{
+              minHeight: 44,
+              border: 'none',
+              borderRadius: 12,
+              background: '#f1f5f9',
+              color: '#475569',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              opacity: deleting ? 0.65 : 1,
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={deleting}
+            style={{
+              minHeight: 44,
+              border: 'none',
+              borderRadius: 12,
+              background: '#dc2626',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              opacity: deleting ? 0.75 : 1,
+            }}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function StorageManager({ isMobile }) {
@@ -652,6 +804,21 @@ export default function StorageManager({ isMobile }) {
 
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [deleteModal, setDeleteModal] = useState({
+    open: false,
+    type: null,
+    item: null,
+    title: '',
+    message: '',
+  });
+
+  // ─── Upload State ───────────────────────────────────────────────────────────
+  const [uploading, setUploading] = useState(false);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
+  const [activeLogo, setActiveLogo] = useState(null);
+  const [settingActiveLogo, setSettingActiveLogo] = useState('');
+  const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+  const MAX_UPLOAD_FILES = 10;
 
   const [toast, setToast] = useState({
     show: false,
@@ -683,6 +850,9 @@ export default function StorageManager({ isMobile }) {
   };
 
   const currentPrefix = pathParts.join('/');
+  const isBrandingFolder =
+    selectedBucket === 'public-assets' &&
+    currentPrefix === 'branding';
 
   const containerStyle = {
     padding: isMobile ? '16px 12px' : '24px 28px',
@@ -695,6 +865,7 @@ export default function StorageManager({ isMobile }) {
 
   useEffect(() => {
     fetchBuckets();
+    loadActiveLogo();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -713,7 +884,20 @@ export default function StorageManager({ isMobile }) {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && viewerFile) {
+      if (event.key !== 'Escape') return;
+
+      if (deleteModal.open && !deleting) {
+        setDeleteModal({
+          open: false,
+          type: null,
+          item: null,
+          title: '',
+          message: '',
+        });
+        return;
+      }
+
+      if (viewerFile) {
         closeViewer();
       }
     };
@@ -723,7 +907,7 @@ export default function StorageManager({ isMobile }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [viewerFile]);
+  }, [viewerFile, deleteModal.open, deleting]);
 
   // ─── Fetch Buckets ─────────────────────────────────────────────────────────
 
@@ -856,14 +1040,14 @@ export default function StorageManager({ isMobile }) {
       const query = `?path=${encodeURIComponent(item.path)}`;
 
       const res = await fetch(
-        `${API_URL}/storage/buckets/${encodeURIComponent(
-          selectedBucket
-        )}/file-url${query}`,
-        {
-          headers,
-          cache: 'no-store',
-        }
-      );
+  `${API_URL}/storage/buckets/${encodeURIComponent(
+    selectedBucket
+  )}/view${query}`,
+  {
+    headers,
+    cache: 'no-store',
+  }
+);
 
       if (!res.ok) {
         let message = `Server responded ${res.status}`;
@@ -957,15 +1141,7 @@ export default function StorageManager({ isMobile }) {
 
   // ─── Delete File ───────────────────────────────────────────────────────────
 
-  const deleteFile = async (item) => {
-    if (
-      !window.confirm(
-        `Delete "${item.name}"? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
+  const performDeleteFile = async (item) => {
     setDeleting(true);
 
     try {
@@ -1005,15 +1181,7 @@ export default function StorageManager({ isMobile }) {
 
   // ─── Delete Folder ─────────────────────────────────────────────────────────
 
-  const deleteFolder = async (item) => {
-    if (
-      !window.confirm(
-        `Delete folder "${item.name}" and everything inside it? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
+  const performDeleteFolder = async (item) => {
     setDeleting(true);
 
     try {
@@ -1056,7 +1224,7 @@ export default function StorageManager({ isMobile }) {
 
   // ─── Bulk Delete ───────────────────────────────────────────────────────────
 
-  const deleteSelected = async () => {
+  const performDeleteSelected = async () => {
     if (selected.size === 0) return;
 
     const selectedItems = items.filter((i) =>
@@ -1085,14 +1253,6 @@ export default function StorageManager({ isMobile }) {
     ]
       .filter(Boolean)
       .join(' and ');
-
-    if (
-      !window.confirm(
-        `Delete ${label}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
 
     setDeleting(true);
 
@@ -1163,6 +1323,295 @@ export default function StorageManager({ isMobile }) {
     } finally {
       setDeleting(false);
     }
+  };
+
+
+  // ─── Active Branding Logo ───────────────────────────────────────────────────
+
+  const loadActiveLogo = async () => {
+    try {
+      const res = await fetch(`${API_URL}/storage/branding/logo`, {
+        cache: 'no-store',
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data?.success && data?.path) {
+        setActiveLogo(data);
+      } else {
+        setActiveLogo(null);
+      }
+    } catch (error) {
+      console.error('Failed to load active branding logo:', error);
+      setActiveLogo(null);
+    }
+  };
+
+  const setAsActiveLogo = async (item) => {
+    if (
+      !item ||
+      item.type !== 'file' ||
+      !isBrandingFolder ||
+      !isImageFile(item.name)
+    ) {
+      return;
+    }
+
+    setSettingActiveLogo(item.path);
+
+    try {
+      const headers = await getAuthHeaders();
+      headers['Content-Type'] = 'application/json';
+
+      const res = await fetch(`${API_URL}/storage/branding/logo`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: item.path,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            `Server responded ${res.status}`
+        );
+      }
+
+      setActiveLogo(data);
+
+      window.dispatchEvent(
+        new CustomEvent('meditrack:branding-logo-updated', {
+          detail: {
+            url: data.url,
+            path: data.path,
+            name: data.name,
+          },
+        })
+      );
+
+      localStorage.setItem(
+        'meditrack_branding_logo_updated',
+        Date.now().toString()
+      );
+
+      showToast(`"${item.name}" is now the active logo.`, 'success');
+    } catch (error) {
+      console.error('Failed to set active branding logo:', error);
+
+      showToast(
+        error.message || 'Failed to set active logo.',
+        'error'
+      );
+    } finally {
+      setSettingActiveLogo('');
+    }
+  };
+
+  // ─── Upload Files ────────────────────────────────────────────────────────────
+
+  const handleUploadFiles = async (event) => {
+    const files = Array.from(event.target.files || []);
+
+    // Allow the same file to be selected again after an upload.
+    setUploadInputKey((value) => value + 1);
+
+    if (!files.length) return;
+
+    if (files.length > MAX_UPLOAD_FILES) {
+      showToast(
+        `You can upload a maximum of ${MAX_UPLOAD_FILES} files at once.`,
+        'error'
+      );
+      return;
+    }
+
+    const oversized = files.filter((file) => file.size > MAX_UPLOAD_SIZE);
+
+    if (oversized.length) {
+      showToast(
+        `${oversized.length === 1 ? 'A file is' : `${oversized.length} files are`} larger than 10 MB.`,
+        'error'
+      );
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const headers = await getAuthHeaders();
+
+      // getAuthHeaders may include Content-Type from other requests.
+      // Do not send a manually-set JSON Content-Type for multipart/form-data.
+      delete headers['Content-Type'];
+      delete headers['content-type'];
+
+      const formData = new FormData();
+
+      files.forEach((file) => {
+        formData.append('files', file, file.name);
+      });
+
+      formData.append('path', currentPrefix);
+
+      const res = await fetch(
+        `${API_URL}/storage/buckets/${encodeURIComponent(
+          selectedBucket
+        )}/upload`,
+        {
+          method: 'POST',
+          headers,
+          body: formData,
+        }
+      );
+
+      let data = null;
+
+      try {
+        data = await res.json();
+      } catch {
+        // Keep the generic HTTP error below if the backend did not return JSON.
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            `Server responded ${res.status}`
+        );
+      }
+
+      const uploadedCount = data?.uploadedCount || data?.uploaded?.length || 0;
+      const failedCount = data?.failedCount || data?.failed?.length || 0;
+
+      if (failedCount > 0) {
+        const failedNames = (data.failed || [])
+          .map((item) => item.name)
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(', ');
+
+        showToast(
+          `${uploadedCount} uploaded, ${failedCount} failed${
+            failedNames ? `: ${failedNames}` : '.'
+          }`,
+          'error'
+        );
+      } else {
+        showToast(
+          `${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded successfully.`,
+          'success'
+        );
+      }
+
+      await fetchItems();
+
+      if (isBrandingFolder) {
+        await loadActiveLogo();
+      }
+    } catch (error) {
+      console.error('Upload files error:', error);
+
+      showToast(
+        error.message || 'Failed to upload files.',
+        'error'
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+
+  // ─── Delete Modal Handlers ─────────────────────────────────────────────────
+
+  const closeDeleteModal = () => {
+    if (deleting) return;
+
+    setDeleteModal({
+      open: false,
+      type: null,
+      item: null,
+      title: '',
+      message: '',
+    });
+  };
+
+  const deleteFile = (item) => {
+    setDeleteModal({
+      open: true,
+      type: 'file',
+      item,
+      title: 'Delete File?',
+      message: `Are you sure you want to permanently delete "${item.name}"? This action cannot be undone.`,
+    });
+  };
+
+  const deleteFolder = (item) => {
+    setDeleteModal({
+      open: true,
+      type: 'folder',
+      item,
+      title: 'Delete Folder?',
+      message: `Are you sure you want to permanently delete "${item.name}" and everything inside it? This action cannot be undone.`,
+    });
+  };
+
+  const deleteSelected = () => {
+    if (selected.size === 0) return;
+
+    const selectedItems = items.filter((item) =>
+      selected.has(item.path)
+    );
+
+    const folderCount = selectedItems.filter(
+      (item) => item.type === 'folder'
+    ).length;
+
+    const fileCount = selectedItems.length - folderCount;
+
+    const label = [
+      fileCount
+        ? `${fileCount} file${fileCount === 1 ? '' : 's'}`
+        : null,
+      folderCount
+        ? `${folderCount} folder${folderCount === 1 ? '' : 's'}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' and ');
+
+    setDeleteModal({
+      open: true,
+      type: 'selected',
+      item: null,
+      title: 'Delete Selected Items?',
+      message: `Are you sure you want to permanently delete ${label}? This action cannot be undone.`,
+    });
+  };
+
+  const confirmDelete = async () => {
+    const { type, item } = deleteModal;
+
+    if (!type || deleting) return;
+
+    if (type === 'file' && item) {
+      await performDeleteFile(item);
+    } else if (type === 'folder' && item) {
+      await performDeleteFolder(item);
+    } else if (type === 'selected') {
+      await performDeleteSelected();
+    }
+
+    setDeleteModal({
+      open: false,
+      type: null,
+      item: null,
+      title: '',
+      message: '',
+    });
   };
 
   // ─── Loading Buckets ───────────────────────────────────────────────────────
@@ -1307,8 +1756,8 @@ export default function StorageManager({ isMobile }) {
                 margin: '0 0 0 4px',
               }}
             >
-              Browse and clean up files stored in your
-              Supabase buckets.
+              Browse, upload, view, and clean up files stored in your
+              Supabase buckets. Uploads are limited to 10 MB per file.
             </p>
           </div>
 
@@ -1431,21 +1880,58 @@ export default function StorageManager({ isMobile }) {
               Select all
             </label>
 
-            {selected.size > 0 && (
-              <button
-                onClick={deleteSelected}
-                disabled={deleting}
-                style={pillButtonStyle(
-                  '#ef4444',
-                  '#fff',
-                  deleting
-                )}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <input
+                key={uploadInputKey}
+                id="storage-upload-input"
+                type="file"
+                multiple
+                onChange={handleUploadFiles}
+                disabled={uploading}
+                style={{ display: 'none' }}
+              />
+
+              <label
+                htmlFor="storage-upload-input"
+                style={{
+                  ...pillButtonStyle(
+                    '#466460',
+                    '#fff',
+                    uploading
+                  ),
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: 0,
+                }}
               >
-                {deleting
-                  ? 'Deleting...'
-                  : `Delete Selected (${selected.size})`}
-              </button>
-            )}
+                {uploading ? 'Uploading...' : 'Upload Files'}
+              </label>
+
+              {selected.size > 0 && (
+                <button
+                  onClick={deleteSelected}
+                  disabled={deleting || uploading}
+                  style={pillButtonStyle(
+                    '#ef4444',
+                    '#fff',
+                    deleting || uploading
+                  )}
+                >
+                  {deleting
+                    ? 'Deleting...'
+                    : `Delete Selected (${selected.size})`}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* File List */}
@@ -1622,6 +2108,61 @@ export default function StorageManager({ isMobile }) {
                     </p>
                   </div>
 
+                  {/* Set Active Branding Logo */}
+
+                  {isBrandingFolder &&
+                    item.type === 'file' &&
+                    image && (
+                      <button
+                        type="button"
+                        onClick={() => setAsActiveLogo(item)}
+                        disabled={
+                          deleting ||
+                          uploading ||
+                          settingActiveLogo === item.path ||
+                          activeLogo?.path === item.path
+                        }
+                        style={{
+                          background:
+                            activeLogo?.path === item.path
+                              ? '#466460'
+                              : '#eef6f2',
+                          color:
+                            activeLogo?.path === item.path
+                              ? '#fff'
+                              : '#466460',
+                          border:
+                            activeLogo?.path === item.path
+                              ? '1px solid #466460'
+                              : '1px solid #b9d2c7',
+                          padding: '7px 14px',
+                          borderRadius: 20,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor:
+                            deleting ||
+                            uploading ||
+                            settingActiveLogo === item.path ||
+                            activeLogo?.path === item.path
+                              ? 'not-allowed'
+                              : 'pointer',
+                          opacity:
+                            deleting ||
+                            uploading ||
+                            settingActiveLogo === item.path
+                              ? 0.6
+                              : 1,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {settingActiveLogo === item.path
+                          ? 'Setting...'
+                          : activeLogo?.path === item.path
+                          ? 'Active Logo'
+                          : 'Set as Logo'}
+                      </button>
+                    )}
+
                   {/* View Button */}
 
                   {item.type === 'file' && (
@@ -1629,7 +2170,7 @@ export default function StorageManager({ isMobile }) {
                       onClick={() =>
                         openFileViewer(item)
                       }
-                      disabled={viewerLoading}
+                      disabled={viewerLoading || uploading}
                       style={{
                         background: '#f1f5f3',
                         color: '#466460',
@@ -1654,7 +2195,7 @@ export default function StorageManager({ isMobile }) {
                         ? deleteFolder(item)
                         : deleteFile(item)
                     }
-                    disabled={deleting}
+                    disabled={deleting || uploading}
                     style={{
                       background: '#fef2f2',
                       color: '#ef4444',
@@ -1664,10 +2205,10 @@ export default function StorageManager({ isMobile }) {
                       borderRadius: 20,
                       fontSize: 12,
                       fontWeight: 700,
-                      cursor: deleting
+                      cursor: deleting || uploading
                         ? 'not-allowed'
                         : 'pointer',
-                      opacity: deleting ? 0.6 : 1,
+                      opacity: deleting || uploading ? 0.6 : 1,
                       flexShrink: 0,
                     }}
                   >
@@ -1679,6 +2220,15 @@ export default function StorageManager({ isMobile }) {
           )}
         </SectionCard>
       </div>
+
+      <DeleteConfirmModal
+        isOpen={deleteModal.open}
+        title={deleteModal.title}
+        message={deleteModal.message}
+        deleting={deleting}
+        onConfirm={confirmDelete}
+        onCancel={closeDeleteModal}
+      />
 
       {/* File Viewer */}
 

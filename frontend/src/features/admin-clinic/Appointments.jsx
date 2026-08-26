@@ -6,6 +6,7 @@ import { useAppointments } from '../../context/AppointmentContext';
 import { supabase } from '../../supabase';
 import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
+import Datepicker from '../../components/Datepicker';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTHS = [
@@ -32,6 +33,16 @@ const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
 
 // Recommended capacity per 1-hour slot
 const RECOMMENDED_SLOT_CAPACITY = 10;
+
+// Purpose options offered when staff create an appointment directly.
+// Staff-created appointments are always face-to-face, so both may be selected.
+const STAFF_PURPOSES_OPTS = [
+  { value: 'Medical Check-up', key: 'medicalCheckup' },
+  { value: 'Dental Check-up', key: 'dentalCheckup' },
+];
+
+// Quick-fill suggestions for the free-text reason field on staff-created appointments.
+const STAFF_REASON_SUGGESTIONS = ['Follow-up Checkup', 'Walk-in', 'Referral', 'Re-evaluation'];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtTime = (t) => {
@@ -322,6 +333,14 @@ const IconCircleXmark = ({ size = 14, color = "currentColor", ...props }) => (
   </svg>
 );
 
+const IconPlus = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <line x1="8" y1="2" x2="8" y2="14"/>
+    <line x1="2" y1="8" x2="14" y2="8"/>
+  </svg>
+);
+
 // ── Groups a list of appointments so members sharing a batch_id collapse into a single group entry ──
 const groupByBatch = (list) => {
   const seen = new Set();
@@ -344,190 +363,6 @@ const groupByBatch = (list) => {
     }
   });
   return result;
-};
-
-// ── Drum Roll Picker ──────────────────────────────────────────────────────────
-const DrumColumn = ({ items, selIdx, onSelect, disablePastDates, getIsDisabled }) => {
-  const ITEM_H    = 44;
-  const VISIBLE   = 3;
-  const containerRef = useRef(null);
-  const isDragging   = useRef(false);
-  const startY       = useRef(0);
-  const startIdx     = useRef(0);
-
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = selIdx * ITEM_H;
-    }
-  }, [selIdx]);
-
-  const handleScroll = useCallback(() => {
-    if (!containerRef.current || isDragging.current) return;
-    const raw = containerRef.current.scrollTop / ITEM_H;
-    const idx = Math.round(raw);
-    const clamped = Math.max(0, Math.min(items.length - 1, idx));
-    if (clamped !== selIdx) onSelect(clamped);
-  }, [items.length, selIdx, onSelect]);
-
-  const onPointerDown = (e) => {
-    isDragging.current = true;
-    startY.current     = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-    startIdx.current   = selIdx;
-  };
-  const onPointerMove = (e) => {
-    if (!isDragging.current) return;
-    const cy   = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-    const diff = Math.round((startY.current - cy) / ITEM_H);
-    const next = Math.max(0, Math.min(items.length - 1, startIdx.current + diff));
-    if (next !== selIdx) onSelect(next);
-  };
-  const onPointerUp = () => { isDragging.current = false; };
-
-  return (
-    <div className="relative flex-1 select-none" style={{ height: ITEM_H * (VISIBLE * 2 + 1) }}>
-      <div
-        className="absolute left-0 right-0 pointer-events-none z-10 rounded-[10px]"
-        style={{
-          top: ITEM_H * VISIBLE,
-          height: ITEM_H,
-          background: 'rgba(70,100,96,0.08)',
-          borderTop: '1.5px solid rgba(70,100,96,0.25)',
-          borderBottom: '1.5px solid rgba(70,100,96,0.25)',
-        }}
-      />
-      <div className="absolute inset-0 pointer-events-none z-10" style={{
-        background: 'linear-gradient(to bottom, rgba(255,255,255,0.95) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.95) 100%)',
-      }} />
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        onMouseDown={onPointerDown}
-        onMouseMove={onPointerMove}
-        onMouseUp={onPointerUp}
-        onMouseLeave={onPointerUp}
-        onTouchStart={onPointerDown}
-        onTouchMove={onPointerMove}
-        onTouchEnd={onPointerUp}
-        className="absolute inset-0 overflow-y-scroll"
-        style={{
-          scrollSnapType: 'y mandatory',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-          WebkitOverflowScrolling: 'touch',
-          paddingTop:    ITEM_H * VISIBLE,
-          paddingBottom: ITEM_H * VISIBLE,
-          cursor: 'grab',
-        }}
-      >
-        <style>{`div::-webkit-scrollbar { display: none; }`}</style>
-        {items.map((label, i) => {
-          const dist = Math.abs(i - selIdx);
-          const isPast = getIsDisabled && getIsDisabled(i);
-          const isDisabled = disablePastDates && isPast;
-          const pastFade = isPast ? 0.35 : 1;
-          const opacity = (dist === 0 ? 1 : dist === 1 ? 0.45 : 0.2) * pastFade;
-          const scale   = dist === 0 ? 1 : dist === 1 ? 0.88 : 0.78;
-          const weight  = dist === 0 ? '700' : '400';
-          const color   = dist === 0 ? '#1e293b' : '#94a3b8';
-          const bgColor = isPast ? '#E1F5EE' : 'transparent';
-          return (
-            <div
-              key={i}
-              onClick={() => !isDisabled && onSelect(i)}
-              style={{
-                height: ITEM_H,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                scrollSnapAlign: 'center',
-                fontSize: dist === 0 ? 24 : 18,
-                fontWeight: weight,
-                color,
-                opacity,
-                transform: `scale(${scale})`,
-                transition: 'all 0.18s ease',
-                cursor: isDisabled ? 'not-allowed' : 'pointer',
-                fontFamily: "'DM Sans', sans-serif",
-                userSelect: 'none',
-                backgroundColor: bgColor,
-                borderRadius: dist === 0 ? '8px' : '4px',
-              }}
-            >
-              {label}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const DrumDatePicker = ({ value, onChange, onCancel, onSubmit, disablePastDates = false }) => {
-  const today  = new Date();
-  const parsed = value ? new Date(value + 'T00:00:00') : today;
-
-  const [day,   setDay]   = useState(parsed.getDate() - 1);
-  const [month, setMonth] = useState(parsed.getMonth());
-  const [year,  setYear]  = useState(parsed.getFullYear() - 2020);
-
-  const BASE_YEAR = 2020;
-  const YEAR_COUNT = 11;
-
-  const daysInMonth = new Date(BASE_YEAR + year, month + 1, 0).getDate();
-  const dayItems    = Array.from({ length: daysInMonth }, (_, i) =>
-    String(i + 1).padStart(2, '0')
-  );
-  const monthItems = MONTH_SHORT;
-  const yearItems  = Array.from({ length: YEAR_COUNT }, (_, i) => String(BASE_YEAR + i));
-
-  const isPastDate = (dayIndex) => {
-    const selectedYear = BASE_YEAR + year;
-    const selectedMonth = month;
-    const selectedDay = dayIndex + 1;
-    const selectedDate = new Date(selectedYear, selectedMonth, selectedDay);
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    return selectedDate < todayDate;
-  };
-
-  useEffect(() => {
-    const maxDay = new Date(BASE_YEAR + year, month + 1, 0).getDate();
-    if (day >= maxDay) setDay(maxDay - 1);
-  }, [month, year]);
-
-  useEffect(() => {
-    const d = String(day + 1).padStart(2, '0');
-    const m = String(month + 1).padStart(2, '0');
-    const y = BASE_YEAR + year;
-    onChange(`${y}-${m}-${d}`);
-  }, [day, month, year]);
-
-  return (
-    <div className="flex flex-col">
-      <div className="text-center text-[15px] font-semibold text-[#1e293b] mb-3 tracking-wide">
-        Select Date
-      </div>
-      <div className="flex items-center justify-center gap-1 px-2" style={{ height: 44 * 7 }}>
-        <DrumColumn items={dayItems}   selIdx={day}   onSelect={setDay}   disablePastDates={disablePastDates} getIsDisabled={isPastDate} />
-        <DrumColumn items={monthItems} selIdx={month} onSelect={setMonth} disablePastDates={disablePastDates} />
-        <DrumColumn items={yearItems}  selIdx={year}  onSelect={setYear}  disablePastDates={disablePastDates} />
-      </div>
-      <div className="flex border-t border-[#eef2f6] mt-2">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-[14px] text-[16px] font-semibold text-[#475569] bg-transparent border-none cursor-pointer hover:bg-[#f8fafc] transition-colors rounded-bl-[12px]"
-        >
-          Cancel
-        </button>
-        <div className="w-px bg-[#eef2f6]" />
-        <button
-          onClick={onSubmit}
-          className="flex-1 py-[14px] text-[16px] font-semibold text-[#e05a2b] bg-transparent border-none cursor-pointer hover:bg-[#fff5f2] transition-colors rounded-br-[12px]"
-        >
-          Submit
-        </button>
-      </div>
-    </div>
-  );
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -554,7 +389,7 @@ const Snackbar = ({ message, type, visible }) => (
 
 const ModalOverlay = ({ children, onClose }) => (
   <div
-    className="fixed inset-0 bg-black/45 backdrop-blur-[3px] flex justify-center items-end sm:items-center z-[100000]"
+    className="fixed inset-0 bg-black/45 backdrop-blur-[3px] flex justify-center items-end sm:items-center z-[40]"
     onClick={e => { if (e.target === e.currentTarget) onClose(); }}
   >
     {children}
@@ -635,7 +470,7 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
   const displayPatient = normalizedPatient || patient;
 
   return (
-    <div className="fixed inset-0 z-[100000] flex items-center justify-center">
+    <div className="fixed inset-0 z-[40] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
       <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
         <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
@@ -736,6 +571,399 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
   );
 };
 
+// ── Create Appointment Modal (staff-booked, e.g. follow-ups / walk-ins) ───────
+const CreateAppointmentModal = ({
+  isOpen, onClose, onCreated, currentStaffName,
+}) => {
+  const [patientSearch, setPatientSearch]       = useState('');
+  const [patientResults, setPatientResults]     = useState([]);
+  const [searchingPatients, setSearchingPatients] = useState(false);
+  const [selectedPatient, setSelectedPatient]   = useState(null);
+
+  const [selectedPurposes, setSelectedPurposes] = useState([]);
+  const [reasonNote, setReasonNote]             = useState('');
+
+  const [apptDate, setApptDate]                 = useState('');
+  const [apptTime, setApptTime]                 = useState('08:00');
+
+  const [submitting, setSubmitting]             = useState(false);
+  const [formError, setFormError]               = useState('');
+
+  const resetForm = () => {
+    setPatientSearch('');
+    setPatientResults([]);
+    setSelectedPatient(null);
+    setSelectedPurposes([]);
+    setReasonNote('');
+    setApptDate('');
+    setApptTime('08:00');
+    setFormError('');
+  };
+
+  useEffect(() => {
+    if (!isOpen) resetForm();
+  }, [isOpen]);
+
+  // ── Debounced patient search against the users table ──
+  useEffect(() => {
+    if (!isOpen || selectedPatient) return;
+    const q = patientSearch.trim();
+    if (q.length < 2) { setPatientResults([]); return; }
+
+    const timer = setTimeout(async () => {
+      setSearchingPatients(true);
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, middle_name, university_id, department, program, section, year_level, role')
+          .eq('is_archived', false) // Added to exclude archived users
+          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,university_id.ilike.%${q}%`)
+          .limit(8);
+        if (!error) setPatientResults(data || []);
+      } catch (err) {
+        console.error('[CreateAppointmentModal] patient search error:', err);
+      } finally {
+        setSearchingPatients(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [patientSearch, isOpen, selectedPatient]);
+
+  const togglePurpose = (purpose) => {
+    setSelectedPurposes(prev => prev.includes(purpose) ? prev.filter(p => p !== purpose) : [...prev, purpose]);
+  };
+
+  const canSubmit = Boolean(selectedPatient) && selectedPurposes.length > 0 && Boolean(apptDate) && Boolean(apptTime) && !submitting;
+
+const handleSubmit = async () => {
+  if (!canSubmit) {
+    setFormError('Please select a patient, purpose, date, and time.');
+    return;
+  }
+
+  setSubmitting(true);
+  setFormError('');
+
+  try {
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+
+    const fullName = selectedPatient.last_name
+      ? `${selectedPatient.last_name}, ${selectedPatient.first_name || ''} ${selectedPatient.middle_name || ''}`.trim()
+      : (
+          selectedPatient.first_name ||
+          selectedPatient.university_id ||
+          'Unknown'
+        );
+
+    const isDental = selectedPurposes.includes('Dental Check-up');
+    const isMedical = selectedPurposes.includes('Medical Check-up');
+
+    const serviceType =
+      isDental && isMedical
+        ? 'Medical Consultation, Dental Examination'
+        : isDental
+          ? 'Dental Examination'
+          : 'Medical Consultation';
+
+    const reason = reasonNote.trim()
+      ? `${selectedPurposes.join(', ')} — ${reasonNote.trim()}`
+      : selectedPurposes.join(', ');
+
+    const [y, m, d] = apptDate.split('-').map(Number);
+
+    const payload = {
+      userId: selectedPatient.id,
+      patientName: fullName,
+      serviceType,
+      reason,
+      year: y,
+      month: m,
+      day: d,
+      time: apptTime,
+    };
+
+    console.log(
+      '[CreateAppointmentModal] Sending appointment to backend:',
+      payload
+    );
+
+    const API_URL = (
+      import.meta.env.VITE_API_URL ||
+      'http://localhost:5000/api'
+    ).replace(/\/$/, '');
+
+    const response = await fetch(`${API_URL}/appointments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let result;
+
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error(
+        `Server returned an invalid response (${response.status}).`
+      );
+    }
+
+    console.log(
+      '[CreateAppointmentModal] Backend response:',
+      result
+    );
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result?.message ||
+        result?.error ||
+        `Failed to create appointment (${response.status}).`
+      );
+    }
+
+    const inserted = result.data;
+
+    console.log(
+      '[CreateAppointmentModal] Appointment created successfully:',
+      inserted
+    );
+
+    onCreated?.(inserted);
+
+    resetForm();
+    onClose();
+
+  } catch (err) {
+    console.error(
+      '[CreateAppointmentModal] Error creating appointment:',
+      err
+    );
+
+    setFormError(
+      err?.message ||
+      'Could not create the appointment. Please try again.'
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <ModalOverlay onClose={onClose}>
+      <div
+        className="bg-white w-full sm:max-w-[520px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
+          max-h-[92vh] overflow-y-auto animate-[fadeIn_0.25s_ease-out]
+          [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
+        </div>
+
+        <div className="px-6 pt-5 pb-4 border-b border-[#eef2f6]">
+          <div className="text-[18px] font-bold text-[#1e293b] flex items-center gap-2">
+            <IconCalendarCheck size={18} style={{ color: '#0F6E56' }} />
+            Create Appointment
+          </div>
+          <div className="text-[13px] text-[#64748b] mt-[4px]">
+            Book an appointment directly — useful for follow-ups, walk-ins, or referrals.
+          </div>
+        </div>
+
+        <div className="px-6 py-5 flex flex-col gap-5">
+          {/* ── Patient search / selection ── */}
+          <div>
+            <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+              Patient *
+            </label>
+
+            {selectedPatient ? (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border border-[#466460] bg-[#E1F5EE] rounded-[10px]">
+                <div className="min-w-0">
+                  <div className="text-[14px] font-bold text-[#1e293b] truncate">
+                    {selectedPatient.last_name ? `${selectedPatient.last_name}, ${selectedPatient.first_name || ''}` : (selectedPatient.first_name || selectedPatient.university_id)}
+                  </div>
+                  <div className="text-[12px] text-[#466460] mt-0.5 truncate">
+                    {selectedPatient.university_id || '—'} · {selectedPatient.department || '—'} · {selectedPatient.program || '—'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setSelectedPatient(null); setPatientSearch(''); }}
+                  className="shrink-0 w-8 h-8 rounded-full bg-white border border-[#c6dfd0] flex items-center justify-center text-[#466460] hover:bg-[#f0f5f4] transition-colors"
+                >
+                  <IconXmark size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={patientSearch}
+                  onChange={e => setPatientSearch(e.target.value)}
+                  placeholder="Search name or University ID…"
+                  className="w-full px-[12px] py-[10px] border border-[#e2e8f0] rounded-[8px] text-[14px]
+                    bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors"
+                />
+                {patientSearch.trim().length >= 2 && (
+                  <div className="mt-1.5 border border-[#e2e8f0] rounded-[10px] overflow-hidden max-h-56 overflow-y-auto bg-white shadow-sm">
+                    {searchingPatients ? (
+                      <div className="px-4 py-3 text-[13px] text-[#94a3b8] flex items-center gap-2">
+                        <i className="fa-solid fa-spinner fa-spin"></i> Searching…
+                      </div>
+                    ) : patientResults.length === 0 ? (
+                      <div className="px-4 py-3 text-[13px] text-[#94a3b8]">No matching patients found.</div>
+                    ) : (
+                      patientResults.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => { setSelectedPatient(p); setPatientResults([]); }}
+                          className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#f0f5f4] transition-colors border-b border-[#f1f5f9] last:border-none"
+                        >
+                          <div className="font-bold text-[#1e293b]">
+                            {p.last_name ? `${p.last_name}, ${p.first_name || ''}` : (p.first_name || p.university_id)}
+                          </div>
+                          <div className="text-[11px] text-[#64748b] mt-0.5">
+                            {p.university_id || '—'} · {p.department || '—'}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Purpose ── */}
+          <div className="flex flex-col gap-2">
+            <label className="text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em]">
+              Purpose * <span className="normal-case font-medium text-[#94a3b8]">select all that apply</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {STAFF_PURPOSES_OPTS.map(p => {
+                const checked = selectedPurposes.includes(p.value);
+                return (
+                  <label
+                    key={p.key}
+                    className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-[10px] border cursor-pointer transition-all text-[13px] font-semibold select-none ${
+                      checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-white border-[#e2e8f0] text-[#1e293b] hover:border-[#9bb5a5]'
+                    }`}
+                  >
+                    <span className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}>
+                      {checked && <IconCheck size={9} />}
+                    </span>
+                    <input type="checkbox" className="sr-only" checked={checked} onChange={() => togglePurpose(p.value)} />
+                    {p.value}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Reason / notes (free text, with quick suggestions) ── */}
+          <div className="flex flex-col gap-2">
+            <label className="text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em]">
+              Reason / Notes <span className="normal-case font-medium text-[#94a3b8]">optional</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {STAFF_REASON_SUGGESTIONS.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setReasonNote(s)}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                    reasonNote === s ? 'bg-[#466460] border-[#466460] text-white' : 'bg-[#f7faf8] border-[#ddeee5] text-[#466460] hover:bg-[#eef3f2]'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={reasonNote}
+              onChange={e => setReasonNote(e.target.value)}
+              placeholder="e.g. Follow-up checkup for last month's dental treatment"
+              rows="2"
+              className="border border-[#e2e8f0] rounded-[10px] px-3.5 py-2.5 text-[13px] bg-white outline-none resize-none focus:border-[#466460] transition-colors"
+            />
+          </div>
+
+          {/* ── Date ── */}
+          <div>
+            <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+              Appointment Date *
+            </label>
+            <Datepicker
+              value={apptDate}
+              onChange={setApptDate}
+              disablePastDates={true}
+            />
+          </div>
+
+          {/* ── Time ── */}
+          <div>
+            <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
+              Time Slot *
+            </label>
+            <div className="relative">
+              <select
+                value={apptTime}
+                onChange={e => setApptTime(e.target.value)}
+                className="w-full appearance-none px-[12px] py-[10px] border border-[#e2e8f0] rounded-[8px] text-[15px]
+                  bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
+              >
+                {HOUR_SLOTS.map(slot => (
+                  <option key={slot.value} value={slot.value}>{slot.label}</option>
+                ))}
+              </select>
+              <IconChevronDown size={12} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
+            </div>
+          </div>
+
+          {formError && (
+            <div className="flex items-start gap-2.5 bg-[#fef2f2] border border-[#fecaca] rounded-[10px] px-4 py-3 text-[12px] text-[#dc2626]">
+              <IconCircleExclamation size={14} color="#dc2626" className="shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 px-6 py-5 border-t border-[#eef2f6] bg-white sticky bottom-0">
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="flex-1 py-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
+              border-none rounded-[10px] text-[15px] font-semibold cursor-pointer
+              transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
+              flex items-center justify-center gap-2"
+          >
+            {submitting ? <><i className="fa-solid fa-spinner fa-spin"></i> Creating…</> : <><IconCircleCheck size={16} color="white" /> Create Appointment</>}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-6 py-[12px] bg-[#f1f5f9] text-[#475569] border-none
+              rounded-[10px] text-[15px] font-semibold cursor-pointer
+              transition-colors hover:bg-[#e2e8f0]"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </ModalOverlay>,
+    document.body
+  );
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export const Appointments = () => {
   const navigate = useNavigate();
@@ -766,6 +994,17 @@ export const Appointments = () => {
       return 'student';
     }
   });
+
+  const currentStaffName = useMemo(() => {
+    try {
+      const rawUser = localStorage.getItem('user');
+      const u = rawUser ? JSON.parse(rawUser) : null;
+      if (!u) return 'Clinic Staff';
+      return u.name || u.fullName || [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Clinic Staff';
+    } catch {
+      return 'Clinic Staff';
+    }
+  }, []);
 
   // ── Role-based appointments filtering ──
   const isDentalRelated = (reasonStr) => {
@@ -838,6 +1077,9 @@ export const Appointments = () => {
   const [examResetKey, setExamResetKey] = useState(0);
   const [selectedPatientForExam, setSelectedPatientForExam] = useState(null);
 
+  // ── Create Appointment Modal State (staff-booked appointments) ──
+  const [createApptModal, setCreateApptModal] = useState(false);
+
   useEffect(() => {
     const fetchUserData = async () => {
       if (appointments.length === 0) return;
@@ -888,7 +1130,6 @@ export const Appointments = () => {
   const [batchSlot,          setBatchSlot]          = useState('08:00');
   const [autoStagger,        setAutoStagger]        = useState(false);
   const [staggerCapacity,    setStaggerCapacity]    = useState(RECOMMENDED_SLOT_CAPACITY);
-  const [showDatePicker,     setShowDatePicker]     = useState(false);
 
   // ── Decline confirmation modal ──
   const [declineModal, setDeclineModal] = useState({ open: false, ids: [] });
@@ -1257,6 +1498,23 @@ export const Appointments = () => {
     setExamModalOpen(false);
     setSelectedPatientForExam(null);
     setExamResetKey(k => k + 1);
+  };
+
+  // ── Create Appointment Handler ──
+const handleAppointmentCreated = (createdAppt) => {
+    showSnackbar('Appointment created successfully');
+
+    // Set the calendar to the newly created appointment's date before reloading
+    if (createdAppt?.year && createdAppt?.month && createdAppt?.day) {
+      sessionStorage.setItem('lastCreatedDate', JSON.stringify({
+        year: createdAppt.year, month: createdAppt.month, day: createdAppt.day
+      }));
+    }
+
+    // Give the user 1.5 seconds to read the success message, then sync the state
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
   };
 
   // ── Pending List ──────────────────────────────────────────────────────────
@@ -2007,7 +2265,7 @@ export const Appointments = () => {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white w-full h-[calc(100vh-134px)] md:h-[calc(100vh-116px)] flex flex-col overflow-hidden">
+    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white w-full h-[calc(100vh-134px)] md:h-[calc(100vh-116px)] flex flex-col overflow-hidden relative">
 
       {/* ── MOBILE ── */}
       <div className="flex flex-col md:hidden flex-1 min-h-0 w-full h-full">
@@ -2159,6 +2417,25 @@ export const Appointments = () => {
         </div>
       </div>
 
+      {/* ── FLOATING "CREATE APPOINTMENT" BUTTON (staff-booked, e.g. follow-ups) ── */}
+      <button
+        onClick={() => setCreateApptModal(true)}
+        className="fixed bottom-6 right-6 z-[9000] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
+          rounded-full shadow-lg px-5 py-3.5 flex items-center gap-2 font-bold text-[13px]
+          hover:opacity-90 transition-all"
+      >
+        <IconPlus size={14} />
+        New Appointment
+      </button>
+
+      {/* ── CREATE APPOINTMENT MODAL ── */}
+      <CreateAppointmentModal
+        isOpen={createApptModal}
+        onClose={() => setCreateApptModal(false)}
+        onCreated={handleAppointmentCreated}
+        currentStaffName={currentStaffName}
+      />
+
       {/* ── BATCH SCHEDULING MODAL ── */}
       {batchModal && createPortal(
         <ModalOverlay onClose={() => setBatchModal(false)}>
@@ -2185,21 +2462,11 @@ export const Appointments = () => {
                 <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
                   Appointment Date *
                 </label>
-                <button
-                  onClick={() => setShowDatePicker(true)}
-                  className="w-full px-[12px] py-[10px] border border-[#e2e8f0] rounded-[8px] text-[15px]
-                    bg-white text-left outline-none focus:border-[#466460] transition-colors cursor-pointer
-                    flex items-center justify-between hover:border-[#466460]"
-                >
-                  <span className={batchDate ? 'text-[#1e293b] font-medium' : 'text-[#94a3b8]'}>
-                    {batchDate
-                      ? new Date(batchDate + 'T00:00:00').toLocaleDateString('en-PH', {
-                          weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-                        })
-                      : 'Tap to select a date…'}
-                  </span>
-                  <IconCalendar size={15} style={{ color: '#466460' }} />
-                </button>
+                <Datepicker
+                  value={batchDate}
+                  onChange={setBatchDate}
+                  disablePastDates={selectedIds.size > 0}
+                />
               </div>
 
               <div>
@@ -2351,31 +2618,6 @@ export const Appointments = () => {
               >
                 Cancel
               </button>
-            </div>
-          </div>
-        </ModalOverlay>,
-        document.body
-      )}
-
-      {/* ── DRUM-ROLL DATE PICKER MODAL ── */}
-      {showDatePicker && createPortal(
-        <ModalOverlay onClose={() => setShowDatePicker(false)}>
-          <div
-            className="bg-white w-full sm:max-w-[340px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
-              animate-[fadeIn_0.2s_ease-out] overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-center pt-4 pb-2 sm:hidden">
-              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
-            </div>
-            <div className="px-6 pt-4 pb-3">
-              <DrumDatePicker
-                value={batchDate || new Date().toISOString().slice(0, 10)}
-                onChange={setBatchDate}
-                onCancel={() => setShowDatePicker(false)}
-                onSubmit={() => setShowDatePicker(false)}
-                disablePastDates={selectedIds.size > 0}
-              />
             </div>
           </div>
         </ModalOverlay>,

@@ -1,54 +1,161 @@
 // C:\Users\HP\MediTrack\features\user\user.route.js
 
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const multer = require("multer");
 
-const userController = require("./user.controller");
+const multer = require('multer');
 
-const { authorized } = require("../../middleware/authorized");
+const userController = require('./user.controller');
 
-const validateData = require("../../validation/validate-data");
-const supabase = require("../../configs/database");
+const { authorized } = require('../../middleware/authorized');
+const validateData = require('../../validation/validate-data');
+const supabase = require('../../configs/database');
 
-// Audit logger
-const { auditLog } = require("../../middleware/auditLogger");
+const { auditLog } = require('../../middleware/auditLogger');
 
 const {
   registerSchema,
   loginSchema,
-} = require("./user.validation");
+} = require('./user.validation');
 
-const { getSystemConfig } = require("../../services/systemConfig.service");
+const {
+  getSystemConfig,
+} = require('../../services/systemConfig.service');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
 
+// =========================================================
+// HELPERS
+// =========================================================
+
+const buildFullName = (user = {}) => {
+  return [
+    user.first_name || user.firstName,
+    user.middle_name || user.middleName,
+    user.last_name || user.lastName,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .join(' ');
+};
+
+const attachTargetUserDetails = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const targetUid =
+      req.params.userId ||
+      req.body.targetUid ||
+      null;
+
+    if (!targetUid) {
+      return next();
+    }
+
+    const {
+      data: targetUser,
+      error,
+    } = await supabase
+      .from('users')
+      .select(
+        `
+          uid,
+          email,
+          first_name,
+          middle_name,
+          last_name,
+          university_id,
+          role
+        `
+      )
+      .eq('uid', targetUid)
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        '[UserRoutes] Failed to load target user for audit:',
+        error.message
+      );
+
+      return next();
+    }
+
+    if (targetUser) {
+      req.targetUserDetails = {
+        uid: targetUser.uid,
+        email: targetUser.email,
+        fullName: buildFullName(targetUser),
+        universityId:
+          targetUser.university_id || null,
+        role: targetUser.role || null,
+      };
+    }
+
+    return next();
+  } catch (error) {
+    console.error(
+      '[UserRoutes] Target-user audit lookup failed:',
+      error.message
+    );
+
+    // Audit enrichment must never block the actual request.
+    return next();
+  }
+};
 
 // =========================================================
 // DYNAMIC ROLE MIDDLEWARES
 // =========================================================
 
-// Allows Admin Roles + Clinic Staffs (e.g., viewing user lists)
-const allowDynamicClinicStaffs = async (req, res, next) => {
+// Allows Admin Roles + Clinic Staffs.
+const allowDynamicClinicStaffs = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const userRole = String(
+      req.user?.role || ''
+    )
+      .trim()
+      .toLowerCase();
+
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
     const config = await getSystemConfig();
 
-    const clinicRoles = (config.clinic_roles || []).map(r => r.toLowerCase());
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const clinicRoles = (
+      config.clinic_roles || []
+    ).map((role) =>
+      String(role).trim().toLowerCase()
+    );
 
-    // Safety net: Keep core clinical roles and sysadmin as hardcoded fallbacks
+    const adminRoles = (
+      config.admin_roles || []
+    ).map((role) =>
+      String(role).trim().toLowerCase()
+    );
+
     const allowedRoles = [
-      ...clinicRoles,
-      ...adminRoles,
-      "sysadmin",
-      "doctor",
-      "dentist",
-      "nurse"
+      ...new Set([
+        ...clinicRoles,
+        ...adminRoles,
+        'sysadmin',
+        'doctor',
+        'dentist',
+        'nurse',
+      ]),
     ];
 
     if (allowedRoles.includes(userRole)) {
@@ -56,338 +163,402 @@ const allowDynamicClinicStaffs = async (req, res, next) => {
     }
 
     return res.status(403).json({
-      message: "Access denied. Clinic staff or Admin privileges required."
+      success: false,
+      message:
+        'Access denied. Clinic staff or Admin privileges required.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Clinic staffs verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Clinic staffs verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
 
-// Allows Admin Roles ONLY (e.g., deleting/updating user data)
-const allowDynamicAdmin = async (req, res, next) => {
+// Allows Admin Roles only.
+const allowDynamicAdmin = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const userRole = req.user?.role?.toLowerCase();
+    const userRole = String(
+      req.user?.role || ''
+    )
+      .trim()
+      .toLowerCase();
+
     if (!userRole) {
-      return res.status(403).json({ message: "Access denied. No role found." });
+      return res.status(403).json({
+        success: false,
+        message:
+          'Access denied. No role found.',
+      });
     }
 
     const config = await getSystemConfig();
 
-    const adminRoles = (config.admin_roles || []).map(r => r.toLowerCase());
+    const adminRoles = (
+      config.admin_roles || []
+    ).map((role) =>
+      String(role).trim().toLowerCase()
+    );
 
-    // Keep "sysadmin" as a hardcoded fallback
-    const allowedRoles = [...adminRoles, "sysadmin"];
+    const allowedRoles = [
+      ...new Set([
+        ...adminRoles,
+        'sysadmin',
+      ]),
+    ];
 
     if (allowedRoles.includes(userRole)) {
       return next();
     }
 
     return res.status(403).json({
-      message: "Access denied. Admin privileges required."
+      success: false,
+      message:
+        'Access denied. Admin privileges required.',
     });
   } catch (error) {
-    console.error("[DynamicRoleCheck] Admin verification failed:", error);
-    return res.status(500).json({ message: "Internal server error during role validation." });
+    console.error(
+      '[DynamicRoleCheck] Admin verification failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        'Internal server error during role validation.',
+    });
   }
 };
-
 
 // =========================================================
 // PUBLIC ROUTES
 // =========================================================
 
-// Check if university ID already exists
 router.get(
-  "/check-id",
+  '/check-id',
   userController.checkIdExists
 );
-
 
 // =========================================================
 // REGISTRATION
 // =========================================================
 
-// Register a new user
 router.post(
-  "/register",
-  upload.single("image"),
+  '/register',
+  upload.single('image'),
   validateData(registerSchema),
   auditLog(
-    "register",
-    "user",
-    (req) =>
-      `Registered new user account: ${req.body.email || "Unknown"}`
+    'Register User',
+    'AUTHENTICATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Registered new user account: ${
+        req.body?.email || 'Unknown'
+      }`
   ),
   userController.register
 );
-
 
 // =========================================================
 // LOGIN
 // =========================================================
 
-// Login
 router.post(
-  "/login",
+  '/login',
 
+  // Re-enable this when the submitted login payload
+  // matches loginSchema exactly.
   // validateData(loginSchema),
 
   async (req, res, next) => {
-    let userDetails = "";
-
     try {
-      const { data: existingUser, error: userError } =
-        await supabase
-          .from("users")
-          .select(
-            "first_name, middle_name, last_name, university_id"
-          )
-          .eq("email", req.body.email)
-          .single();
+      const email = req.body?.email;
 
-      if (existingUser && !userError) {
-        userDetails =
-          `${existingUser.first_name || ""} ` +
-          `${existingUser.middle_name || ""} ` +
-          `${existingUser.last_name || ""}`
-            .trim()
-            .replace(/\s+/g, " ");
-
-        if (existingUser.university_id) {
-          userDetails += ` (${existingUser.university_id})`;
-        }
+      if (!email) {
+        return next();
       }
-    } catch (e) {
-      // Do not block login if audit lookup fails
+
+      const {
+        data: existingUser,
+        error,
+      } = await supabase
+        .from('users')
+        .select(
+          `
+            uid,
+            email,
+            first_name,
+            middle_name,
+            last_name,
+            university_id,
+            role
+          `
+        )
+        .eq('email', email)
+        .maybeSingle();
+
+      if (error) {
+        console.error(
+          '[UserRoutes] Login audit lookup failed:',
+          error.message
+        );
+
+        return next();
+      }
+
+      if (existingUser) {
+        const fullName =
+          buildFullName(existingUser);
+
+        req.loginUserDetails =
+          fullName ||
+          existingUser.email ||
+          email;
+
+        req.loginAuditDetails = {
+          uid: existingUser.uid,
+          email: existingUser.email,
+          fullName: fullName || null,
+          universityId:
+            existingUser.university_id || null,
+          role: existingUser.role || null,
+        };
+      } else {
+        req.loginUserDetails = email;
+      }
+
+      return next();
+    } catch (error) {
+      console.error(
+        '[UserRoutes] Login audit enrichment failed:',
+        error.message
+      );
+
+      req.loginUserDetails =
+        req.body?.email || 'Unknown';
+
+      return next();
     }
-
-    req.loginUserDetails =
-      userDetails || req.body.email;
-
-    next();
   },
 
   auditLog(
-    "login",
-    "auth",
-    (req) => {
-      const details = req.loginUserDetails
-        ? ` - ${req.loginUserDetails}`
-        : "";
-
-      return `User logged in: ${
-        req.body.email || "Unknown"
-      }${details}`;
-    }
+    'User Login',
+    'AUTHENTICATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `User logged in: ${
+        req.loginUserDetails ||
+        req.body?.email ||
+        'Unknown'
+      }`
   ),
 
   userController.login
 );
 
-
 // =========================================================
 // USER PROFILE
 // =========================================================
 
-// Get own profile
-// Any authenticated user
+// Get own profile.
 router.get(
-  "/profile",
+  '/profile',
   authorized,
   userController.getProfile
 );
 
-
-// Check own profile setup
-// Any authenticated user
+// Check own profile setup.
 router.get(
-  "/profile-setup",
+  '/profile-setup',
   authorized,
   userController.checkProfileSetup
 );
 
-
-// Complete initial profile setup
-// Any authenticated user
+// Complete initial profile setup.
 router.post(
-  "/profile-setup",
+  '/profile-setup',
   authorized,
-
   auditLog(
-    "create",
-    "user",
-    "User completed initial profile setup"
+    'Setup Profile',
+    'USER PROFILE',
+    (req, res) =>
+      res.locals.auditDescription ||
+      'User completed initial profile setup.'
   ),
-
   userController.setupProfile
 );
 
-
-// Toggle own profile completion
-// Any authenticated user
+// Toggle own profile completion.
 router.put(
-  "/profile-complete",
+  '/profile-complete',
   authorized,
-
   auditLog(
-    "update",
-    "user",
-    "User toggled profile complete status"
+    'Update Profile Completion',
+    'USER PROFILE',
+    (req, res) =>
+      res.locals.auditDescription ||
+      'User updated profile completion status.'
   ),
-
   userController.toggleProfileComplete
 );
 
-
-// Update own profile
-// Any authenticated user
+// Update own profile.
 router.put(
-  "/profile",
+  '/profile',
   authorized,
-
   auditLog(
-    "update",
-    "user",
-    "User updated their profile details"
+    'Update Profile',
+    'USER PROFILE',
+    (req, res) =>
+      res.locals.auditDescription ||
+      'User updated their profile details.'
   ),
-
   userController.updateProfile
 );
-
 
 // =========================================================
 // USER MANAGEMENT
 // =========================================================
 
-const getAllUsers = async (req, res) => {
+const getAllUsers = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .order("created_at", {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', {
         ascending: false,
       });
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
-    const users = data.map((doc) => ({
-      id: doc.uid,
-      ...doc,
-    }));
+ const users = (data || []).map((user) => ({
+  ...user,
 
-    res.status(200).json(users);
+  // Keep the real database ID.
+  id: user.id,
 
+  // Keep the Auth UID.
+  uid: user.uid,
+}));
+
+    return res.status(200).json(users);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    next(error);
   }
 };
 
-
-// Get all users
-// ADMIN + CLINIC STAFFS (Dynamic)
+// Admin + clinic staffs.
 router.get(
-  "/users",
+  '/users',
   authorized,
   allowDynamicClinicStaffs,
   getAllUsers
 );
 
-
 // =========================================================
 // DELETE / ARCHIVE USER
 // =========================================================
 
-// Archive a user
-// ADMIN ONLY (Dynamic)
 router.delete(
-  "/users/:userId",
-
+  '/users/:userId',
   authorized,
-
   allowDynamicAdmin,
 
-  async (req, res, next) => {
-
-    let userDetails = "";
-
-    try {
-      const { data: user } = await supabase
-        .from("users")
-        .select(
-          "first_name, middle_name, last_name, university_id"
-        )
-        .eq("uid", req.params.userId)
-        .single();
-
-      if (user) {
-        userDetails =
-          `${user.first_name || ""} ` +
-          `${user.middle_name || ""} ` +
-          `${user.last_name || ""}`
-            .trim()
-            .replace(/\s+/g, " ");
-
-        if (user.university_id) {
-          userDetails += ` (${user.university_id})`;
-        }
-      }
-
-    } catch (e) {
-      // Do not block the archive operation
-    }
-
-    req.userDetails = userDetails;
-
-    next();
-  },
+  // Fetch target details before the user is archived.
+  attachTargetUserDetails,
 
   auditLog(
-    "archive",
-    "user",
-    (req) => {
-      const details = req.userDetails
-        ? ` - ${req.userDetails}`
-        : "";
+    'Archive User',
+    'ARCHIVE',
+    (req, res) => {
+      if (res.locals.auditDescription) {
+        return res.locals.auditDescription;
+      }
 
-      return `Archived user ID: ${
-        req.params.userId
-      }${details}`;
+      const target =
+        req.targetUserDetails;
+
+      const targetLabel =
+        target?.fullName ||
+        target?.email ||
+        req.params.userId;
+
+      const universityId =
+        target?.universityId
+          ? ` (${target.universityId})`
+          : '';
+
+      return (
+        `Archived user ${targetLabel}` +
+        `${universityId} with UID ` +
+        `${req.params.userId}.`
+      );
     }
   ),
 
   userController.deleteUser
 );
 
-
 // =========================================================
 // ADMIN USER UPDATE
 // =========================================================
 
-// Update any user's information
-// ADMIN ONLY (Dynamic)
 router.put(
-  "/admin-update",
-
+  '/admin-update',
   authorized,
-
   allowDynamicAdmin,
 
+  // Load the target before updating so the audit fallback
+  // still has a proper name and UID.
+  attachTargetUserDetails,
+
   auditLog(
-    "update",
-    "user",
-    (req) =>
-      `Admin updated user: ${
-        req.body.email ||
-        req.params.userId ||
-        "Unknown"
-      }`
+    'Admin Update User',
+    'USER MANAGEMENT',
+    (req, res) => {
+      if (res.locals.auditDescription) {
+        return res.locals.auditDescription;
+      }
+
+      const targetUid =
+        req.body?.targetUid ||
+        'Unknown';
+
+      const target =
+        req.targetUserDetails;
+
+      const targetLabel =
+        target?.fullName ||
+        target?.email ||
+        targetUid;
+
+      return (
+        `Administrator updated user ` +
+        `${targetLabel} with UID ${targetUid}.`
+      );
+    }
   ),
 
   userController.adminUpdateUser
 );
-
 
 module.exports = router;

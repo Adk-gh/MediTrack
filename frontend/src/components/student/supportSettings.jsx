@@ -87,6 +87,204 @@ const SectionLabel = ({ children }) => (
   </p>
 );
 
+
+// ─── Reusable Confirmation Modal ──────────────────────────────────────────────
+const ActionConfirmModal = ({
+  open,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  tone = 'save',
+  loading = false,
+  onConfirm,
+  onCancel,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !loading) onCancel?.();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, loading, onCancel]);
+
+  if (!open) return null;
+
+  const palette = {
+    save: {
+      accent: '#466460',
+      soft: '#e8f5ee',
+      icon: '✓',
+    },
+    edit: {
+      accent: '#2563eb',
+      soft: '#dbeafe',
+      icon: '✎',
+    },
+    delete: {
+      accent: '#e5262d',
+      soft: '#fee2e2',
+      icon: '↪',
+    },
+    warning: {
+      accent: '#d97706',
+      soft: '#fef3c7',
+      icon: '!',
+    },
+  };
+
+  const colors = palette[tone] || palette.save;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-confirm-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !loading) onCancel?.();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 20000,
+        background: 'rgba(15, 23, 42, 0.54)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 384,
+          background: '#fff',
+          borderRadius: 18,
+          padding: '24px 24px 22px',
+          boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            margin: '0 auto 17px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: colors.soft,
+            color: colors.accent,
+            fontSize: 26,
+            fontWeight: 800,
+          }}
+        >
+          {colors.icon}
+        </div>
+
+        <h3
+          id="settings-confirm-title"
+          style={{
+            margin: 0,
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </h3>
+
+        <p
+          style={{
+            margin: '12px 0 22px',
+            color: '#718096',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          {message}
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: '#f1f5f9',
+              color: '#526277',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.65 : 1,
+            }}
+          >
+            {cancelText}
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              height: 45,
+              border: 'none',
+              borderRadius: 12,
+              background: colors.accent,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'Please wait...' : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmableRemoveButton = ({
+  label = 'Remove',
+  itemLabel = 'this item',
+  onConfirm,
+  style,
+}) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} style={style}>
+        {label}
+      </button>
+
+      <ActionConfirmModal
+        open={open}
+        title="Delete Item?"
+        message={`Are you sure you want to delete ${itemLabel}? This change will be applied when you save.`}
+        confirmText="Delete"
+        tone="delete"
+        onCancel={() => setOpen(false)}
+        onConfirm={() => {
+          setOpen(false);
+          onConfirm?.();
+        }}
+      />
+    </>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +308,8 @@ export default function StudentSupportSettings({ isMobile }) {
     message: '',
     type: 'success',
   });
+
+  const [pendingAction, setPendingAction] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -232,7 +432,7 @@ export default function StudentSupportSettings({ isMobile }) {
   // Remove Attachment
   // ───────────────────────────────────────────────────────────────────────────
 
-  const removeAttachment = () => {
+  const clearAttachment = () => {
     if (attachmentPreview) {
       URL.revokeObjectURL(attachmentPreview);
     }
@@ -263,12 +463,55 @@ export default function StudentSupportSettings({ isMobile }) {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const requestRemoveAttachment = () => {
+    if (!attachment) return;
+
+    setPendingAction({
+      type: 'remove-attachment',
+      title: 'Remove Attachment?',
+      message: `Are you sure you want to remove "${attachment.name}" from this message?`,
+      confirmText: 'Remove',
+      tone: 'delete',
+    });
+  };
+
+  const requestSubmit = () => {
+    if (!message.trim() || !email.trim() || isSubmitting) return;
+
+    setPendingAction({
+      type: 'submit',
+      title: activeModal === 'contact'
+        ? 'Send Support Message?'
+        : 'Submit Feedback?',
+      message: activeModal === 'contact'
+        ? 'Your message and any selected attachment will be sent to the MediTrack support team.'
+        : 'Your feedback and any selected attachment will be submitted to the MediTrack team.',
+      confirmText: activeModal === 'contact' ? 'Send Message' : 'Submit Feedback',
+      tone: 'save',
+    });
+  };
+
+  const confirmPendingAction = async () => {
+    const action = pendingAction;
+    if (!action) return;
+
+    setPendingAction(null);
+
+    if (action.type === 'remove-attachment') {
+      clearAttachment();
+      return;
+    }
+
+    if (action.type === 'submit') {
+      await performSubmit();
+    }
+  };
+
   // ───────────────────────────────────────────────────────────────────────────
   // Submit Support / Feedback
   // ───────────────────────────────────────────────────────────────────────────
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const performSubmit = async () => {
 
     if (!message.trim() || !email.trim()) {
       return;
@@ -324,7 +567,7 @@ export default function StudentSupportSettings({ isMobile }) {
       setMessage('');
 
       // Clear attachment
-      removeAttachment();
+      clearAttachment();
     } catch (err) {
       console.error('[Support] Error:', err);
 
@@ -346,7 +589,7 @@ export default function StudentSupportSettings({ isMobile }) {
 
     setActiveModal(null);
     setMessage('');
-    removeAttachment();
+    clearAttachment();
   };
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -740,7 +983,7 @@ export default function StudentSupportSettings({ isMobile }) {
 
                   <button
                     type="button"
-                    onClick={removeAttachment}
+                    onClick={requestRemoveAttachment}
                     disabled={isSubmitting}
                     title="Remove attachment"
                     style={{
@@ -815,7 +1058,7 @@ export default function StudentSupportSettings({ isMobile }) {
 
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={requestSubmit}
                 disabled={
                   isSubmitting ||
                   !message.trim() ||
@@ -851,6 +1094,17 @@ export default function StudentSupportSettings({ isMobile }) {
           </div>
         </div>
       )}
+
+      <ActionConfirmModal
+        open={Boolean(pendingAction)}
+        title={pendingAction?.title || 'Confirm Action'}
+        message={pendingAction?.message || ''}
+        confirmText={pendingAction?.confirmText || 'Confirm'}
+        tone={pendingAction?.tone || 'save'}
+        loading={isSubmitting}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={confirmPendingAction}
+      />
 
       {/* ─────────────────────────────────────────────────────────────────────
           Main UI

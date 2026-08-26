@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
-import { logAdminAction } from '../../services/audit.service';
 import DatePicker from '../../components/Datepicker';
 
 const ITEMS_PER_PAGE = 100;
@@ -27,13 +26,6 @@ const SORT_OPTIONS = [
 ];
 
 export default function Archives() {
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-
-  // Admin identity used for audit logging. Falls back through id -> uid ->
-  // 'system' so a log entry is still written even if the stored user object
-  // is incomplete. Kept consistent with other management screens.
-  const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
-
   const [archives, setArchives] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -298,31 +290,6 @@ export default function Archives() {
         throw new Error(result?.message || result?.error || 'Failed to restore');
       }
 
-      // ---- GLOBAL NOTIFICATION FOR THE USER ----
-      const targetUserId = getTargetUserId(selectedArchive);
-      if (targetUserId) {
-        await supabase.from('notifications').insert({
-          type: 'archive_restored',
-          title: `${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'Item'} Restored`,
-          message: `Your ${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'item'} has been restored by the clinic administration.`,
-          user_id: targetUserId,
-          reference_id: idToUse,
-          reference_type: selectedArchive.archiveType,
-          is_read: false
-        });
-      }
-
-      // ---- AUDIT LOG ----
-      logAdminAction({
-        action: 'archive_restored',
-        details: {
-          archiveType: selectedArchive.archiveType,
-          table: selectedArchive.table,
-          itemId: idToUse,
-          displayName: selectedArchive.displayName,
-        },
-        adminUid,
-      });
 
       showSnackbar('Item restored successfully!', 'success');
       setShowRestoreModal(false);
@@ -370,32 +337,6 @@ export default function Archives() {
       if (!response.ok) {
         throw new Error(result?.message || result?.error || 'Failed to delete');
       }
-
-      // ---- GLOBAL NOTIFICATION FOR THE USER ----
-      const targetUserId = getTargetUserId(selectedArchive);
-      if (targetUserId) {
-        await supabase.from('notifications').insert({
-          type: 'archive_deleted',
-          title: `${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'Item'} Permanently Deleted`,
-          message: `Your ${ARCHIVE_TYPE_LABELS[selectedArchive.archiveType] || 'item'} has been permanently deleted by the clinic administration.`,
-          user_id: targetUserId,
-          reference_id: idToUse,
-          reference_type: selectedArchive.archiveType,
-          is_read: false
-        });
-      }
-
-      // ---- AUDIT LOG ----
-      logAdminAction({
-        action: 'archive_permanently_deleted',
-        details: {
-          archiveType: selectedArchive.archiveType,
-          table: selectedArchive.table,
-          itemId: idToUse,
-          displayName: selectedArchive.displayName,
-        },
-        adminUid,
-      });
 
       showSnackbar('Item permanently deleted!', 'success');
       setShowDeleteModal(false);
@@ -733,7 +674,6 @@ export default function Archives() {
                 <p className="text-sm font-mono text-slate-500">{String(selectedArchive.id)}</p>
               </div>
 
-              {/* Full Data - Collapsible */}
               {/* Full Data - Collapsible */}
 <details className="group mt-4 border-t border-slate-100 pt-4">
   <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460] flex items-center gap-1.5 transition-colors">

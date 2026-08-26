@@ -19,11 +19,35 @@ const SYSTEM_CONFIG_FIELDS = `
     updated_at
 `;
 
+// -------------------------------------------------------------
+// IN-MEMORY CACHE STATE
+// -------------------------------------------------------------
+let cachedConfig = null;
+let lastFetchTime = 0;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL
 
 /**
- * Fetch the global MediTrack system configuration.
+ * Manually clears the in-memory cache.
  */
-const getSystemConfig = async () => {
+const invalidateSystemConfigCache = () => {
+    cachedConfig = null;
+    lastFetchTime = 0;
+    console.log('[SystemConfig] In-memory cache invalidated.');
+};
+
+/**
+ * Fetch the global MediTrack system configuration with in-memory caching.
+ * @param {boolean} forceRefresh - If true, bypasses the cache and queries the DB.
+ */
+const getSystemConfig = async (forceRefresh = false) => {
+    const now = Date.now();
+    const isCacheExpired = now - lastFetchTime > CACHE_TTL_MS;
+
+    // Return cached data if valid and a refresh isn't forced
+    if (cachedConfig && !isCacheExpired && !forceRefresh) {
+        return cachedConfig;
+    }
+
     const { data, error } = await supabase
         .from('system_config')
         .select(SYSTEM_CONFIG_FIELDS)
@@ -36,6 +60,9 @@ const getSystemConfig = async () => {
             error
         );
 
+        // Fallback to cache if available during a transient DB error
+        if (cachedConfig) return cachedConfig;
+
         throw error;
     }
 
@@ -43,11 +70,13 @@ const getSystemConfig = async () => {
         const error = new Error(
             'System configuration was not found.'
         );
-
         error.statusCode = 404;
-
         throw error;
     }
+
+    // Update the cache
+    cachedConfig = data;
+    lastFetchTime = now;
 
     return data;
 };
@@ -244,11 +273,17 @@ const updateSystemConfig = async (configData) => {
         updatedConfig
     );
 
+    // -------------------------------------------------------------
+    // INSTANT CACHE INVALIDATION
+    // -------------------------------------------------------------
+    // Ensures the next getSystemConfig() call fetches the fresh DB row
+    invalidateSystemConfigCache();
+
     return updatedConfig;
 };
-
 
 module.exports = {
     getSystemConfig,
     updateSystemConfig,
+    invalidateSystemConfigCache,
 };

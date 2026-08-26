@@ -5,7 +5,9 @@ const createAppointmentSchema = z.object({
   // Identity Fields
   patientId: z.string().min(1, "Patient ID is required"),
   name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be at most 100 characters"),
-  type: z.enum(["student", "instructor", "staff"], { errorMap: () => ({ message: "Type must be student, instructor, or staff" }) }),
+
+  // Loosened to string to allow dynamic DB validation via middleware
+  type: z.string().min(1, "User type is required"),
 
   // Medical Fields
   serviceType: z.string().min(1, "Service type is required"),
@@ -20,20 +22,24 @@ const createAppointmentSchema = z.object({
 
 const updateAppointmentSchema = z.object({
   name: z.string().min(2).max(100).optional(),
-  type: z.enum(["student", "instructor", "staff"]).optional(),
+
+  // Loosened to string to allow dynamic DB validation via middleware
+  type: z.string().optional(),
+
   serviceType: z.string().optional(),
   reason: z.string().optional(),
 
-  // ADDED .nullable() to allow the frontend to clear dates by sending null
+  // Dates can be cleared by the frontend by sending null
   year: z.coerce.number().int().min(2020).nullable().optional(),
   month: z.coerce.number().int().min(1).max(12).nullable().optional(),
   day: z.coerce.number().int().min(1).max(31).nullable().optional(),
   time: z.string().nullable().optional(),
 
+  // Status remains an enum as these are standard application states
   status: z.enum(["pending", "approved", "done", "missed", "rejected", "Pending", "Confirmed", "Completed", "Cancelled"]).optional(),
 });
 
-// ── NEW: Faculty bulk-booking a group of students via CSV of University IDs ──
+// ── Faculty bulk-booking a group of students via CSV of University IDs ──
 const bulkCreateAppointmentSchema = z.object({
   facultyName: z.string().min(2, "Faculty name is required").max(100),
   facultyId:   z.string().optional(),

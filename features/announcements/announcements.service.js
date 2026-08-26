@@ -1,14 +1,27 @@
+// C:\Users\HP\MediTrack\features\announcements\announcements.service.js
+
 const supabase = require('../../configs/database');
 const archiveHelper = require('../archives/archiveHelper');
 const notificationsService = require('../notifications/notifications.service');
 
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
 const ARCHIVE_TYPE = 'announcement';
 
-const BUCKET_NAME = 'meditrack-files';
+const BUCKET_NAME = 'MediStorage';
 const IMAGE_FOLDER = 'announcements';
 
 // Signed URL lifetime: 1 hour
 const SIGNED_URL_TTL = 60 * 60;
+
+// Maximum image size: 20 MB
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
+
+// ============================================================
+// CACHE
+// ============================================================
 
 let announcementsCache = {
   data: null,
@@ -17,26 +30,18 @@ let announcementsCache = {
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-// ============================================================
-// CACHE
-// ============================================================
-
 const clearCache = () => {
   announcementsCache.data = null;
   announcementsCache.lastFetch = null;
 };
 
 // ============================================================
-// HELPERS
+// STORAGE HELPERS
 // ============================================================
 
-const isBase64Image = (value) => {
-  return (
-    typeof value === 'string' &&
-    /^data:image\/[A-Za-z0-9.+-]+;base64,/.test(value)
-  );
-};
-
+/**
+ * Check whether a value is a full URL.
+ */
 const isFullUrl = (value) => {
   return (
     typeof value === 'string' &&
@@ -44,28 +49,37 @@ const isFullUrl = (value) => {
   );
 };
 
+/**
+ * Convert a stored image value into a Supabase storage path.
+ *
+ * New records:
+ *   announcements/file.jpg
+ *
+ * Older records may contain:
+ *   https://xxxxx.supabase.co/storage/v1/object/public/MediStorage/announcements/file.jpg
+ *
+ * This helper normalizes both formats.
+ */
 const getStoragePathFromValue = (value) => {
   if (!value || typeof value !== 'string') {
     return null;
   }
 
-  /*
-   * New format:
-   * announcements/file.jpg
-   */
+  // ----------------------------------------------------------
+  // New format:
+  //
+  // announcements/file.jpg
+  // ----------------------------------------------------------
+
   if (value.startsWith(`${IMAGE_FOLDER}/`)) {
     return value;
   }
 
-  /*
-   * Handle Supabase storage URLs that may already exist
-   * from older records.
-   *
-   * Example:
-   * https://xxxxx.supabase.co/storage/v1/object/public/meditrack-files/announcements/file.jpg
-   */
+  // ----------------------------------------------------------
+  // Handle Supabase storage URLs
+  // ----------------------------------------------------------
 
-  const marker = `/storage/v1/object/`;
+  const marker = '/storage/v1/object/';
 
   const markerIndex = value.indexOf(marker);
 
@@ -96,23 +110,34 @@ const getStoragePathFromValue = (value) => {
 // SIGNED URL
 // ============================================================
 
+/**
+ * Generate a temporary signed URL for a private image.
+ *
+ * IMPORTANT:
+ * MediStorage is PRIVATE.
+ *
+ * We intentionally do NOT use getPublicUrl().
+ */
 const createSignedImageUrl = async (storagePath) => {
   if (!storagePath) {
     return null;
   }
 
-  /*
-   * If this is already a full URL, try to extract the
-   * underlying Supabase storage path.
-   */
-  const normalizedPath = getStoragePathFromValue(storagePath);
+  // Normalize the stored value first.
+  const normalizedPath =
+    getStoragePathFromValue(storagePath);
+
+  // ----------------------------------------------------------
+  // Unknown old URL
+  // ----------------------------------------------------------
 
   if (!normalizedPath) {
     /*
-     * Unknown old URL.
+     * If this is an old full URL that we cannot normalize,
+     * return it as-is so the record does not immediately
+     * disappear from the frontend.
      *
-     * Return it as-is so existing records do not immediately
-     * break. New records will always use storage paths.
+     * New records will always use storage paths.
      */
     if (isFullUrl(storagePath)) {
       return storagePath;
@@ -120,6 +145,10 @@ const createSignedImageUrl = async (storagePath) => {
 
     return null;
   }
+
+  // ----------------------------------------------------------
+  // Generate signed URL
+  // ----------------------------------------------------------
 
   const {
     data,
@@ -144,7 +173,7 @@ const createSignedImageUrl = async (storagePath) => {
 };
 
 // ============================================================
-// ADD SIGNED URL TO ANNOUNCEMENT
+// ATTACH SIGNED URL TO ONE ANNOUNCEMENT
 // ============================================================
 
 const attachSignedImageUrl = async (announcement) => {
@@ -152,7 +181,12 @@ const attachSignedImageUrl = async (announcement) => {
     return announcement;
   }
 
-  const storageValue = announcement.image_url;
+  const storageValue =
+    announcement.image_url;
+
+  // ----------------------------------------------------------
+  // No image
+  // ----------------------------------------------------------
 
   if (!storageValue) {
     return {
@@ -162,12 +196,17 @@ const attachSignedImageUrl = async (announcement) => {
     };
   }
 
+  // ----------------------------------------------------------
+  // Get actual private storage path
+  // ----------------------------------------------------------
+
   const storagePath =
     getStoragePathFromValue(storageValue);
 
-  /*
-   * Generate a temporary signed URL.
-   */
+  // ----------------------------------------------------------
+  // Generate temporary signed URL
+  // ----------------------------------------------------------
+
   const signedUrl =
     await createSignedImageUrl(storageValue);
 
@@ -175,15 +214,17 @@ const attachSignedImageUrl = async (announcement) => {
     ...announcement,
 
     /*
-     * Frontend uses image_url for <img src="">
+     * Frontend uses image_url for:
+     *
+     * <img src={announcement.image_url} />
      */
     image_url: signedUrl || null,
 
     /*
-     * Keep the actual private storage path available
-     * internally/for debugging if needed.
+     * Keep the actual private storage path available.
      */
-    image_path: storagePath || storageValue,
+    image_path:
+      storagePath || storageValue,
   };
 };
 
@@ -197,7 +238,9 @@ const attachSignedImageUrls = async (announcements) => {
   }
 
   return Promise.all(
-    announcements.map(attachSignedImageUrl)
+    announcements.map(
+      attachSignedImageUrl
+    )
   );
 };
 
@@ -205,78 +248,81 @@ const attachSignedImageUrls = async (announcements) => {
 // UPLOAD IMAGE
 // ============================================================
 
-const uploadImageToStorage = async (base64String) => {
-  if (!base64String) {
+/**
+ * Upload a Multer file directly to the private
+ * Supabase MediStorage bucket.
+ *
+ * The frontend sends:
+ *
+ * FormData:
+ *   image = File
+ *
+ * Multer gives us:
+ *
+ * req.file = {
+ *   buffer,
+ *   mimetype,
+ *   originalname,
+ *   size,
+ *   ...
+ * }
+ */
+const uploadImageToStorage = async (file) => {
+  if (!file) {
     return null;
   }
 
-  if (!isBase64Image(base64String)) {
-    throw new Error('Invalid base64 image format');
-  }
+  // ----------------------------------------------------------
+  // Validate buffer
+  // ----------------------------------------------------------
 
-  const matches = base64String.match(
-    /^data:(image\/[A-Za-z0-9.+-]+);base64,(.+)$/
-  );
-
-  if (!matches || matches.length !== 3) {
-    throw new Error('Invalid base64 image format');
-  }
-
-  const mimeType = matches[1];
-  const base64Data = matches[2];
-
-  const buffer = Buffer.from(
-    base64Data,
-    'base64'
-  );
-
-  /*
-   * Basic server-side protection against extremely large
-   * uploads.
-   *
-   * Frontend already limits images to 5 MB, but this protects
-   * the backend as well.
-   */
-  const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-
-  if (buffer.length > MAX_IMAGE_SIZE) {
+  if (
+    !file.buffer ||
+    !Buffer.isBuffer(file.buffer)
+  ) {
     throw new Error(
-      'Image must be smaller than 5 MB'
+      'Invalid uploaded image'
     );
   }
 
-  let extension = 'jpg';
+  // ----------------------------------------------------------
+  // Validate file size
+  // ----------------------------------------------------------
 
-  switch (mimeType.toLowerCase()) {
-    case 'image/jpeg':
-      extension = 'jpg';
-      break;
-
-    case 'image/png':
-      extension = 'png';
-      break;
-
-    case 'image/gif':
-      extension = 'gif';
-      break;
-
-    case 'image/webp':
-      extension = 'webp';
-      break;
-
-    case 'image/bmp':
-      extension = 'bmp';
-      break;
-
-    case 'image/svg+xml':
-      extension = 'svg';
-      break;
-
-    default:
-      throw new Error(
-        `Unsupported image type: ${mimeType}`
-      );
+  if (
+    typeof file.size === 'number' &&
+    file.size > MAX_IMAGE_SIZE
+  ) {
+    throw new Error(
+      'Image must be smaller than 20 MB'
+    );
   }
+
+  // ----------------------------------------------------------
+  // Allowed MIME types
+  // ----------------------------------------------------------
+
+  const allowedMimeTypes = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/svg+xml': 'svg',
+  };
+
+  const extension =
+    allowedMimeTypes[file.mimetype];
+
+  if (!extension) {
+    throw new Error(
+      `Unsupported image type: ${file.mimetype}`
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Generate unique filename
+  // ----------------------------------------------------------
 
   const fileName =
     `${Date.now()}_${Math.random()
@@ -286,6 +332,21 @@ const uploadImageToStorage = async (base64String) => {
   const filePath =
     `${IMAGE_FOLDER}/${fileName}`;
 
+  console.log(
+    '[Announcements] Uploading image:',
+    {
+      bucket: BUCKET_NAME,
+      path: filePath,
+      mimeType: file.mimetype,
+      size: file.size,
+      originalName: file.originalname,
+    }
+  );
+
+  // ----------------------------------------------------------
+  // Upload directly to PRIVATE Supabase Storage
+  // ----------------------------------------------------------
+
   const {
     data,
     error,
@@ -293,9 +354,9 @@ const uploadImageToStorage = async (base64String) => {
     .from(BUCKET_NAME)
     .upload(
       filePath,
-      buffer,
+      file.buffer,
       {
-        contentType: mimeType,
+        contentType: file.mimetype,
         upsert: false,
       }
     );
@@ -307,50 +368,87 @@ const uploadImageToStorage = async (base64String) => {
     );
 
     throw new Error(
+      error.message ||
       'Failed to upload announcement image'
     );
   }
 
+  const uploadedPath =
+    data?.path || filePath;
+
+  console.log(
+    '[Announcements] Image uploaded successfully:',
+    uploadedPath
+  );
+
   /*
    * IMPORTANT:
    *
-   * We DO NOT call getPublicUrl().
+   * We DO NOT call:
    *
-   * The bucket is private.
+   * supabase.storage
+   *   .from(...)
+   *   .getPublicUrl(...)
    *
-   * Store only the storage path in the database.
+   * because MediStorage is PRIVATE.
+   *
+   * We store only:
+   *
+   * announcements/xxxxx.jpg
+   *
+   * Later, createSignedImageUrl()
+   * generates a temporary signed URL.
    */
-  return data?.path || filePath;
+
+  return uploadedPath;
 };
 
 // ============================================================
 // DELETE IMAGE FROM STORAGE
 // ============================================================
 
-const deleteImageFromStorage = async (imageValue) => {
+const deleteImageFromStorage = async (
+  imageValue
+) => {
   if (!imageValue) {
     return;
   }
 
   const storagePath =
-    getStoragePathFromValue(imageValue);
+    getStoragePathFromValue(
+      imageValue
+    );
 
   if (!storagePath) {
     return;
   }
 
   try {
-    const { error } =
-      await supabase.storage
-        .from(BUCKET_NAME)
-        .remove([storagePath]);
+    console.log(
+      '[Announcements] Deleting image:',
+      storagePath
+    );
+
+    const {
+      error,
+    } = await supabase.storage
+      .from(BUCKET_NAME)
+      .remove([
+        storagePath
+      ]);
 
     if (error) {
       console.error(
         '[Announcements] Failed to delete image:',
         error
       );
+    } else {
+      console.log(
+        '[Announcements] Image deleted successfully:',
+        storagePath
+      );
     }
+
   } catch (error) {
     console.error(
       '[Announcements] Image deletion error:',
@@ -370,18 +468,22 @@ exports.getAllAnnouncements = async () => {
    * Do not return cached data directly because signed URLs
    * expire.
    *
-   * We can cache the database records and regenerate signed
-   * URLs every time.
+   * We cache the database records and regenerate signed URLs
+   * every time.
    */
+
   let announcements;
 
   if (
     announcementsCache.data &&
     announcementsCache.lastFetch &&
-    now - announcementsCache.lastFetch < CACHE_TTL_MS
+    now -
+      announcementsCache.lastFetch <
+      CACHE_TTL_MS
   ) {
     announcements =
       announcementsCache.data;
+
   } else {
     const {
       data,
@@ -398,12 +500,14 @@ exports.getAllAnnouncements = async () => {
       throw error;
     }
 
-    announcements = data || [];
+    announcements =
+      data || [];
 
     announcementsCache.data =
       announcements;
 
-    announcementsCache.lastFetch = now;
+    announcementsCache.lastFetch =
+      now;
   }
 
   return attachSignedImageUrls(
@@ -415,15 +519,27 @@ exports.getAllAnnouncements = async () => {
 // GET ANNOUNCEMENT BY ID
 // ============================================================
 
-exports.getAnnouncementById = async (id) => {
+exports.getAnnouncementById = async (
+  id
+) => {
   let announcement = null;
+
+  // ----------------------------------------------------------
+  // Check cache first
+  // ----------------------------------------------------------
 
   if (announcementsCache.data) {
     announcement =
       announcementsCache.data.find(
-        a => String(a.id) === String(id)
+        a =>
+          String(a.id) ===
+          String(id)
       );
   }
+
+  // ----------------------------------------------------------
+  // Fetch from database if not cached
+  // ----------------------------------------------------------
 
   if (!announcement) {
     const {
@@ -436,10 +552,14 @@ exports.getAnnouncementById = async (id) => {
       .eq('is_archived', false)
       .single();
 
-    if (error || !data) {
-      const err = new Error(
-        'Announcement not found'
-      );
+    if (
+      error ||
+      !data
+    ) {
+      const err =
+        new Error(
+          'Announcement not found'
+        );
 
       err.statusCode = 404;
 
@@ -458,101 +578,175 @@ exports.getAnnouncementById = async (id) => {
 // CREATE ANNOUNCEMENT
 // ============================================================
 
-exports.createAnnouncement = async (data) => {
+/**
+ * Create an announcement.
+ *
+ * @param {Object} data - Form fields from req.body
+ * @param {Object|null} file - Multer req.file
+ */
+exports.createAnnouncement = async (
+  data,
+  file
+) => {
   let imagePath = null;
 
-  /*
-   * Frontend sends image_url as a base64 string.
-   */
-  if (
-    data.image_url &&
-    isBase64Image(data.image_url)
-  ) {
-    imagePath =
-      await uploadImageToStorage(
-        data.image_url
+  try {
+    // --------------------------------------------------------
+    // Upload image if supplied
+    // --------------------------------------------------------
+
+    if (file) {
+      imagePath =
+        await uploadImageToStorage(
+          file
+        );
+    }
+
+    // --------------------------------------------------------
+    // Build database record
+    // --------------------------------------------------------
+
+    const newDoc = {
+      ...data,
+
+      /*
+       * PRIVATE STORAGE PATH ONLY
+       *
+       * Example:
+       *
+       * announcements/1756000000_abcd1234.jpg
+       */
+      image_url:
+        imagePath,
+
+      created_at:
+        data.created_at ||
+        new Date().toISOString(),
+    };
+
+    // --------------------------------------------------------
+    // Remove frontend-only properties
+    // --------------------------------------------------------
+
+    delete newDoc.image;
+    delete newDoc.imageFile;
+    delete newDoc.image_path;
+
+    // Prevent legacy Base64 property
+    delete newDoc.image_url_base64;
+
+    // Prevent an accidental old Base64 image_url
+    //
+    // If there is no uploaded file, image_url should
+    // remain null instead of accepting a Base64 string.
+    if (!file) {
+      newDoc.image_url = null;
+    }
+
+    // --------------------------------------------------------
+    // Insert database record
+    // --------------------------------------------------------
+
+    const {
+      data: announcement,
+      error,
+    } = await supabase
+      .from('announcements')
+      .insert(newDoc)
+      .select()
+      .single();
+
+    // --------------------------------------------------------
+    // Database failure cleanup
+    // --------------------------------------------------------
+
+    if (error) {
+      if (imagePath) {
+        await deleteImageFromStorage(
+          imagePath
+        );
+      }
+
+      throw error;
+    }
+
+    clearCache();
+
+    // --------------------------------------------------------
+    // Notification
+    // --------------------------------------------------------
+
+    try {
+      await notificationsService
+        .notifyAnnouncement(
+          announcement
+        );
+
+    } catch (
+      notificationError
+    ) {
+      console.error(
+        '[Announcements] Notification dispatch failed:',
+        notificationError
       );
-  }
+    }
 
-  const newDoc = {
-    ...data,
+    // --------------------------------------------------------
+    // Return announcement with signed URL
+    // --------------------------------------------------------
 
+    return attachSignedImageUrl(
+      announcement
+    );
+
+  } catch (error) {
     /*
-     * Never store the base64 data in Supabase.
+     * If anything fails after the image upload but before
+     * the database record is successfully created, clean up
+     * the uploaded image.
      *
-     * Store only:
-     * announcements/xxxxx.jpg
+     * The database failure block above handles Supabase
+     * insert errors. This additional guard handles other
+     * unexpected errors.
      */
-    image_url: imagePath,
 
-    created_at:
-      data.created_at ||
-      new Date().toISOString(),
-  };
-
-  /*
-   * Remove frontend-only fields if present.
-   */
-  delete newDoc.image;
-  delete newDoc.imageFile;
-  delete newDoc.image_path;
-
-  const {
-    data: announcement,
-    error,
-  } = await supabase
-    .from('announcements')
-    .insert(newDoc)
-    .select()
-    .single();
-
-  if (error) {
-    /*
-     * If database insertion fails after image upload,
-     * clean up the uploaded image.
-     */
     if (imagePath) {
-      await deleteImageFromStorage(
-        imagePath
-      );
+      try {
+        await deleteImageFromStorage(
+          imagePath
+        );
+      } catch (cleanupError) {
+        console.error(
+          '[Announcements] Upload cleanup failed:',
+          cleanupError
+        );
+      }
     }
 
     throw error;
   }
-
-  clearCache();
-
-  /*
-   * Broadcast notification.
-   */
-  try {
-    await notificationsService.notifyAnnouncement(
-      announcement
-    );
-  } catch (notificationError) {
-    console.error(
-      '[Announcements] Notification dispatch failed:',
-      notificationError
-    );
-  }
-
-  return attachSignedImageUrl(
-    announcement
-  );
 };
 
 // ============================================================
 // UPDATE ANNOUNCEMENT
 // ============================================================
 
+/**
+ * Update an announcement.
+ *
+ * @param {string|number} id
+ * @param {Object} data - Form fields from req.body
+ * @param {Object|null} file - Multer req.file
+ */
 exports.updateAnnouncement = async (
   id,
-  data
+  data,
+  file
 ) => {
-  /*
-   * Get the existing record first so we can preserve its
-   * image if the user doesn't upload a replacement.
-   */
+  // ----------------------------------------------------------
+  // Get existing announcement
+  // ----------------------------------------------------------
+
   const {
     data: existingAnnouncement,
     error: fetchError,
@@ -562,68 +756,103 @@ exports.updateAnnouncement = async (
     .eq('id', id)
     .single();
 
-  if (fetchError || !existingAnnouncement) {
-    const error = new Error(
-      'Announcement not found'
-    );
+  if (
+    fetchError ||
+    !existingAnnouncement
+  ) {
+    const error =
+      new Error(
+        'Announcement not found'
+      );
 
     error.statusCode = 404;
 
     throw error;
   }
 
+  // ----------------------------------------------------------
+  // Existing image path
+  // ----------------------------------------------------------
+
+  const existingImagePath =
+    getStoragePathFromValue(
+      existingAnnouncement.image_url
+    );
+
   let imagePath =
-    existingAnnouncement.image_url ||
-    null;
+    existingImagePath || null;
 
   let newImageUploaded = false;
 
-  /*
-   * Only upload when a NEW base64 image is supplied.
-   */
-  if (
-    data.image_url &&
-    isBase64Image(data.image_url)
-  ) {
+  // ----------------------------------------------------------
+  // Upload replacement image
+  // ----------------------------------------------------------
+
+  if (file) {
     imagePath =
       await uploadImageToStorage(
-        data.image_url
+        file
       );
 
     newImageUploaded = true;
   }
 
+  // ----------------------------------------------------------
+  // Build update data
+  // ----------------------------------------------------------
+
   const updateData = {
     ...data,
 
-    image_url: imagePath,
+    /*
+     * If there is a new file:
+     *    use the new path.
+     *
+     * If there isn't:
+     *    preserve the existing path.
+     */
+    image_url:
+      imagePath,
 
     updated_at:
       new Date().toISOString(),
   };
 
-  /*
-   * Do not store these frontend-only properties.
-   */
+  // ----------------------------------------------------------
+  // Remove frontend-only fields
+  // ----------------------------------------------------------
+
   delete updateData.image;
   delete updateData.imageFile;
   delete updateData.image_path;
 
+  // ----------------------------------------------------------
+  // Remove legacy Base64 fields
+  // ----------------------------------------------------------
+
+  delete updateData.image_url_base64;
+
   /*
-   * Never accidentally store a signed URL.
+   * The frontend should no longer send image_url.
    *
-   * If image_url was supplied as a signed URL instead
-   * of a new base64 image, keep the existing database
-   * image path.
+   * If it does accidentally send an old signed URL or
+   * Base64 value, never overwrite the database with it.
+   *
+   * The actual image is controlled by req.file.
    */
   if (
-    data.image_url &&
-    !isBase64Image(data.image_url)
+    Object.prototype.hasOwnProperty.call(
+      data,
+      'image_url'
+    )
   ) {
     updateData.image_url =
-      existingAnnouncement.image_url ||
-      null;
+      imagePath;
   }
+
+  // ----------------------------------------------------------
+  // Update database
+  // ----------------------------------------------------------
 
   const {
     data: updatedAnnouncement,
@@ -635,12 +864,19 @@ exports.updateAnnouncement = async (
     .select()
     .single();
 
+  // ----------------------------------------------------------
+  // Database update failed
+  // ----------------------------------------------------------
+
   if (error) {
     /*
-     * If we uploaded a replacement but the DB update failed,
-     * remove the newly uploaded image.
+     * If a replacement image was uploaded but the database
+     * update failed, delete the new image.
      */
-    if (newImageUploaded && imagePath) {
+    if (
+      newImageUploaded &&
+      imagePath
+    ) {
       await deleteImageFromStorage(
         imagePath
       );
@@ -649,21 +885,51 @@ exports.updateAnnouncement = async (
     throw error;
   }
 
-  /*
-   * If a replacement image was successfully saved,
-   * delete the old image.
-   */
+  // ----------------------------------------------------------
+  // Delete old image after successful DB update
+  // ----------------------------------------------------------
+
   if (
     newImageUploaded &&
-    existingAnnouncement.image_url &&
-    existingAnnouncement.image_url !== imagePath
+    existingImagePath &&
+    existingImagePath !== imagePath
   ) {
     await deleteImageFromStorage(
-      existingAnnouncement.image_url
+      existingImagePath
     );
   }
 
   clearCache();
+
+  // ----------------------------------------------------------
+  // Dispatch Update Notification
+  // ----------------------------------------------------------
+
+try {
+    /*
+     * We pass the updated record to keep the "dept" targeting intact,
+     * but we overwrite the title and content to make it explicitly
+     * an "Update" notification.
+     */
+    await notificationsService.notifyAnnouncement({
+      ...updatedAnnouncement,
+      title: `[UPDATED] ${updatedAnnouncement.title}`,
+      content: `There are changes to this announcement... go check it out!`,
+
+      // ADD THIS: Pass an icon identifier for the frontend to consume
+      icon: 'megaphone',
+      type: 'update'
+    });
+  } catch (notificationError) {
+    console.error(
+      '[Announcements] Update notification dispatch failed:',
+      notificationError
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Return updated announcement with signed URL
+  // ----------------------------------------------------------
 
   return attachSignedImageUrl(
     updatedAnnouncement
@@ -685,6 +951,7 @@ exports.deleteAnnouncement = async (
    * The archive helper remains responsible for the
    * announcement archive behavior.
    */
+
   await archiveHelper.archiveAndDelete(
     {
       type: ARCHIVE_TYPE,

@@ -11,7 +11,6 @@ import { Bar, Doughnut, Line, PolarArea } from 'react-chartjs-2';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import authService from '../../services/auth.service.js';
-import { logAdminAction } from '../../services/audit.service';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement,
@@ -775,12 +774,6 @@ export const Reports = () => {
 
       showSnackbar('Full report exported successfully');
 
-      // ---- AUDIT LOG ----
-      logAdminAction({
-        action: 'report_exported',
-        details: { scope: 'full', format: 'xlsx', dateRange, schoolYear, specificMonth },
-        adminUid,
-      });
     } catch (err) {
       console.error('Error exporting Excel report:', err);
       showSnackbar('Failed to export report', 'error');
@@ -956,12 +949,6 @@ export const Reports = () => {
 
       showSnackbar(`${titles[category] || 'Report'} exported successfully`);
 
-      // ---- AUDIT LOG ----
-      logAdminAction({
-        action: 'report_exported',
-        details: { scope: category, format: 'xlsx', dateRange, schoolYear, specificMonth },
-        adminUid,
-      });
     } catch (err) {
       console.error('Error exporting category report:', err);
       showSnackbar('Failed to export category report', 'error');

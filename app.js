@@ -63,13 +63,13 @@ app.use(corsMiddleware);
 
 app.use(
   express.json({
-    limit: '10mb',
+    limit: '30mb',
   })
 );
 
 app.use(
   express.urlencoded({
-    limit: '10mb',
+    limit: '30mb',
     extended: true,
   })
 );

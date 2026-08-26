@@ -47,6 +47,147 @@ const SectionLabel = ({ children }) => (
   </p>
 );
 
+
+const ConfirmActionModal = ({
+  open,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  variant = 'save',
+  busy = false,
+  onCancel,
+  onConfirm,
+}) => {
+  if (!open) return null;
+
+  const isDelete = variant === 'delete';
+  const accent = isDelete ? '#dc2626' : '#466460';
+  const iconBackground = isDelete ? '#fee2e2' : '#e8f5ee';
+
+  return (
+    <div
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) {
+          onCancel();
+        }
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 12000,
+        background: 'rgba(15, 23, 42, 0.58)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 18,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ocr-confirm-title"
+        style={{
+          width: '100%',
+          maxWidth: 385,
+          background: '#fff',
+          borderRadius: 18,
+          boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)',
+          padding: '24px 24px 22px',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            background: iconBackground,
+            color: accent,
+            margin: '0 auto 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 24,
+            fontWeight: 800,
+          }}
+        >
+          {isDelete ? '✕' : '✓'}
+        </div>
+
+        <h2
+          id="ocr-confirm-title"
+          style={{
+            margin: 0,
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </h2>
+
+        <p
+          style={{
+            margin: '12px 0 24px',
+            color: '#64748b',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          {message}
+        </p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            style={{
+              height: 44,
+              border: 'none',
+              borderRadius: 12,
+              background: '#f1f5f9',
+              color: '#475569',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.65 : 1,
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            style={{
+              height: 44,
+              border: 'none',
+              borderRadius: 12,
+              background: accent,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.72 : 1,
+            }}
+          >
+            {busy ? (isDelete ? 'Removing...' : 'Saving...') : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Chip = ({ children, onRemove }) => (
   <span style={{
     background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0',
@@ -90,6 +231,7 @@ export default function OcrSettings({ isMobile }) {
   const [newInstKeyword, setNewInstKeyword] = useState('');
   const [newRoleKeywords, setNewRoleKeywords] = useState({});
   const [toast, setToast] = useState({ show: false, text: '', type: 'success' });
+  const [confirmAction, setConfirmAction] = useState(null);
   const hasFetched = useRef(false);  // ← stops the fetch loop
 
   const showToast = (text, type = 'success') => {
@@ -116,7 +258,18 @@ export default function OcrSettings({ isMobile }) {
     }
   };
 
+  const requestSave = () => {
+    setConfirmAction({
+      type: 'save',
+      title: 'Save OCR Configuration?',
+      message: 'This will apply the current institution and role-detection keyword changes to the OCR service.',
+      confirmLabel: 'Save Changes',
+      variant: 'save',
+    });
+  };
+
   const handleSave = async () => {
+    setConfirmAction(null);
     setSaving(true);
     try {
       const res = await fetch(`${OCR_SERVICE_URL}/config`, {
@@ -141,6 +294,19 @@ export default function OcrSettings({ isMobile }) {
     setNewInstKeyword('');
   };
 
+  const requestRemoveInstitutionKeyword = (index) => {
+    const keyword = config?.institution_keywords?.[index] || 'this keyword';
+
+    setConfirmAction({
+      type: 'removeInstitutionKeyword',
+      index,
+      title: 'Remove Institution Keyword?',
+      message: `Are you sure you want to remove "${keyword}"? The change will take effect after you save the OCR configuration.`,
+      confirmLabel: 'Remove',
+      variant: 'delete',
+    });
+  };
+
   const removeInstitutionKeyword = (index) => {
     setConfig(prev => ({
       ...prev,
@@ -160,6 +326,21 @@ export default function OcrSettings({ isMobile }) {
     setNewRoleKeywords(prev => ({ ...prev, [mapIdx]: '' }));
   };
 
+  const requestRemoveRoleKeyword = (mapIdx, kwIdx) => {
+    const mapping = config?.role_mappings?.[mapIdx];
+    const keyword = mapping?.keywords?.[kwIdx] || 'this keyword';
+
+    setConfirmAction({
+      type: 'removeRoleKeyword',
+      mapIdx,
+      kwIdx,
+      title: 'Remove Role Keyword?',
+      message: `Are you sure you want to remove "${keyword}" from ${mapping?.name || 'this role'}? The change will take effect after you save.`,
+      confirmLabel: 'Remove',
+      variant: 'delete',
+    });
+  };
+
   const removeRoleKeyword = (mapIdx, kwIdx) => {
     setConfig(prev => ({
       ...prev,
@@ -167,6 +348,25 @@ export default function OcrSettings({ isMobile }) {
         i !== mapIdx ? mapping : { ...mapping, keywords: mapping.keywords.filter((_, j) => j !== kwIdx) }
       )
     }));
+  };
+
+  const handleConfirmAction = () => {
+    if (!confirmAction) return;
+
+    if (confirmAction.type === 'save') {
+      handleSave();
+      return;
+    }
+
+    if (confirmAction.type === 'removeInstitutionKeyword') {
+      removeInstitutionKeyword(confirmAction.index);
+    }
+
+    if (confirmAction.type === 'removeRoleKeyword') {
+      removeRoleKeyword(confirmAction.mapIdx, confirmAction.kwIdx);
+    }
+
+    setConfirmAction(null);
   };
 
   const containerStyle = { padding: isMobile ? '16px 12px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 };
@@ -206,11 +406,24 @@ export default function OcrSettings({ isMobile }) {
         />
       )}
 
+      <ConfirmActionModal
+        open={Boolean(confirmAction)}
+        title={confirmAction?.title}
+        message={confirmAction?.message}
+        confirmLabel={confirmAction?.confirmLabel}
+        variant={confirmAction?.variant}
+        busy={saving}
+        onCancel={() => {
+          if (!saving) setConfirmAction(null);
+        }}
+        onConfirm={handleConfirmAction}
+      />
+
       {/* Header row: label left, Save Changes right — mirrors Security pattern */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <SectionLabel>OCR Settings</SectionLabel>
         <button
-          onClick={handleSave}
+          onClick={requestSave}
           disabled={saving}
           style={{
             background: '#466460', color: '#fff', border: 'none',
@@ -231,7 +444,7 @@ export default function OcrSettings({ isMobile }) {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
           {config.institution_keywords.map((kw, idx) => (
-            <Chip key={idx} onRemove={() => removeInstitutionKeyword(idx)}>{kw}</Chip>
+            <Chip key={idx} onRemove={() => requestRemoveInstitutionKeyword(idx)}>{kw}</Chip>
           ))}
         </div>
 
@@ -288,7 +501,7 @@ export default function OcrSettings({ isMobile }) {
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 {mapping.keywords.map((kw, kwIdx) => (
-                  <RoleChip key={kwIdx} onRemove={() => removeRoleKeyword(mapIdx, kwIdx)}>{kw}</RoleChip>
+                  <RoleChip key={kwIdx} onRemove={() => requestRemoveRoleKeyword(mapIdx, kwIdx)}>{kw}</RoleChip>
                 ))}
                 <input
                   type="text"

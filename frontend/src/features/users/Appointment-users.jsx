@@ -26,18 +26,17 @@ const STATUS_STYLES = {
   rejected: { bg: 'bg-[#fef2f2]', text: 'text-[#dc2626]', label: 'Rejected' },
 };
 
-// Extracted purpose array into objects for easier translation while retaining the DB value
+// Simplified purpose list: two Face-to-Face options (can select both) and
+// two Online options (mutually exclusive with everything else).
 const PURPOSES_OPTS = [
-  { value: 'Check-up', key: 'checkup' },
-  { value: 'Consultation', key: 'consultation' },
-  { value: 'Online Medical Consultation', key: 'onlineMedical' },
-  { value: 'Online Dental Consultation', key: 'onlineDental' },
-  { value: 'Vaccination', key: 'vaccination' },
-  { value: 'Dental', key: 'dental' },
-  { value: 'Medical Clearance', key: 'medicalClearance' },
-  { value: 'Physical Exam', key: 'physicalExam' },
-  { value: 'Other', key: 'other' }
+  { value: 'Medical Check-up', key: 'medicalCheckup', mode: 'f2f' },
+  { value: 'Dental Check-up', key: 'dentalCheckup', mode: 'f2f' },
+  { value: 'Online Medical Examination', key: 'onlineMedical', mode: 'online' },
+  { value: 'Online Dental Examination', key: 'onlineDental', mode: 'online' },
 ];
+
+const ONLINE_PURPOSES = PURPOSES_OPTS.filter(p => p.mode === 'online').map(p => p.value);
+const F2F_PURPOSES = PURPOSES_OPTS.filter(p => p.mode === 'f2f').map(p => p.value);
 
 const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
   const startH = 7 + i;
@@ -316,7 +315,6 @@ export default function AppointmentUsers() {
   const [submitted,         setSubmitted]         = useState(false);
   const [selectedAppt,      setSelectedAppt]      = useState(null);
   const [selectedPurposes,  setSelectedPurposes]  = useState([]);
-  const [otherPurpose,      setOtherPurpose]      = useState('');
   const [sortBy,            setSortBy]            = useState('newest');
 
   const sortedAppointments = useMemo(() => {
@@ -363,13 +361,23 @@ export default function AppointmentUsers() {
   }
 
   const hasActiveAppointment = myAppointments.some((appt) => appt.status?.toLowerCase() === 'pending' || appt.status?.toLowerCase() === 'approved');
-  const ONLINE_PURPOSES = ['Online Medical Consultation', 'Online Dental Consultation'];
+
+  // Is at least one Online purpose currently selected? Used to lock out
+  // every other option (both F2F options and the other Online option).
+  const hasOnlineSelected = selectedPurposes.some(p => ONLINE_PURPOSES.includes(p));
+  // Is at least one F2F purpose currently selected? Used to lock out the
+  // Online options (F2F options can freely stack with each other).
+  const hasF2FSelected = selectedPurposes.some(p => F2F_PURPOSES.includes(p));
 
   const togglePurpose = (purpose) => {
     setSelectedPurposes(prev => {
       if (prev.includes(purpose)) return prev.filter(p => p !== purpose);
-      if (ONLINE_PURPOSES.includes(purpose)) return [...prev.filter(p => !ONLINE_PURPOSES.includes(p)), purpose];
-      return [...prev, purpose];
+      // Selecting an Online purpose clears everything else and becomes
+      // the sole selection (Online options are mutually exclusive).
+      if (ONLINE_PURPOSES.includes(purpose)) return [purpose];
+      // Selecting an F2F purpose drops any Online selection but can
+      // stack with the other F2F purpose.
+      return [...prev.filter(p => !ONLINE_PURPOSES.includes(p)), purpose];
     });
   };
 
@@ -378,26 +386,33 @@ export default function AppointmentUsers() {
     setShowModal(false);
     setSubmitError('');
     setSelectedPurposes([]);
-    setOtherPurpose('');
   };
 
-  const canSubmit = selectedPurposes.length > 0 && !(selectedPurposes.includes('Other') && !otherPurpose.trim());
+  const canSubmit = selectedPurposes.length > 0;
 
-  const handleSubmit = async () => {
-    const parts = selectedPurposes.map(p => p === 'Other' && otherPurpose.trim() ? `Other: ${otherPurpose.trim()}` : p);
-    const reason = parts.join(', ');
+const handleSubmit = async () => {
+    const reason = selectedPurposes.join(', ');
 
     if (!canSubmit) { setSubmitError(t('appointments.errorFields', 'Please complete all required fields.')); return; }
     setSubmitting(true);
     setSubmitError('');
 
-    const isDentalPurpose = selectedPurposes.includes('Dental') || selectedPurposes.includes('Online Dental Consultation');
-    const isOnlinePurpose = selectedPurposes.includes('Online Medical Consultation') || selectedPurposes.includes('Online Dental Consultation');
+    const isDentalPurpose = selectedPurposes.includes('Dental Check-up') || selectedPurposes.includes('Online Dental Examination');
+    const isOnlinePurpose = selectedPurposes.includes('Online Medical Examination') || selectedPurposes.includes('Online Dental Examination');
     const serviceType = isDentalPurpose
       ? (isOnlinePurpose ? 'Online Dental Consultation' : 'Dental Examination')
       : (isOnlinePurpose ? 'Online Medical Consultation' : 'Medical Consultation');
 
     const internalId = userProfile?.id || (await getInternalUserId());
+
+    // --- ADD THIS MAPPING LOGIC ---
+    let mappedType = currentPatient.type.toLowerCase();
+    if (FACULTY_ROLES.includes(mappedType)) {
+      mappedType = 'instructor';
+    } else if (mappedType !== 'staff' && mappedType !== 'instructor') {
+      mappedType = 'student'; // Fallback to ensure schema compliance
+    }
+    // ------------------------------
 
     const payload = {
       authUid: currentPatient.uid,
@@ -405,7 +420,7 @@ export default function AppointmentUsers() {
       patientId: currentPatient.idno !== '—' ? currentPatient.idno : (currentPatient.uid || 'unknown'),
       patientName: currentPatient.name,
       name: currentPatient.name,
-      type: currentPatient.type.toLowerCase(),
+      type: mappedType, // <-- UPDATE THIS LINE TO USE THE MAPPED VALUE
       serviceType: serviceType,
       reason: reason
     };
@@ -422,7 +437,6 @@ export default function AppointmentUsers() {
         setShowModal(false);
         setSubmitted(true);
         setSelectedPurposes([]);
-        setOtherPurpose('');
         fetchAppointments();
         setTimeout(() => setSubmitted(false), 4000);
       }
@@ -615,34 +629,65 @@ export default function AppointmentUsers() {
                       {(userProfile?.section || currentPatient.section) && <><span>·</span><span>{t('appointments.sec', 'Sec')} {userProfile?.section || currentPatient.section}</span></>}
                     </div>
                   </div>
+
                   <div className="flex flex-col gap-2">
-                    <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">{t('appointments.purpose', 'Purpose')} <span className="normal-case font-normal text-[#9bb5a5]">{t('appointments.selectAllThatApply', '* select all that apply')}</span></label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-                      {PURPOSES_OPTS.map(p => {
+                    <label className="text-[11px] font-bold text-[#466460] uppercase tracking-widest">
+                      {t('appointments.purpose', 'Purpose')}
+                    </label>
+
+                    {/* Face-to-Face group */}
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] font-bold text-[#6b8577] uppercase tracking-wider">
+                      <i className="fa-solid fa-hospital text-[10px]"></i>
+                      {t('appointments.f2fLabel', 'Face-to-Face — can select both')}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {PURPOSES_OPTS.filter(p => p.mode === 'f2f').map(p => {
                         const checked = selectedPurposes.includes(p.value);
+                        const disabled = submitting || (!checked && hasOnlineSelected);
                         return (
-                          <label key={p.key} className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border cursor-pointer transition-all text-[12px] font-medium select-none ${checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-[#f7faf8] border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5] hover:bg-[#f0f5f4]'} ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <label
+                            key={p.key}
+                            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border cursor-pointer transition-all text-[12px] font-medium select-none ${
+                              checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-[#f7faf8] border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5] hover:bg-[#f0f5f4]'
+                            } ${disabled ? 'opacity-40 cursor-not-allowed hover:border-[#ddeee5] hover:bg-[#f7faf8]' : ''}`}
+                          >
                             <span className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}>
                               {checked && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                             </span>
-                            <input type="checkbox" className="sr-only" value={p.value} checked={checked} onChange={() => !submitting && togglePurpose(p.value)} disabled={submitting} />
+                            <input type="checkbox" className="sr-only" value={p.value} checked={checked} onChange={() => !disabled && togglePurpose(p.value)} disabled={disabled} />
                             {t(`appointments.purposes.${p.key}`, p.value)}
                           </label>
                         );
                       })}
                     </div>
-                    {selectedPurposes.includes('Other') && (
-                      <textarea
-                        placeholder={t('appointments.elaborate', 'Please elaborate here...')}
-                        value={otherPurpose}
-                        onChange={e => setOtherPurpose(e.target.value)}
-                        onPaste={(e) => e.preventDefault()}
-                        disabled={submitting}
-                        className="mt-1 border border-[#ddeee5] rounded-2xl px-3.5 py-2.5 text-[12px] bg-[#f7faf8] outline-none resize-none disabled:opacity-50 focus:border-[#466460] transition-colors"
-                        rows="2"
-                      />
-                    )}
+
+                    {/* Online group */}
+                    <div className="flex items-center gap-1.5 mt-3 text-[10px] font-bold text-[#6b8577] uppercase tracking-wider">
+                      <i className="fa-solid fa-video text-[10px]"></i>
+                      {t('appointments.onlineLabel', 'Online — choose one only')}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {PURPOSES_OPTS.filter(p => p.mode === 'online').map(p => {
+                        const checked = selectedPurposes.includes(p.value);
+                        const disabled = submitting || (!checked && (hasOnlineSelected || hasF2FSelected));
+                        return (
+                          <label
+                            key={p.key}
+                            className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border cursor-pointer transition-all text-[12px] font-medium select-none ${
+                              checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-[#f7faf8] border-[#ddeee5] text-[#1a2e22] hover:border-[#9bb5a5] hover:bg-[#f0f5f4]'
+                            } ${disabled ? 'opacity-40 cursor-not-allowed hover:border-[#ddeee5] hover:bg-[#f7faf8]' : ''}`}
+                          >
+                            <span className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}>
+                              {checked && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </span>
+                            <input type="checkbox" className="sr-only" value={p.value} checked={checked} onChange={() => !disabled && togglePurpose(p.value)} disabled={disabled} />
+                            {t(`appointments.purposes.${p.key}`, p.value)}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
+
                   <div className="flex items-start gap-2.5 bg-[#FAEEDA] border border-[#f0c070] rounded-2xl px-4 py-3 text-[11px] text-[#854F0B]">
                     <i className="fa-solid fa-circle-info mt-[1px] shrink-0 text-[13px]"></i>
                     <span>{t('appointments.infoNotice', 'After submitting, the clinic staff will review your request and assign an appointment date and time for you. You will see it confirmed here once approved.')}</span>
