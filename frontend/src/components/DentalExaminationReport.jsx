@@ -2,11 +2,12 @@
 import React, { useState, useCallback, memo, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import { savePdf } from '../utils/pdfDownload';
+import fallbackLogo from '../assets/logogo.jpg';
 
 // ─── Environment Variable for API URL ────────────────────────────────────────
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 
-const DEFAULT_LOGO_URL = '/plsp-logo.jpg';
+const DEFAULT_LOGO_URL = fallbackLogo;
 const BRANDING_LOGO_EVENT = 'meditrack:branding-logo-updated';
 const BRANDING_LOGO_STORAGE_KEY = 'meditrack_branding_logo_updated';
 
@@ -905,7 +906,19 @@ ln(1, 5);
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16, paddingBottom: 14 }}>
           <div style={{ width: 56, height: 56, flexShrink: 0 }}>
             {logoUrl ? (
-              <img src={logoUrl} alt="PLSP Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+<img
+  src={logoUrl || fallbackLogo}
+  alt="PLSP Logo"
+  onError={(event) => {
+    event.currentTarget.onerror = null;
+    event.currentTarget.src = fallbackLogo;
+  }}
+  style={{
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+  }}
+/>
             ) : (
               <div style={{ width: '100%', height: '100%', background: '#f1f5f9', borderRadius: '50%' }} />
             )}

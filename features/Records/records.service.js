@@ -565,43 +565,107 @@ exports.updateRecord = async (recordId, recordType, updates) => {
 
   if (error) throw error;
 
-  // ── NOTIFICATION LOGIC ──
-  const statusChanged = updates.status && updates.status !== existing.status;
-  const certIssuedChanged = updates.issue_cert !== undefined && updates.issue_cert !== existing.issue_cert;
+// ── NOTIFICATION LOGIC ──
+const normalizedOldStatus = String(
+  existing.status || ''
+).toLowerCase();
 
-  const examDate = existing.exam_date || existing.created_at;
-  const dateContext = examDate ? ` from ${formatDateFriendly(examDate)}` : '';
-  const docName = recordType === 'dental' ? 'dental report' : 'medical certificate';
+const normalizedNewStatus = String(
+  updates.status || existing.status || ''
+).toLowerCase();
 
-  if (statusChanged) {
-    const { title, message } = buildRecordStatusNotification(recordType, updates.status, existing);
-    await notifyPatientAboutRecord(existing.user_id, {
-      type: 'record_status',
-      title,
-      message,
-      referenceId: recordId,
-      referenceType: getRecordReferenceType(recordType),
-    });
-  } else if (certIssuedChanged) {
-    const isIssued = updates.issue_cert === true;
-    await notifyPatientAboutRecord(existing.user_id, {
-      type: 'record_updated',
-      title: isIssued ? 'Document Ready' : 'Document Status Updated',
-      message: isIssued
-        ? `Good news! Your ${docName} for the checkup on ${formatDateFriendly(examDate)} is now ready and has been issued.`
-        : `The ${docName} for your checkup on ${formatDateFriendly(examDate)} has been marked as not issued.`,
-      referenceId: recordId,
-      referenceType: getRecordReferenceType(recordType),
-    });
-  } else if (Object.keys(allowedUpdates).length > 2) {
-    await notifyPatientAboutRecord(existing.user_id, {
-      type: 'record_updated',
-      title: 'Record Details Updated',
-      message: `The clinical details of your ${getRecordLabel(recordType)}${dateContext} have been updated by the staff.`,
-      referenceId: recordId,
-      referenceType: getRecordReferenceType(recordType),
-    });
-  }
+const statusChanged =
+  updates.status !== undefined &&
+  normalizedNewStatus !== normalizedOldStatus;
+
+const certIssuedChanged =
+  updates.issue_cert !== undefined &&
+  Boolean(updates.issue_cert) !==
+    Boolean(existing.issue_cert);
+
+const examDate =
+  existing.exam_date || existing.created_at;
+
+const dateContext = examDate
+  ? ` from ${formatDateFriendly(examDate)}`
+  : '';
+
+const docName =
+  recordType === 'dental'
+    ? 'dental report'
+    : 'medical certificate';
+
+if (statusChanged) {
+  const { title, message } =
+    buildRecordStatusNotification(
+      recordType,
+      normalizedNewStatus,
+      existing
+    );
+
+  await notifyPatientAboutRecord(existing.user_id, {
+    type: 'record_status',
+    title,
+    message,
+    referenceId: recordId,
+    referenceType:
+      getRecordReferenceType(recordType),
+  });
+}
+
+if (certIssuedChanged) {
+  const isIssued =
+    Boolean(updates.issue_cert);
+
+  await notifyPatientAboutRecord(existing.user_id, {
+    type: 'record_updated',
+    title: isIssued
+      ? recordType === 'dental'
+        ? 'Dental Report Ready'
+        : 'Medical Certificate Ready'
+      : 'Document Status Updated',
+    message: isIssued
+      ? `Good news! Your ${docName} for the checkup on ${formatDateFriendly(
+          examDate
+        )} is now ready and has been issued.`
+      : `The ${docName} for your checkup on ${formatDateFriendly(
+          examDate
+        )} has been marked as not issued.`,
+    referenceId: recordId,
+    referenceType:
+      getRecordReferenceType(recordType),
+  });
+}
+
+const changedClinicalFields =
+  Object.keys(allowedUpdates).filter(
+    key =>
+      ![
+        'status',
+        'issue_cert',
+        'is_approved',
+        'approved_at',
+        'updated_at',
+      ].includes(key)
+  );
+
+if (
+  !statusChanged &&
+  !certIssuedChanged &&
+  changedClinicalFields.length > 0
+) {
+  await notifyPatientAboutRecord(existing.user_id, {
+    type: 'record_updated',
+    title: 'Record Details Updated',
+    message:
+      `The clinical details of your ` +
+      `${getRecordLabel(recordType)}` +
+      `${dateContext} have been updated by the staff.`,
+    referenceId: recordId,
+    referenceType:
+      getRecordReferenceType(recordType),
+  });
+}
 
   return data;
 };

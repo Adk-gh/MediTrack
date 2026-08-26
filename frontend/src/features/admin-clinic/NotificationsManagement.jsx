@@ -123,19 +123,18 @@ const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
       </td>
 
       {/* Reference */}
-      {/* Reference */}
-      <td className="p-3 hidden lg:table-cell">
-        {notification.reference_type ? (
-          <span className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 font-mono">
-            {notification.reference_type}
-          </span>
-        ) : (
-          // 🔴 NEW: Red "Deleted" badge
-          <span className="text-[10px] bg-red-100 border border-red-200 rounded px-1.5 py-0.5 text-red-600 font-bold uppercase tracking-wider">
-            Deleted
-          </span>
-        )}
-      </td>
+
+<td className="p-3 hidden lg:table-cell">
+  {notification.reference_type ? (
+    <span className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 font-mono">
+      {notification.reference_type}
+    </span>
+  ) : (
+    <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500">
+      No Reference
+    </span>
+  )}
+</td>
 
       {/* Created at */}
       <td className="p-3 hidden md:table-cell">

@@ -375,7 +375,13 @@ exports.updateProfile = async (userId, updates) => {
 
   const changesText = getChangedFieldsText(currentUser, dbUpdates);
   if (changesText.length > 0) {
-    try { await notificationsService.createNotification({ type: 'profile_updated', title: 'Profile Updated', message: `Your profile information was updated successfully. Changes were made to: ${changesText}.`, userId: userId }); }
+    try { await notificationsService.createNotification({
+  type: 'profile_updated',
+  title: 'Profile Updated',
+  message: `Your profile information was updated successfully. Changes were made to: ${changesText}.`,
+  userId: userId,
+  referenceType: 'Users'
+}); }
     catch (notifyErr) { console.error('[updateProfile] Failed to send notification:', notifyErr.message); }
   }
 
@@ -449,7 +455,13 @@ exports.adminUpdateUser = async (targetUid, updates) => {
     if (fieldsText) changes.push(`Fields: ${fieldsText}`);
     if (passwordChanged) changes.push('Account Password');
     if (changes.length > 0) {
-      try { await notificationsService.createNotification({ type: 'admin_profile_update', title: 'Profile Updated by Admin', message: `An administrator updated your profile. Changes were made to: ${changes.join(', ')}.`, userId: originalUser.uid }); }
+      try { await notificationsService.createNotification({
+  type: 'admin_profile_update',
+  title: 'Profile Updated by Admin',
+  message: `An administrator updated your profile. Changes were made to: ${changes.join(', ')}.`,
+  userId: originalUser.uid,
+  referenceType: 'Users'
+}); }
       catch (notifyErr) { console.error('[adminUpdateUser] Failed to send notification:', notifyErr.message); }
     }
   }

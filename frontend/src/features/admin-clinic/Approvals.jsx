@@ -6,6 +6,105 @@ import { MedicalCertificate } from '../../components/MedicalCertificate';
 import { DentalExaminationReport } from '../../components/DentalExaminationReport';
 import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
+import {updateRecord} from '../../services/records.service';
+
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:5000/api'
+).replace(/\/$/, '');
+
+const getAuthToken = () => {
+  return localStorage.getItem('token');
+};
+
+const parseApiResponse = async (response) => {
+  const contentType =
+    response.headers.get('content-type') || '';
+
+  const result = contentType.includes('application/json')
+    ? await response.json()
+    : {
+        success: false,
+        message: await response.text(),
+      };
+
+  if (!response.ok || result.success === false) {
+    throw new Error(
+      result.message ||
+      `Request failed with status ${response.status}`
+    );
+  }
+
+  return result.data;
+};
+
+const updateRecordThroughApi = async (
+  recordType,
+  recordId,
+  updates
+) => {
+  if (!recordId) {
+    throw new Error('Record ID is required.');
+  }
+
+  if (!['medical', 'dental'].includes(recordType)) {
+    throw new Error('Invalid record type.');
+  }
+
+  const token = getAuthToken();
+
+  if (!token) {
+    throw new Error(
+      'Authentication token was not found. Please sign in again.'
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}/records/${recordType}/${recordId}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(updates),
+    }
+  );
+
+  return parseApiResponse(response);
+};
+
+const updateRecordStatusThroughApi = async (
+  recordType,
+  recordId,
+  status
+) => {
+  if (!recordId) {
+    throw new Error('Record ID is required.');
+  }
+
+  const token = getAuthToken();
+
+  if (!token) {
+    throw new Error(
+      'Authentication token was not found. Please sign in again.'
+    );
+  }
+
+  const response = await fetch(
+    `${API_URL}/records/${recordType}/${recordId}/status`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  return parseApiResponse(response);
+};
 
 // Abbreviate program names
 const shortenCourse = (courseName) => {
@@ -1028,194 +1127,401 @@ export const Approvals = () => {
     setShowReportForm(false);
   };
 
-  const handleApprove = async (exam) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.from('medical_records').update({
-        status: 'approved',
-        is_approved: true,
-        approved_at: new Date().toISOString(),
-      }).eq('id', exam.recordId || exam.id);
+const handleApprove = async (exam) => {
+  if (!exam) return;
 
-      if (error) throw error;
+  const recordId =
+    exam.recordId || exam.id;
 
-      if (activeTab === 'pending') {
-        setExaminations(examinations.filter(e => e.id !== exam.id));
-        setSelectedExam(null);
-      }
+  setLoading(true);
 
-      await refreshNotificationCounts();
-      setShowCertForm(false);
-      showSnackbar(`Examination for ${exam.patientName} has been approved!`, 'success');
-    } catch (error) {
-      console.error('Error approving examination:', error);
-      showSnackbar('Failed to approve examination', 'error');
-    } finally {
-      setLoading(false);
+  try {
+   await updateRecord(recordId, {
+  recordType: 'medical',
+  status: 'approved',
+  is_approved: true,
+  approved_at: new Date().toISOString(),
+});
+
+    if (activeTab === 'pending') {
+      setExaminations((previous) =>
+        previous.filter(
+          (item) => item.id !== exam.id
+        )
+      );
+
+      setSelectedExam(null);
+    } else {
+      setExaminations((previous) =>
+        previous.map((item) =>
+          item.id === exam.id
+            ? {
+                ...item,
+                status: 'approved',
+                is_approved: true,
+                approved_at:
+                  new Date().toISOString(),
+              }
+            : item
+        )
+      );
     }
-  };
+
+    await refreshNotificationCounts();
+
+    setShowCertForm(false);
+
+    showSnackbar(
+      `Examination for ${exam.patientName} has been approved!`,
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      'Error approving examination:',
+      error
+    );
+
+    showSnackbar(
+      error.message ||
+        'Failed to approve examination',
+      'error'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Dental approve handler
-  const handleDentalApprove = async (exam) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.from('dental_records').update({
-        status: 'approved',
-        is_approved: true,
-        approved_at: new Date().toISOString(),
-      }).eq('id', exam.recordId || exam.id);
+const handleDentalApprove = async (exam) => {
+  if (!exam) return;
 
-      if (error) throw error;
+  const recordId =
+    exam.recordId || exam.id;
 
-      if (activeTab === 'pending') {
-        setDentalExaminations(dentalExaminations.filter(e => e.id !== exam.id));
-        setSelectedExam(null);
-      }
+  setLoading(true);
 
-      await refreshNotificationCounts();
-      showSnackbar(`Dental examination for ${exam.patientName} has been approved!`, 'success');
-    } catch (error) {
-      console.error('Error approving dental examination:', error);
-      showSnackbar('Failed to approve dental examination', 'error');
-    } finally {
-      setLoading(false);
+  try {
+ await updateRecord(recordId, {
+  recordType: 'dental',
+  status: 'approved',
+  is_approved: true,
+  approved_at: new Date().toISOString(),
+});
+
+    if (activeTab === 'pending') {
+      setDentalExaminations((previous) =>
+        previous.filter(
+          (item) => item.id !== exam.id
+        )
+      );
+
+      setSelectedExam(null);
+    } else {
+      setDentalExaminations((previous) =>
+        previous.map((item) =>
+          item.id === exam.id
+            ? {
+                ...item,
+                status: 'approved',
+                is_approved: true,
+                approved_at:
+                  new Date().toISOString(),
+              }
+            : item
+        )
+      );
     }
-  };
 
-  // Save dental report handler
-  const handleSaveDentalReport = async (data) => {
-    if (!selectedExam) return;
+    await refreshNotificationCounts();
 
-    try {
-      // Build dental history object with treatments included
-      const updatedDentalHistory = { ...data.dentalHistory };
+    showSnackbar(
+      `Dental examination for ${exam.patientName} has been approved!`,
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      'Error approving dental examination:',
+      error
+    );
 
-      // Update dental history based on treatments checkboxes
-      if (data.treatments) {
-        updatedDentalHistory['Oral Prophylaxis'] = data.treatments.oralProphylaxis ? 'Yes' : 'No';
-        updatedDentalHistory['Periodontal Therapy'] = data.treatments.gumTreatment ? 'Yes' : 'No';
-        updatedDentalHistory['Orthodontic Therapy'] = data.treatments.orthodontic ? 'Yes' : 'No';
-        updatedDentalHistory['Prosthodontic Therapy'] = data.treatments.prosthodontic ? 'Yes' : 'No';
-        updatedDentalHistory['Endodontic Treatment'] = data.treatments.endodontic ? 'Yes' : 'No';
-        updatedDentalHistory['TMJ Treatment'] = data.treatments.tmj ? 'Yes' : 'No';
-        updatedDentalHistory['Fluoride Treatment'] = data.treatments.fluoride ? 'Yes' : 'No';
-        updatedDentalHistory['Sealant'] = data.treatments.sealant ? 'Yes' : 'No';
-      }
+    showSnackbar(
+      error.message ||
+        'Failed to approve dental examination',
+      'error'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
-      // Save restoration and extraction data to dental_history
-      if (data.restoration) {
-        updatedDentalHistory['needs_restoration'] = data.restoration;
-      }
-      if (data.extraction) {
-        updatedDentalHistory['for_extraction'] = data.extraction;
-      }
+const handleSaveDentalReport = async (data) => {
+  if (!selectedExam) return;
 
-      const { error } = await supabase
-        .from('dental_records')
-        .update({
-          dental_history: JSON.stringify(updatedDentalHistory),
-          intraoral: JSON.stringify(data.intraoral),
-          tooth_data: JSON.stringify(data.toothData),
-          treatment_remarks: JSON.stringify(data.treatmentRemarks || {}),
-          treatments: JSON.stringify(data.treatments || {}),
-          status: 'approved',
-          is_approved: true,
-          approved_at: new Date().toISOString(),
-          examined_by: data.examinedBy || null,
-          exam_date: data.examDate || null,
-          issue_cert: true,
-        })
-        .eq('id', selectedExam.recordId || selectedExam.id);
+  const recordId =
+    selectedExam.recordId ||
+    selectedExam.id;
 
-      if (error) throw error;
+  setLoading(true);
 
-      const updatedExam = {
-        ...selectedExam,
-        dentalHistory: data.dentalHistory,
-        intraoral: data.intraoral,
-        toothData: data.toothData,
-        patientSignature: data.patientSignature,
-        sigDate: data.sigDate,
-        examinedBy: data.examinedBy,
-        examDate: data.examDate,
-        status: 'approved',
-        is_approved: true,
-        approved_at: new Date().toISOString(),
-        // FIX: the DB update above always sets issue_cert: true when a report is
-        // saved, but the local state previously never set issue_cert, only the
-        // display-only reportForwarded flag. That left issue_cert stale (false)
-        // in memory until the next refetch, so the "Generate Report" button
-        // stayed visible next to the "Report Forwarded" pill in the same session.
-        issue_cert: true,
-        reportForwarded: true,
-      };
+  try {
+    const updatedDentalHistory = {
+      ...(data.dentalHistory || {}),
+    };
 
-      // If in pending tab, remove from list, otherwise update the record
-      if (activeTab === 'pending') {
-        setDentalExaminations(dentalExaminations.filter(e => e.id !== selectedExam.id));
-        setSelectedExam(null);
-      } else {
-        setDentalExaminations(dentalExaminations.map(e => e.id === selectedExam.id ? updatedExam : e));
-        setSelectedExam(updatedExam);
-      }
-      await refreshNotificationCounts();
-      setShowReportForm(false);
-      showSnackbar('Dental report saved and forwarded successfully!', 'success');
-    } catch (err) {
-      console.error('Error saving dental report:', err);
-      showSnackbar('Failed to save dental report', 'error');
+    if (data.treatments) {
+      updatedDentalHistory['Oral Prophylaxis'] =
+        data.treatments.oralProphylaxis
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory['Periodontal Therapy'] =
+        data.treatments.gumTreatment
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory['Orthodontic Therapy'] =
+        data.treatments.orthodontic
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory['Prosthodontic Therapy'] =
+        data.treatments.prosthodontic
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory['Endodontic Treatment'] =
+        data.treatments.endodontic
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory['TMJ Treatment'] =
+        data.treatments.tmj
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory['Fluoride Treatment'] =
+        data.treatments.fluoride
+          ? 'Yes'
+          : 'No';
+
+      updatedDentalHistory.Sealant =
+        data.treatments.sealant
+          ? 'Yes'
+          : 'No';
     }
-  };
 
-  const handleSubmitCertificate = async (data) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.from('medical_records').update({
-        status:           'approved',
-        is_approved:       true,
-        finding1:          data.finding1        ?? '',
-        remarks:           data.remarks         ?? '',
-        is_fit:            data.isFit           ?? true,
-        is_normal_findings: data.isNormalFindings  ?? true,
-        approved_at:       selectedExam.status === 'approved' ? undefined : new Date().toISOString(),
-        issue_cert:        true,
-      }).eq('id', selectedExam.recordId || selectedExam.id);
-
-      if (error) throw error;
-
-      if (activeTab === 'pending') {
-        setExaminations(examinations.filter(e => e.id !== selectedExam.id));
-        setSelectedExam(null);
-      } else {
-        const updatedExam = {
-          ...selectedExam,
-          finding1: data.finding1 ?? '',
-          remarks: data.remarks ?? '',
-          isFit: data.isFit ?? true,
-          isNormalFindings: data.isNormalFindings ?? true,
-          // FIX: certificateIssued was recomputed from finding1/remarks text
-          // presence instead of following issue_cert, which the DB update
-          // above always sets to true when a certificate is submitted. Now
-          // both issue_cert and certificateIssued are kept in sync so the
-          // "Issue Certificate" button and "Cert Forwarded" pill agree
-          // immediately, without waiting for a refetch.
-          issue_cert: true,
-          certificateIssued: true,
-        };
-        setExaminations(examinations.map(e => e.id === selectedExam.id ? updatedExam : e));
-        setSelectedExam(updatedExam);
-      }
-
-      await refreshNotificationCounts();
-      setShowCertForm(false);
-      showSnackbar(`Medical Certificate for ${data.patientName || selectedExam.patientName} has been issued!`, 'success');
-    } catch (error) {
-      console.error('Error submitting certificate:', error);
-      showSnackbar('Failed to submit certificate', 'error');
-    } finally {
-      setLoading(false);
+    if (data.restoration) {
+      updatedDentalHistory.needs_restoration =
+        data.restoration;
     }
-  };
+
+    if (data.extraction) {
+      updatedDentalHistory.for_extraction =
+        data.extraction;
+    }
+
+    const approvedAt =
+      selectedExam.status === 'approved'
+        ? selectedExam.approved_at ||
+          selectedExam.approvedAt ||
+          new Date().toISOString()
+        : new Date().toISOString();
+
+await updateRecord(recordId, {
+  recordType: 'dental',
+  dental_history: updatedDentalHistory,
+  intraoral: data.intraoral || {},
+  tooth_data: data.toothData || {},
+  treatment_remarks:
+    data.treatmentRemarks || {},
+  treatments: data.treatments || {},
+  status: 'approved',
+  is_approved: true,
+  approved_at: approvedAt,
+  examined_by: data.examinedBy || null,
+  exam_date: data.examDate || null,
+  issue_cert: true,
+});
+
+    const updatedExam = {
+      ...selectedExam,
+      dentalHistory:
+        updatedDentalHistory,
+      dental_history:
+        updatedDentalHistory,
+      intraoral:
+        data.intraoral || {},
+      toothData:
+        data.toothData || {},
+      tooth_data:
+        data.toothData || {},
+      treatment_remarks:
+        data.treatmentRemarks || {},
+      treatments:
+        data.treatments || {},
+      patientSignature:
+        data.patientSignature,
+      sigDate:
+        data.sigDate,
+      examinedBy:
+        data.examinedBy,
+      examined_by:
+        data.examinedBy,
+      examDate:
+        data.examDate,
+      exam_date:
+        data.examDate,
+      status: 'approved',
+      is_approved: true,
+      approved_at: approvedAt,
+      issue_cert: true,
+      reportForwarded: true,
+    };
+
+    if (activeTab === 'pending') {
+      setDentalExaminations((previous) =>
+        previous.filter(
+          (item) =>
+            item.id !== selectedExam.id
+        )
+      );
+
+      setSelectedExam(null);
+    } else {
+      setDentalExaminations((previous) =>
+        previous.map((item) =>
+          item.id === selectedExam.id
+            ? updatedExam
+            : item
+        )
+      );
+
+      setSelectedExam(updatedExam);
+    }
+
+    await refreshNotificationCounts();
+
+    setShowReportForm(false);
+
+    showSnackbar(
+      'Dental report saved and forwarded successfully!',
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      'Error saving dental report:',
+      error
+    );
+
+    showSnackbar(
+      error.message ||
+        'Failed to save dental report',
+      'error'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleSubmitCertificate = async (data) => {
+  if (!selectedExam) return;
+
+  const recordId =
+    selectedExam.recordId ||
+    selectedExam.id;
+
+  setLoading(true);
+
+  try {
+    const approvedAt =
+      selectedExam.status === 'approved'
+        ? selectedExam.approved_at ||
+          selectedExam.approvedAt ||
+          new Date().toISOString()
+        : new Date().toISOString();
+
+await updateRecord(recordId, {
+  recordType: 'medical',
+  status: 'approved',
+  is_approved: true,
+  finding1: data.finding1 ?? '',
+  remarks: data.remarks ?? '',
+  is_fit: data.isFit ?? true,
+  is_normal_findings:
+    data.isNormalFindings ?? true,
+  approved_at: approvedAt,
+  issue_cert: true,
+});
+
+    const updatedExam = {
+      ...selectedExam,
+      finding1:
+        data.finding1 ?? '',
+      remarks:
+        data.remarks ?? '',
+      isFit:
+        data.isFit ?? true,
+      is_fit:
+        data.isFit ?? true,
+      isNormalFindings:
+        data.isNormalFindings ?? true,
+      is_normal_findings:
+        data.isNormalFindings ?? true,
+      status: 'approved',
+      is_approved: true,
+      approved_at:
+        approvedAt,
+      issue_cert: true,
+      certificateIssued: true,
+    };
+
+    if (activeTab === 'pending') {
+      setExaminations((previous) =>
+        previous.filter(
+          (item) =>
+            item.id !== selectedExam.id
+        )
+      );
+
+      setSelectedExam(null);
+    } else {
+      setExaminations((previous) =>
+        previous.map((item) =>
+          item.id === selectedExam.id
+            ? updatedExam
+            : item
+        )
+      );
+
+      setSelectedExam(updatedExam);
+    }
+
+    await refreshNotificationCounts();
+
+    setShowCertForm(false);
+
+    showSnackbar(
+      `Medical Certificate for ${
+        data.patientName ||
+        selectedExam.patientName
+      } has been issued!`,
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      'Error submitting certificate:',
+      error
+    );
+
+    showSnackbar(
+      error.message ||
+        'Failed to submit certificate',
+      'error'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleEdit = async () => {
     if (!selectedExam) return;
@@ -1570,6 +1876,18 @@ export const Approvals = () => {
 
     return (
       <div className="animate-in fade-in duration-300">
+        {exam.certRequested && !exam.issue_cert && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+            <i className="fa-solid fa-bell text-amber-500"></i>
+            <div>
+              <p className="text-sm font-bold text-amber-800">
+                Patient Requested Dental Report
+              </p>
+              <p className="text-xs text-amber-700">Requested on {formatDateTime(exam.certRequestedAt)}</p>
+            </div>
+          </div>
+        )}
+
         {/* Patient Header */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
           <div className="flex justify-between items-start mb-4">
@@ -1613,18 +1931,6 @@ export const Approvals = () => {
             </div>
           </div>
         </div>
-
-        {exam.certRequested && !exam.issue_cert && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center gap-3">
-            <i className="fa-solid fa-bell text-amber-500"></i>
-            <div>
-              <p className="text-sm font-bold text-amber-800">
-                Patient Requested Dental Report
-              </p>
-              <p className="text-xs text-amber-700">Requested on {formatDateTime(exam.certRequestedAt)}</p>
-            </div>
-          </div>
-        )}
 
         {/* Intraoral Examination */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
@@ -1876,6 +2182,18 @@ export const Approvals = () => {
 
     return (
       <div className="animate-in fade-in duration-300">
+        {exam.certRequested && !exam.issue_cert && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+            <i className="fa-solid fa-bell text-amber-500"></i>
+            <div>
+              <p className="text-sm font-bold text-amber-800">
+                Patient Requested Medical Certificate
+              </p>
+              <p className="text-xs text-amber-700">Requested on {formatDateTime(exam.certRequestedAt)}</p>
+            </div>
+          </div>
+        )}
+
         {/* Patient Header */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-[#466460]"></div>
@@ -1925,18 +2243,6 @@ export const Approvals = () => {
             </div>
           </div>
         </div>
-
-        {exam.certRequested && !exam.issue_cert && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center gap-3">
-            <i className="fa-solid fa-bell text-amber-500"></i>
-            <div>
-              <p className="text-sm font-bold text-amber-800">
-                Patient Requested Medical Certificate
-              </p>
-              <p className="text-xs text-amber-700">Requested on {formatDateTime(exam.certRequestedAt)}</p>
-            </div>
-          </div>
-        )}
 
         {/* Certificate Display (If Issued) */}
         {exam.certificateIssued && (

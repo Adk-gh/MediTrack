@@ -8,6 +8,8 @@ import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { formatUserDate } from '../../utils/dateFormat';
 import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 import { useDocumentManager } from '../../hooks/useDocumentManager';
+import notificationsService from '../../services/notifications.service.js';
+
 
 // =============================================================================
 // CACHE
@@ -419,6 +421,7 @@ export default function RecordsUsers() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [requestingId, setRequestingId] = useState(null);
   const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
+  const [recordNotifications, setRecordNotifications] = useState([]);
 
   // Sync i18next with the user's database preference
   useEffect(() => {
@@ -584,6 +587,93 @@ export default function RecordsUsers() {
   }, []);
 
   // ===========================================================================
+  // NOTIFICATIONS (record status updates)
+  // ===========================================================================
+
+  const fetchRecordNotifications = useCallback(async () => {
+    try {
+      const notifications = await notificationsService.getNotifications(100);
+
+      const unread = (notifications || []).filter((notification) => {
+        const isUnread = !(notification.is_read ?? notification.isRead);
+
+        const type = String(notification.type || '').toLowerCase();
+        const referenceType = String(
+          notification.reference_type ?? notification.referenceType ?? ''
+        ).toLowerCase();
+
+        return (
+          isUnread &&
+          (
+            type === 'medical_record_status' ||
+            type === 'dental_record_status' ||
+            referenceType === 'medical_record' ||
+            referenceType === 'dental_record'
+          )
+        );
+      });
+
+      setRecordNotifications(unread);
+    } catch (error) {
+      console.error('[RecordsUsers] Error fetching record notifications:', error);
+    }
+  }, []);
+
+  // Matches on id AND recordType — medical_records.id and dental_records.id
+  // are independent sequences and can collide, so id alone isn't enough.
+  const getUnreadNotificationsForRecord = useCallback((record) => {
+    if (!record) return [];
+
+    return recordNotifications.filter((notification) => {
+      const referenceId = notification.reference_id ?? notification.referenceId;
+      if (String(referenceId) !== String(record.id)) return false;
+
+      const type = String(notification.type || '').toLowerCase();
+      const referenceType = String(
+        notification.reference_type ?? notification.referenceType ?? ''
+      ).toLowerCase();
+
+      if (record.recordType === 'medical') {
+        return type === 'medical_record_status' || referenceType === 'medical_record';
+      }
+      if (record.recordType === 'dental') {
+        return type === 'dental_record_status' || referenceType === 'dental_record';
+      }
+      return false;
+    });
+  }, [recordNotifications]);
+
+  const unreadRecordKeys = useMemo(() => {
+    const existingKeys = new Set(records.map((record) => `${record.recordType}-${record.id}`));
+
+    return new Set(
+      recordNotifications
+        .map((notification) => {
+          const referenceId = notification.reference_id ?? notification.referenceId;
+          const type = String(notification.type || '').toLowerCase();
+          const referenceType = String(
+            notification.reference_type ?? notification.referenceType ?? ''
+          ).toLowerCase();
+
+          let recordType = null;
+          if (type === 'medical_record_status' || referenceType === 'medical_record') recordType = 'medical';
+          if (type === 'dental_record_status' || referenceType === 'dental_record') recordType = 'dental';
+
+          return recordType ? `${recordType}-${referenceId}` : null;
+        })
+        .filter((key) => key && existingKeys.has(key))
+    );
+  }, [recordNotifications, records]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('recordsBadgeCountChanged', {
+        detail: { count: unreadRecordKeys.size },
+      })
+    );
+  }, [unreadRecordKeys]);
+
+  // ===========================================================================
   // CERTIFICATE REQUEST
   // ===========================================================================
 
@@ -618,7 +708,7 @@ export default function RecordsUsers() {
   // ===========================================================================
 
   const { scrollElRef, indicatorRef } = usePullToRefresh(async () => {
-    await fetchRecords(true);
+    await Promise.all([fetchRecords(true), fetchRecordNotifications()]);
   });
 
   // ===========================================================================
@@ -628,6 +718,7 @@ export default function RecordsUsers() {
   useEffect(() => {
     let active = true;
     fetchRecords();
+    fetchRecordNotifications();
 
     const { data: authData } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!active) return;
@@ -635,12 +726,13 @@ export default function RecordsUsers() {
         if (currentUserId) clearCache(currentUserId);
         setCurrentUserId(null);
         setRecords([]);
+        setRecordNotifications([]);
         setSelectedRecord(null);
         setView('list');
         return;
       }
       if (['SIGNED_IN', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(event) && session?.user) {
-        await fetchRecords(true);
+        await Promise.all([fetchRecords(true), fetchRecordNotifications()]);
       }
     });
 
@@ -648,13 +740,55 @@ export default function RecordsUsers() {
       active = false;
       authData.subscription.unsubscribe();
     };
-  }, [fetchRecords, currentUserId]);
+  }, [fetchRecords, fetchRecordNotifications, currentUserId]);
 
   // ===========================================================================
   // VIEW CONTROLS
   // ===========================================================================
 
-  const openRecord = useCallback((record) => { setSelectedRecord(record); setView('summary'); }, []);
+  const openRecord = useCallback(async (record) => {
+    setSelectedRecord(record);
+    setView('summary');
+
+    const matchingNotifications = getUnreadNotificationsForRecord(record);
+    if (matchingNotifications.length === 0) return;
+
+    const matchingIds = new Set(matchingNotifications.map((notification) => String(notification.id)));
+
+    setRecordNotifications((previous) =>
+      previous.filter((notification) => !matchingIds.has(String(notification.id)))
+    );
+
+    try {
+      await Promise.all(
+        matchingNotifications.map((notification) => notificationsService.markAsRead(notification.id))
+      );
+
+      sessionStorage.removeItem('meditrack_notifications');
+      sessionStorage.removeItem('meditrack_notif_count');
+
+      window.dispatchEvent(
+        new CustomEvent('recordNotificationRead', {
+          detail: {
+            recordType: record.recordType,
+            recordId: record.id,
+            notificationIds: matchingNotifications.map((notification) => notification.id),
+          },
+        })
+      );
+    } catch (error) {
+      console.error('[RecordsUsers] Error marking record notification as read:', error);
+
+      setRecordNotifications((previous) => {
+        const existingIds = new Set(previous.map((notification) => String(notification.id)));
+        const missingNotifications = matchingNotifications.filter(
+          (notification) => !existingIds.has(String(notification.id))
+        );
+        return [...previous, ...missingNotifications];
+      });
+    }
+  }, [getUnreadNotificationsForRecord]);
+
   const close = useCallback(() => { setSelectedRecord(null); setView('list'); }, []);
 
   // ===========================================================================
@@ -825,34 +959,65 @@ export default function RecordsUsers() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {filteredRecords.map((record) => (
-                <div
-                  key={`${record.recordType}-${record.id}`}
-                  onClick={() => openRecord(record)}
-                  onMouseEnter={(event) => { event.currentTarget.style.borderColor = '#466460'; event.currentTarget.style.boxShadow = '0 4px 16px rgba(70,100,96,0.12)'; }}
-                  onMouseLeave={(event) => { event.currentTarget.style.borderColor = '#edf3f0'; event.currentTarget.style.boxShadow = 'none'; }}
-                  style={{ background: '#fff', border: '1px solid #edf3f0', borderRadius: 20, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
-                >
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
-                      {formatDisplayDateWithMonth(record.approved_at || record.created_at, preferences)}
+              {filteredRecords.map((record) => {
+                const unreadNotifications = getUnreadNotificationsForRecord(record);
+                const hasUnreadNotification = unreadNotifications.length > 0;
+
+                return (
+                  <div
+                    key={`${record.recordType}-${record.id}`}
+                    onClick={() => openRecord(record)}
+                    onMouseEnter={(event) => { event.currentTarget.style.borderColor = '#466460'; event.currentTarget.style.boxShadow = '0 4px 16px rgba(70,100,96,0.12)'; }}
+                    onMouseLeave={(event) => { event.currentTarget.style.borderColor = '#edf3f0'; event.currentTarget.style.boxShadow = 'none'; }}
+                    style={{ position: 'relative', background: '#fff', border: '1px solid #edf3f0', borderRadius: 20, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    {hasUnreadNotification && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: -6,
+                          right: -6,
+                          minWidth: 18,
+                          height: 18,
+                          padding: '0 4px',
+                          borderRadius: 9999,
+                          background: '#ef4444',
+                          color: '#fff',
+                          fontSize: 9,
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                          border: '2px solid #fff',
+                        }}
+                        title="New update on this record"
+                      >
+                        {unreadNotifications.length > 9 ? '9+' : unreadNotifications.length}
+                      </span>
+                    )}
+
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#6b8577', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+                        {formatDisplayDateWithMonth(record.approved_at || record.created_at, preferences)}
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {record.recordType === 'dental' ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }} /> : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }} />}
+                        {record.recordType === 'dental' ? t('records.dentalExamination', 'Dental Examination') : t('records.medicalExamination', 'Medical Examination')}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
+                        {record.recordType === 'dental' ? [record.dCourseYear, record.dYearLevel, record.dSection].filter(Boolean).join(' - ') : fmt(record.course || '')}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1a2e22', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {record.recordType === 'dental' ? <i className="fa-solid fa-tooth" style={{ color: '#466460' }} /> : <i className="fa-solid fa-stethoscope" style={{ color: '#466460' }} />}
-                      {record.recordType === 'dental' ? t('records.dentalExamination', 'Dental Examination') : t('records.medicalExamination', 'Medical Examination')}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#6b8577', marginTop: 4 }}>
-                      {record.recordType === 'dental' ? [record.dCourseYear, record.dYearLevel, record.dSection].filter(Boolean).join(' - ') : fmt(record.course || '')}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ background: '#e0eceb', color: '#466460', fontSize: 9, fontWeight: 800, padding: '3px 10px', borderRadius: 30, textTransform: 'uppercase' }}>{t('records.approved', 'Approved')}</span>
+                      <div style={{ width: 32, height: 32, background: '#e0eceb', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" width="15" height="15"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+                      </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ background: '#e0eceb', color: '#466460', fontSize: 9, fontWeight: 800, padding: '3px 10px', borderRadius: 30, textTransform: 'uppercase' }}>{t('records.approved', 'Approved')}</span>
-                    <div style={{ width: 32, height: 32, background: '#e0eceb', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#466460" strokeWidth="2" width="15" height="15"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -1102,7 +1102,7 @@ export const Consultations = () => {
     const enriched = await Promise.all(
       rows.map(async (conv) => {
         try {
-          const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
+          const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
           const lastMsg = lastVisibleMessage(msgs);
           const unreadCount = internalStaffId
             ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
@@ -1188,7 +1188,12 @@ export const Consultations = () => {
     };
     loadConsultations();
 
-    convChannelRef.current = consultationsService.subscribeToConsultations((payload) => {
+if (convChannelRef.current) {
+  convChannelRef.current();
+  convChannelRef.current = null;
+}
+const unsubscribeConsultations =
+  consultationsService.subscribeToConsultations((payload) => {
       if (payload.eventType === 'INSERT') {
         const newConv = { ...payload.new, last_message: '', last_timestamp: 0, unread_count: 0 };
         const patientName = payload.new.patient_name || 'A patient';
@@ -1289,48 +1294,15 @@ export const Consultations = () => {
       }
     });
 
-    // Polling now only refreshes conversations that are already loaded on the
-    // client (last message + unread count) instead of re-fetching the whole
-    // consultations table every 3s — new threads still arrive via the
-    // realtime INSERT subscription above.
-    const pollInterval = setInterval(async () => {
-      try {
-        consultationsService.clearMessagesCache();
-        const loaded = conversationsRef.current;
-        if (loaded.length === 0) return;
 
-        const unreadMap = {};
-        const updated = await Promise.all(
-          loaded.map(async (conv) => {
-            try {
-              const msgs = await consultationsService.getMessagesByConsultationId(conv.id, true);
-              const lastMsg = lastVisibleMessage(msgs);
-              const unreadCount = internalStaffId
-                ? (msgs || []).filter(m => !m.read_at && m.sender_id && m.sender_id !== internalStaffId).length
-                : 0;
-              if (unreadCount > 0) unreadMap[conv.id] = unreadCount;
-              return {
-                ...conv,
-                last_message: lastMsg?.message ?? conv.last_message ?? '',
-                last_timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : (conv.last_timestamp || 0),
-                unread_count: unreadCount,
-              };
-            } catch {
-              return conv;
-            }
-          })
-        );
-        updated.sort((a, b) => (b.last_timestamp || 0) - (a.last_timestamp || 0));
-        setConversations(updated);
-        setUnreadCounts(unreadMap);
-      } catch (err) {}
-    }, 3000);
 
-    return () => {
-      if (convChannelRef.current) convChannelRef.current();
-      clearInterval(pollInterval);
-    };
-  }, [sessionReady, selectedConvId, internalStaffId, fetchConversationsPage]);
+return () => {
+  if (convChannelRef.current) {
+    convChannelRef.current();
+    convChannelRef.current = null;
+  }
+};
+}, [sessionReady, internalStaffId, fetchConversationsPage]);
 
   useEffect(() => {
     if (!sessionReady) return;
@@ -1415,31 +1387,74 @@ export const Consultations = () => {
     return () => supabase.removeChannel(channel);
   }, [sessionReady, internalStaffId]);
 
-  useEffect(() => {
-    if (!sessionReady) return;
-    const loadMessages = async () => {
-      if (!selectedConvId) { setMessages([]); return; }
+useEffect(() => {
+  if (!sessionReady) return;
 
-      setLoadingMsgs(true);
-      try {
-        await ensureValidSession();
-        const data = await consultationsService.getMessagesByConsultationId(selectedConvId, true);
-        const formatted = (data || []).map(msg => ({
-          ...msg,
-          text: msg.message,
-          timestamp: new Date(msg.created_at).getTime(),
-          sender: ['doctor', 'nurse', 'dentist', 'sysadmin', 'system'].includes(msg.sender_role?.toLowerCase()) ? 'clinic' : 'patient',
-          read_at: msg.read_at,
-        }));
-        setMessages(formatted);
-      } catch (err) {
-        console.error('Failed to load messages:', err);
-      } finally {
-        setLoadingMsgs(false);
+  let cancelled = false;
+
+  const loadConsultations = async () => {
+    try {
+      await ensureValidSession();
+
+      const { rows, enriched } =
+        await fetchConversationsPage(0, CONV_PAGE_SIZE);
+
+      if (cancelled) return;
+
+      enriched.sort(
+        (a, b) =>
+          (b.last_timestamp || 0) -
+          (a.last_timestamp || 0)
+      );
+
+      setConversations(enriched);
+      setHasMoreConvs(rows.length === CONV_PAGE_SIZE);
+      setConvPage(1);
+
+      const unreadMap = {};
+
+      enriched.forEach((conversation) => {
+        if (conversation.unread_count > 0) {
+          unreadMap[conversation.id] =
+            conversation.unread_count;
+        }
+      });
+
+      setUnreadCounts(unreadMap);
+    } catch (error) {
+      if (!cancelled) {
+        console.error(
+          'Failed to load consultations:',
+          error
+        );
       }
-    };
-    loadMessages();
-  }, [selectedConvId, sessionReady, ensureValidSession]);
+    }
+  };
+
+  loadConsultations();
+
+  const unsubscribeConsultations =
+    consultationsService.subscribeToConsultations(
+      (payload) => {
+        // Keep your existing INSERT/UPDATE handling here.
+      }
+    );
+
+  convChannelRef.current = unsubscribeConsultations;
+
+return () => {
+  if (
+    convChannelRef.current === unsubscribeConsultations
+  ) {
+    unsubscribeConsultations();
+    convChannelRef.current = null;
+  }
+};
+}, [
+  sessionReady,
+  fetchConversationsPage,
+  ensureValidSession,
+]);
 
   useEffect(() => { setShowPatientModal(false); }, [selectedConvId]);
   useEffect(() => { selectedConvIdRef.current = selectedConvId; }, [selectedConvId]);
@@ -1468,7 +1483,10 @@ export const Consultations = () => {
         sender_role: currentUser.role || 'staff',
       });
 
-      const data = await consultationsService.getMessagesByConsultationId(selectedConvId, true);
+const data =
+  await consultationsService.getMessagesByConsultationId(
+    selectedConvId
+  );
       const uniqueData = (data || []).reduce((acc, msg) => {
         if (!acc.some(m => m.id === msg.id)) {
           acc.push(msg);

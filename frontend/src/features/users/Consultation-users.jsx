@@ -1347,28 +1347,109 @@ export default function ConsultationUsers() {
     }
   };
 
-  const markMessagesAsRead = useCallback(async () => {
-    if (!activeRoomId || !internalUserId || isEnded) return;
+const markMessagesAsRead = useCallback(async () => {
+  if (!activeRoomId || !internalUserId || isEnded) {
+    return;
+  }
 
-    const token = localStorage.getItem('token');
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const unreadClinicMessages = messages.filter(
+    (message) =>
+      message.sender_id &&
+      String(message.sender_id) !==
+        String(internalUserId) &&
+      !message.read_at
+  );
 
-    const bodyToSend = {
-      sender_id: internalUserId,
-      sender_role: currentUser.role || 'student',
-    };
+  if (unreadClinicMessages.length === 0) {
+    return;
+  }
 
-    try {
-      await fetch(`${API_URL}/consultations/${activeRoomId}/messages/read`, {
+  const token = localStorage.getItem('token');
+
+  const API_URL =
+    import.meta.env.VITE_API_URL ||
+    'http://localhost:5000/api';
+
+  const bodyToSend = {
+    sender_id: internalUserId,
+    sender_role: currentUser.role || 'student',
+  };
+
+  try {
+    const response = await fetch(
+      `${API_URL}/consultations/${activeRoomId}/messages/read`,
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          ...(token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : {}),
         },
         body: JSON.stringify(bodyToSend),
-      });
-    } catch (err) {}
-  }, [activeRoomId, internalUserId, isEnded, currentUser.role]);
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to mark messages as read: ${response.status}`
+      );
+    }
+
+    const readAt = new Date().toISOString();
+
+    // Update the chat immediately.
+    setMessages((previousMessages) =>
+      previousMessages.map((message) => {
+        const isClinicMessage =
+          message.sender_id &&
+          String(message.sender_id) !==
+            String(internalUserId);
+
+        if (isClinicMessage && !message.read_at) {
+          return {
+            ...message,
+            read_at: readAt,
+          };
+        }
+
+        return message;
+      })
+    );
+
+    setClinicUnreadCount(0);
+
+    localStorage.setItem(
+      'consultUnreadCount',
+      '0'
+    );
+
+    // Tell UserDashboardLayout to remove the Consult badge.
+    window.dispatchEvent(
+      new CustomEvent('consultationMessagesRead', {
+        detail: {
+          consultationId: activeRoomId,
+          messageIds: unreadClinicMessages.map(
+            (message) => message.id
+          ),
+        },
+      })
+    );
+  } catch (error) {
+    console.error(
+      'Error marking consultation messages as read:',
+      error
+    );
+  }
+}, [
+  activeRoomId,
+  internalUserId,
+  isEnded,
+  currentUser.role,
+  messages,
+]);
 
   useEffect(() => {
     if (activeRoomId && !isEnded && internalUserId) {

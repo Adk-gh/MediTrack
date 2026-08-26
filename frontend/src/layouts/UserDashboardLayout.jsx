@@ -11,7 +11,6 @@ import { createPortal } from "react-dom";
 import logo from '../assets/logo.jpg';
 
 // ─── Notification type groupings ─────────────────────────────────────────────
-const APPOINTMENT_NOTIF_TYPES = ["appointment_request", "appointment_status"];
 const RECORD_NOTIF_TYPES = ["record_added", "record_updated"];
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
@@ -485,9 +484,10 @@ function MobilePillNav({
           pointerEvents: "auto",
         }}
       >
-        {MOBILE_NAV.map(({ id, label, Icon }) => {
+               {MOBILE_NAV.map(({ id, label, Icon }) => {
           const isActive = activeTab === id;
-          const showUnreadBadge = (NAV_BADGE_COUNTS[id] || 0) > 0;
+          const badgeCount = NAV_BADGE_COUNTS[id] || 0;
+          const showUnreadBadge = badgeCount > 0;
 
           return (
             <button
@@ -528,19 +528,28 @@ function MobilePillNav({
               >
                 <Icon size={isActive ? iconLg : iconSm} />
 
-                {showUnreadBadge && (
+                                {showUnreadBadge && (
                   <span
                     style={{
                       position: "absolute",
-                      top: -Math.round(2 * scale),
-                      right: -Math.round(2 * scale),
-                      width: Math.round(10 * scale),
-                      height: Math.round(10 * scale),
+                      top: 0,
+                      right: isActive ? 0 : Math.round(4 * scale),
+                      minWidth: Math.round(14 * scale),
+                      height: Math.round(14 * scale),
+                      padding: `0 ${Math.round(2 * scale)}px`,
                       background: "#ef4444",
-                      borderRadius: "50%",
-                      border: "2px solid #ffffff",
+                      borderRadius: 999,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: Math.max(7, Math.round(8 * scale)),
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      color: "#ffffff",
                     }}
-                  />
+                  >
+                    {badgeCount > 9 ? "9+" : badgeCount}
+                  </span>
                 )}
               </div>
 
@@ -751,7 +760,7 @@ function DesktopShell({
 
   return (
     <div className="min-h-screen bg-transparent flex flex-col">
-      <header className="bg-transparent px-5 pb-3 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-transparent px-5 pb-3 flex items-center justify-between sticky top-0 z-50">
         <img
           src={logo}
           alt="MediTrack Logo"
@@ -976,24 +985,139 @@ export default function UserDashboardLayout({
 
   const fetchTypedNotifCounts = useCallback(async () => {
     try {
-      const notifs = await notificationsService.getNotifications(50);
-      const unread = (notifs || []).filter((n) => !(n.is_read ?? n.isRead));
+      const notifications = await notificationsService.getNotifications(100);
 
-      setApptNotifCount(
-        unread.filter((n) => APPOINTMENT_NOTIF_TYPES.includes(n.type)).length
+      const unread = (notifications || []).filter(
+        (notification) => !(notification.is_read ?? notification.isRead)
       );
-      setRecordNotifCount(
-        unread.filter((n) => RECORD_NOTIF_TYPES.includes(n.type)).length
+
+      // --- RECORDS NOTIFICATIONS ---
+      const unreadRecordNotifications = unread.filter((notification) => {
+        const referenceId = notification.reference_id ?? notification.referenceId;
+        const referenceType = String(
+          notification.reference_type ?? notification.referenceType ?? ''
+        ).trim().toLowerCase();
+
+        return (
+          Boolean(referenceId) &&
+          (referenceType === 'medical_record' || referenceType === 'dental_record')
+        );
+      });
+
+      const unreadRecordKeys = new Set(
+        unreadRecordNotifications.map((notification) => {
+          const referenceId = notification.reference_id ?? notification.referenceId;
+          const referenceType = String(
+            notification.reference_type ?? notification.referenceType ?? ''
+          ).trim().toLowerCase();
+          return `${referenceType}:${referenceId}`;
+        })
       );
-    } catch (err) {
-      console.error("Error fetching typed notification counts:", err);
+      setRecordNotifCount(unreadRecordKeys.size);
+
+ const unreadAppointmentNotifications = unread.filter((notification) => {
+  const referenceId =
+    notification.reference_id ??
+    notification.referenceId;
+
+  const referenceType = String(
+    notification.reference_type ??
+    notification.referenceType ??
+    ''
+  )
+    .trim()
+    .toLowerCase();
+
+  return (
+    Boolean(referenceId) &&
+    (
+      referenceType === 'appointment' ||
+      referenceType === 'appointments'
+    )
+  );
+});
+
+const uniqueAppointmentIds = new Set(
+  unreadAppointmentNotifications.map(
+    (notification) =>
+      String(
+        notification.reference_id ??
+        notification.referenceId
+      )
+  )
+);
+
+setApptNotifCount(uniqueAppointmentIds.size);
+
+    } catch (error) {
+      console.error('Error fetching typed notification counts:', error);
     }
+  }, []);
+
+  useEffect(() => {
+    const handleRecordNotificationRead = async () => {
+      try {
+        const totalUnread = await notificationsService.getUnreadCount();
+        setNotificationCount(totalUnread);
+
+        sessionStorage.removeItem('meditrack_notifications');
+        sessionStorage.removeItem('meditrack_notif_count');
+
+        await fetchTypedNotifCounts();
+      } catch (error) {
+        console.error('Error refreshing record notification counts:', error);
+      }
+    };
+
+    window.addEventListener('recordNotificationRead', handleRecordNotificationRead);
+
+    return () => {
+      window.removeEventListener('recordNotificationRead', handleRecordNotificationRead);
+    };
+  }, [fetchTypedNotifCounts]);
+
+  useEffect(() => {
+    const handleAppointmentBadgeCountChanged = (event) => {
+      const count = Number(event.detail?.count) || 0;
+      setApptNotifCount(count);
+    };
+
+    window.addEventListener(
+      'appointmentBadgeCountChanged',
+      handleAppointmentBadgeCountChanged
+    );
+
+    return () => {
+      window.removeEventListener(
+        'appointmentBadgeCountChanged',
+        handleAppointmentBadgeCountChanged
+      );
+    };
   }, []);
 
   useEffect(() => {
     fetchTypedNotifCounts();
     const interval = setInterval(fetchTypedNotifCounts, 30000);
     return () => clearInterval(interval);
+  }, [fetchTypedNotifCounts]);
+
+  useEffect(() => {
+    const handleAppointmentNotificationRead = async () => {
+      try {
+        const count = await notificationsService.getUnreadCount();
+        setNotificationCount(count);
+        sessionStorage.removeItem('meditrack_notif_count');
+        await fetchTypedNotifCounts();
+      } catch (error) {
+        console.error('Error refreshing appointment notification counts:', error);
+      }
+    };
+
+    window.addEventListener('appointmentNotificationRead', handleAppointmentNotificationRead);
+
+    return () => {
+      window.removeEventListener('appointmentNotificationRead', handleAppointmentNotificationRead);
+    };
   }, [fetchTypedNotifCounts]);
 
   // ─── Consultation unread count ───────────────────────────────────────────
@@ -1070,72 +1194,82 @@ export default function UserDashboardLayout({
   // ─── Real-time notification updates ─────────────────────────────────────
 
   useEffect(() => {
-    const getUserId = () => {
-      try {
-        const user = JSON.parse(
-          localStorage.getItem("user") || "{}"
-        );
+    let mounted = true;
+    let channel;
 
-        return user?.uid || null;
-      } catch {
-        return null;
+    const setupNotificationRealtime = async () => {
+      try {
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const authUid = storedUser?.uid || storedUser?.id || null;
+
+        if (!authUid) return;
+
+        const internalUserId = await notificationsService.getInternalUserId(authUid);
+
+        if (!mounted || !internalUserId) {
+          return;
+        }
+
+        channel = supabase
+          .channel('layout-notif-count')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${internalUserId}`,
+            },
+            async () => {
+              const count = await notificationsService.getUnreadCount();
+              setNotificationCount(count);
+              sessionStorage.removeItem('meditrack_notif_count');
+              await fetchTypedNotifCounts();
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${internalUserId}`,
+            },
+            async () => {
+              const count = await notificationsService.getUnreadCount();
+              setNotificationCount(count);
+              sessionStorage.removeItem('meditrack_notif_count');
+              await fetchTypedNotifCounts();
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'DELETE',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${internalUserId}`,
+            },
+            async () => {
+              const count = await notificationsService.getUnreadCount();
+              setNotificationCount(count);
+              sessionStorage.removeItem('meditrack_notif_count');
+              await fetchTypedNotifCounts();
+            }
+          )
+          .subscribe();
+      } catch (error) {
+        console.error('Failed to subscribe to notification updates:', error);
       }
     };
 
-    const authUserId = getUserId();
-
-    if (!authUserId) return;
-
-    const channel = supabase
-      .channel("layout-notif-count")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${authUserId}`,
-        },
-        () => {
-          setNotificationCount((prev) => prev + 1);
-          sessionStorage.removeItem("meditrack_notif_count");
-          fetchTypedNotifCounts();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${authUserId}`,
-        },
-        async () => {
-          const count =
-            await notificationsService.getUnreadCount();
-
-          setNotificationCount(count);
-
-          sessionStorage.removeItem("meditrack_notif_count");
-          fetchTypedNotifCounts();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${authUserId}`,
-        },
-        () => {
-          fetchTypedNotifCounts();
-        }
-      )
-      .subscribe();
+    setupNotificationRealtime();
 
     return () => {
-      supabase.removeChannel(channel);
+      mounted = false;
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [fetchTypedNotifCounts]);
 

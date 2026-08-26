@@ -317,21 +317,47 @@ router.post(
 
   recordsController.createRecord
 );
+// ============================================================
+// UPDATE RECORD STATUS
+// ============================================================
+router.put(
+  '/:recordType/:recordId/status',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Update Record Status',
+    'RECORD',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Updated ${req.params.recordType} record status for ID ${req.params.recordId}.`
+  ),
+  recordsController.updateRecordStatus
+);
 
 // ============================================================
-// UPDATE RECORD
+// UPDATE TYPED RECORD
 // ============================================================
+router.put(
+  '/:recordType/:recordId',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Update Record',
+    'RECORD',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Updated ${req.params.recordType} record with ID ${req.params.recordId}.`
+  ),
+  recordsController.updateRecord
+);
 
-// Admin + clinic staff.
+// ============================================================
+// UPDATE RECORD - OLD ROUTE
+// ============================================================
 router.put(
   '/:id',
   authorized,
   allowDynamicClinicStaffs,
-
-  // Re-enable this after confirming that every frontend
-  // update payload matches updateRecordSchema.
-  // validateData(updateRecordSchema),
-
   auditLog(
     'Update Record',
     'RECORD',
@@ -351,7 +377,6 @@ router.put(
       );
     }
   ),
-
   recordsController.updateRecord
 );
 

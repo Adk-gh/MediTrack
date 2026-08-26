@@ -143,8 +143,8 @@ const ActionConfirmModal = ({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  tone = 'save',
   loading = false,
+  loadingText = 'Please wait...',
   onConfirm,
   onCancel,
 }) => {
@@ -152,39 +152,19 @@ const ActionConfirmModal = ({
     if (!open) return undefined;
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && !loading) onCancel?.();
+      if (event.key === 'Escape' && !loading) {
+        onCancel?.();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [open, loading, onCancel]);
 
   if (!open) return null;
-
-  const palette = {
-    save: {
-      accent: '#466460',
-      soft: '#e8f5ee',
-      icon: '✓',
-    },
-    edit: {
-      accent: '#2563eb',
-      soft: '#dbeafe',
-      icon: '✎',
-    },
-    delete: {
-      accent: '#e5262d',
-      soft: '#fee2e2',
-      icon: '↪',
-    },
-    warning: {
-      accent: '#d97706',
-      soft: '#fef3c7',
-      icon: '!',
-    },
-  };
-
-  const colors = palette[tone] || palette.save;
 
   return (
     <div
@@ -192,86 +172,80 @@ const ActionConfirmModal = ({
       aria-modal="true"
       aria-labelledby="settings-confirm-title"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !loading) onCancel?.();
+        if (event.target === event.currentTarget && !loading) {
+          onCancel?.();
+        }
       }}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 20000,
-        background: 'rgba(15, 23, 42, 0.54)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
+        background: 'rgba(0, 0, 0, 0.4)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
+        padding: 16,
       }}
     >
       <div
+        onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: 384,
+          maxWidth: 400,
           background: '#fff',
-          borderRadius: 18,
-          padding: '24px 24px 22px',
-          boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
-          textAlign: 'center',
+          borderRadius: 20,
+          border: '1px solid #e2ebe8',
+          padding: '24px 28px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.18)',
+          boxSizing: 'border-box',
         }}
       >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            margin: '0 auto 17px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: colors.soft,
-            color: colors.accent,
-            fontSize: 26,
-            fontWeight: 800,
-          }}
-        >
-          {colors.icon}
+        <div>
+          <p
+            id="settings-confirm-title"
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: '#1a2e22',
+              margin: '0 0 6px',
+            }}
+          >
+            {title}
+          </p>
+
+          <p
+            style={{
+              fontSize: 13,
+              color: '#7a9e8e',
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            {message}
+          </p>
         </div>
 
-        <h3
-          id="settings-confirm-title"
+        <div
           style={{
-            margin: 0,
-            color: '#1e293b',
-            fontSize: 18,
-            fontWeight: 800,
+            display: 'flex',
+            gap: 10,
+            justifyContent: 'flex-end',
+            marginTop: 20,
           }}
         >
-          {title}
-        </h3>
-
-        <p
-          style={{
-            margin: '12px 0 22px',
-            color: '#718096',
-            fontSize: 13,
-            lineHeight: 1.6,
-          }}
-        >
-          {message}
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <button
             type="button"
             onClick={onCancel}
             disabled={loading}
             style={{
-              height: 45,
-              border: 'none',
-              borderRadius: 12,
-              background: '#f1f5f9',
-              color: '#526277',
+              background: '#f4f8f6',
+              color: '#466460',
+              border: '1px solid #e2ebe8',
+              padding: '8px 16px',
+              borderRadius: 10,
               fontSize: 13,
-              fontWeight: 700,
+              fontWeight: 600,
+              fontFamily: 'inherit',
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.65 : 1,
             }}
@@ -284,18 +258,19 @@ const ActionConfirmModal = ({
             onClick={onConfirm}
             disabled={loading}
             style={{
-              height: 45,
-              border: 'none',
-              borderRadius: 12,
-              background: colors.accent,
+              background: '#466460',
               color: '#fff',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: 10,
               fontSize: 13,
-              fontWeight: 800,
+              fontWeight: 600,
+              fontFamily: 'inherit',
               cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.7 : 1,
+              opacity: loading ? 0.6 : 1,
             }}
           >
-            {loading ? 'Please wait...' : confirmText}
+            {loading ? loadingText : confirmText}
           </button>
         </div>
       </div>
@@ -317,18 +292,28 @@ const ConfirmableRemoveButton = ({
         {label}
       </button>
 
-      <ActionConfirmModal
-        open={open}
-        title="Delete Item?"
-        message={`Are you sure you want to delete ${itemLabel}? This change will be applied when you save.`}
-        confirmText="Delete"
-        tone="delete"
-        onCancel={() => setOpen(false)}
-        onConfirm={() => {
-          setOpen(false);
-          onConfirm?.();
-        }}
-      />
+<ActionConfirmModal
+  open={Boolean(pendingAction)}
+  title={pendingAction?.title || 'Confirm Change'}
+  message={pendingAction?.message || ''}
+  confirmText={pendingAction?.confirmText || 'Confirm'}
+  loadingText={pendingAction?.loadingText || 'Please wait...'}
+  loading={
+    savingAcademicPrompt ||
+    Boolean(savingPreference) ||
+    clearingCache
+  }
+  onCancel={() => {
+    if (
+      !savingAcademicPrompt &&
+      !savingPreference &&
+      !clearingCache
+    ) {
+      setPendingAction(null);
+    }
+  }}
+  onConfirm={confirmPendingAction}
+/>
     </>
   );
 };
@@ -346,16 +331,17 @@ export default function GeneralSettings({ isMobile, activeRole }) {
   const [savingPreference, setSavingPreference] = useState('');
 
   const [clearingCache, setClearingCache] = useState(false);
-  const [showClearCacheModal, setShowClearCacheModal] = useState(false);
+
 
   const [error, setError] = useState('');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [pendingAction, setPendingAction] = useState(null);
 
-  const isStaffOrAdmin = [
-    'sysadmin', 'administrator', 'nurse', 'doctor',
-    'dentist', 'staff', 'registrar',
-  ].includes(activeRole?.toLowerCase());
+const normalizedRole = String(activeRole || '')
+  .trim()
+  .toLowerCase();
+
+const isSysadmin = normalizedRole === 'sysadmin';
 
   // ─────────────────────────────────────────────────────────────────────────
   // Toast
@@ -372,14 +358,15 @@ export default function GeneralSettings({ isMobile, activeRole }) {
   // Load System Config
   // ─────────────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!isStaffOrAdmin) {
-      setLoading(false);
-      return;
-    }
+useEffect(() => {
+  if (!isSysadmin) {
+    setLoading(false);
+    setError('');
+    return;
+  }
 
-    fetchSystemConfig();
-  }, [isStaffOrAdmin]);
+  fetchSystemConfig();
+}, [isSysadmin]);
 
 const fetchSystemConfig = async () => {
     setLoading(true);
@@ -566,76 +553,108 @@ const performAcademicPromptToggle = async (nextValue) => {
     }
   };
 
-  const requestAcademicPromptToggle = (nextValue) => {
-    setPendingAction({
-      type: 'academic',
-      nextValue,
-      title: nextValue
-        ? 'Enable Academic Update Prompt?'
-        : 'Disable Academic Update Prompt?',
-      message: nextValue
-        ? 'Students will be required to review and acknowledge their academic information.'
-        : 'Students will no longer be prompted to review their academic information.',
-      confirmText: nextValue ? 'Enable' : 'Disable',
-      tone: nextValue ? 'save' : 'warning',
-    });
-  };
+ const requestAcademicPromptToggle = (nextValue) => {
+  setPendingAction({
+    type: 'academic',
+    nextValue,
+    title: nextValue
+      ? 'Enable Academic Update Prompt?'
+      : 'Disable Academic Update Prompt?',
+    message: nextValue
+      ? 'Students will be required to review and acknowledge their academic information.'
+      : 'Students will no longer be prompted to review their academic information.',
+    confirmText: nextValue ? 'Enable' : 'Disable',
+  });
+};
 
-  const requestPreferenceChange = (key, value) => {
-    const label = key === 'language' ? 'language' : 'date format';
-    setPendingAction({
-      type: 'preference',
-      key,
-      value,
-      title: `Change ${key === 'language' ? 'Language' : 'Date Format'}?`,
-      message: `This will change your ${label} to "${value}" across MediTrack.`,
-      confirmText: 'Apply Change',
-      tone: 'edit',
-    });
-  };
+const requestPreferenceChange = (key, value) => {
+  const label =
+    key === 'language'
+      ? 'language'
+      : 'date format';
 
-  const confirmPendingAction = async () => {
-    const action = pendingAction;
-    if (!action) return;
+  setPendingAction({
+    type: 'preference',
+    key,
+    value,
+    title: `Change ${
+      key === 'language'
+        ? 'Language'
+        : 'Date Format'
+    }?`,
+    message: `This will change your ${label} to "${value}" across MediTrack.`,
+    confirmText: 'Apply Change',
+  });
+};
 
+  const requestClearCache = () => {
+  if (clearingCache) return;
+
+  setPendingAction({
+    type: 'clear-cache',
+    title: 'Clear Local Cache?',
+    message:
+      'This will clear temporary browser cache and session data. Your login session will remain active.',
+    confirmText: 'Confirm',
+    loadingText: 'Clearing...',
+  });
+};
+
+const confirmPendingAction = async () => {
+  const action = pendingAction;
+
+  if (!action) return;
+
+  if (action.type === 'academic') {
     setPendingAction(null);
+    await performAcademicPromptToggle(action.nextValue);
+    return;
+  }
 
-    if (action.type === 'academic') {
-      await performAcademicPromptToggle(action.nextValue);
-      return;
-    }
+  if (action.type === 'preference') {
+    setPendingAction(null);
+    await performPreferenceChange(action.key, action.value);
+    return;
+  }
 
-    if (action.type === 'preference') {
-      await performPreferenceChange(action.key, action.value);
-    }
-  };
+  if (action.type === 'clear-cache') {
+    await handleClearCache();
+    setPendingAction(null);
+  }
+};
 
   // ─────────────────────────────────────────────────────────────────────────
   // Clear Cache
   // ─────────────────────────────────────────────────────────────────────────
 
-  const handleClearCache = async () => {
-    if (clearingCache) return;
+const handleClearCache = async () => {
+  if (clearingCache) return;
 
-    setClearingCache(true);
-    setShowClearCacheModal(false);
+  setClearingCache(true);
 
-    try {
-      sessionStorage.clear();
+  try {
+    sessionStorage.clear();
 
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
-      }
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
 
-      showToast('Local cache cleared successfully.');
-    } catch (err) {
-      console.error('[GeneralSettings] Failed to clear cache:', err);
-      showToast('Failed to clear local cache.', 'error');
-    } finally {
-      setClearingCache(false);
+      await Promise.all(
+        cacheNames.map((cacheName) => caches.delete(cacheName))
+      );
     }
-  };
+
+    showToast('Local cache cleared successfully.');
+  } catch (err) {
+    console.error(
+      '[GeneralSettings] Failed to clear cache:',
+      err
+    );
+
+    showToast('Failed to clear local cache.', 'error');
+  } finally {
+    setClearingCache(false);
+  }
+};
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -681,154 +700,85 @@ const performAcademicPromptToggle = async (nextValue) => {
         onConfirm={confirmPendingAction}
       />
 
-      {/* ── Confirmation Modal for Clear Cache ── */}
-      {showClearCacheModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: 16,
-        }}>
-          <div style={{
-            background: '#fff',
-            borderRadius: 20,
-            padding: '24px 28px',
-            width: '100%',
-            maxWidth: 400,
-            boxShadow: '0 10px 25px rgba(0,0,0,0.18)',
-            border: '1px solid #e2ebe8',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-          }}>
-            <div>
-              <p style={{ fontSize: 16, fontWeight: 700, color: '#1a2e22', margin: '0 0 6px' }}>
-                Clear Local Cache?
-              </p>
-              <p style={{ fontSize: 13, color: '#7a9e8e', margin: 0, lineHeight: 1.5 }}>
-                This will clear temporary browser cache and session data. Your login session will remain active.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button
-                type="button"
-                onClick={() => setShowClearCacheModal(false)}
-                disabled={clearingCache}
-                style={{
-                  background: '#f4f8f6',
-                  color: '#466460',
-                  border: '1px solid #e2ebe8',
-                  padding: '8px 16px',
-                  borderRadius: 10,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleClearCache}
-                disabled={clearingCache}
-                style={{
-                  background: '#466460',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: 10,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  opacity: clearingCache ? 0.6 : 1,
-                }}
-              >
-                {clearingCache ? 'Clearing...' : 'Confirm'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── System Preferences ── */}
-      {isStaffOrAdmin && (
-        <>
-          <SectionLabel>System Preferences</SectionLabel>
+{/* ── System Preferences — Sysadmin Only ── */}
+{isSysadmin && (
+  <>
+    <SectionLabel>System Preferences</SectionLabel>
 
-          <SectionCard>
-            <Row
-              label="Prompt Student Academic Info Update"
-              sub="Require students to review and update their current year level and section."
-              right={
-                loading ? (
-                  <div style={{
-                    width: 44,
-                    height: 24,
-                    borderRadius: 12,
-                    background: '#e5e7eb',
-                  }} />
-                ) : (
-                  <Toggle
-                    checked={notifyProfileUpdate}
-                    disabled={savingAcademicPrompt}
-                    onChange={requestAcademicPromptToggle}
-                  />
-                )
-              }
+    <SectionCard>
+      <Row
+        label="Prompt Student Academic Info Update"
+        sub="Require students to review and update their current year level and section."
+        right={
+          loading ? (
+            <div
+              style={{
+                width: 44,
+                height: 24,
+                borderRadius: 12,
+                background: '#e5e7eb',
+              }}
             />
-
-            <Row
-              label="Academic Update Version"
-              sub={
-                notifyProfileUpdate
-                  ? 'Students with an older acknowledged version must review their academic information.'
-                  : 'The version increases automatically when a new academic update cycle is enabled.'
-              }
-              last
-              right={
-                <div style={{
-                  minWidth: 42,
-                  height: 32,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0 10px',
-                  borderRadius: 10,
-                  background: '#f4f8f6',
-                  border: '1px solid #e2ebe8',
-                  color: '#466460',
-                  fontSize: 13,
-                  fontWeight: 800,
-                }}>
-                  {loading ? '—' : academicUpdateVersion}
-                </div>
-              }
+          ) : (
+            <Toggle
+              checked={notifyProfileUpdate}
+              disabled={savingAcademicPrompt}
+              onChange={requestAcademicPromptToggle}
             />
-          </SectionCard>
+          )
+        }
+      />
 
-          {error && (
-            <div style={{
-              marginTop: -10,
-              padding: '10px 14px',
+      <Row
+        label="Academic Update Version"
+        sub={
+          notifyProfileUpdate
+            ? 'Students with an older acknowledged version must review their academic information.'
+            : 'The version increases automatically when a new academic update cycle is enabled.'
+        }
+        last
+        right={
+          <div
+            style={{
+              minWidth: 42,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 10px',
               borderRadius: 10,
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              color: '#b91c1c',
-              fontSize: 12,
-              fontWeight: 600,
-            }}>
-              {error}
-            </div>
-          )}
-        </>
-      )}
+              background: '#f4f8f6',
+              border: '1px solid #e2ebe8',
+              color: '#466460',
+              fontSize: 13,
+              fontWeight: 800,
+            }}
+          >
+            {loading ? '—' : academicUpdateVersion}
+          </div>
+        }
+      />
+    </SectionCard>
+
+    {error && (
+      <div
+        style={{
+          marginTop: -10,
+          padding: '10px 14px',
+          borderRadius: 10,
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          color: '#b91c1c',
+          fontSize: 12,
+          fontWeight: 600,
+        }}
+      >
+        {error}
+      </div>
+    )}
+  </>
+)}
 
       {/* ── Appearance & Formatting ── */}
       <SectionLabel>Appearance & Formatting</SectionLabel>
@@ -879,24 +829,26 @@ const performAcademicPromptToggle = async (nextValue) => {
           last
           right={
             <button
-              type="button"
-              onClick={() => setShowClearCacheModal(true)}
-              disabled={clearingCache}
-              style={{
-                background: '#f4f8f6',
-                color: '#466460',
-                border: '1px solid #e2ebe8',
-                padding: '8px 16px',
-                borderRadius: 20,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: clearingCache ? 'not-allowed' : 'pointer',
-                opacity: clearingCache ? 0.6 : 1,
-                transition: 'opacity 0.15s',
-              }}
-            >
-              {clearingCache ? 'Clearing...' : 'Clear'}
-            </button>
+  type="button"
+  onClick={requestClearCache}
+  disabled={clearingCache}
+  style={{
+    background: '#f4f8f6',
+    color: '#466460',
+    border: '1px solid #e2ebe8',
+    padding: '8px 16px',
+    borderRadius: 20,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: clearingCache
+      ? 'not-allowed'
+      : 'pointer',
+    opacity: clearingCache ? 0.6 : 1,
+    transition: 'opacity 0.15s',
+  }}
+>
+  {clearingCache ? 'Clearing...' : 'Clear'}
+</button>
           }
         />
       </SectionCard>

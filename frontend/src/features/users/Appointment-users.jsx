@@ -6,7 +6,8 @@ import { supabase } from '../../supabase';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import BulkAppointmentPanel from './BulkAppointmentPanel';
 import { formatUserDate } from '../../utils/dateFormat';
-import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
+import { useTranslation } from 'react-i18next';
+import notificationsService from '../../services/notifications.service.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -100,7 +101,26 @@ const SortDropdown = ({ value, onChange }) => {
       </button>
       {open && (
         <div
-          className="absolute right-0 mt-1.5 bg-white border border-[#ddeee5] rounded-xl shadow-lg overflow-hidden z-50"
+ className="
+    absolute
+    top-1.5
+    right-1.5
+    min-w-[18px]
+    h-[18px]
+    px-1
+    rounded-full
+    bg-red-500
+    text-white
+    text-[9px]
+    font-bold
+    flex
+    items-center
+    justify-center
+    shadow-md
+    ring-2
+    ring-white
+    z-10000
+  "
           style={{ minWidth: 140 }}
         >
           {sortOptions.map(opt => (
@@ -237,6 +257,7 @@ export default function AppointmentUsers() {
   const [hasRecords,     setHasRecords]     = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
+  const [appointmentNotifications, setAppointmentNotifications] = useState([]);
 
   // Sync i18next with the user's database preference
   useEffect(() => {
@@ -327,29 +348,242 @@ export default function AppointmentUsers() {
       });
   }, [myAppointments, sortBy]);
 
-  const fetchAppointments = useCallback(async () => {
-    if (!currentPatient?.uid) return;
-    try {
-      setLoadingAppts(true);
-      const token = await getFreshToken();
-      const response = await axios.get(`${API_URL}/appointments/my-appointments`, {
+ const fetchAppointments = useCallback(async () => {
+  if (!currentPatient?.uid) return;
+
+  try {
+    setLoadingAppts(true);
+
+    const token = await getFreshToken();
+
+    const response = await axios.get(
+      `${API_URL}/appointments/my-appointments`,
+      {
         headers: {
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-      });
-      if (response.data.success) {
-        setMyAppointments(response.data.data);
       }
-    } catch (err) {
-      console.error('Error fetching my appointments:', err);
-    } finally {
-      setLoadingAppts(false);
+    );
+
+    if (response.data.success) {
+      setMyAppointments(response.data.data);
     }
-  }, [currentPatient]);
+  } catch (err) {
+    console.error('Error fetching my appointments:', err);
+  } finally {
+    setLoadingAppts(false);
+  }
+}, [currentPatient]);
 
-  useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+const fetchAppointmentNotifications = useCallback(async () => {
+  try {
+    const notifications =
+      await notificationsService.getNotifications(100);
 
-  const { scrollElRef, indicatorRef } = usePullToRefresh(fetchAppointments);
+    const unreadAppointmentNotifications = (
+      notifications || []
+    ).filter((notification) => {
+      const isUnread = !(
+        notification.is_read ??
+        notification.isRead
+      );
+
+      const type = String(
+        notification.type || ''
+      ).toLowerCase();
+
+      const referenceType = String(
+        notification.reference_type ??
+        notification.referenceType ??
+        ''
+      ).toLowerCase();
+
+      return (
+        isUnread &&
+        (
+          type === 'appointment_status' ||
+          type === 'appointment_request' ||
+          referenceType === 'appointment'
+        )
+      );
+    });
+
+    console.log(
+  "Appointment page:",
+  unreadAppointmentNotifications.map(n => ({
+    id: n.id,
+    type: n.type,
+    referenceId: n.reference_id,
+    referenceType: n.reference_type
+  }))
+);
+
+    setAppointmentNotifications(
+      unreadAppointmentNotifications
+    );
+  } catch (error) {
+    console.error(
+      'Error fetching appointment notifications:',
+      error
+    );
+  }
+}, []);
+
+useEffect(() => {
+  fetchAppointments();
+  fetchAppointmentNotifications();
+}, [
+  fetchAppointments,
+  fetchAppointmentNotifications,
+]);
+
+const getUnreadNotificationsForAppointment = useCallback(
+  (appointmentId) => {
+    if (!appointmentId) return [];
+
+    return appointmentNotifications.filter(
+      (notification) => {
+        const referenceId =
+          notification.reference_id ??
+          notification.referenceId;
+
+        return (
+          String(referenceId) ===
+          String(appointmentId)
+        );
+      }
+    );
+  },
+  [appointmentNotifications]
+);
+
+const unreadAppointmentIds = useMemo(() => {
+  const existingAppointmentIds = new Set(
+    myAppointments.map((appointment) => String(appointment.id))
+  );
+
+  return new Set(
+    appointmentNotifications
+      .map((notification) =>
+        String(
+          notification.reference_id ??
+          notification.referenceId ??
+          ''
+        )
+      )
+      .filter(
+        (referenceId) =>
+          referenceId &&
+          existingAppointmentIds.has(referenceId)
+      )
+  );
+}, [appointmentNotifications, myAppointments]);
+
+
+useEffect(() => {
+  window.dispatchEvent(
+    new CustomEvent('appointmentBadgeCountChanged', {
+      detail: {
+        count: unreadAppointmentIds.size,
+      },
+    })
+  );
+}, [unreadAppointmentIds]);
+
+
+const handleAppointmentClick = async (appointment) => {
+  setSelectedAppt(appointment);
+
+  const matchingNotifications =
+    getUnreadNotificationsForAppointment(
+      appointment.id
+    );
+
+  if (matchingNotifications.length === 0) {
+    return;
+  }
+
+  const matchingIds = new Set(
+    matchingNotifications.map((notification) =>
+      String(notification.id)
+    )
+  );
+
+  setAppointmentNotifications((previous) =>
+    previous.filter(
+      (notification) =>
+        !matchingIds.has(String(notification.id))
+    )
+  );
+
+  try {
+    await Promise.all(
+      matchingNotifications.map((notification) =>
+        notificationsService.markAsRead(
+          notification.id
+        )
+      )
+    );
+
+    sessionStorage.removeItem(
+      'meditrack_notifications'
+    );
+
+    sessionStorage.removeItem(
+      'meditrack_notif_count'
+    );
+
+    window.dispatchEvent(
+      new CustomEvent(
+        'appointmentNotificationRead',
+        {
+          detail: {
+            appointmentId: appointment.id,
+            notificationIds:
+              matchingNotifications.map(
+                (notification) =>
+                  notification.id
+              ),
+          },
+        }
+      )
+    );
+  } catch (error) {
+    console.error(
+      'Error marking appointment notification as read:',
+      error
+    );
+
+    setAppointmentNotifications((previous) => {
+      const existingIds = new Set(
+        previous.map((notification) =>
+          String(notification.id)
+        )
+      );
+
+      const missingNotifications =
+        matchingNotifications.filter(
+          (notification) =>
+            !existingIds.has(
+              String(notification.id)
+            )
+        );
+
+      return [
+        ...previous,
+        ...missingNotifications,
+      ];
+    });
+  }
+};
+
+const { scrollElRef, indicatorRef } =
+  usePullToRefresh(async () => {
+    await Promise.all([
+      fetchAppointments(),
+      fetchAppointmentNotifications(),
+    ]);
+  });
 
   if (!currentPatient) {
     return (
@@ -566,6 +800,12 @@ const handleSubmit = async () => {
                         const isRejected = statusStr === 'rejected';
                         const stampDate  = appt.created_at || appt.bookedAt || new Date();
 
+                        const unreadNotifications =
+                          getUnreadNotificationsForAppointment(appt.id);
+
+                        const hasUnreadNotification =
+                          unreadNotifications.length > 0;
+
                         let cardClasses = 'bg-[#fffdf7] border-[#f0c070]';
                         if (isApproved) cardClasses = 'bg-[#e8f5ee] border-[#c6dfd0] hover:-translate-y-0.5 hover:shadow-md hover:border-[#4aab72]';
                         if (isMissed)   cardClasses = 'bg-[#fffbeb] border-[#fde68a]';
@@ -585,21 +825,89 @@ const handleSubmit = async () => {
                         if (isRejected) timeIcon = 'fa-xmark-circle';
 
                         return (
-                          <div key={appt.id} onClick={() => setSelectedAppt(appt)} className={`border rounded-2xl p-4 transition-all shrink-0 cursor-pointer ${cardClasses}`}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm font-bold text-[#1a2e22]">{appt.reason || appt.service_type}</div>
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
-                                {t(`appointments.status.${(appt.status || 'pending').toLowerCase()}`, style.label)}
-                              </span>
-                            </div>
-                            <div className={`text-[12px] mt-1 font-medium ${timeColor}`}>
-                              <i className={`mr-1 fa-solid ${timeIcon}`}></i>
-                              {formatApptDate(appt)}
-                            </div>
-                            <div className="text-[10px] text-[#9bb5a5] mt-1.5">
-                              <i className="fa-regular fa-clock mr-1"></i>
-                              {t('common.submit', 'Submitted')} {formatDisplayDateWithMonthAndTime(stampDate, preferences)}
-                            </div>
+                          <div
+  key={appt.id}
+  onClick={() => handleAppointmentClick(appt)}
+  className={`
+    relative
+    border
+    rounded-2xl
+    p-4
+    transition-all
+    shrink-0
+    cursor-pointer
+    ${cardClasses}
+  `}
+>
+  {hasUnreadNotification && (
+    <span
+      className="
+        absolute
+        -top-1.5
+        -right-1.5
+        min-w-[18px]
+        h-[18px]
+        px-1
+        rounded-full
+        bg-red-500
+        text-white
+        text-[9px]
+        font-bold
+        flex
+        items-center
+        justify-center
+        shadow-md
+        ring-2
+        ring-white
+      "
+      title="New appointment update"
+    >
+      {unreadNotifications.length > 9
+        ? '9+'
+        : unreadNotifications.length}
+    </span>
+  )}
+
+  <div className="flex items-center justify-between gap-2">
+    <div className="text-sm font-bold text-[#1a2e22]">
+      {appt.reason || appt.service_type}
+    </div>
+
+    <span
+      className={`
+        text-[10px]
+        font-semibold
+        px-2
+        py-0.5
+        rounded-full
+        ${style.bg}
+        ${style.text}
+      `}
+    >
+      {t(
+        `appointments.status.${(
+          appt.status || 'pending'
+        ).toLowerCase()}`,
+        style.label
+      )}
+    </span>
+  </div>
+
+  <div className={`text-[12px] mt-1 font-medium ${timeColor}`}>
+    <i className={`mr-1 fa-solid ${timeIcon}`}></i>
+    {formatApptDate(appt)}
+  </div>
+
+  <div className="text-[10px] text-[#9bb5a5] mt-1.5">
+    <i className="fa-regular fa-clock mr-1"></i>
+    {t('common.submit', 'Submitted')}{' '}
+    {formatDisplayDateWithMonthAndTime(
+      stampDate,
+      preferences
+    )}
+  </div>
+
+
                           </div>
                         );
                       })}

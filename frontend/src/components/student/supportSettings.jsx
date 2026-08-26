@@ -95,7 +95,6 @@ const ActionConfirmModal = ({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  tone = 'save',
   loading = false,
   onConfirm,
   onCancel,
@@ -104,96 +103,63 @@ const ActionConfirmModal = ({
     if (!open) return undefined;
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && !loading) onCancel?.();
+      if (event.key === 'Escape' && !loading) {
+        onCancel?.();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [open, loading, onCancel]);
 
   if (!open) return null;
-
-  const palette = {
-    save: {
-      accent: '#466460',
-      soft: '#e8f5ee',
-      icon: '✓',
-    },
-    edit: {
-      accent: '#2563eb',
-      soft: '#dbeafe',
-      icon: '✎',
-    },
-    delete: {
-      accent: '#e5262d',
-      soft: '#fee2e2',
-      icon: '↪',
-    },
-    warning: {
-      accent: '#d97706',
-      soft: '#fef3c7',
-      icon: '!',
-    },
-  };
-
-  const colors = palette[tone] || palette.save;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="settings-confirm-title"
+      aria-labelledby="support-confirm-title"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !loading) onCancel?.();
+        if (event.target === event.currentTarget && !loading) {
+          onCancel?.();
+        }
       }}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 20000,
-        background: 'rgba(15, 23, 42, 0.54)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
+        background: 'rgba(15, 23, 42, 0.42)',
+        backdropFilter: 'blur(2px)',
+        WebkitBackdropFilter: 'blur(2px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
+        padding: 16,
       }}
     >
       <div
+        onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: 384,
-          background: '#fff',
-          borderRadius: 18,
-          padding: '24px 24px 22px',
-          boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
-          textAlign: 'center',
+          maxWidth: 376,
+          background: '#ffffff',
+          borderRadius: 20,
+          border: '1px solid #dce7e3',
+          padding: '26px 28px 24px',
+          boxShadow: '0 16px 38px rgba(15, 23, 42, 0.22)',
+          boxSizing: 'border-box',
         }}
       >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            margin: '0 auto 17px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: colors.soft,
-            color: colors.accent,
-            fontSize: 26,
-            fontWeight: 800,
-          }}
-        >
-          {colors.icon}
-        </div>
-
         <h3
-          id="settings-confirm-title"
+          id="support-confirm-title"
           style={{
             margin: 0,
-            color: '#1e293b',
-            fontSize: 18,
+            color: '#10251f',
+            fontSize: 16,
+            lineHeight: 1.35,
             fontWeight: 800,
           }}
         >
@@ -202,28 +168,38 @@ const ActionConfirmModal = ({
 
         <p
           style={{
-            margin: '12px 0 22px',
-            color: '#718096',
+            margin: '10px 0 20px',
+            color: '#6f998b',
             fontSize: 13,
-            lineHeight: 1.6,
+            lineHeight: 1.55,
           }}
         >
           {message}
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
           <button
             type="button"
             onClick={onCancel}
             disabled={loading}
             style={{
-              height: 45,
-              border: 'none',
-              borderRadius: 12,
-              background: '#f1f5f9',
-              color: '#526277',
-              fontSize: 13,
-              fontWeight: 700,
+              minWidth: 72,
+              height: 34,
+              padding: '0 16px',
+              borderRadius: 11,
+              border: '1px solid #d7e2de',
+              background: '#f8fbfa',
+              color: '#355b52',
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: 'inherit',
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.65 : 1,
             }}
@@ -236,13 +212,16 @@ const ActionConfirmModal = ({
             onClick={onConfirm}
             disabled={loading}
             style={{
-              height: 45,
+              minWidth: 80,
+              height: 34,
+              padding: '0 16px',
+              borderRadius: 10,
               border: 'none',
-              borderRadius: 12,
-              background: colors.accent,
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 800,
+              background: '#466f65',
+              color: '#ffffff',
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: 'inherit',
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.7 : 1,
             }}
@@ -466,29 +445,32 @@ export default function StudentSupportSettings({ isMobile }) {
   const requestRemoveAttachment = () => {
     if (!attachment) return;
 
-    setPendingAction({
-      type: 'remove-attachment',
-      title: 'Remove Attachment?',
-      message: `Are you sure you want to remove "${attachment.name}" from this message?`,
-      confirmText: 'Remove',
-      tone: 'delete',
-    });
+setPendingAction({
+  type: 'remove-attachment',
+  title: 'Remove Attachment?',
+  message: `Are you sure you want to remove "${attachment.name}" from this message?`,
+  confirmText: 'Remove',
+});
   };
 
   const requestSubmit = () => {
     if (!message.trim() || !email.trim() || isSubmitting) return;
 
-    setPendingAction({
-      type: 'submit',
-      title: activeModal === 'contact'
-        ? 'Send Support Message?'
-        : 'Submit Feedback?',
-      message: activeModal === 'contact'
-        ? 'Your message and any selected attachment will be sent to the MediTrack support team.'
-        : 'Your feedback and any selected attachment will be submitted to the MediTrack team.',
-      confirmText: activeModal === 'contact' ? 'Send Message' : 'Submit Feedback',
-      tone: 'save',
-    });
+setPendingAction({
+  type: 'submit',
+  title:
+    activeModal === 'contact'
+      ? 'Send Support Message?'
+      : 'Submit Feedback?',
+  message:
+    activeModal === 'contact'
+      ? 'Your message and any selected attachment will be sent to the MediTrack support team.'
+      : 'Your feedback and any selected attachment will be submitted to the MediTrack team.',
+  confirmText:
+    activeModal === 'contact'
+      ? 'Send Message'
+      : 'Submit Feedback',
+});
   };
 
   const confirmPendingAction = async () => {

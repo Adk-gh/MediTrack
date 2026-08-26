@@ -186,14 +186,49 @@ export const getOnlineUsers = async () => {
 // These don't write data, they just listen. So they bypass the backend perfectly.
 
 export const subscribeToConsultations = (callback) => {
+  const channelName =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? `consultations-${crypto.randomUUID()}`
+      : `consultations-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
+
   const channel = supabase
-    .channel(`consultations-${Date.now()}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'consultations' }, (payload) => {
-      clearConsultationsCache();
-      callback(payload);
-    })
-    .subscribe();
-  return () => supabase.removeChannel(channel);
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'consultations',
+      },
+      (payload) => {
+        clearConsultationsCache();
+        callback?.(payload);
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error(
+          `[Consultations] Realtime channel failed: ${channelName}`
+        );
+      }
+    });
+
+  let cleanedUp = false;
+
+  return () => {
+    if (cleanedUp) return;
+
+    cleanedUp = true;
+
+    supabase.removeChannel(channel).catch((error) => {
+      console.warn(
+        '[Consultations] Failed to remove realtime channel:',
+        error
+      );
+    });
+  };
 };
 
 export const subscribeToMessages = (consultationId, callback) => {
