@@ -208,44 +208,75 @@ export default function BulkAppointmentPanel({ currentPatient, userProfile }) {
 
   const canSubmit = studentIds.length > 0 && selectedPurposes.length > 0 && occasion.trim().length > 0 && !submitting;
 
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
+const handleSubmit = async () => {
+  if (!canSubmit) return;
 
-    const reason = `${selectedPurposes.join(', ')} — ${occasion.trim()}`;
+  const reason = `${selectedPurposes.join(', ')} — ${occasion.trim()}`;
 
-    setSubmitting(true);
-    setSubmitError('');
-    setResult(null);
+  setSubmitting(true);
+  setSubmitError('');
+  setResult(null);
 
-    const isDental = selectedPurposes.some((p) => p.toLowerCase().includes('dent') || p.toLowerCase().includes('oral') || p.toLowerCase().includes('tooth'));
-    const resolvedServiceType = isDental ? 'Dental Examination' : (selectedPurposes.join(', ') || 'Medical Examination');
+  const isDental = selectedPurposes.some((purpose) => {
+    const normalizedPurpose = purpose.toLowerCase();
 
-    try {
-      const payload = {
-        authUid: currentPatient?.uid,
-        facultyName: currentPatient?.name,
-        facultyId: userProfile?.university_id || currentPatient?.idno,
-        serviceType: resolvedServiceType,
-        reason,
-        studentIds,
-      };
+    return (
+      normalizedPurpose.includes('dent') ||
+      normalizedPurpose.includes('oral') ||
+      normalizedPurpose.includes('tooth')
+    );
+  });
 
-      const data = await createBulkAppointment(payload);
-      setResult(data);
-      setStudentIds([]);
-      setFileName('');
-      setSelectedPurposes([]);
-      setOccasion('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
+  const resolvedServiceType = isDental
+    ? 'Dental Examination'
+    : selectedPurposes.join(', ') || 'Medical Examination';
 
-      setTimeout(() => setShowForm(false), 2500);
-    } catch (err) {
-      console.error('[BulkAppointmentPanel] Submission Error:', err);
-      setSubmitError(err.message || t('bulk.errSubmit', 'Could not submit the bulk request. Please try again.'));
-    } finally {
-      setSubmitting(false);
+  try {
+    const payload = {
+      authUid: currentPatient?.uid,
+      facultyName: currentPatient?.name,
+      facultyId:
+        userProfile?.university_id ||
+        currentPatient?.idno,
+      serviceType: resolvedServiceType,
+      reason,
+      studentIds,
+    };
+
+    const data = await createBulkAppointment(payload);
+
+    // Keep the form/modal open and display the result.
+    setResult(data);
+
+    // Clear the submitted form fields.
+    setStudentIds([]);
+    setFileName('');
+    setSelectedPurposes([]);
+    setOccasion('');
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
-  };
+
+    // Do not automatically close the form.
+    // The user must manually click Back to Class Requests.
+  } catch (err) {
+    console.error(
+      '[BulkAppointmentPanel] Submission Error:',
+      err
+    );
+
+    setSubmitError(
+      err.message ||
+        t(
+          'bulk.errSubmit',
+          'Could not submit the bulk request. Please try again.'
+        )
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
     <div className="flex flex-col h-full bg-[#f7faf8] overflow-y-auto">

@@ -325,14 +325,30 @@ export const AppointmentManagement = () => {
         status: editForm.status,
       };
 
-      if (!isFinalStatus) {
-        // Pending and approved appointments can have their date/time set or changed.
-        // Pending doesn't require a date, so fields simply stay null if not chosen.
-        updates.year = editForm.year ? String(editForm.year) : null;
-        updates.month = editForm.month ? String(editForm.month).padStart(2, '0') : null;
-        updates.day = editForm.day ? String(editForm.day).padStart(2, '0') : null;
-        updates.time = editForm.time ? String(editForm.time).slice(0, 5) : null;
-      }
+if (!isFinalStatus) {
+  if (editForm.status === 'pending') {
+    updates.year = null;
+    updates.month = null;
+    updates.day = null;
+    updates.time = null;
+  } else {
+    updates.year = editForm.year
+      ? String(editForm.year)
+      : null;
+
+    updates.month = editForm.month
+      ? String(editForm.month).padStart(2, '0')
+      : null;
+
+    updates.day = editForm.day
+      ? String(editForm.day).padStart(2, '0')
+      : null;
+
+    updates.time = editForm.time
+      ? String(editForm.time).slice(0, 5)
+      : null;
+  }
+}
       // isFinalStatus (done/missed/rejected) keeps its existing date/time untouched.
 
       if (typeof appointmentsService.updateAppointment === 'function') {
@@ -839,7 +855,22 @@ export const AppointmentManagement = () => {
                 </label>
                 <select
                   value={editForm.status}
-                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+onChange={e => {
+  const status = e.target.value;
+
+  setEditForm(f => ({
+    ...f,
+    status,
+    ...(status === 'pending'
+      ? {
+          year: '',
+          month: '',
+          day: '',
+          time: '',
+        }
+      : {}),
+  }));
+}}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
                 >
                   {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => (
@@ -857,7 +888,10 @@ export const AppointmentManagement = () => {
                   value={toDateInputValue(editForm.year, editForm.month, editForm.day)}
                   onChange={handleEditDateChange}
                   placeholder="Select date"
-                  disabled={LOCKED_STATUSES.includes(editForm.status)}
+                  disabled={
+  LOCKED_STATUSES.includes(editForm.status) ||
+  editForm.status === 'pending'
+}
                 />
               </div>
 
@@ -870,7 +904,10 @@ export const AppointmentManagement = () => {
                   value={editForm.time || ''}
                   onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
-                  disabled={LOCKED_STATUSES.includes(editForm.status)}
+                  disabled={
+  LOCKED_STATUSES.includes(editForm.status) ||
+  editForm.status === 'pending'
+}
                 >
                   <option value="" disabled>Select time</option>
                   {CLINIC_SLOTS.map(slot => (

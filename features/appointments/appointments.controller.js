@@ -1,4 +1,5 @@
 // features/appointments/appointments.controller.js
+const supabase = require('../../configs/database');
 
 const appointmentsService = require('./appointments.service');
 
@@ -425,28 +426,17 @@ const updateAppointment = async (req, res, next) => {
         req.body
       );
 
-    const resolvedAppointmentId =
-      result?.id || id;
-
-    setAuditData(
-      res,
-      `Updated appointment with ID ${resolvedAppointmentId}.`,
-      {
-        operation: 'update_appointment',
-        appointmentId: resolvedAppointmentId,
-        updatedFields: Object.keys(req.body || {}),
-        status:
-          result?.status ||
-          req.body?.status ||
-          null,
-      }
-    );
-
     return res.status(200).json({
       success: true,
+      message: 'Appointment updated successfully.',
       data: result,
     });
   } catch (error) {
+    console.error(
+      '[UPDATE APPOINTMENT CONTROLLER ERROR]',
+      error
+    );
+
     next(error);
   }
 };

@@ -902,57 +902,114 @@ return {
 
 // ============================================================
 // UPDATE APPOINTMENT
-// Detects and notifies on: status change, reschedule, or
-// other field edits (reason / service type / clinical notes).
-// Only ONE notification is sent per update, prioritized as:
-// status change > reschedule > general edit — to avoid
-// spamming the patient when several fields change together.
 // ============================================================
 
 exports.updateAppointment = async (id, data) => {
-  const { data: existingData } = await supabase
+  const {
+    data: existingData,
+    error: fetchError,
+  } = await supabase
     .from('appointments')
     .select('*')
     .eq('id', id)
     .single();
 
-  const updateData = { updated_at: new Date().toISOString() };
+  if (fetchError) throw fetchError;
 
-  if (data.status) updateData.status = data.status.toLowerCase();
-  if (data.service_type) updateData.service_type = data.service_type;
-  if (data.reason) updateData.reason = data.reason;
-  if (data.day !== undefined) updateData.day = data.day;
-  if (data.month !== undefined) updateData.month = data.month;
-  if (data.year !== undefined) updateData.year = data.year;
-  if (data.time) updateData.time = data.time;
-  if (data.nurse_notes) updateData.nurse_notes = data.nurse_notes;
-  if (data.doctor_notes) updateData.doctor_notes = data.doctor_notes;
+  if (!existingData) {
+    const error = new Error('Appointment not found.');
+    error.status = 404;
+    throw error;
+  }
 
-  const { error } = await supabase
+  const updateData = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.status !== undefined) {
+    updateData.status = String(data.status).toLowerCase();
+  }
+
+  if (data.service_type !== undefined) {
+    updateData.service_type = data.service_type;
+  }
+
+  if (data.reason !== undefined) {
+    updateData.reason = data.reason;
+  }
+
+  if (data.year !== undefined) {
+    updateData.year = data.year;
+  }
+
+  if (data.month !== undefined) {
+    updateData.month = data.month;
+  }
+
+  if (data.day !== undefined) {
+    updateData.day = data.day;
+  }
+
+  // Important: allows null to clear the existing time.
+  if (data.time !== undefined) {
+    updateData.time =
+      data.time === null || data.time === ''
+        ? null
+        : String(data.time).slice(0, 5);
+  }
+
+  if (data.nurse_notes !== undefined) {
+    updateData.nurse_notes = data.nurse_notes;
+  }
+
+  if (data.doctor_notes !== undefined) {
+    updateData.doctor_notes = data.doctor_notes;
+  }
+
+  // Pending appointments must never retain a schedule.
+  if (updateData.status === 'pending') {
+    updateData.year = null;
+    updateData.month = null;
+    updateData.day = null;
+    updateData.time = null;
+  }
+
+  console.log('[UPDATE APPOINTMENT] ID:', id);
+  console.log('[UPDATE APPOINTMENT] Payload:', updateData);
+
+  const {
+    data: updatedAppointment,
+    error: updateError,
+  } = await supabase
     .from('appointments')
     .update(updateData)
-    .eq('id', id);
+    .eq('id', id)
+    .select('*')
+    .single();
 
-  if (error) throw error;
+  if (updateError) throw updateError;
 
-  const userUUID = existingData?.user_id;
+  const userUUID = existingData.user_id;
 
   if (userUUID) {
     const statusChanged =
-      !!data.status &&
-      data.status.toLowerCase() !== existingData?.status?.toLowerCase();
+      updateData.status !== undefined &&
+      updateData.status !==
+        String(existingData.status || '').toLowerCase();
 
     const rescheduled = ['day', 'month', 'year', 'time'].some(
       (field) =>
-        updateData[field] !== undefined &&
-        String(updateData[field]) !== String(existingData?.[field] ?? '')
+        Object.prototype.hasOwnProperty.call(updateData, field) &&
+        String(updateData[field] ?? '') !==
+          String(existingData[field] ?? '')
     );
 
     const edited =
       ['service_type', 'reason'].some(
         (field) =>
-          updateData[field] !== undefined &&
-          String(updateData[field]) !== String(existingData?.[field] ?? '')
+          Object.prototype.hasOwnProperty.call(updateData, field) &&
+          String(updateData[field] ?? '') !==
+            String(existingData[field] ?? '')
       ) ||
       updateData.nurse_notes !== undefined ||
       updateData.doctor_notes !== undefined;
@@ -960,20 +1017,24 @@ exports.updateAppointment = async (id, data) => {
     let notificationPayload = null;
 
     if (statusChanged) {
-      const status = data.status.toLowerCase();
-      const { title, message } = buildStatusNotification(status);
+      const status = updateData.status;
+      const { title, message } =
+        buildStatusNotification(status);
 
       notificationPayload = {
         type: 'appointment_status',
         title,
         message,
       };
-    } else if (rescheduled) {
+    } else if (
+      rescheduled &&
+      updateData.status !== 'pending'
+    ) {
       const newWhen = formatAppointmentDateTime({
-        year: updateData.year ?? existingData.year,
-        month: updateData.month ?? existingData.month,
-        day: updateData.day ?? existingData.day,
-        time: updateData.time ?? existingData.time,
+        year: updatedAppointment.year,
+        month: updatedAppointment.month,
+        day: updatedAppointment.day,
+        time: updatedAppointment.time,
       });
 
       notificationPayload = {
@@ -985,7 +1046,8 @@ exports.updateAppointment = async (id, data) => {
       notificationPayload = {
         type: 'appointment_updated',
         title: 'Appointment Details Updated',
-        message: 'Your appointment details have been updated by clinic staff. Please review the changes.',
+        message:
+          'Your appointment details have been updated by clinic staff. Please review the changes.',
       };
     }
 
@@ -998,12 +1060,15 @@ exports.updateAppointment = async (id, data) => {
           referenceType: 'appointment',
         });
       } catch (notifyErr) {
-        console.error('[updateAppointment] Notification insert failed:', notifyErr.message);
+        console.error(
+          '[updateAppointment] Notification insert failed:',
+          notifyErr.message
+        );
       }
     }
   }
 
-  return { id, ...data };
+  return updatedAppointment;
 };
 
 // ============================================================
