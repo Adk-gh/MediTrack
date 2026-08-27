@@ -471,6 +471,7 @@ const HomePageUsers = () => {
   const [profileData, setProfileData] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
+  const [configData, setConfigData] = useState({});
 
   // Sync i18next with the user's database preference
   useEffect(() => {
@@ -481,6 +482,24 @@ const HomePageUsers = () => {
       }
     }
   }, [preferences?.language, i18n]);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await axios.get(`${API_URL}/system-config`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.data.success) {
+          setConfigData(res.data.data);
+        }
+      } catch (err) {
+        console.error('[HomePage] Error fetching config:', err);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -584,22 +603,32 @@ const HomePageUsers = () => {
 
   const isFieldEmpty = (val) => !val || val === '' || val === null || val === undefined;
 
- const userRole = (profileData?.role || "").toLowerCase();
-const classification = (profileData?.classification || "").toLowerCase();
-const jobTitle = (profileData?.job_title || "").toLowerCase();
+  const userRole = (profileData?.role || "").toLowerCase();
+  const classification = (profileData?.classification || "").toLowerCase();
+  const jobTitle = (profileData?.job_title || "").toLowerCase();
 
-const isStudent =
-  userRole === "student" ||
-  classification.includes("student") ||
-  jobTitle === "student";
+  const isStudent =
+    userRole === "student" ||
+    classification.includes("student") ||
+    jobTitle === "student";
 
-const hasEmptyAcademic = isStudent && profileData && (
-  isFieldEmpty(profileData.university_id) ||
-  isFieldEmpty(profileData.department) ||
-  isFieldEmpty(profileData.program) ||
-  isFieldEmpty(profileData.year_level) ||
-  isFieldEmpty(profileData.section)
-);
+  const hasEmptyAcademic = isStudent && profileData && (
+    isFieldEmpty(profileData.university_id) ||
+    isFieldEmpty(profileData.department) ||
+    isFieldEmpty(profileData.program) ||
+    isFieldEmpty(profileData.year_level) ||
+    isFieldEmpty(profileData.section)
+  );
+
+  const isPromptUpdateEnabled =
+    configData?.prompt_student_academic_update === true ||
+    String(configData?.prompt_student_academic_update).toLowerCase() === 'true' ||
+    Number(configData?.prompt_student_academic_update) === 1;
+
+  const academicUpdateRequired = isStudent && isPromptUpdateEnabled &&
+    Number(profileData?.academic_info_acknowledged_version || 0) < Number(configData?.academic_update_version || 1);
+
+  const hasAcademicAttention = hasEmptyAcademic || academicUpdateRequired;
 
   const hasEmptyContact = profileData && (
     isFieldEmpty(profileData.email) ||
@@ -649,18 +678,18 @@ const hasEmptyAcademic = isStudent && profileData && (
       targetTab: "profile",
       scrollTo:  "emergency",
     };
-  } else if (hasEmptyAcademic) {
-  pendingAction = {
-    title: t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-    desc: t(
-      'homepage.pendingActions.academicDesc',
-      "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for a f2f consultation."
-    ),
-    btnText: t('homepage.pendingActions.updateProfile', "Update Profile"),
-    targetTab: "profile",
-    scrollTo: "academic",
-  };
-} else if (hasEmptyContact) {
+  } else if (hasAcademicAttention) {
+    pendingAction = {
+      title: t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+      desc: t(
+        'homepage.pendingActions.academicDesc',
+        "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for a f2f consultation."
+      ),
+      btnText: t('homepage.pendingActions.updateProfile', "Update Profile"),
+      targetTab: "profile",
+      scrollTo: "academic",
+    };
+  } else if (hasEmptyContact) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
       desc:      t('homepage.pendingActions.contactDesc', "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for a f2f consultation."),

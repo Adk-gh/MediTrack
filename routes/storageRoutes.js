@@ -284,21 +284,42 @@ const readActiveLogoMetadata = async () => {
 };
 
 const listBrandingFiles = async () => {
-  const {
-    data,
-    error,
-  } = await withTimeout(
+  console.log(
+    '[Branding Debug] Supabase URL:',
+    process.env.SUPABASE_URL
+  );
+
+  console.log(
+    '[Branding Debug] Bucket:',
+    PUBLIC_ASSETS_BUCKET
+  );
+
+  console.log(
+    '[Branding Debug] Prefix:',
+    BRANDING_PREFIX
+  );
+
+  const { data, error } = await withTimeout(
     supabase.storage
       .from(PUBLIC_ASSETS_BUCKET)
       .list(BRANDING_PREFIX, {
         limit: 1000,
-
         sortBy: {
           column: 'updated_at',
           order: 'desc',
         },
       }),
     10000
+  );
+
+  console.log(
+    '[Branding Debug] Files returned:',
+    data
+  );
+
+  console.log(
+    '[Branding Debug] Storage error:',
+    error
   );
 
   if (error) {

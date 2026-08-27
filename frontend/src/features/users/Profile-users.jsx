@@ -406,9 +406,17 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
 
   const personalFields = [profile.birthday, profile.age, profile.sex, profile.bloodType, profile.civilStatus, profile.religion, profile.nationality, profile.homeAddress];
   const hasEmptyPersonal = personalFields.some(isFieldEmpty);
-  const academicFields = isStudent ? [profile.universityId || profile.studentId, profile.department, profile.program, profile.yearLevel, profile.section, profile.studentClassification] : [profile.classification, profile.department, profile.jobTitle];
+ const academicFields = isStudent ? [profile.universityId || profile.studentId, profile.department, profile.program, profile.yearLevel, profile.section, profile.studentClassification] : [profile.classification, profile.department, profile.jobTitle];
   const hasEmptyAcademic = academicFields.some(isFieldEmpty);
-  const academicUpdateRequired = isStudent && configData?.prompt_student_academic_update === true && Number(profile.academicInfoAcknowledgedVersion || 0) < Number(configData?.academic_update_version || 1);
+
+  // Safely check for true, "true", or 1 in case the API serializes the boolean differently
+  const isPromptUpdateEnabled =
+    configData?.prompt_student_academic_update === true ||
+    String(configData?.prompt_student_academic_update).toLowerCase() === 'true' ||
+    Number(configData?.prompt_student_academic_update) === 1;
+
+  const academicUpdateRequired = isStudent && isPromptUpdateEnabled && Number(profile.academicInfoAcknowledgedVersion || 0) < Number(configData?.academic_update_version || 1);
+
   const hasAcademicAttention = hasEmptyAcademic || academicUpdateRequired;
   const contactFields = [profile.email, profile.phoneNumber];
   const hasEmptyContact = contactFields.some(isFieldEmpty);
