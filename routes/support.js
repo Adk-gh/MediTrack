@@ -1,14 +1,12 @@
 // routes/support.route.js
 
 const express = require('express');
-const nodemailer = require('nodemailer');
 const multer = require('multer');
+const { sendEmail } = require('../services/email.service'); // Adjust path if necessary
 
 const router = express.Router();
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const dns = require('dns');
-dns.setDefaultResultOrder('ipv4first');
 
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
@@ -47,7 +45,6 @@ const upload = multer({
 
 // ============================================================
 // MULTER WRAPPER
-// This makes Multer errors reach our own JSON response.
 // ============================================================
 
 const uploadAttachment = (req, res, next) => {
@@ -85,61 +82,25 @@ const uploadAttachment = (req, res, next) => {
 };
 
 // ============================================================
-// MAIL CONFIGURATION
-// ============================================================
-
-const createTransporter = () => {
-  const mailUsername = process.env.MAIL_USERNAME;
-  const mailPassword = process.env.MAIL_PASSWORD;
-
-  if (!mailUsername) {
-    throw new Error('MAIL_USERNAME is not configured.');
-  }
-
-  if (!mailPassword) {
-    throw new Error('MAIL_PASSWORD is not configured.');
-  }
-
-return nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: mailUsername.trim(),
-    pass: mailPassword.replace(/\s+/g, ''),
-  },
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 50,
-});
-};
-
-// ============================================================
 // HEALTH CHECK
 // GET /api/support/email-status
 // ============================================================
 
 router.get('/email-status', async (req, res) => {
   try {
-    const transporter = createTransporter();
-
-    await transporter.verify();
+    // Check if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured.');
+    }
 
     return res.status(200).json({
       success: true,
-      message: 'Support email service is connected.',
-      sender: process.env.MAIL_USERNAME,
-      recipient:
-        process.env.SUPPORT_EMAIL || process.env.MAIL_USERNAME,
+      message: 'Support email service is connected via Resend.',
+      sender: process.env.MAIL_FROM || 'MediTrack <noreply@meditrackdlsp.online>',
+      recipient: process.env.SUPPORT_EMAIL || 'Support Desk',
     });
   } catch (error) {
-    console.error('[Support] Email verification failed:', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode,
-    });
+    console.error('[Support] Email verification failed:', error.message);
 
     return res.status(500).json({
       success: false,
@@ -199,28 +160,12 @@ router.post(
         });
       }
 
-      const emailType =
-        type === 'feedback' ? 'feedback' : 'contact';
-
-      const senderEmail = process.env.MAIL_USERNAME?.trim();
+      const emailType = type === 'feedback' ? 'feedback' : 'contact';
 
       const recipientEmail = (
         process.env.SUPPORT_EMAIL ||
-        process.env.MAIL_USERNAME ||
-        ''
+        'meditrack93@gmail.com'
       ).trim();
-
-      if (!senderEmail) {
-        throw new Error('MAIL_USERNAME is missing.');
-      }
-
-      if (!recipientEmail) {
-        throw new Error(
-          'SUPPORT_EMAIL and MAIL_USERNAME are both missing.'
-        );
-      }
-
-      const transporter = createTransporter();
 
       const subject =
         emailType === 'feedback'
@@ -314,46 +259,29 @@ router.post(
         </div>
       `;
 
-      const mailOptions = {
-        from: {
-          name: 'MediTrack Support',
-          address: senderEmail,
-        },
+      // Format attachment for Resend
+      const resendAttachments = req.file
+        ? [
+            {
+              filename: req.file.originalname,
+              content: req.file.buffer, // Buffer straight from Multer
+            },
+          ]
+        : undefined;
 
+      // Send the email via Resend
+      const response = await sendEmail({
         to: recipientEmail,
-
-        // Replies go directly to the student/user.
-        replyTo: email,
-
         subject,
-
         text: textContent,
-
         html: htmlContent,
-
-        attachments: req.file
-          ? [
-              {
-                filename: req.file.originalname,
-                content: req.file.buffer,
-                contentType: req.file.mimetype,
-              },
-            ]
-          : [],
-      };
-
-      const info = await transporter.sendMail(mailOptions);
-
-      console.log('[Support] Email sent successfully:', {
-        messageId: info.messageId,
-        accepted: info.accepted,
-        rejected: info.rejected,
-        sender: senderEmail,
-        recipient: recipientEmail,
-        replyTo: email,
-        type: emailType,
-        attachment: req.file?.originalname || null,
+        reply_to: email, // Directly reply to the sender
+        attachments: resendAttachments,
       });
+
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Resend API failed');
+      }
 
       return res.status(200).json({
         success: true,
@@ -363,40 +291,11 @@ router.post(
             : 'Support message sent successfully.',
       });
     } catch (error) {
-      console.error('[Support] Email sending failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-        responseCode: error.responseCode,
-        stack: error.stack,
-      });
-
-      let clientMessage = 'Failed to send email.';
-
-      if (error.code === 'EAUTH') {
-        clientMessage =
-          'The support email account could not authenticate. Check the Gmail address and App Password.';
-      } else if (
-        error.code === 'ECONNECTION' ||
-        error.code === 'ETIMEDOUT'
-      ) {
-        clientMessage =
-          'The email server could not be reached. Please try again.';
-      } else if (
-        error.message?.includes('MAIL_USERNAME') ||
-        error.message?.includes('MAIL_PASSWORD') ||
-        error.message?.includes('SUPPORT_EMAIL')
-      ) {
-        clientMessage =
-          'The support email service is not configured.';
-      }
+      console.error('[Support] Email sending failed:', error);
 
       return res.status(500).json({
         success: false,
-        message: clientMessage,
-
-        // Only expose technical information locally.
+        message: 'Failed to send email. Please try again later.',
         error:
           process.env.NODE_ENV === 'development'
             ? error.message

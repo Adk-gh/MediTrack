@@ -1125,7 +1125,7 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
                           </div>
                         ))
                       )}
-                      <button type="button" onClick={handleAddOperation} style={{ width: '100%', background: '#81b29a', color: '#fff', border: 'none', padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ Add Operation</button>
+                      <button type="button" onClick={handleAddOperation} style={{ width: '100%', background: '#466460', color: '#fff', border: 'none', padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ Add Operation</button>
                     </>
                   )}
                 </>

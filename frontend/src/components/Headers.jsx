@@ -1741,7 +1741,7 @@ const saveProfileEdits = async () => {
                       <button
                         type="button"
                         onClick={handleAddOperation}
-                        className="w-full mt-4 bg-[#81b29a] text-white border-none py-2.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#6a9a83] transition-colors"
+                        className="w-full mt-4 bg-[#466460] text-white border-none py-2.5 rounded-lg text-xs font-bold cursor-pointer hover:bg-[#6a9a83] transition-colors"
                       >
                         + Add Operation
                       </button>
