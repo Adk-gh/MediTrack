@@ -245,18 +245,37 @@ export default function OcrSettings({ isMobile }) {
     fetchConfig();
   }, []);
 
-  const fetchConfig = async () => {
-    try {
-      const res = await fetch(`${OCR_SERVICE_URL}/config`);
-      const data = await res.json();
-      setConfig(data);
-    } catch (error) {
-      console.error("Failed to fetch OCR config:", error);
-      setConfig(null);
-    } finally {
-      setLoading(false);
+const fetchConfig = async () => {
+  try {
+    const res = await fetch(`${OCR_SERVICE_URL}/config`);
+    const result = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        result.error ||
+        result.message ||
+        `Failed to load OCR configuration (${res.status})`
+      );
     }
-  };
+
+    const loadedConfig = result.config || result.data || result;
+
+    setConfig({
+      ...loadedConfig,
+      institution_keywords: Array.isArray(loadedConfig.institution_keywords)
+        ? loadedConfig.institution_keywords
+        : [],
+      role_mappings: Array.isArray(loadedConfig.role_mappings)
+        ? loadedConfig.role_mappings
+        : [],
+    });
+  } catch (error) {
+    console.error('[OCR Settings] Failed to fetch config:', error);
+    setConfig(null);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const requestSave = () => {
     setConfirmAction({
@@ -268,22 +287,72 @@ export default function OcrSettings({ isMobile }) {
     });
   };
 
-  const handleSave = async () => {
-    setConfirmAction(null);
-    setSaving(true);
-    try {
-      const res = await fetch(`${OCR_SERVICE_URL}/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-      if (!res.ok) throw new Error("Server error");
-      showToast('OCR Configuration saved successfully!', 'success');
-    } catch (error) {
-      showToast('Failed to save config. Make sure the OCR server is running.', 'error');
+const handleSave = async () => {
+  setConfirmAction(null);
+  setSaving(true);
+
+  try {
+    const payload = {
+      institution_keywords: Array.isArray(config.institution_keywords)
+        ? config.institution_keywords
+        : [],
+
+      role_mappings: Array.isArray(config.role_mappings)
+        ? config.role_mappings.map(mapping => ({
+            ...mapping,
+            keywords: Array.isArray(mapping.keywords)
+              ? mapping.keywords
+                  .map(keyword => String(keyword).trim().toUpperCase())
+                  .filter(Boolean)
+              : [],
+          }))
+        : [],
+    };
+
+    console.log('[OCR Settings] Saving payload:', payload);
+
+    const res = await fetch(`${OCR_SERVICE_URL}/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error('[OCR Settings] Backend response:', result);
+
+      throw new Error(
+        result.error ||
+        result.message ||
+        `Failed to save OCR configuration (${res.status})`
+      );
     }
+
+    // Prefer the configuration returned by the backend.
+    if (result.config) {
+      setConfig(result.config);
+    } else if (result.data) {
+      setConfig(result.data);
+    } else {
+      // Confirm that the database value can be loaded again.
+      await fetchConfig();
+    }
+
+    showToast('OCR Configuration saved successfully!', 'success');
+  } catch (error) {
+    console.error('[OCR Settings] Save error:', error);
+
+    showToast(
+      error.message || 'Failed to save OCR configuration.',
+      'error'
+    );
+  } finally {
     setSaving(false);
-  };
+  }
+};
 
   const addInstitutionKeyword = () => {
     if (!newInstKeyword.trim()) return;

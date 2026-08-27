@@ -130,144 +130,320 @@ exports.getAppointmentsByDate = async (year, month, day) => {
 };
 
 exports.createAppointment = async (data) => {
-  let resolvedUserId = data.userId || data.patientId || data.idno || '';
+  const requesterAuthUid = data.authUid;
+  const selectedPatientId = data.userId;
 
-  // ============================================================
-  // RESOLVE AUTHENTICATED USER
-  // ============================================================
+  if (!requesterAuthUid) {
+    const error = new Error('Authenticated requester UID is required.');
+    error.status = 401;
+    throw error;
+  }
 
-  let requester = null;
-
-  if (data.authUid) {
-    const { data: userProfile, error: userError } = await supabase
-      .from('users')
-      .select('id, uid, role, type')
-      .eq('uid', data.authUid)
-      .single();
-
-    if (userError) {
-      console.error(
-        '>>> [DB] Failed to resolve authenticated user:',
-        userError.message
-      );
-      throw userError;
-    }
-
-    requester = userProfile;
-
-    // If the authenticated user is also the patient,
-    // resolve their internal database ID.
-    if (userProfile?.id && !resolvedUserId) {
-      resolvedUserId = userProfile.id;
-    }
+  if (!selectedPatientId) {
+    const error = new Error('Selected patient user ID is required.');
+    error.status = 422;
+    throw error;
   }
 
   // ============================================================
-  // DETERMINE CREATOR ROLE
+  // RESOLVE THE LOGGED-IN REQUESTER
+  // ============================================================
+
+  const {
+    data: requester,
+    error: requesterError,
+  } = await supabase
+    .from('users')
+    .select(`
+      id,
+      uid,
+      first_name,
+      middle_name,
+      last_name,
+      role,
+      classification,
+      student_classification,
+      job_title
+    `)
+    .eq('uid', requesterAuthUid)
+    .maybeSingle();
+
+  if (requesterError) {
+    console.error(
+      '[CREATE APPOINTMENT] Requester lookup failed:',
+      requesterError
+    );
+    throw requesterError;
+  }
+
+  if (!requester) {
+    const error = new Error(
+      'Could not resolve the authenticated requester.'
+    );
+    error.status = 401;
+    throw error;
+  }
+
+  // ============================================================
+  // RESOLVE THE SELECTED PATIENT
+  // ============================================================
+
+  const {
+    data: patient,
+    error: patientError,
+  } = await supabase
+    .from('users')
+    .select(`
+      id,
+      uid,
+      university_id,
+      first_name,
+      middle_name,
+      last_name,
+      role,
+      is_archived
+    `)
+    .eq('id', selectedPatientId)
+    .eq('is_archived', false)
+    .maybeSingle();
+
+  if (patientError) {
+    console.error(
+      '[CREATE APPOINTMENT] Patient lookup failed:',
+      patientError
+    );
+    throw patientError;
+  }
+
+  if (!patient) {
+    const error = new Error(
+      'The selected patient was not found or has been archived.'
+    );
+    error.status = 404;
+    throw error;
+  }
+
+  // ============================================================
+  // DETERMINE REQUESTER ROLE
   // ============================================================
 
   const requesterRole = String(
-    requester?.role ||
-    requester?.type ||
-    data.role ||
+    requester.role ||
+    requester.classification ||
+    requester.student_classification ||
+    requester.job_title ||
     ''
-  ).toLowerCase().trim();
-
-  // ============================================================
-  // CLINIC STAFF CREATED APPOINTMENTS
-  // ARE AUTOMATICALLY APPROVED
-  // ============================================================
+  )
+    .trim()
+    .toLowerCase();
 
   const clinicStaffRoles = [
     'doctor',
+    'physician',
     'dentist',
     'nurse',
+    'sysadmin',
+    'system administrator',
   ];
 
-  const isClinicStaffCreator = clinicStaffRoles.includes(requesterRole);
+  const isClinicStaffCreator = clinicStaffRoles.some((role) =>
+    requesterRole.includes(role)
+  );
 
   const appointmentStatus = isClinicStaffCreator
     ? 'approved'
     : 'pending';
 
   // ============================================================
-  // CREATE APPOINTMENT
+  // NORMALIZE APPOINTMENT VALUES
   // ============================================================
 
+  const patientName =
+    data.patientName ||
+    data.name ||
+    [
+      patient.last_name,
+      patient.first_name,
+      patient.middle_name,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+  const serviceType = String(
+    data.serviceType ||
+    data.service_type ||
+    ''
+  ).trim();
+
+  const reason = String(data.reason || '').trim();
+  const appointmentTime = String(data.time || '').trim();
+
+  const year = Number(data.year);
+  const month = Number(data.month);
+  const day = Number(data.day);
+
+  if (!patientName) {
+    const error = new Error('Patient name is required.');
+    error.status = 422;
+    throw error;
+  }
+
+  if (!serviceType) {
+    const error = new Error('Service type is required.');
+    error.status = 422;
+    throw error;
+  }
+
+  if (!reason) {
+    const error = new Error('Appointment reason is required.');
+    error.status = 422;
+    throw error;
+  }
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    const error = new Error(
+      'A valid appointment date is required.'
+    );
+    error.status = 422;
+    throw error;
+  }
+
+  if (!appointmentTime) {
+    const error = new Error('Appointment time is required.');
+    error.status = 422;
+    throw error;
+  }
+
+  const requesterName = [
+    requester.first_name,
+    requester.middle_name,
+    requester.last_name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  const now = new Date().toISOString();
+
   const newDoc = {
-    user_id: resolvedUserId,
-    patient_name: data.patientName || data.name || '',
-    service_type: data.type || data.serviceType || '',
-    reason: data.reason || '',
-    year: data.year || new Date().getFullYear(),
-    month: data.month || (new Date().getMonth() + 1),
-    day: data.day || null,
-    time: data.time || '',
+    // This must be the selected patient's users.id
+    user_id: patient.id,
+
+    patient_name: patientName,
+    service_type: serviceType,
+    reason,
+    year,
+    month,
+    day,
+    time: appointmentTime,
     status: appointmentStatus,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+
+    booked_by:
+      data.bookedBy ||
+      requesterName ||
+      requesterRole ||
+      'Clinic Staff',
+
+    booked_by_id: requester.id,
+
+    is_archived: false,
+    created_at: now,
+    updated_at: now,
   };
 
   console.log('============================================================');
   console.log('[CREATE APPOINTMENT]');
-  console.log('Requester UID:', data.authUid);
+  console.log('Requester Auth UID:', requesterAuthUid);
+  console.log('Requester users.id:', requester.id);
   console.log('Requester Role:', requesterRole);
-  console.log('Patient User ID:', resolvedUserId);
+  console.log('Selected Patient users.id:', patient.id);
+  console.log('University ID:', patient.university_id);
   console.log('Patient Name:', newDoc.patient_name);
   console.log('Service:', newDoc.service_type);
   console.log('Reason:', newDoc.reason);
-  console.log('Date:', `${newDoc.year}-${newDoc.month}-${newDoc.day}`);
-  console.log('Time:', newDoc.time);
+  console.log(
+    'Schedule:',
+    `${newDoc.year}-${newDoc.month}-${newDoc.day}`,
+    newDoc.time
+  );
   console.log('Status:', newDoc.status);
+  console.log('Insert payload:', newDoc);
   console.log('============================================================');
 
-  const { data: appointment, error } = await supabase
+  const {
+    data: appointment,
+    error: insertError,
+  } = await supabase
     .from('appointments')
     .insert(newDoc)
-    .select()
+    .select('*')
     .single();
 
-  if (error) {
-    console.error(
-      '>>> [DB] Appointment Insert Error:',
-      error.message
-    );
-    throw error;
+  if (insertError) {
+    console.error('============================================================');
+    console.error('[CREATE APPOINTMENT] DATABASE INSERT FAILED');
+    console.error('Message:', insertError.message);
+    console.error('Code:', insertError.code);
+    console.error('Details:', insertError.details);
+    console.error('Hint:', insertError.hint);
+    console.error('Payload:', newDoc);
+    console.error('============================================================');
+
+    throw insertError;
   }
 
-  // ============================================================
-  // NOTIFY RELEVANT CLINIC STAFF
-  // ============================================================
+  console.log(
+    '[CREATE APPOINTMENT] Successfully inserted:',
+    appointment
+  );
 
-  // Only send a "new appointment request" notification
-  // when the appointment actually requires approval.
-  if (appointmentStatus === 'pending') {
-    const targetRoles = getTargetRolesForAppointment(
-      newDoc.service_type,
-      newDoc.reason
-    );
+  // Staff-created appointments are already approved,
+  // so notify the selected patient.
+  if (appointmentStatus === 'approved') {
+    try {
+      await notificationsService.createNotification({
+        userId: patient.id,
+        type: 'appointment_created',
+        title: 'Appointment Scheduled',
+        message:
+          `A ${serviceType} appointment was scheduled for you ` +
+          `on ${month}/${day}/${year} at ${appointmentTime}.`,
+        referenceId: appointment.id,
+        referenceType: 'appointment',
+      });
+    } catch (notificationError) {
+      console.error(
+        '[CREATE APPOINTMENT] Patient notification failed:',
+        notificationError.message
+      );
+    }
+  } else {
+    try {
+      const targetRoles = getTargetRolesForAppointment(
+        serviceType,
+        reason
+      );
 
-    const patientDisplayName =
-      data.patientName ||
-      data.name ||
-      'A student/patient';
-
-    await notificationsService.notifyRoles(targetRoles, {
-      type: 'appointment_request',
-      title: 'New Appointment Request',
-      message: `${patientDisplayName} requested an appointment for ${
-        newDoc.service_type ||
-        newDoc.reason ||
-        'consultation'
-      }.`,
-      referenceId: appointment.id,
-      referenceType: 'appointment',
-    });
+      await notificationsService.notifyRoles(targetRoles, {
+        type: 'appointment_request',
+        title: 'New Appointment Request',
+        message:
+          `${patientName} requested an appointment for ` +
+          `${serviceType}.`,
+        referenceId: appointment.id,
+        referenceType: 'appointment',
+      });
+    } catch (notificationError) {
+      console.error(
+        '[CREATE APPOINTMENT] Staff notification failed:',
+        notificationError.message
+      );
+    }
   }
-
-  // ============================================================
-  // RETURN CREATED APPOINTMENT
-  // ============================================================
 
   return appointment;
 };
@@ -342,27 +518,63 @@ exports.createBulkAppointments = async (data) => {
     updated_at: nowIso,
   }));
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('appointments')
-    .insert(rows)
-    .select();
+const { data: inserted, error: insertError } = await supabase
+  .from('appointments')
+  .insert(rows)
+  .select();
 
-  if (insertError) {
-    console.error('>>> [DB] Bulk Appointment Insert Error:', insertError.message);
-    throw insertError;
-  }
+if (insertError) {
+  console.error(
+    '>>> [DB] Bulk Appointment Insert Error:',
+    insertError.message
+  );
+  throw insertError;
+}
 
-  // ── Dispatch Targeted Notification to Relevant Staff ──
-  const targetRoles = getTargetRolesForAppointment(serviceType, reason);
+const targetRoles = getTargetRolesForAppointment(serviceType, reason);
+
+try {
   await notificationsService.notifyRoles(targetRoles, {
     type: 'appointment_request',
     title: 'New Bulk Appointment Request',
-    message: `${facultyName} submitted a bulk request for ${inserted.length} students (${serviceType}).`,
+    message:
+      `${facultyName} submitted a bulk appointment request for ` +
+      `${inserted.length} student${inserted.length === 1 ? '' : 's'} ` +
+      `(${serviceType}).`,
     referenceId: batchId,
     referenceType: 'appointment_batch',
   });
+} catch (notificationError) {
+  console.error(
+    '[CREATE BULK APPOINTMENTS] Staff notification failed:',
+    notificationError.message
+  );
+}
 
-  return { batchId, created: inserted, notFoundIds: notFound };
+try {
+  await notificationsService.createNotification({
+    userId: requester.id,
+    type: 'bulk_appointment_submitted',
+    title: 'Bulk Appointment Request Submitted',
+    message:
+      `Your bulk appointment request for ` +
+      `${inserted.length} student${inserted.length === 1 ? '' : 's'} ` +
+      `has been submitted successfully and is awaiting clinic approval.`,
+    referenceId: batchId,
+    referenceType: 'appointment_batch',
+  });
+} catch (notificationError) {
+  console.error(
+    '[CREATE BULK APPOINTMENTS] Requester notification failed:',
+    notificationError.message
+  );
+}
+
+return {
+  batchId,
+  created: inserted,
+  notFoundIds: notFound,
+};
 };
 
 // ============================================================

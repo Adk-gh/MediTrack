@@ -169,10 +169,87 @@ const createAppointment = async (req, res, next) => {
       });
     }
 
+    console.log(
+      '[CREATE APPOINTMENT CONTROLLER] Raw request body:',
+      req.body
+    );
+
     const appointmentData = {
       ...req.body,
+
+      // Logged-in doctor/nurse/dentist
       authUid,
+
+      // Selected patient internal users.id
+      userId:
+        req.body?.userId ||
+        req.body?.user_id ||
+        req.body?.patientUserId ||
+        req.body?.patient_user_id ||
+        null,
+
+      // Selected patient's University ID
+      patientId:
+        req.body?.patientId ||
+        req.body?.patient_id ||
+        req.body?.universityId ||
+        req.body?.university_id ||
+        null,
+
+      patientName:
+        req.body?.patientName ||
+        req.body?.patient_name ||
+        req.body?.name ||
+        null,
+
+      serviceType:
+        req.body?.serviceType ||
+        req.body?.service_type ||
+        null,
+
+      reason:
+        req.body?.reason ||
+        '',
+
+      year:
+        req.body?.year !== undefined
+          ? Number(req.body.year)
+          : undefined,
+
+      month:
+        req.body?.month !== undefined
+          ? Number(req.body.month)
+          : undefined,
+
+      day:
+        req.body?.day !== undefined
+          ? Number(req.body.day)
+          : undefined,
+
+      time:
+        req.body?.time ||
+        req.body?.scheduleTime ||
+        req.body?.schedule_time ||
+        null,
+
+      bookedBy:
+        req.body?.bookedBy ||
+        req.body?.booked_by ||
+        resolveActorName(req),
     };
+
+    console.log(
+      '[CREATE APPOINTMENT CONTROLLER] Normalized data:',
+      appointmentData
+    );
+
+    if (!appointmentData.userId && !appointmentData.patientId) {
+      return res.status(422).json({
+        success: false,
+        message:
+          'Selected patient user ID or University ID is required.',
+      });
+    }
 
     const result =
       await appointmentsService.createAppointment(
@@ -193,34 +270,74 @@ const createAppointment = async (req, res, next) => {
       {
         operation: 'create_appointment',
         appointmentId,
-        userId: authUid,
+
+        // Selected patient's ID, not requester auth UID
+        userId:
+          result?.user_id ||
+          appointmentData.userId ||
+          null,
+
+        requesterUid: authUid,
+
         serviceType:
           result?.service_type ||
-          result?.serviceType ||
-          req.body?.service_type ||
-          req.body?.serviceType ||
+          appointmentData.serviceType ||
           null,
+
         scheduleDate:
-          result?.schedule_date ||
-          result?.scheduleDate ||
-          req.body?.schedule_date ||
-          req.body?.scheduleDate ||
-          null,
+          result?.year && result?.month && result?.day
+            ? `${result.year}-${String(result.month).padStart(
+                2,
+                '0'
+              )}-${String(result.day).padStart(2, '0')}`
+            : appointmentData.year &&
+                appointmentData.month &&
+                appointmentData.day
+              ? `${appointmentData.year}-${String(
+                  appointmentData.month
+                ).padStart(2, '0')}-${String(
+                  appointmentData.day
+                ).padStart(2, '0')}`
+              : null,
+
         scheduleTime:
-          result?.schedule_time ||
-          result?.scheduleTime ||
-          req.body?.schedule_time ||
-          req.body?.scheduleTime ||
+          result?.time ||
+          appointmentData.time ||
           null,
       }
     );
 
     return res.status(201).json({
       success: true,
+      message: 'Appointment created successfully.',
       data: result,
     });
   } catch (error) {
-    next(error);
+    console.error(
+      '[CREATE APPOINTMENT CONTROLLER ERROR]',
+      {
+        message: error.message,
+        status: error.status,
+        statusCode: error.statusCode,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        stack: error.stack,
+      }
+    );
+
+    return res
+      .status(error.status || error.statusCode || 500)
+      .json({
+        success: false,
+        message:
+          error.message ||
+          'Could not create the appointment.',
+        error: error.message || null,
+        code: error.code || null,
+        details: error.details || null,
+        hint: error.hint || null,
+      });
   }
 };
 

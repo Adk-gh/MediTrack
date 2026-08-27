@@ -65,6 +65,52 @@ const notificationsService = {
     return data;
   },
 
+async notifyStudents(notificationData) {
+  const { data: students, error } = await supabase
+    .from('users')
+    .select('id, role')
+    .eq('role', 'student')
+    .eq('is_archived', false);
+
+  if (error) {
+    console.error(
+      '[Notifications] Failed to retrieve students:',
+      error
+    );
+    throw error;
+  }
+
+  if (!students || students.length === 0) {
+    console.warn('[Notifications] No students found.');
+    return [];
+  }
+
+  const notifications = students.map((student) => ({
+    user_id: student.id,
+    type: notificationData.type,
+    title: notificationData.title,
+    message: notificationData.message,
+    reference_id: notificationData.referenceId || null,
+    reference_type: notificationData.referenceType || null,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  }));
+
+  const { data, error: insertError } = await supabase
+    .from('notifications')
+    .insert(notifications)
+    .select();
+
+  if (insertError) {
+    console.error(
+      '[Notifications] Failed to notify students:',
+      insertError
+    );
+    throw insertError;
+  }
+
+  return data || [];
+},
 
 async notifyRoles(roles, notificationData) {
   const roleList = Array.isArray(roles) ? roles : [roles];
@@ -324,7 +370,7 @@ async notifyRecordRequest(requestData) {
 },
 
 
-  // ============================================================
+// ============================================================
   // ANNOUNCEMENTS
   // ============================================================
 
@@ -351,26 +397,48 @@ async notifyRecordRequest(requestData) {
         targetDepts.includes('All Departments') ||
         targetDepts.includes('All');
 
-      let query = supabase
-        .from('users')
-        .select('id, department');
+      let targetUsers = [];
 
-      if (!isAllDepts) {
-        query = query.in('department', targetDepts);
+      if (isAllDepts) {
+        // If it's for all departments, fetch everyone
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, department, role');
+
+        if (error) throw error;
+        targetUsers = data || [];
+      } else {
+        // 1. Fetch users in the specifically targeted departments
+        const { data: deptUsers, error: deptError } = await supabase
+          .from('users')
+          .select('id, department, role')
+          .in('department', targetDepts);
+
+        if (deptError) throw deptError;
+
+        // 2. ALWAYS fetch clinic staff and admins so they stay in the loop
+        const { data: staffUsers, error: staffError } = await supabase
+          .from('users')
+          .select('id, department, role')
+          .in('role', ['doctor', 'dentist', 'nurse', 'sysadmin']);
+
+        if (staffError) throw staffError;
+
+        // 3. Merge the two lists and remove duplicates (in case a doctor is also in a targeted dept)
+        const allFetched = [...(deptUsers || []), ...(staffUsers || [])];
+        const uniqueUsers = new Map();
+
+        allFetched.forEach(user => uniqueUsers.set(user.id, user));
+        targetUsers = Array.from(uniqueUsers.values());
       }
 
-      const { data: targetUsers, error } = await query;
-
-      if (
-        error ||
-        !targetUsers ||
-        targetUsers.length === 0
-      ) {
+      if (!targetUsers || targetUsers.length === 0) {
         return;
       }
 
       const notifications = targetUsers.map(user => ({
-        type: 'announcement',
+        // Use the type passed from the service (e.g., 'update'), fallback to 'announcement'
+        type: announcementData.type || 'announcement',
         title: announcementData.title,
         message:
           announcementData.content?.substring(0, 140) ||

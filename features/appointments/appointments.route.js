@@ -255,190 +255,190 @@ const validateDynamicRole = async (
         'Failed to validate user role configuration.',
     });
   }
-};
+  };
 
-// =========================================================
-// CURRENT USER APPOINTMENTS
-// =========================================================
+  // =========================================================
+  // CURRENT USER APPOINTMENTS
+  // =========================================================
 
-router.get(
-  '/my-appointments',
-  authorized,
-  appointmentsController.getMyAppointments
-);
+  router.get(
+    '/my-appointments',
+    authorized,
+    appointmentsController.getMyAppointments
+  );
 
-// =========================================================
-// BULK APPOINTMENT HISTORY
-// =========================================================
+  // =========================================================
+  // BULK APPOINTMENT HISTORY
+  // =========================================================
 
-// Keep static routes before "/:id".
-router.get(
-  '/bulk-history',
-  authorized,
-  allowDynamicFaculty,
-  appointmentsController.getBulkHistory
-);
+  // Keep static routes before "/:id".
+  router.get(
+    '/bulk-history',
+    authorized,
+    allowDynamicFaculty,
+    appointmentsController.getBulkHistory
+  );
 
-// =========================================================
-// APPOINTMENTS BY DATE
-// =========================================================
+  // =========================================================
+  // APPOINTMENTS BY DATE
+  // =========================================================
 
-router.get(
-  '/date/:date',
-  authorized,
-  appointmentsController.getAppointmentsByDate
-);
+  router.get(
+    '/date/:date',
+    authorized,
+    appointmentsController.getAppointmentsByDate
+  );
 
-// =========================================================
-// CREATE BULK APPOINTMENTS
-// =========================================================
+  // =========================================================
+  // CREATE BULK APPOINTMENTS
+  // =========================================================
 
-router.post(
-  '/bulk',
-  authorized,
-  allowDynamicStaffAndFaculty,
-  validateData(bulkCreateAppointmentSchema),
-  validateDynamicRole,
+  router.post(
+    '/bulk',
+    authorized,
+    allowDynamicStaffAndFaculty,
+    validateData(bulkCreateAppointmentSchema),
+    validateDynamicRole,
 
-  auditLog(
-    'Create Bulk Appointments',
-    'APPOINTMENT',
-    (req, res) => {
-      if (res.locals.auditDescription) {
-        return res.locals.auditDescription;
+    auditLog(
+      'Create Bulk Appointments',
+      'APPOINTMENT',
+      (req, res) => {
+        if (res.locals.auditDescription) {
+          return res.locals.auditDescription;
+        }
+
+        const studentCount = Array.isArray(
+          req.body?.studentIds
+        )
+          ? req.body.studentIds.length
+          : 0;
+
+        return (
+          `Created a bulk appointment request for ` +
+          `${studentCount} student${
+            studentCount === 1 ? '' : 's'
+          }.`
+        );
       }
+    ),
 
-      const studentCount = Array.isArray(
-        req.body?.studentIds
-      )
-        ? req.body.studentIds.length
-        : 0;
+    appointmentsController.createBulkAppointment
+  );
 
-      return (
-        `Created a bulk appointment request for ` +
-        `${studentCount} student${
-          studentCount === 1 ? '' : 's'
-        }.`
-      );
-    }
-  ),
+  // =========================================================
+  // GET ALL APPOINTMENTS
+  // =========================================================
 
-  appointmentsController.createBulkAppointment
-);
+  router.get(
+    '/',
+    authorized,
+    allowDynamicStaffAndFaculty,
+    appointmentsController.getAllAppointments
+  );
 
-// =========================================================
-// GET ALL APPOINTMENTS
-// =========================================================
+  // =========================================================
+  // CREATE NORMAL APPOINTMENT
+  // =========================================================
 
-router.get(
-  '/',
-  authorized,
-  allowDynamicStaffAndFaculty,
-  appointmentsController.getAllAppointments
-);
+  router.post(
+    '/',
+    authorized,
+    validateData(createAppointmentSchema),
+    validateDynamicRole,
 
-// =========================================================
-// CREATE NORMAL APPOINTMENT
-// =========================================================
+    auditLog(
+      'Create Appointment',
+      'APPOINTMENT',
+      (req, res) => {
+        if (res.locals.auditDescription) {
+          return res.locals.auditDescription;
+        }
 
-router.post(
-  '/',
-  authorized,
-  validateData(createAppointmentSchema),
-  validateDynamicRole,
+        const serviceType =
+          req.body?.service_type ||
+          req.body?.serviceType ||
+          req.body?.type ||
+          'general';
 
-  auditLog(
-    'Create Appointment',
-    'APPOINTMENT',
-    (req, res) => {
-      if (res.locals.auditDescription) {
-        return res.locals.auditDescription;
+        return (
+          `Created a new ${serviceType} appointment.`
+        );
       }
+    ),
 
-      const serviceType =
-        req.body?.service_type ||
-        req.body?.serviceType ||
-        req.body?.type ||
-        'general';
+    appointmentsController.createAppointment
+  );
 
-      return (
-        `Created a new ${serviceType} appointment.`
-      );
-    }
-  ),
+  // =========================================================
+  // UPDATE APPOINTMENT
+  // =========================================================
 
-  appointmentsController.createAppointment
-);
+  router.put(
+    '/:id',
+    authorized,
+    allowDynamicStaffAndFaculty,
+    validateData(updateAppointmentSchema),
+    validateDynamicRole,
 
-// =========================================================
-// UPDATE APPOINTMENT
-// =========================================================
+    auditLog(
+      'Update Appointment',
+      'APPOINTMENT',
+      (req, res) => {
+        return (
+          res.locals.auditDescription ||
+          `Updated appointment with ID ${req.params.id}.`
+        );
+      }
+    ),
 
-router.put(
-  '/:id',
-  authorized,
-  allowDynamicStaffAndFaculty,
-  validateData(updateAppointmentSchema),
-  validateDynamicRole,
+    appointmentsController.updateAppointment
+  );
 
-  auditLog(
-    'Update Appointment',
-    'APPOINTMENT',
-    (req, res) => {
-      return (
-        res.locals.auditDescription ||
-        `Updated appointment with ID ${req.params.id}.`
-      );
-    }
-  ),
+  // Optional PATCH support for partial updates.
+  router.patch(
+    '/:id',
+    authorized,
+    allowDynamicStaffAndFaculty,
+    validateDynamicRole,
 
-  appointmentsController.updateAppointment
-);
+    auditLog(
+      'Update Appointment',
+      'APPOINTMENT',
+      (req, res) => {
+        return (
+          res.locals.auditDescription ||
+          `Updated appointment with ID ${req.params.id}.`
+        );
+      }
+    ),
 
-// Optional PATCH support for partial updates.
-router.patch(
-  '/:id',
-  authorized,
-  allowDynamicStaffAndFaculty,
-  validateDynamicRole,
+    appointmentsController.updateAppointment
+  );
 
-  auditLog(
-    'Update Appointment',
-    'APPOINTMENT',
-    (req, res) => {
-      return (
-        res.locals.auditDescription ||
-        `Updated appointment with ID ${req.params.id}.`
-      );
-    }
-  ),
+  // =========================================================
+  // DELETE / ARCHIVE APPOINTMENT
+  // =========================================================
 
-  appointmentsController.updateAppointment
-);
+  // This route archives the appointment instead of permanently
+  // deleting it, so the audit action and category use ARCHIVE.
+  router.delete(
+    '/:id',
+    authorized,
+    allowDynamicStaffAndFaculty,
 
-// =========================================================
-// DELETE / ARCHIVE APPOINTMENT
-// =========================================================
+    auditLog(
+      'Archive Appointment',
+      'ARCHIVE',
+      (req, res) => {
+        return (
+          res.locals.auditDescription ||
+          `Archived appointment with ID ${req.params.id}.`
+        );
+      }
+    ),
 
-// This route archives the appointment instead of permanently
-// deleting it, so the audit action and category use ARCHIVE.
-router.delete(
-  '/:id',
-  authorized,
-  allowDynamicStaffAndFaculty,
+    appointmentsController.archiveAppointment
+  );
 
-  auditLog(
-    'Archive Appointment',
-    'ARCHIVE',
-    (req, res) => {
-      return (
-        res.locals.auditDescription ||
-        `Archived appointment with ID ${req.params.id}.`
-      );
-    }
-  ),
-
-  appointmentsController.archiveAppointment
-);
-
-module.exports = router;
+  module.exports = router;

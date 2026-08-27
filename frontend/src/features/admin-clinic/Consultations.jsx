@@ -936,6 +936,38 @@ export const Consultations = () => {
   const selectedConvIdRef = useRef(null);
   const isSendingRef = useRef(false);
   const conversationsRef = useRef([]);
+  const messageLoadRequestRef = useRef(0);
+
+
+  const formatConsultationMessages = useCallback((data = []) => {
+  const uniqueMessages = Array.from(
+    new Map(
+      (data || [])
+        .filter(Boolean)
+        .map(message => [message.id, message])
+    ).values()
+  );
+
+  return uniqueMessages
+    .map(message => ({
+      ...message,
+      text: message.message ?? message.text ?? '',
+      timestamp: new Date(
+        message.created_at || message.timestamp
+      ).getTime(),
+      sender: [
+        'doctor',
+        'nurse',
+        'dentist',
+        'sysadmin',
+        'system',
+      ].includes((message.sender_role || '').toLowerCase())
+        ? 'clinic'
+        : 'patient',
+      read_at: message.read_at || null,
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+}, []);
 
   const tabCfg = allowedTabs.find(t => t.key === activeTab) || allowedTabs[0] || TABS[0];
 
@@ -1456,9 +1488,93 @@ return () => {
   ensureValidSession,
 ]);
 
-  useEffect(() => { setShowPatientModal(false); }, [selectedConvId]);
-  useEffect(() => { selectedConvIdRef.current = selectedConvId; }, [selectedConvId]);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+useEffect(() => {
+  setShowPatientModal(false);
+}, [selectedConvId]);
+
+useEffect(() => {
+  selectedConvIdRef.current = selectedConvId;
+}, [selectedConvId]);
+
+useEffect(() => {
+  const conversationId = selectedConvId;
+  const requestId = ++messageLoadRequestRef.current;
+
+  if (!conversationId || !sessionReady) {
+    setMessages([]);
+    setLoadingMsgs(false);
+    return;
+  }
+
+  let cancelled = false;
+
+  const loadSelectedConversationMessages = async () => {
+    setMessages([]);
+    setLoadingMsgs(true);
+    setMessageInput('');
+
+    try {
+      await ensureValidSession();
+
+      const data =
+        await consultationsService.getMessagesByConsultationId(
+          conversationId,
+          true
+        );
+
+      if (
+        cancelled ||
+        requestId !== messageLoadRequestRef.current ||
+        selectedConvIdRef.current !== conversationId
+      ) {
+        return;
+      }
+
+      setMessages(formatConsultationMessages(data));
+    } catch (error) {
+      if (
+        cancelled ||
+        requestId !== messageLoadRequestRef.current ||
+        selectedConvIdRef.current !== conversationId
+      ) {
+        return;
+      }
+
+      console.error(
+        `[Consultations] Failed to load messages for ${conversationId}:`,
+        error
+      );
+
+      setMessages([]);
+      showToast('Could not load the message history', 'error');
+    } finally {
+      if (
+        !cancelled &&
+        requestId === messageLoadRequestRef.current &&
+        selectedConvIdRef.current === conversationId
+      ) {
+        setLoadingMsgs(false);
+      }
+    }
+  };
+
+  loadSelectedConversationMessages();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  selectedConvId,
+  sessionReady,
+  ensureValidSession,
+  formatConsultationMessages,
+]);
+
+useEffect(() => {
+  messagesEndRef.current?.scrollIntoView({
+    behavior: 'smooth',
+  });
+}, [messages]);
 
   useEffect(() => {
     const isEnded = conversations.find(c => c.id === selectedConvId)?.status === 'ended';

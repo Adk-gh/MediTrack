@@ -573,7 +573,7 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
 
 // ── Create Appointment Modal (staff-booked, e.g. follow-ups / walk-ins) ───────
 const CreateAppointmentModal = ({
-  isOpen, onClose, onCreated, currentStaffName,
+  isOpen, onClose, onCreated, currentStaffName, currentStaffRole
 }) => {
   const [patientSearch, setPatientSearch]       = useState('');
   const [patientResults, setPatientResults]     = useState([]);
@@ -588,6 +588,29 @@ const CreateAppointmentModal = ({
 
   const [submitting, setSubmitting]             = useState(false);
   const [formError, setFormError]               = useState('');
+
+  const normalizedStaffRole = String(currentStaffRole || '').trim().toLowerCase();
+
+  const availablePurposeOptions = useMemo(() => {
+    if (
+      normalizedStaffRole === 'doctor' ||
+      normalizedStaffRole === 'physician' ||
+      normalizedStaffRole === 'nurse'
+    ) {
+      return STAFF_PURPOSES_OPTS.filter(
+        (purpose) => purpose.value === 'Medical Check-up'
+      );
+    }
+
+    if (normalizedStaffRole === 'dentist') {
+      return STAFF_PURPOSES_OPTS.filter(
+        (purpose) => purpose.value === 'Dental Check-up'
+      );
+    }
+
+    // Sysadmin and other authorized administrative roles may use both.
+    return STAFF_PURPOSES_OPTS;
+  }, [normalizedStaffRole]);
 
   const resetForm = () => {
     setPatientSearch('');
@@ -604,6 +627,17 @@ const CreateAppointmentModal = ({
     if (!isOpen) resetForm();
   }, [isOpen]);
 
+  // Remove invalid selections when the role changes
+  useEffect(() => {
+    const allowedValues = new Set(
+      availablePurposeOptions.map((purpose) => purpose.value)
+    );
+
+    setSelectedPurposes((previous) =>
+      previous.filter((purpose) => allowedValues.has(purpose))
+    );
+  }, [availablePurposeOptions]);
+
   // ── Debounced patient search against the users table ──
   useEffect(() => {
     if (!isOpen || selectedPatient) return;
@@ -615,9 +649,25 @@ const CreateAppointmentModal = ({
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('id, first_name, last_name, middle_name, university_id, department, program, section, year_level, role')
-          .eq('is_archived', false) // Added to exclude archived users
-          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,university_id.ilike.%${q}%`)
+          .select(`
+            id,
+            uid,
+            first_name,
+            last_name,
+            middle_name,
+            university_id,
+            department,
+            program,
+            section,
+            year_level,
+            role,
+            classification,
+            job_title
+          `)
+          .eq('is_archived', false)
+          .or(
+            `first_name.ilike.%${q}%,last_name.ilike.%${q}%,university_id.ilike.%${q}%`
+          )
           .limit(8);
         if (!error) setPatientResults(data || []);
       } catch (err) {
@@ -631,130 +681,234 @@ const CreateAppointmentModal = ({
   }, [patientSearch, isOpen, selectedPatient]);
 
   const togglePurpose = (purpose) => {
-    setSelectedPurposes(prev => prev.includes(purpose) ? prev.filter(p => p !== purpose) : [...prev, purpose]);
+    const isAllowed = availablePurposeOptions.some(
+      (option) => option.value === purpose
+    );
+
+    if (!isAllowed) {
+      setFormError(
+        normalizedStaffRole === 'dentist'
+          ? 'Dentists can only create dental appointments.'
+          : 'Doctors and nurses can only create medical appointments.'
+      );
+      return;
+    }
+
+    setFormError('');
+
+    // Only one appointment purpose is available for doctor, nurse,
+    // and dentist accounts.
+    if (
+      ['doctor', 'physician', 'nurse', 'dentist'].includes(
+        normalizedStaffRole
+      )
+    ) {
+      setSelectedPurposes((previous) =>
+        previous.includes(purpose) ? [] : [purpose]
+      );
+      return;
+    }
+
+    setSelectedPurposes((previous) =>
+      previous.includes(purpose)
+        ? previous.filter((item) => item !== purpose)
+        : [...previous, purpose]
+    );
   };
 
   const canSubmit = Boolean(selectedPatient) && selectedPurposes.length > 0 && Boolean(apptDate) && Boolean(apptTime) && !submitting;
 
-const handleSubmit = async () => {
-  if (!canSubmit) {
-    setFormError('Please select a patient, purpose, date, and time.');
-    return;
-  }
-
-  setSubmitting(true);
-  setFormError('');
-
-  try {
-    const token = localStorage.getItem('token');
-
-    if (!token) {
-      throw new Error('Authentication required. Please log in again.');
+  const handleSubmit = async () => {
+    if (!canSubmit) {
+      setFormError('Please select a patient, purpose, date, and time.');
+      return;
     }
 
-    const fullName = selectedPatient.last_name
-      ? `${selectedPatient.last_name}, ${selectedPatient.first_name || ''} ${selectedPatient.middle_name || ''}`.trim()
-      : (
-          selectedPatient.first_name ||
-          selectedPatient.university_id ||
-          'Unknown'
-        );
+    const selectedDental = selectedPurposes.includes('Dental Check-up');
+    const selectedMedical = selectedPurposes.includes('Medical Check-up');
 
-    const isDental = selectedPurposes.includes('Dental Check-up');
-    const isMedical = selectedPurposes.includes('Medical Check-up');
+    if (
+      ['doctor', 'physician', 'nurse'].includes(
+        normalizedStaffRole
+      ) &&
+      (!selectedMedical || selectedDental)
+    ) {
+      setFormError(
+        'Doctors and nurses can only create medical appointments.'
+      );
+      return;
+    }
 
-    const serviceType =
-      isDental && isMedical
-        ? 'Medical Consultation, Dental Examination'
-        : isDental
-          ? 'Dental Examination'
-          : 'Medical Consultation';
+    if (
+      normalizedStaffRole === 'dentist' &&
+      (!selectedDental || selectedMedical)
+    ) {
+      setFormError(
+        'Dentists can only create dental appointments.'
+      );
+      return;
+    }
 
-    const reason = reasonNote.trim()
-      ? `${selectedPurposes.join(', ')} — ${reasonNote.trim()}`
-      : selectedPurposes.join(', ');
-
-    const [y, m, d] = apptDate.split('-').map(Number);
-
-    const payload = {
-      userId: selectedPatient.id,
-      patientName: fullName,
-      serviceType,
-      reason,
-      year: y,
-      month: m,
-      day: d,
-      time: apptTime,
-    };
-
-    console.log(
-      '[CreateAppointmentModal] Sending appointment to backend:',
-      payload
-    );
-
-    const API_URL = (
-      import.meta.env.VITE_API_URL ||
-      'http://localhost:5000/api'
-    ).replace(/\/$/, '');
-
-    const response = await fetch(`${API_URL}/appointments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    let result;
+    setSubmitting(true);
+    setFormError('');
 
     try {
-      result = await response.json();
-    } catch {
-      throw new Error(
-        `Server returned an invalid response (${response.status}).`
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+
+      const fullName = selectedPatient.last_name
+        ? `${selectedPatient.last_name}, ${selectedPatient.first_name || ''} ${
+            selectedPatient.middle_name || ''
+          }`.replace(/\s+/g, ' ').trim()
+        : (
+            selectedPatient.first_name ||
+            selectedPatient.university_id ||
+            'Unknown Patient'
+          );
+
+      const rawRole = String(
+        selectedPatient.role ||
+        selectedPatient.classification ||
+        selectedPatient.job_title ||
+        'student'
+      )
+        .trim()
+        .toLowerCase();
+
+      let patientType = 'student';
+
+      if (
+        rawRole.includes('faculty') ||
+        rawRole.includes('instructor') ||
+        rawRole.includes('professor')
+      ) {
+        patientType = 'instructor';
+      } else if (
+        rawRole.includes('staff') ||
+        rawRole.includes('employee') ||
+        rawRole.includes('personnel') ||
+        rawRole.includes('doctor') ||
+        rawRole.includes('dentist') ||
+        rawRole.includes('nurse') ||
+        rawRole.includes('admin')
+      ) {
+        patientType = 'staff';
+      }
+
+      const serviceType = selectedDental ? 'Dental Examination' : 'Medical Consultation';
+
+      const reason = reasonNote.trim()
+        ? `${selectedPurposes.join(', ')} — ${reasonNote.trim()}`
+        : selectedPurposes.join(', ');
+
+      const [year, month, day] = apptDate.split('-').map(Number);
+
+      if (!selectedPatient.id) {
+        throw new Error('The selected patient has no internal user ID.');
+      }
+
+      if (!selectedPatient.uid) {
+        throw new Error(
+          'The selected patient has no authentication UID. Make sure uid is included in the patient search query.'
+        );
+      }
+
+      const payload = {
+        authUid: String(selectedPatient.uid),
+        userId: String(selectedPatient.id),
+
+        patientId: String(
+          selectedPatient.university_id ||
+          selectedPatient.uid
+        ),
+
+        patientName: fullName,
+        name: fullName,
+        type: patientType,
+
+        serviceType,
+        reason,
+
+        year,
+        month,
+        day,
+        time: String(apptTime),
+
+        bookedBy: currentStaffName || 'Clinic Staff',
+        status: 'approved',
+      };
+
+      console.log(
+        '[CreateAppointmentModal] Sending appointment to backend:',
+        payload
       );
-    }
 
-    console.log(
-      '[CreateAppointmentModal] Backend response:',
-      result
-    );
+      const API_URL = (
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:5000/api'
+      ).replace(/\/$/, '');
 
-    if (!response.ok || !result.success) {
-      throw new Error(
-        result?.message ||
-        result?.error ||
-        `Failed to create appointment (${response.status}).`
+      const response = await fetch(`${API_URL}/appointments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let result;
+
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error(
+          `Server returned an invalid response (${response.status}).`
+        );
+      }
+
+      console.log(
+        '[CreateAppointmentModal] Backend response:',
+        result
       );
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result?.message ||
+          result?.error ||
+          `Failed to create appointment (${response.status}).`
+        );
+      }
+
+      const inserted = result.data;
+
+      console.log(
+        '[CreateAppointmentModal] Appointment created successfully:',
+        inserted
+      );
+
+      onCreated?.(inserted);
+
+      resetForm();
+      onClose();
+
+    } catch (err) {
+      console.error(
+        '[CreateAppointmentModal] Error creating appointment:',
+        err
+      );
+
+      setFormError(
+        err?.message ||
+        'Could not create the appointment. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
     }
-
-    const inserted = result.data;
-
-    console.log(
-      '[CreateAppointmentModal] Appointment created successfully:',
-      inserted
-    );
-
-    onCreated?.(inserted);
-
-    resetForm();
-    onClose();
-
-  } catch (err) {
-    console.error(
-      '[CreateAppointmentModal] Error creating appointment:',
-      err
-    );
-
-    setFormError(
-      err?.message ||
-      'Could not create the appointment. Please try again.'
-    );
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   if (!isOpen) return null;
 
@@ -826,7 +980,14 @@ const handleSubmit = async () => {
                       patientResults.map(p => (
                         <button
                           key={p.id}
-                          onClick={() => { setSelectedPatient(p); setPatientResults([]); }}
+                          onClick={() => {
+                            console.log(
+                              '[CreateAppointmentModal] Selected patient:',
+                              p
+                            );
+                            setSelectedPatient(p);
+                            setPatientResults([]);
+                          }}
                           className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#f0f5f4] transition-colors border-b border-[#f1f5f9] last:border-none"
                         >
                           <div className="font-bold text-[#1e293b]">
@@ -847,23 +1008,62 @@ const handleSubmit = async () => {
           {/* ── Purpose ── */}
           <div className="flex flex-col gap-2">
             <label className="text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em]">
-              Purpose * <span className="normal-case font-medium text-[#94a3b8]">select all that apply</span>
+              Purpose *
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {STAFF_PURPOSES_OPTS.map(p => {
-                const checked = selectedPurposes.includes(p.value);
+
+            <p className="text-[11px] text-[#64748b]">
+              {normalizedStaffRole === 'dentist'
+                ? 'Dentist accounts may schedule dental appointments only.'
+                : normalizedStaffRole === 'doctor' ||
+                    normalizedStaffRole === 'physician' ||
+                    normalizedStaffRole === 'nurse'
+                  ? 'Doctor and nurse accounts may schedule medical appointments only.'
+                  : 'Select the appropriate appointment type.'}
+            </p>
+
+            <div
+              className={
+                availablePurposeOptions.length === 1
+                  ? 'grid grid-cols-1 gap-2'
+                  : 'grid grid-cols-2 gap-2'
+              }
+            >
+              {availablePurposeOptions.map((purpose) => {
+                const checked = selectedPurposes.includes(
+                  purpose.value
+                );
+
                 return (
                   <label
-                    key={p.key}
+                    key={purpose.key}
                     className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-[10px] border cursor-pointer transition-all text-[13px] font-semibold select-none ${
-                      checked ? 'bg-[#eef3f2] border-[#466460] text-[#466460]' : 'bg-white border-[#e2e8f0] text-[#1e293b] hover:border-[#9bb5a5]'
+                      checked
+                        ? 'bg-[#eef3f2] border-[#466460] text-[#466460]'
+                        : 'bg-white border-[#e2e8f0] text-[#1e293b] hover:border-[#9bb5a5]'
                     }`}
                   >
-                    <span className={`flex-shrink-0 w-4 h-4 rounded-[5px] border-2 flex items-center justify-center transition-all ${checked ? 'bg-[#466460] border-[#466460]' : 'bg-white border-[#c6dfd0]'}`}>
-                      {checked && <IconCheck size={9} />}
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        togglePurpose(purpose.value)
+                      }
+                      className="sr-only"
+                    />
+
+                    <span
+                      className={`w-4 h-4 rounded flex items-center justify-center border ${
+                        checked
+                          ? 'bg-[#466460] border-[#466460] text-white'
+                          : 'border-[#cbd5e1] bg-white'
+                      }`}
+                    >
+                      {checked && (
+                        <i className="fa-solid fa-check text-[9px]" />
+                      )}
                     </span>
-                    <input type="checkbox" className="sr-only" checked={checked} onChange={() => togglePurpose(p.value)} />
-                    {p.value}
+
+                    {purpose.value}
                   </label>
                 );
               })}
@@ -1018,15 +1218,18 @@ export const Appointments = () => {
   };
 
   const appointments = useMemo(() => {
+    // Filter out archived appointments
+    const unarchivedAppts = allRawAppointments.filter(a => !a.is_archived);
+
     const role = String(currentUserRole || '').toLowerCase().trim();
     if (role === 'dentist') {
-      return allRawAppointments.filter(a => isDentalRelated(a.reason));
+      return unarchivedAppts.filter(a => isDentalRelated(a.reason));
     }
     if (role === 'doctor' || role === 'physician') {
-      return allRawAppointments.filter(a => !isDentalRelated(a.reason));
+      return unarchivedAppts.filter(a => !isDentalRelated(a.reason));
     }
     // Nurse, Admin, Sysadmin see all
-    return allRawAppointments;
+    return unarchivedAppts;
   }, [allRawAppointments, currentUserRole]);
 
   // ── Calendar state ──
@@ -1500,22 +1703,20 @@ export const Appointments = () => {
     setExamResetKey(k => k + 1);
   };
 
-  // ── Create Appointment Handler ──
 const handleAppointmentCreated = (createdAppt) => {
-    showSnackbar('Appointment created successfully');
+  showSnackbar('Appointment created successfully');
 
-    // Set the calendar to the newly created appointment's date before reloading
-    if (createdAppt?.year && createdAppt?.month && createdAppt?.day) {
-      sessionStorage.setItem('lastCreatedDate', JSON.stringify({
-        year: createdAppt.year, month: createdAppt.month, day: createdAppt.day
-      }));
-    }
-
-    // Give the user 1.5 seconds to read the success message, then sync the state
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
-  };
+  if (
+    createdAppt?.year &&
+    createdAppt?.month &&
+    createdAppt?.day
+  ) {
+    setCalYear(Number(createdAppt.year));
+    setCalMonth(Number(createdAppt.month));
+    setSelectedDay(Number(createdAppt.day));
+    setActiveTab('approved');
+  }
+};
 
   // ── Pending List ──────────────────────────────────────────────────────────
   const PendingList = () => (
@@ -2434,6 +2635,7 @@ const handleAppointmentCreated = (createdAppt) => {
         onClose={() => setCreateApptModal(false)}
         onCreated={handleAppointmentCreated}
         currentStaffName={currentStaffName}
+        currentStaffRole={currentUserRole}
       />
 
       {/* ── BATCH SCHEDULING MODAL ── */}

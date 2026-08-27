@@ -11,6 +11,7 @@ import {
   useLocation,
 } from "react-router-dom";
 
+
 import { App as CapacitorApp } from "@capacitor/app";
 
 import authService from "../../services/auth.service.js";

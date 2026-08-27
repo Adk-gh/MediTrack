@@ -1,6 +1,8 @@
 // C:\Users\HP\MediTrack\controllers\systemConfig.controller.js
 
 const systemConfigService = require('../services/systemConfig.service');
+const notificationsService =
+  require('../features/notifications/notifications.service');
 
 // ============================================================
 // HELPERS
@@ -241,11 +243,31 @@ const updateSystemConfig = async (
     // true  -> false = keep version
     // false -> false = keep version
     // ---------------------------------------------------------
+// Read the current value before updating so we can detect false -> true.
+const previousConfig =
+  await systemConfigService.getSystemConfig(true);
+
+const wasAcademicPromptEnabled = Boolean(
+  previousConfig?.prompt_student_academic_update
+);
 
     const updatedConfig =
       await systemConfigService.updateSystemConfig(
         configData
       );
+
+      const isAcademicPromptEnabled = Boolean(
+  updatedConfig?.prompt_student_academic_update
+);
+
+const academicPromptWasNewlyEnabled =
+  Object.prototype.hasOwnProperty.call(
+    configData,
+    'prompt_student_academic_update'
+  ) &&
+  configData.prompt_student_academic_update === true &&
+  !wasAcademicPromptEnabled &&
+  isAcademicPromptEnabled;
 
     const changedFields =
       Object.keys(configData);
@@ -261,6 +283,39 @@ const updateSystemConfig = async (
         configData,
         'password_rules'
       );
+
+      if (academicPromptWasNewlyEnabled) {
+  const academicVersion = Number(
+    updatedConfig?.academic_update_version || 1
+  );
+
+  try {
+    await notificationsService.notifyRoles(
+      ['student'],
+      {
+        type: 'academic_info_update',
+        title: 'Academic Information Update Required',
+        message:
+          `Please review and update your current year level, section, ` +
+          `program, and academic information. Academic update version ${academicVersion} is now active.`,
+        referenceId: null,
+        referenceType: 'student_profile',
+      }
+    );
+
+    console.log(
+      `[SystemConfig] Academic update notifications sent for version ${academicVersion}.`
+    );
+  } catch (notificationError) {
+    console.error(
+      '[SystemConfig] Failed to notify students about academic update:',
+      notificationError
+    );
+
+    // The system configuration remains successfully updated even if
+    // notification creation fails.
+  }
+}
 
     setAuditData(
       res,

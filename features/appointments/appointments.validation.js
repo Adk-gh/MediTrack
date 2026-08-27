@@ -2,22 +2,75 @@
 const { z } = require("zod");
 
 const createAppointmentSchema = z.object({
-  // Identity Fields
-  patientId: z.string().min(1, "Patient ID is required"),
-  name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be at most 100 characters"),
+  // Selected patient's internal users.id UUID
+  userId: z
+    .string()
+    .uuid('Selected patient user ID must be a valid UUID.')
+    .optional(),
 
-  // Loosened to string to allow dynamic DB validation via middleware
-  type: z.string().min(1, "User type is required"),
+  // Selected patient's University ID
+  patientId: z
+    .string()
+    .min(1, 'Patient ID is required'),
 
-  // Medical Fields
-  serviceType: z.string().min(1, "Service type is required"),
-  reason: z.string().optional(),
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be at most 100 characters'),
 
-  // Scheduling Fields
-  year: z.coerce.number().min(2020).nullable().optional(),
-  month: z.coerce.string().nullable().optional(),
-  day: z.coerce.string().nullable().optional(),
-  time: z.string().nullable().optional(),
+  type: z
+    .string()
+    .min(1, 'User type is required'),
+
+  serviceType: z
+    .string()
+    .min(1, 'Service type is required'),
+
+  reason: z
+    .string()
+    .optional(),
+
+  year: z.coerce
+    .number()
+    .int()
+    .min(2020)
+    .nullable()
+    .optional(),
+
+  month: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(12)
+    .nullable()
+    .optional(),
+
+  day: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(31)
+    .nullable()
+    .optional(),
+
+  time: z
+    .string()
+    .nullable()
+    .optional(),
+
+  patientName: z
+    .string()
+    .min(2)
+    .max(100)
+    .optional(),
+
+  bookedBy: z
+    .string()
+    .optional(),
+
+  status: z
+    .string()
+    .optional(),
 });
 
 const updateAppointmentSchema = z.object({

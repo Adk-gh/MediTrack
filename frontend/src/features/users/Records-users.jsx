@@ -948,7 +948,15 @@ export default function RecordsUsers() {
         </div>
 
         {/* SCROLL CONTENT */}
-        <div ref={scrollElRef} style={{ flex: 1, padding: '0 16px 32px', overflowY: 'auto', scrollbarWidth: 'none' }}>
+        <div
+  ref={scrollElRef}
+  style={{
+    flex: 1,
+    padding: '12px 16px 32px',
+    overflowY: 'auto',
+    scrollbarWidth: 'none'
+  }}
+>
           <PullIndicator indicatorRef={indicatorRef} />
 
           {filteredRecords.length === 0 ? (
@@ -969,14 +977,15 @@ export default function RecordsUsers() {
                     onClick={() => openRecord(record)}
                     onMouseEnter={(event) => { event.currentTarget.style.borderColor = '#466460'; event.currentTarget.style.boxShadow = '0 4px 16px rgba(70,100,96,0.12)'; }}
                     onMouseLeave={(event) => { event.currentTarget.style.borderColor = '#edf3f0'; event.currentTarget.style.boxShadow = 'none'; }}
-                    style={{ position: 'relative', background: '#fff', border: '1px solid #edf3f0', borderRadius: 20, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
+                    style={{ position: 'relative', background: '#fff', border: '1px solid #edf3f0', borderRadius: 20, padding: '14px 42px 14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
                   >
                     {hasUnreadNotification && (
                       <span
                         style={{
                           position: 'absolute',
-                          top: -6,
-                          right: -6,
+                          top: 8,
+                          right: 8,
+                          zIndex: 10,
                           minWidth: 18,
                           height: 18,
                           padding: '0 4px',

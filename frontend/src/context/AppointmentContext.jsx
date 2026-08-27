@@ -1,23 +1,38 @@
 // frontend/src/context/AppointmentContext.jsx
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from 'react';
+
 import { supabase } from '../supabase';
 
 const AppointmentContext = createContext(null);
+
 const COL = 'appointments';
 
 // ── Cache config ──────────────────────────────────────────────────────────────
+
 const CACHE_KEY = 'appt_cache_v1';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const readCache = () => {
   try {
     const raw = sessionStorage.getItem(CACHE_KEY);
+
     if (!raw) return null;
+
     const { data, ts } = JSON.parse(raw);
+
     if (Date.now() - ts > CACHE_TTL) {
       sessionStorage.removeItem(CACHE_KEY);
       return null;
     }
+
     return data;
   } catch {
     return null;
@@ -26,121 +41,255 @@ const readCache = () => {
 
 const writeCache = (data) => {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+    sessionStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        data,
+        ts: Date.now(),
+      })
+    );
   } catch {
-    // sessionStorage quota exceeded — silently skip
+    // sessionStorage quota exceeded
   }
 };
 
 const clearCache = () => {
-  try { sessionStorage.removeItem(CACHE_KEY); } catch { /* noop */ }
+  try {
+    sessionStorage.removeItem(CACHE_KEY);
+  } catch {
+    // noop
+  }
 };
 
 // Maps DB row → shape the frontend components expect
 const mapRow = (row) => ({
   ...row,
-  name:     row.name     ?? row.patient_name ?? row.student_name ?? '',
-  type:     row.type     ?? row.service_type ?? '',
-  bookedAt: row.bookedAt ?? row.created_at   ?? '',
-  status:   (row.status  ?? 'pending').toLowerCase(),
+
+  name:
+    row.name ??
+    row.patient_name ??
+    row.student_name ??
+    '',
+
+  type:
+    row.type ??
+    row.service_type ??
+    '',
+
+  bookedAt:
+    row.bookedAt ??
+    row.created_at ??
+    '',
+
+  status:
+    (row.status ?? 'pending').toLowerCase(),
 });
 
 export function AppointmentProvider({ children }) {
   const [appointments, setAppointments] = useState([]);
   const [loadingAppts, setLoadingAppts] = useState(true);
 
-  // Ref so realtime handlers always see latest appointments without re-subscribing
+  // Ref so callbacks always see the latest appointments
   const appointmentsRef = useRef([]);
-  const syncRef = (data) => {
+
+  const syncAppointments = useCallback((data) => {
     appointmentsRef.current = data;
     setAppointments(data);
-  };
+  }, []);
+
+  // ── Fetch appointments ──────────────────────────────────────────────────────
+
+  const fetchAppointments = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        if (!forceRefresh) {
+          const cached = readCache();
+
+          if (cached) {
+            syncAppointments(cached);
+            setLoadingAppts(false);
+            return cached;
+          }
+        }
+
+        setLoadingAppts(true);
+
+        const { data, error } = await supabase
+          .from(COL)
+          .select('*')
+          .eq('is_archived', false)
+          .order('created_at', {
+            ascending: true,
+          });
+
+        if (error) {
+          console.error(
+            '[AppointmentContext] Fetch failed:',
+            error
+          );
+
+          throw error;
+        }
+
+        const mapped = (data || []).map(mapRow);
+
+        syncAppointments(mapped);
+        writeCache(mapped);
+
+        return mapped;
+      } catch (error) {
+        console.error(
+          '[AppointmentContext] fetchAppointments error:',
+          error
+        );
+
+        throw error;
+      } finally {
+        setLoadingAppts(false);
+      }
+    },
+    [syncAppointments]
+  );
+
+  // ── Initial load and realtime subscription ──────────────────────────────────
 
   useEffect(() => {
-    // ── 1. Serve from cache immediately (zero loading flicker) ────────────────
+    let active = true;
+
     const cached = readCache();
+
     if (cached) {
-      syncRef(cached);
+      syncAppointments(cached);
       setLoadingAppts(false);
-      // Still subscribe to realtime — cache will be kept in sync below
+    } else {
+      fetchAppointments(true).catch(() => {
+        if (active) {
+          setLoadingAppts(false);
+        }
+      });
     }
 
-    // ── 2. Fetch from Supabase (only on cache miss or first load) ─────────────
-    const fetchAppointments = async () => {
-      if (cached) return; // cache hit — skip the DB round-trip
-
-      const { data, error } = await supabase
-        .from(COL)
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Supabase fetch error:', error);
-      } else {
-        const mapped = (data || []).map(mapRow);
-        syncRef(mapped);
-        writeCache(mapped);
-      }
-      setLoadingAppts(false);
-    };
-
-    fetchAppointments();
-
-    // ── 3. Realtime subscription — patches cache on every DB change ───────────
     const channel = supabase
       .channel(`${COL}_changes`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: COL }, (payload) => {
-        setAppointments((prev) => {
-          let next;
-          if (payload.eventType === 'INSERT') {
-            next = [...prev, mapRow(payload.new)];
-          } else if (payload.eventType === 'UPDATE') {
-            next = prev.map((a) => (a.id === payload.new.id ? mapRow(payload.new) : a));
-          } else if (payload.eventType === 'DELETE') {
-            next = prev.filter((a) => a.id !== payload.old.id);
-          } else {
-            return prev;
-          }
-          writeCache(next); // keep cache in sync with every realtime event
-          return next;
-        });
-      })
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: COL,
+        },
+        (payload) => {
+          if (!active) return;
 
-    return () => supabase.removeChannel(channel);
-  }, []);
+          setAppointments((prev) => {
+            let next = prev;
 
-  // ── Shared helper: optimistic update → Supabase write ────────────────────────
-  // Optimistic update patches local state + cache instantly;
-  // Supabase realtime will confirm/reconcile shortly after.
-  const patchStatus = useCallback(async (id, status, extra = {}) => {
-    setAppointments((prev) => {
-      const next = prev.map((a) => (a.id === id ? { ...a, status, ...extra } : a));
-      writeCache(next); // optimistically update cache too
-      return next;
-    });
+            if (payload.eventType === 'INSERT') {
+              const incoming = mapRow(payload.new);
 
-    const { error } = await supabase
-      .from(COL)
-      .update({ status, updated_at: new Date().toISOString(), ...extra })
-      .eq('id', id);
+              const alreadyExists = prev.some(
+                (appointment) =>
+                  appointment.id === incoming.id
+              );
 
-    if (error) {
-      console.error(`patchStatus(${status}) failed:`, error);
-      // Roll back optimistic update on failure
-      setAppointments((prev) => {
-        const rolledBack = prev.map((a) =>
-          a.id === id ? { ...a, status: a._prevStatus ?? a.status } : a
-        );
-        writeCache(rolledBack);
-        return rolledBack;
+              next = alreadyExists
+                ? prev.map((appointment) =>
+                    appointment.id === incoming.id
+                      ? incoming
+                      : appointment
+                  )
+                : [...prev, incoming];
+            } else if (payload.eventType === 'UPDATE') {
+              next = prev.map((appointment) =>
+                appointment.id === payload.new.id
+                  ? mapRow(payload.new)
+                  : appointment
+              );
+            } else if (payload.eventType === 'DELETE') {
+              next = prev.filter(
+                (appointment) =>
+                  appointment.id !== payload.old.id
+              );
+            }
+
+            appointmentsRef.current = next;
+            writeCache(next);
+
+            return next;
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error(
+            '[AppointmentContext] Realtime subscription failed.'
+          );
+        }
       });
-      throw error;
-    }
-  }, []);
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [fetchAppointments, syncAppointments]);
+
+  // ── Shared optimistic status update helper ──────────────────────────────────
+
+  const patchStatus = useCallback(
+    async (id, status, extra = {}) => {
+      const previousAppointments =
+        appointmentsRef.current;
+
+      const optimisticAppointments =
+        previousAppointments.map((appointment) =>
+          appointment.id === id
+            ? {
+                ...appointment,
+                status,
+                ...extra,
+              }
+            : appointment
+        );
+
+      syncAppointments(optimisticAppointments);
+      writeCache(optimisticAppointments);
+
+      const { error } = await supabase
+        .from(COL)
+        .update({
+          status,
+          updated_at: new Date().toISOString(),
+          ...extra,
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error(
+          `[AppointmentContext] patchStatus(${status}) failed:`,
+          error
+        );
+
+        syncAppointments(previousAppointments);
+        writeCache(previousAppointments);
+
+        throw error;
+      }
+    },
+    [syncAppointments]
+  );
+
+  // ── Submit patient appointment request ──────────────────────────────────────
 
   const submitRequest = useCallback(
-    async ({ name, idno, type, dept, prog, section, reason }) => {
+    async ({
+      name,
+      idno,
+      type,
+      dept,
+      prog,
+      section,
+      reason,
+    }) => {
       try {
         const { data, error } = await supabase
           .from(COL)
@@ -159,52 +308,158 @@ export function AppointmentProvider({ children }) {
           .select()
           .single();
 
-        if (error) throw error;
-        // Realtime INSERT event will update state + cache automatically
+        if (error) {
+          throw error;
+        }
+
+        const mapped = mapRow(data);
+
+        setAppointments((prev) => {
+          const alreadyExists = prev.some(
+            (appointment) =>
+              appointment.id === mapped.id
+          );
+
+          const next = alreadyExists
+            ? prev
+            : [...prev, mapped];
+
+          appointmentsRef.current = next;
+          writeCache(next);
+
+          return next;
+        });
+
         return data.id;
-      } catch (err) {
-        console.error('submitRequest failed:', err);
-        throw err;
+      } catch (error) {
+        console.error(
+          '[AppointmentContext] submitRequest failed:',
+          error
+        );
+
+        throw error;
       }
     },
     []
   );
 
+  // ── Appointment actions ─────────────────────────────────────────────────────
+
   const approveAppointment = useCallback(
     (id, { year, month, day, time }) =>
-      patchStatus(id, 'approved', { year, month, day, time }),
+      patchStatus(id, 'approved', {
+        year,
+        month,
+        day,
+        time,
+      }),
     [patchStatus]
   );
 
-  const declineAppointment = useCallback(async (id) => {
-    try {
-      // Optimistic update - set status to 'declined' instead of deleting
-      setAppointments((prev) => {
-        const next = prev.map(a =>
-          a.id === id ? { ...a, status: 'declined' } : a
+  const declineAppointment = useCallback(
+    async (id) => {
+      const previousAppointments =
+        appointmentsRef.current;
+
+      const optimisticAppointments =
+        previousAppointments.map((appointment) =>
+          appointment.id === id
+            ? {
+                ...appointment,
+                status: 'rejected',
+              }
+            : appointment
         );
+
+      syncAppointments(optimisticAppointments);
+      writeCache(optimisticAppointments);
+
+      try {
+        const { error } = await supabase
+          .from(COL)
+          .update({
+            status: 'rejected',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        console.error(
+          '[AppointmentContext] declineAppointment failed:',
+          error
+        );
+
+        syncAppointments(previousAppointments);
+        writeCache(previousAppointments);
+
+        throw error;
+      }
+    },
+    [syncAppointments]
+  );
+
+  const markDone = useCallback(
+    (id) => patchStatus(id, 'done'),
+    [patchStatus]
+  );
+
+  const markMissed = useCallback(
+    (id) => patchStatus(id, 'missed'),
+    [patchStatus]
+  );
+
+  // ── Manual local insertion ──────────────────────────────────────────────────
+  // Useful immediately after creating through your Node backend, before
+  // Supabase realtime delivers the INSERT event.
+
+  const addAppointmentLocally = useCallback(
+    (appointment) => {
+      if (!appointment?.id) return;
+
+      const mapped = mapRow(appointment);
+
+      setAppointments((prev) => {
+        const exists = prev.some(
+          (item) => item.id === mapped.id
+        );
+
+        const next = exists
+          ? prev.map((item) =>
+              item.id === mapped.id
+                ? mapped
+                : item
+            )
+          : [...prev, mapped];
+
+        appointmentsRef.current = next;
         writeCache(next);
+
         return next;
       });
+    },
+    []
+  );
 
-      // Update status to 'declined' instead of deleting
-      const { error } = await supabase
-        .from(COL)
-        .update({ status: 'declined', updated_at: new Date().toISOString() })
-        .eq('id', id);
+  // ── Cache refresh ────────────────────────────────────────────────────────────
 
-      if (error) throw error;
-    } catch (err) {
-      console.error('declineAppointment failed:', err);
-      throw err;
-    }
-  }, []);
-
-  const markDone   = useCallback((id) => patchStatus(id, 'done'),   [patchStatus]);
-  const markMissed = useCallback((id) => patchStatus(id, 'missed'), [patchStatus]);
+  const refreshAppointments = useCallback(
+    async () => {
+      clearCache();
+      return fetchAppointments(true);
+    },
+    [fetchAppointments]
+  );
 
   const getPatientAppointments = useCallback(
-    (idno) => appointments.filter((a) => a.idno === idno),
+    (idno) =>
+      appointments.filter(
+        (appointment) =>
+          appointment.idno === idno ||
+          appointment.patient_id === idno
+      ),
     [appointments]
   );
 
@@ -213,6 +468,11 @@ export function AppointmentProvider({ children }) {
       value={{
         appointments,
         loadingAppts,
+
+        fetchAppointments,
+        refreshAppointments,
+        addAppointmentLocally,
+
         submitRequest,
         approveAppointment,
         declineAppointment,
@@ -228,6 +488,12 @@ export function AppointmentProvider({ children }) {
 
 export function useAppointments() {
   const ctx = useContext(AppointmentContext);
-  if (!ctx) throw new Error('useAppointments must be used inside <AppointmentProvider>');
+
+  if (!ctx) {
+    throw new Error(
+      'useAppointments must be used inside <AppointmentProvider>'
+    );
+  }
+
   return ctx;
 }

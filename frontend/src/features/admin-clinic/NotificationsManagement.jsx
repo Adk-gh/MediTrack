@@ -84,7 +84,7 @@ const ReadPill = ({ isRead }) => {
 };
 
 // ── Notification row ───────────────────────────────────────────────────────
-const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
+const NotificationRow = ({ index, notification, onView, onEdit, onDelete }) => {
   const name = getFullName(notification._user);
   const initials = getInitials(name);
 
@@ -123,18 +123,17 @@ const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
       </td>
 
       {/* Reference */}
-
-<td className="p-3 hidden lg:table-cell">
-  {notification.reference_type ? (
-    <span className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 font-mono">
-      {notification.reference_type}
-    </span>
-  ) : (
-    <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500">
-      No Reference
-    </span>
-  )}
-</td>
+      <td className="p-3 hidden lg:table-cell">
+        {notification.reference_type ? (
+          <span className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 font-mono">
+            {notification.reference_type}
+          </span>
+        ) : (
+          <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500">
+            No Reference
+          </span>
+        )}
+      </td>
 
       {/* Created at */}
       <td className="p-3 hidden md:table-cell">
@@ -150,7 +149,17 @@ const NotificationRow = ({ index, notification, onEdit, onDelete }) => {
 
       {/* Actions */}
       <td className="p-3 pr-4">
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-1">
+          <button
+            onClick={() => onView(notification)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
+            title="View Details"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
           <button
             onClick={() => onEdit(notification)}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
@@ -206,12 +215,16 @@ export const NotificationsManagement = () => {
   const [totalRecords, setTotalRecords] = useState(0);
   const ITEMS_PER_PAGE = 100;
 
-  // Archive modal
+  // View modal state
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [notifToView, setNotifToView] = useState(null);
+
+  // Archive modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [notifToDelete, setNotifToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Edit (read status) modal
+  // Edit (read status) modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editNotification, setEditNotification] = useState(null);
   const [editIsRead, setEditIsRead] = useState(false);
@@ -242,16 +255,15 @@ export const NotificationsManagement = () => {
   });
 
   // Global Config fetch
- // Global Config fetch
   const fetchConfig = async () => {
     try {
-      const token = localStorage.getItem('token'); // Retrieve your token
+      const token = localStorage.getItem('token');
 
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Attach token here
+          'Authorization': `Bearer ${token}`
         }
       });
 
@@ -284,7 +296,6 @@ export const NotificationsManagement = () => {
   const fetchNotifications = async (page = 1) => {
     setLoading(true);
     try {
-      // Use standard join unless filtering by dept or searching by recipient
       let selectStr = '*, _user:users(id, first_name, last_name, middle_name, email, role, department, university_id)';
       if (filterDept !== 'all') {
         selectStr = '*, _user:users!inner(id, first_name, last_name, middle_name, email, role, department, university_id)';
@@ -307,7 +318,6 @@ export const NotificationsManagement = () => {
       if (debouncedSearch) {
         const s = debouncedSearch.toLowerCase();
 
-        // Step 1: Find matching users (capped at 100 to avoid URI overflow)
         const { data: users } = await supabase
           .from('users')
           .select('id')
@@ -316,7 +326,6 @@ export const NotificationsManagement = () => {
 
         const userIds = users?.map(u => u.id) || [];
 
-        // Step 2: Combine search conditions
         let orString = `title.ilike.%${s}%,message.ilike.%${s}%`;
         if (userIds.length > 0) {
           orString += `,user_id.in.(${userIds.join(',')})`;
@@ -324,14 +333,12 @@ export const NotificationsManagement = () => {
         query = query.or(orString);
       }
 
-      // Apply sorting
       if (sortOrder === 'asc') {
         query = query.order('created_at', { ascending: true });
       } else {
         query = query.order('created_at', { ascending: false });
       }
 
-      // Apply pagination boundaries
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
       query = query.range(from, to);
@@ -350,13 +357,11 @@ export const NotificationsManagement = () => {
     }
   };
 
-  // Initial Data Load
   useEffect(() => {
     fetchConfig();
     fetchStats();
   }, []);
 
-  // Debounce search input
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchInput);
@@ -364,18 +369,15 @@ export const NotificationsManagement = () => {
     return () => clearTimeout(handler);
   }, [searchInput]);
 
-  // Refetch when dependencies change
   useEffect(() => {
     fetchNotifications(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, filterType, filterRead, filterDept, filterDate, sortOrder, debouncedSearch]);
 
-  // Reset to page 1 on filter change
   useEffect(() => {
     setCurrentPage(1);
   }, [filterType, filterRead, filterDept, filterDate, sortOrder, debouncedSearch]);
 
-  // Clean up the snackbar timer on unmount
   useEffect(() => {
     return () => {
       if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
@@ -383,8 +385,6 @@ export const NotificationsManagement = () => {
   }, []);
 
   const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
-
-  // Derive filter options
   const typeOptions = ['all', ...TYPE_OPTIONS];
   const deptOptions = configData ? configData.departments.map(d => d.full) : [];
 
@@ -397,11 +397,19 @@ export const NotificationsManagement = () => {
     if (error) { showSnackbar('Failed to update notification', 'error'); throw error; }
 
     setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, isRead: newIsRead } : n));
-
-    // Refresh global stats silently
     fetchStats();
-
     showSnackbar(newIsRead ? 'Marked as read' : 'Marked as unread');
+  };
+
+  // View modal handlers
+  const openViewModal = (notification) => {
+    setNotifToView(notification);
+    setShowViewModal(true);
+  };
+
+  const closeViewModal = () => {
+    setShowViewModal(false);
+    setNotifToView(null);
   };
 
   // Edit modal handlers
@@ -429,6 +437,7 @@ export const NotificationsManagement = () => {
     }
   };
 
+  // Delete modal handlers
   const openDeleteModal = (notification) => {
     setNotifToDelete(notification);
     setShowDeleteModal(true);
@@ -446,10 +455,8 @@ export const NotificationsManagement = () => {
 
       if (error) { showSnackbar('Failed to archive notification', 'error'); throw error; }
 
-      // Remove it from the local screen & refresh stats
       setNotifications(prev => prev.filter(n => n.id !== notifToDelete.id));
       fetchStats();
-
 
       showSnackbar('Notification archived successfully', 'success', { label: 'View in Archives', path: '/archives' });
     } catch (err) {
@@ -606,6 +613,7 @@ export const NotificationsManagement = () => {
                   key={notification.id}
                   index={(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
                   notification={notification}
+                  onView={openViewModal}
                   onEdit={openEditModal}
                   onDelete={openDeleteModal}
                 />
@@ -643,6 +651,96 @@ export const NotificationsManagement = () => {
         )}
 
       </div>
+
+      {/* View Modal using Portal */}
+      {showViewModal && notifToView && createPortal(
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          onClick={closeViewModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${getTypeBadge(notifToView.type)}`}>
+                  {formatTypeLabel(notifToView.type)}
+                </span>
+                <h2 className="text-xl font-bold text-[#1a2e22]">Notification Details</h2>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Title</label>
+                  <p className="text-sm font-medium text-slate-800">{notifToView.title || '—'}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Recipient</label>
+                  <p className="text-sm font-medium text-slate-800">{getFullName(notifToView._user)}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Message</label>
+                <p className="text-sm text-slate-600">{notifToView.message || '—'}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Date Created</label>
+                  <p className="text-sm text-slate-700">{formatDateTime(notifToView.createdAt)}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Status</label>
+                  <div className="mt-1"><ReadPill isRead={notifToView.isRead} /></div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Notification ID</label>
+                <p className="text-sm font-mono text-slate-500">{String(notifToView.id)}</p>
+              </div>
+
+              {/* Full Data - Collapsible */}
+              <details className="group mt-4 border-t border-slate-100 pt-4">
+                <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460] flex items-center gap-1.5 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 group-open:rotate-90 transition-transform">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                  View Full Data
+                </summary>
+                <div className="mt-3 bg-slate-50 rounded-lg border border-slate-200 max-h-64 overflow-y-auto">
+                  <ul className="list-none text-xs divide-y divide-slate-200">
+                    {Object.entries(notifToView).map(([key, value]) => (
+                      <li key={key} className="flex flex-col sm:flex-row p-3 hover:bg-slate-100/50 transition-colors">
+                        <span className="font-bold text-slate-500 uppercase sm:w-1/3 shrink-0 mb-1 sm:mb-0">
+                          {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
+                        </span>
+                        <span className="text-slate-800 break-all sm:w-2/3">
+                          {typeof value === 'object' && value !== null
+                            ? JSON.stringify(value)
+                            : String(value ?? '—')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={closeViewModal}
+                className="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Edit (Change Read Status) Modal Using Portal */}
       {showEditModal && createPortal(

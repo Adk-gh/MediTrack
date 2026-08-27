@@ -1,5 +1,6 @@
 // C:\Users\HP\MediTrack\frontend\src\components\UserNotifications.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { supabase } from '../supabase';
 import notificationsService from '../services/notifications.service.js';
@@ -118,6 +119,7 @@ const PAGE_SIZE = 20;
 
 export function UserNotificationPanel({ isOpen, onClose }) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -249,6 +251,78 @@ export function UserNotificationPanel({ isOpen, onClose }) {
     }
   };
 
+const getNotificationTarget = (notification) => {
+  const type = String(notification.type || '').toLowerCase();
+
+  const referenceType = String(
+    notification.referenceType ||
+    notification.reference_type ||
+    ''
+  ).toLowerCase();
+
+  const searchableText = [
+    notification.title,
+    notification.message,
+    type,
+    referenceType,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (
+    type.includes('appointment') ||
+    referenceType.includes('appointment') ||
+    searchableText.includes('appointment')
+  ) {
+    return 'appointments';
+  }
+
+  if (
+    type.includes('medical_record') ||
+    type.includes('dental_record') ||
+    type.includes('record_added') ||
+    type.includes('record_updated') ||
+    referenceType.includes('medical_record') ||
+    referenceType.includes('dental_record') ||
+    referenceType === 'record' ||
+    searchableText.includes('medical record') ||
+    searchableText.includes('dental record')
+  ) {
+    return 'records';
+  }
+
+  if (
+    type.includes('consultation') ||
+    referenceType.includes('consultation') ||
+    searchableText.includes('consultation')
+  ) {
+    return 'consultations';
+  }
+
+  if (
+    type.includes('announcement') ||
+    referenceType.includes('announcement') ||
+    searchableText.includes('announcement')
+  ) {
+    return 'home';
+  }
+
+  if (
+    type.includes('profile') ||
+    type.includes('user') ||
+    type.includes('account') ||
+    referenceType.includes('profile') ||
+    referenceType.includes('user') ||
+    searchableText.includes('profile') ||
+    searchableText.includes('account')
+  ) {
+    return 'profile';
+  }
+
+  return 'home';
+};
+
   const handleMarkAsRead = async (notificationId) => {
     try {
       await notificationsService.markAsRead(notificationId);
@@ -260,6 +334,44 @@ export function UserNotificationPanel({ isOpen, onClose }) {
       console.error('Error marking as read:', error);
     }
   };
+
+const handleNotificationClick = async (notification) => {
+  try {
+    if (!notification.isRead) {
+      await notificationsService.markAsRead(notification.id);
+
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === notification.id
+            ? { ...n, isRead: true }
+            : n
+        )
+      );
+
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+  } catch (err) {
+    console.error(err);
+  }
+
+  const tab = getNotificationTarget(notification);
+
+  onClose();
+
+  // If already inside MediTrack
+  window.dispatchEvent(
+    new CustomEvent("meditrack:navigate", {
+      detail: { to: tab }
+    })
+  );
+
+  // If coming from another route
+  navigate("/student/meditrack", {
+    state: {
+      activeTab: tab
+    }
+  });
+};
 
   const handleMarkAllAsRead = async () => {
     try {
@@ -378,7 +490,7 @@ export function UserNotificationPanel({ isOpen, onClose }) {
                     className={`px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer ${
                       !notification.isRead ? 'bg-green-50/50' : ''
                     }`}
-                    onClick={() => !notification.isRead && handleMarkAsRead(notification.id)}
+                   onClick={() => handleNotificationClick(notification)}
                   >
                     <div className="flex gap-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${

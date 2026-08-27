@@ -202,7 +202,7 @@ function useCurrentPatient() {
         const last   = u.last_name   || u.lastName   || '';
         return [first, middle, last].filter(Boolean).join(' ').trim() || '—';
       };
-      const role = user.role || user.type || 'student';
+      const role = user.role || 'student';
       return {
         uid:       user.id || user.uid || null,
         token:     user.token || localStorage.getItem('token') || null,
@@ -625,62 +625,115 @@ const { scrollElRef, indicatorRef } =
   const canSubmit = selectedPurposes.length > 0;
 
 const handleSubmit = async () => {
-    const reason = selectedPurposes.join(', ');
+  const reason = selectedPurposes.join(', ');
 
-    if (!canSubmit) { setSubmitError(t('appointments.errorFields', 'Please complete all required fields.')); return; }
-    setSubmitting(true);
-    setSubmitError('');
+  if (!canSubmit) {
+    setSubmitError(
+      t(
+        'appointments.errorFields',
+        'Please complete all required fields.'
+      )
+    );
+    return;
+  }
 
-    const isDentalPurpose = selectedPurposes.includes('Dental Check-up') || selectedPurposes.includes('Online Dental Examination');
-    const isOnlinePurpose = selectedPurposes.includes('Online Medical Examination') || selectedPurposes.includes('Online Dental Examination');
+  setSubmitting(true);
+  setSubmitError('');
+
+  try {
+    const isDentalPurpose =
+      selectedPurposes.includes('Dental Check-up') ||
+      selectedPurposes.includes('Online Dental Examination');
+
+    const isOnlinePurpose =
+      selectedPurposes.includes('Online Medical Examination') ||
+      selectedPurposes.includes('Online Dental Examination');
+
     const serviceType = isDentalPurpose
-      ? (isOnlinePurpose ? 'Online Dental Consultation' : 'Dental Examination')
-      : (isOnlinePurpose ? 'Online Medical Consultation' : 'Medical Consultation');
+      ? isOnlinePurpose
+        ? 'Online Dental Consultation'
+        : 'Dental Examination'
+      : isOnlinePurpose
+        ? 'Online Medical Consultation'
+        : 'Medical Consultation';
 
-    const internalId = userProfile?.id || (await getInternalUserId());
+    const internalId =
+      userProfile?.id ||
+      (await getInternalUserId());
 
-    // --- ADD THIS MAPPING LOGIC ---
-    let mappedType = currentPatient.type.toLowerCase();
+    if (!internalId) {
+      throw new Error(
+        'Could not resolve your account. Please log in again.'
+      );
+    }
+
+    let mappedType = String(
+      currentPatient?.type || 'student'
+    )
+      .toLowerCase()
+      .trim();
+
     if (FACULTY_ROLES.includes(mappedType)) {
       mappedType = 'instructor';
-    } else if (mappedType !== 'staff' && mappedType !== 'instructor') {
-      mappedType = 'student'; // Fallback to ensure schema compliance
+    } else if (
+      mappedType !== 'staff' &&
+      mappedType !== 'instructor'
+    ) {
+      mappedType = 'student';
     }
-    // ------------------------------
 
     const payload = {
       authUid: currentPatient.uid,
       userId: internalId,
-      patientId: currentPatient.idno !== '—' ? currentPatient.idno : (currentPatient.uid || 'unknown'),
+      patientId:
+        userProfile?.university_id ||
+        (currentPatient.idno !== '—'
+          ? currentPatient.idno
+          : null),
       patientName: currentPatient.name,
       name: currentPatient.name,
-      type: mappedType, // <-- UPDATE THIS LINE TO USE THE MAPPED VALUE
-      serviceType: serviceType,
-      reason: reason
+      type: mappedType,
+      serviceType,
+      reason,
     };
 
-    try {
-      const token = await getFreshToken();
-      const response = await axios.post(`${API_URL}/appointments`, payload, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-      });
+    const token = await getFreshToken();
 
-      if (response.data.success) {
-        setShowModal(false);
-        setSubmitted(true);
-        setSelectedPurposes([]);
-        fetchAppointments();
-        setTimeout(() => setSubmitted(false), 4000);
+    const response = await axios.post(
+      `${API_URL}/appointments`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       }
-    } catch (err) {
-      console.error('Error submitting appointment request:', err);
-      setSubmitError(err.response?.data?.message || t('appointments.errorSubmit', 'Could not save your appointment request. Please try again.'));
-    } finally {
-      setSubmitting(false);
+    );
+
+    if (response.data.success) {
+      setShowModal(false);
+      setSubmitted(true);
+      setSelectedPurposes([]);
+      await fetchAppointments();
+      setTimeout(() => setSubmitted(false), 4000);
     }
-  };
+  } catch (err) {
+    console.error(
+      'Error submitting appointment request:',
+      err
+    );
+
+    setSubmitError(
+      err.response?.data?.message ||
+      err.message ||
+      t(
+        'appointments.errorSubmit',
+        'Could not save your appointment request. Please try again.'
+      )
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const formatApptDate = (appt) => {
     if (!appt.year || !appt.time) return t('appointments.awaitingSchedule', 'Awaiting schedule from clinic');
@@ -776,7 +829,10 @@ const handleSubmit = async () => {
                 </div>
               </div>
 
-              <div ref={scrollElRef} className="flex-1 overflow-y-auto min-h-0 px-5 pb-5">
+              <div
+  ref={scrollElRef}
+  className="flex-1 overflow-y-auto min-h-0 px-5 pt-3 pb-5"
+>
                 <PullIndicator indicatorRef={indicatorRef} />
                 <div className="max-w-[800px] w-full mx-auto">
                   {loadingAppts ? (
@@ -843,8 +899,8 @@ const handleSubmit = async () => {
     <span
       className="
         absolute
-        -top-1.5
-        -right-1.5
+        -top-2
+        -right-2
         min-w-[18px]
         h-[18px]
         px-1
@@ -868,7 +924,7 @@ const handleSubmit = async () => {
     </span>
   )}
 
-  <div className="flex items-center justify-between gap-2">
+<div className="flex items-center justify-between gap-2 pr-6">
     <div className="text-sm font-bold text-[#1a2e22]">
       {appt.reason || appt.service_type}
     </div>

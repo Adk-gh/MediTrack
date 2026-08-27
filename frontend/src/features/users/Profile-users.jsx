@@ -458,7 +458,7 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
 
   const extractSectionData = (data, section, isStudentUser) => {
     const s = {
-      personal: ['firstName', 'middleName', 'lastName', 'suffix', 'birthday', 'age', 'sex', 'bloodType', 'civilStatus', 'religion', 'nationality', 'homeAddress', 'addressCountry', 'addressRegion', 'addressRegionCode', 'addressProvince', 'addressProvinceCode', 'addressCity', 'addressCityCode', 'addressBarangay', 'addressBarangayCode', 'addressStreet', 'addressZipCode'],
+      personal: ['firstName', 'middleName', 'lastName', 'suffix', 'birthday', 'age', 'sex', 'bloodType', 'civilStatus', 'religion', 'nationality', 'homeAddress'],
       academic: isStudentUser ? ['universityId', 'department', 'program', 'yearLevel', 'section', 'studentClassification'] : ['classification', 'department', 'jobTitle', 'licenseNumber'],
       contact: ['email', 'phoneNumber'], emergency: ['emergencyContact'], vaccinations: ['vaccinations'], dental: ['dentalHistory'], surgical: ['surgicalHistory'],
     };

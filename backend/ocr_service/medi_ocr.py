@@ -5,6 +5,8 @@ import json
 import fitz
 import tempfile
 import traceback
+from copy import deepcopy
+from datetime import datetime, timezone
 
 from flask import Flask, request, jsonify
 from PIL import Image
@@ -266,6 +268,92 @@ DEFAULT_CONFIG = {
 }
 
 
+def normalize_config(config: dict) -> dict:
+    """
+    Validate and normalize the OCR configuration before saving or using it.
+    Both institution_keywords and role_mappings are always preserved.
+    """
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must be a JSON object.")
+
+    raw_institution_keywords = config.get("institution_keywords", [])
+    raw_role_mappings = config.get("role_mappings", [])
+
+    if not isinstance(raw_institution_keywords, list):
+        raise ValueError("institution_keywords must be an array.")
+
+    if not isinstance(raw_role_mappings, list):
+        raise ValueError("role_mappings must be an array.")
+
+    institution_keywords = []
+    seen_institution_keywords = set()
+
+    for keyword in raw_institution_keywords:
+        normalized_keyword = str(keyword).strip().upper()
+
+        if (
+            normalized_keyword
+            and normalized_keyword not in seen_institution_keywords
+        ):
+            seen_institution_keywords.add(normalized_keyword)
+            institution_keywords.append(normalized_keyword)
+
+    role_mappings = []
+
+    for index, mapping in enumerate(raw_role_mappings):
+        if not isinstance(mapping, dict):
+            raise ValueError(
+                f"role_mappings[{index}] must be an object."
+            )
+
+        name = str(mapping.get("name", "")).strip()
+        id_type = str(mapping.get("id_type", "")).strip()
+        raw_keywords = mapping.get("keywords", [])
+
+        if not name:
+            raise ValueError(
+                f"role_mappings[{index}].name is required."
+            )
+
+        if not id_type:
+            raise ValueError(
+                f"role_mappings[{index}].id_type is required."
+            )
+
+        if not isinstance(raw_keywords, list):
+            raise ValueError(
+                f"role_mappings[{index}].keywords must be an array."
+            )
+
+        keywords = []
+        seen_keywords = set()
+
+        for keyword in raw_keywords:
+            normalized_keyword = str(keyword).strip().upper()
+
+            if (
+                normalized_keyword
+                and normalized_keyword not in seen_keywords
+            ):
+                seen_keywords.add(normalized_keyword)
+                keywords.append(normalized_keyword)
+
+        normalized_mapping = {
+            **mapping,
+            "name": name,
+            "id_type": id_type,
+            "keywords": keywords
+        }
+
+        role_mappings.append(normalized_mapping)
+
+    return {
+        **config,
+        "institution_keywords": institution_keywords,
+        "role_mappings": role_mappings
+    }
+
+
 def load_config() -> dict:
     if supabase_client is None:
         return load_config_fallback()
@@ -280,25 +368,57 @@ def load_config() -> dict:
         )
 
         if response.data and len(response.data) > 0:
-            return response.data[0]["config"]
+            stored_config = response.data[0].get("config") or {}
 
-        (
+            # Merge with defaults so older database rows that are missing
+            # role_mappings still receive the default role mappings.
+            merged_config = {
+                **deepcopy(DEFAULT_CONFIG),
+                **stored_config
+            }
+
+            normalized_config = normalize_config(merged_config)
+
+            print(
+                "\n========== OCR CONFIG LOADED ==========\n"
+                + json.dumps(normalized_config, indent=2)
+                + "\n=======================================\n",
+                flush=True
+            )
+
+            return normalized_config
+
+        default_config = normalize_config(
+            deepcopy(DEFAULT_CONFIG)
+        )
+
+        insert_response = (
             supabase_client
             .table("ocr_settings")
             .insert({
                 "id": "default",
-                "config": DEFAULT_CONFIG
+                "config": default_config,
+                "updated_at": datetime.now(
+                    timezone.utc
+                ).isoformat()
             })
             .execute()
         )
 
-        return DEFAULT_CONFIG
+        if not insert_response.data:
+            raise RuntimeError(
+                "The default OCR settings row could not be created."
+            )
+
+        return default_config
 
     except Exception as e:
         print(
             f"[ERROR] Failed to load config from Supabase: {e}",
             flush=True
         )
+
+        # Reading may still use the local fallback so OCR remains available.
         return load_config_fallback()
 
 
@@ -308,51 +428,148 @@ def load_config_fallback() -> dict:
         "ocr_config.json"
     )
 
-    if not os.path.exists(config_file):
-        with open(config_file, "w") as f:
-            json.dump(DEFAULT_CONFIG, f, indent=2)
+    try:
+        if not os.path.exists(config_file):
+            default_config = normalize_config(
+                deepcopy(DEFAULT_CONFIG)
+            )
 
-        return DEFAULT_CONFIG
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    default_config,
+                    f,
+                    indent=2,
+                    ensure_ascii=False
+                )
 
-    with open(config_file, "r") as f:
-        return json.load(f)
+            return default_config
+
+        with open(config_file, "r", encoding="utf-8") as f:
+            stored_config = json.load(f)
+
+        merged_config = {
+            **deepcopy(DEFAULT_CONFIG),
+            **stored_config
+        }
+
+        return normalize_config(merged_config)
+
+    except Exception as e:
+        print(
+            f"[ERROR] Failed to load local config: {e}",
+            flush=True
+        )
+
+        return normalize_config(
+            deepcopy(DEFAULT_CONFIG)
+        )
 
 
-def save_config(config: dict) -> bool:
+def save_config(config: dict) -> tuple[bool, dict | None, str | None]:
+    """
+    Save the complete OCR configuration to Supabase.
+
+    Returns:
+        (success, saved_config, error_message)
+    """
+    try:
+        normalized_config = normalize_config(config)
+    except ValueError as e:
+        return False, None, str(e)
+
+    print(
+        "\n========== OCR CONFIG SAVING ==========\n"
+        + json.dumps(normalized_config, indent=2)
+        + "\n=======================================\n",
+        flush=True
+    )
+
     if supabase_client is None:
-        return save_config_fallback(config)
+        success = save_config_fallback(normalized_config)
+
+        if success:
+            return True, normalized_config, None
+
+        return (
+            False,
+            None,
+            "Supabase is not configured and the local fallback save failed."
+        )
 
     try:
-        (
+        # Upsert ensures the row is created when id='default' does not exist.
+        # It also saves institution_keywords and role_mappings together inside
+        # the same JSONB config column.
+        response = (
             supabase_client
             .table("ocr_settings")
-            .update({
-                "config": config,
-                "updated_at": "now()"
-            })
-            .eq("id", "default")
+            .upsert(
+                {
+                    "id": "default",
+                    "config": normalized_config,
+                    "updated_at": datetime.now(
+                        timezone.utc
+                    ).isoformat()
+                },
+                on_conflict="id"
+            )
             .execute()
         )
 
-        return True
+        if not response.data:
+            return (
+                False,
+                None,
+                "Supabase returned no saved OCR settings row."
+            )
+
+        saved_row = response.data[0]
+        saved_config = normalize_config(
+            saved_row.get("config") or normalized_config
+        )
+
+        print(
+            "\n========== OCR CONFIG SAVED ==========\n"
+            + json.dumps(saved_config, indent=2)
+            + "\n======================================\n",
+            flush=True
+        )
+
+        return True, saved_config, None
 
     except Exception as e:
         print(
             f"[ERROR] Failed to save config to Supabase: {e}",
             flush=True
         )
-        return save_config_fallback(config)
+
+        # Do not report success when the database write failed.
+        # A local fallback copy is still written for diagnostics/runtime use.
+        save_config_fallback(normalized_config)
+
+        return (
+            False,
+            None,
+            f"Failed to save OCR configuration to Supabase: {e}"
+        )
 
 
 def save_config_fallback(config: dict) -> bool:
     try:
+        normalized_config = normalize_config(config)
+
         config_file = os.path.join(
             temp_dir,
             "ocr_config.json"
         )
 
-        with open(config_file, "w") as f:
-            json.dump(config, f, indent=2)
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(
+                normalized_config,
+                f,
+                indent=2,
+                ensure_ascii=False
+            )
 
         return True
 
@@ -361,35 +578,59 @@ def save_config_fallback(config: dict) -> bool:
             f"[ERROR] Failed to save config locally: {e}",
             flush=True
         )
+
         return False
 
 
 @app.route("/config", methods=["GET"])
 def get_config():
-    return jsonify(load_config())
+    try:
+        return jsonify(load_config()), 200
+
+    except Exception as e:
+        print(
+            f"[ERROR] Failed to return OCR config: {e}",
+            flush=True
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 @app.route("/config", methods=["POST"])
 @limiter.limit("5 per minute")
 def update_config():
+    new_config = request.get_json(silent=True)
 
-    new_config = request.json
+    print(
+        "\n========== OCR CONFIG RECEIVED ==========\n"
+        + json.dumps(new_config, indent=2)
+        + "\n=========================================\n",
+        flush=True
+    )
 
-    if not new_config:
+    if new_config is None:
         return jsonify({
             "success": False,
-            "error": "No config data received"
+            "error": "No valid JSON configuration was received."
         }), 400
 
-    if save_config(new_config):
+    success, saved_config, error_message = save_config(
+        new_config
+    )
+
+    if success:
         return jsonify({
             "success": True,
-            "message": "Configuration updated successfully"
-        })
+            "message": "Configuration updated successfully.",
+            "config": saved_config
+        }), 200
 
     return jsonify({
         "success": False,
-        "error": "Failed to save configuration"
+        "error": error_message or "Failed to save configuration."
     }), 500
 
 
