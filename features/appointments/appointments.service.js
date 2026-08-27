@@ -131,16 +131,37 @@ exports.getAppointmentsByDate = async (year, month, day) => {
 
 exports.createAppointment = async (data) => {
   const requesterAuthUid = data.authUid;
-  const selectedPatientId = data.userId;
+
+  const selectedPatientId =
+    data.userId ||
+    data.user_id ||
+    data.patientUserId ||
+    data.patient_user_id ||
+    null;
+
+  const selectedUniversityId =
+    data.patientId ||
+    data.patient_id ||
+    data.universityId ||
+    data.university_id ||
+    null;
+
+  // ============================================================
+  // BASIC VALIDATION
+  // ============================================================
 
   if (!requesterAuthUid) {
-    const error = new Error('Authenticated requester UID is required.');
+    const error = new Error(
+      'Authenticated requester UID is required.'
+    );
     error.status = 401;
     throw error;
   }
 
-  if (!selectedPatientId) {
-    const error = new Error('Selected patient user ID is required.');
+  if (!selectedPatientId && !selectedUniversityId) {
+    const error = new Error(
+      'Selected patient user ID or University ID is required.'
+    );
     error.status = 422;
     throw error;
   }
@@ -173,6 +194,7 @@ exports.createAppointment = async (data) => {
       '[CREATE APPOINTMENT] Requester lookup failed:',
       requesterError
     );
+
     throw requesterError;
   }
 
@@ -188,31 +210,77 @@ exports.createAppointment = async (data) => {
   // RESOLVE THE SELECTED PATIENT
   // ============================================================
 
-  const {
-    data: patient,
-    error: patientError,
-  } = await supabase
-    .from('users')
-    .select(`
-      id,
-      uid,
-      university_id,
-      first_name,
-      middle_name,
-      last_name,
-      role,
-      is_archived
-    `)
-    .eq('id', selectedPatientId)
-    .eq('is_archived', false)
-    .maybeSingle();
+  let patient = null;
 
-  if (patientError) {
-    console.error(
-      '[CREATE APPOINTMENT] Patient lookup failed:',
-      patientError
-    );
-    throw patientError;
+  if (selectedPatientId) {
+    const {
+      data: patientById,
+      error: patientByIdError,
+    } = await supabase
+      .from('users')
+      .select(`
+        id,
+        uid,
+        university_id,
+        first_name,
+        middle_name,
+        last_name,
+        role,
+        classification,
+        student_classification,
+        job_title,
+        is_archived
+      `)
+      .eq('id', selectedPatientId)
+      .eq('is_archived', false)
+      .maybeSingle();
+
+    if (patientByIdError) {
+      console.error(
+        '[CREATE APPOINTMENT] Patient UUID lookup failed:',
+        patientByIdError
+      );
+
+      throw patientByIdError;
+    }
+
+    patient = patientById;
+  }
+
+  // Fall back to University ID if internal UUID was unavailable.
+  if (!patient && selectedUniversityId) {
+    const {
+      data: patientByUniversityId,
+      error: universityIdError,
+    } = await supabase
+      .from('users')
+      .select(`
+        id,
+        uid,
+        university_id,
+        first_name,
+        middle_name,
+        last_name,
+        role,
+        classification,
+        student_classification,
+        job_title,
+        is_archived
+      `)
+      .eq('university_id', selectedUniversityId)
+      .eq('is_archived', false)
+      .maybeSingle();
+
+    if (universityIdError) {
+      console.error(
+        '[CREATE APPOINTMENT] University ID lookup failed:',
+        universityIdError
+      );
+
+      throw universityIdError;
+    }
+
+    patient = patientByUniversityId;
   }
 
   if (!patient) {
@@ -246,13 +314,17 @@ exports.createAppointment = async (data) => {
     'system administrator',
   ];
 
-  const isClinicStaffCreator = clinicStaffRoles.some((role) =>
-    requesterRole.includes(role)
+  const isClinicStaffCreator = clinicStaffRoles.some(
+    (role) => requesterRole.includes(role)
   );
 
   const appointmentStatus = isClinicStaffCreator
     ? 'approved'
     : 'pending';
+
+  // Clinic-created appointments require a schedule.
+  // Patient/faculty requests remain pending without a schedule.
+  const requiresSchedule = isClinicStaffCreator;
 
   // ============================================================
   // NORMALIZE APPOINTMENT VALUES
@@ -260,6 +332,7 @@ exports.createAppointment = async (data) => {
 
   const patientName =
     data.patientName ||
+    data.patient_name ||
     data.name ||
     [
       patient.last_name,
@@ -275,48 +348,155 @@ exports.createAppointment = async (data) => {
     ''
   ).trim();
 
-  const reason = String(data.reason || '').trim();
-  const appointmentTime = String(data.time || '').trim();
+  const reason = String(
+    data.reason ||
+    ''
+  ).trim();
 
-  const year = Number(data.year);
-  const month = Number(data.month);
-  const day = Number(data.day);
+  const hasYear =
+    data.year !== undefined &&
+    data.year !== null &&
+    data.year !== '';
+
+  const hasMonth =
+    data.month !== undefined &&
+    data.month !== null &&
+    data.month !== '';
+
+  const hasDay =
+    data.day !== undefined &&
+    data.day !== null &&
+    data.day !== '';
+
+  const hasTime =
+    data.time !== undefined &&
+    data.time !== null &&
+    String(data.time).trim() !== '';
+
+  const year = hasYear
+    ? Number(data.year)
+    : null;
+
+  const month = hasMonth
+    ? Number(data.month)
+    : null;
+
+  const day = hasDay
+    ? Number(data.day)
+    : null;
+
+  const appointmentTime = hasTime
+    ? String(data.time).trim()
+    : null;
+
+  // ============================================================
+  // VALIDATE REQUIRED VALUES
+  // ============================================================
 
   if (!patientName) {
-    const error = new Error('Patient name is required.');
-    error.status = 422;
-    throw error;
-  }
-
-  if (!serviceType) {
-    const error = new Error('Service type is required.');
-    error.status = 422;
-    throw error;
-  }
-
-  if (!reason) {
-    const error = new Error('Appointment reason is required.');
-    error.status = 422;
-    throw error;
-  }
-
-  if (
-    !Number.isInteger(year) ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(day)
-  ) {
     const error = new Error(
-      'A valid appointment date is required.'
+      'Patient name is required.'
     );
     error.status = 422;
     throw error;
   }
 
-  if (!appointmentTime) {
-    const error = new Error('Appointment time is required.');
+  if (!serviceType) {
+    const error = new Error(
+      'Service type is required.'
+    );
     error.status = 422;
     throw error;
   }
+
+  if (!reason) {
+    const error = new Error(
+      'Appointment reason is required.'
+    );
+    error.status = 422;
+    throw error;
+  }
+
+  // ============================================================
+  // ENFORCE CLINIC ROLE APPOINTMENT TYPE
+  // ============================================================
+
+  const serviceText = `${serviceType} ${reason}`
+    .toLowerCase();
+
+  const isDentalAppointment =
+    serviceText.includes('dent') ||
+    serviceText.includes('oral') ||
+    serviceText.includes('tooth') ||
+    serviceText.includes('teeth');
+
+  const isMedicalAppointment =
+    serviceText.includes('medical') ||
+    serviceText.includes('check-up') ||
+    serviceText.includes('checkup') ||
+    !isDentalAppointment;
+
+  if (
+    (
+      requesterRole.includes('doctor') ||
+      requesterRole.includes('physician') ||
+      requesterRole.includes('nurse')
+    ) &&
+    isDentalAppointment
+  ) {
+    const error = new Error(
+      'Doctors and nurses can only create medical appointments.'
+    );
+    error.status = 403;
+    throw error;
+  }
+
+  if (
+    requesterRole.includes('dentist') &&
+    isMedicalAppointment &&
+    !isDentalAppointment
+  ) {
+    const error = new Error(
+      'Dentists can only create dental appointments.'
+    );
+    error.status = 403;
+    throw error;
+  }
+
+  // ============================================================
+  // VALIDATE SCHEDULE FOR CLINIC-CREATED APPOINTMENTS
+  // ============================================================
+
+  if (requiresSchedule) {
+    if (
+      !Number.isInteger(year) ||
+      !Number.isInteger(month) ||
+      !Number.isInteger(day) ||
+      year < 2020 ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31
+    ) {
+      const error = new Error(
+        'A valid appointment date is required.'
+      );
+      error.status = 422;
+      throw error;
+    }
+
+    if (!appointmentTime) {
+      const error = new Error(
+        'Appointment time is required.'
+      );
+      error.status = 422;
+      throw error;
+    }
+  }
+
+  // ============================================================
+  // REQUESTER INFORMATION
+  // ============================================================
 
   const requesterName = [
     requester.first_name,
@@ -327,27 +507,54 @@ exports.createAppointment = async (data) => {
     .join(' ')
     .trim();
 
+  const bookedBy = isClinicStaffCreator
+    ? (
+        data.bookedBy ||
+        data.booked_by ||
+        requesterName ||
+        requesterRole ||
+        'Clinic Staff'
+      )
+    : (
+        requesterName ||
+        patientName ||
+        'Patient'
+      );
+
   const now = new Date().toISOString();
 
+  // ============================================================
+  // BUILD APPOINTMENT RECORD
+  // ============================================================
+
   const newDoc = {
-    // This must be the selected patient's users.id
+    // Always store the selected patient's internal users.id.
     user_id: patient.id,
 
     patient_name: patientName,
     service_type: serviceType,
     reason,
-    year,
-    month,
-    day,
-    time: appointmentTime,
+
+    // Pending requests do not require a schedule.
+    year: requiresSchedule
+      ? year
+      : null,
+
+    month: requiresSchedule
+      ? month
+      : null,
+
+    day: requiresSchedule
+      ? day
+      : null,
+
+    time: requiresSchedule
+      ? appointmentTime
+      : null,
+
     status: appointmentStatus,
 
-    booked_by:
-      data.bookedBy ||
-      requesterName ||
-      requesterRole ||
-      'Clinic Staff',
-
+    booked_by: bookedBy,
     booked_by_id: requester.id,
 
     is_archived: false,
@@ -355,24 +562,72 @@ exports.createAppointment = async (data) => {
     updated_at: now,
   };
 
-  console.log('============================================================');
+  // ============================================================
+  // DEBUG LOGGING
+  // ============================================================
+
+  console.log(
+    '============================================================'
+  );
+
   console.log('[CREATE APPOINTMENT]');
-  console.log('Requester Auth UID:', requesterAuthUid);
-  console.log('Requester users.id:', requester.id);
-  console.log('Requester Role:', requesterRole);
-  console.log('Selected Patient users.id:', patient.id);
-  console.log('University ID:', patient.university_id);
-  console.log('Patient Name:', newDoc.patient_name);
-  console.log('Service:', newDoc.service_type);
-  console.log('Reason:', newDoc.reason);
+  console.log(
+    'Requester Auth UID:',
+    requesterAuthUid
+  );
+  console.log(
+    'Requester users.id:',
+    requester.id
+  );
+  console.log(
+    'Requester Role:',
+    requesterRole
+  );
+  console.log(
+    'Selected Patient users.id:',
+    patient.id
+  );
+  console.log(
+    'University ID:',
+    patient.university_id
+  );
+  console.log(
+    'Patient Name:',
+    newDoc.patient_name
+  );
+  console.log(
+    'Service:',
+    newDoc.service_type
+  );
+  console.log(
+    'Reason:',
+    newDoc.reason
+  );
+
   console.log(
     'Schedule:',
-    `${newDoc.year}-${newDoc.month}-${newDoc.day}`,
-    newDoc.time
+    requiresSchedule
+      ? `${newDoc.year}-${newDoc.month}-${newDoc.day} ${newDoc.time}`
+      : 'Awaiting clinic schedule'
   );
-  console.log('Status:', newDoc.status);
-  console.log('Insert payload:', newDoc);
-  console.log('============================================================');
+
+  console.log(
+    'Status:',
+    newDoc.status
+  );
+
+  console.log(
+    'Insert payload:',
+    newDoc
+  );
+
+  console.log(
+    '============================================================'
+  );
+
+  // ============================================================
+  // INSERT APPOINTMENT
+  // ============================================================
 
   const {
     data: appointment,
@@ -384,14 +639,42 @@ exports.createAppointment = async (data) => {
     .single();
 
   if (insertError) {
-    console.error('============================================================');
-    console.error('[CREATE APPOINTMENT] DATABASE INSERT FAILED');
-    console.error('Message:', insertError.message);
-    console.error('Code:', insertError.code);
-    console.error('Details:', insertError.details);
-    console.error('Hint:', insertError.hint);
-    console.error('Payload:', newDoc);
-    console.error('============================================================');
+    console.error(
+      '============================================================'
+    );
+
+    console.error(
+      '[CREATE APPOINTMENT] DATABASE INSERT FAILED'
+    );
+
+    console.error(
+      'Message:',
+      insertError.message
+    );
+
+    console.error(
+      'Code:',
+      insertError.code
+    );
+
+    console.error(
+      'Details:',
+      insertError.details
+    );
+
+    console.error(
+      'Hint:',
+      insertError.hint
+    );
+
+    console.error(
+      'Payload:',
+      newDoc
+    );
+
+    console.error(
+      '============================================================'
+    );
 
     throw insertError;
   }
@@ -401,9 +684,12 @@ exports.createAppointment = async (data) => {
     appointment
   );
 
-  // Staff-created appointments are already approved,
-  // so notify the selected patient.
+  // ============================================================
+  // NOTIFICATIONS
+  // ============================================================
+
   if (appointmentStatus === 'approved') {
+    // Clinic staff created and scheduled the appointment.
     try {
       await notificationsService.createNotification({
         userId: patient.id,
@@ -415,6 +701,10 @@ exports.createAppointment = async (data) => {
         referenceId: appointment.id,
         referenceType: 'appointment',
       });
+
+      console.log(
+        '[CREATE APPOINTMENT] Patient notification created.'
+      );
     } catch (notificationError) {
       console.error(
         '[CREATE APPOINTMENT] Patient notification failed:',
@@ -422,24 +712,57 @@ exports.createAppointment = async (data) => {
       );
     }
   } else {
+    // Patient or faculty submitted a pending request.
     try {
-      const targetRoles = getTargetRolesForAppointment(
-        serviceType,
-        reason
+      const targetRoles =
+        getTargetRolesForAppointment(
+          serviceType,
+          reason
+        );
+
+      await notificationsService.notifyRoles(
+        targetRoles,
+        {
+          type: 'appointment_request',
+          title: 'New Appointment Request',
+          message:
+            `${patientName} requested an appointment for ` +
+            `${serviceType}.`,
+          referenceId: appointment.id,
+          referenceType: 'appointment',
+        }
       );
 
-      await notificationsService.notifyRoles(targetRoles, {
-        type: 'appointment_request',
-        title: 'New Appointment Request',
-        message:
-          `${patientName} requested an appointment for ` +
-          `${serviceType}.`,
-        referenceId: appointment.id,
-        referenceType: 'appointment',
-      });
+      console.log(
+        '[CREATE APPOINTMENT] Clinic staff notifications created.'
+      );
     } catch (notificationError) {
       console.error(
         '[CREATE APPOINTMENT] Staff notification failed:',
+        notificationError.message
+      );
+    }
+
+    // Notify the requester that the request was submitted.
+    try {
+      await notificationsService.createNotification({
+        userId: requester.id,
+        type: 'appointment_request_submitted',
+        title: 'Appointment Request Submitted',
+        message:
+          `Your request for a ${serviceType} appointment ` +
+          `was submitted successfully. The clinic will review ` +
+          `your request and assign the schedule.`,
+        referenceId: appointment.id,
+        referenceType: 'appointment',
+      });
+
+      console.log(
+        '[CREATE APPOINTMENT] Requester confirmation notification created.'
+      );
+    } catch (notificationError) {
+      console.error(
+        '[CREATE APPOINTMENT] Requester notification failed:',
         notificationError.message
       );
     }

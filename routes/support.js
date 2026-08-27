@@ -7,6 +7,8 @@ const multer = require('multer');
 const router = express.Router();
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
@@ -98,20 +100,18 @@ const createTransporter = () => {
     throw new Error('MAIL_PASSWORD is not configured.');
   }
 
-  return nodemailer.createTransport({
-    service: 'gmail',
-
-    auth: {
-      user: mailUsername.trim(),
-
-      // Gmail app passwords are sometimes copied with spaces.
-      pass: mailPassword.replace(/\s+/g, ''),
-    },
-
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 50,
-  });
+return nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  auth: {
+    user: mailUsername.trim(),
+    pass: mailPassword.replace(/\s+/g, ''),
+  },
+  pool: true,
+  maxConnections: 3,
+  maxMessages: 50,
+});
 };
 
 // ============================================================

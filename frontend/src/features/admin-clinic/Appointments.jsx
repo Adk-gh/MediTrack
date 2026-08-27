@@ -1559,9 +1559,73 @@ export const Appointments = () => {
           created_at: new Date().toISOString(),
         }));
 
-      if (patientNotifications.length > 0) {
-        await supabase.from('notifications').insert(patientNotifications);
-      }
+if (patientNotifications.length > 0) {
+  const { error: patientNotifyError } = await supabase
+    .from('notifications')
+    .insert(patientNotifications);
+
+  if (patientNotifyError) {
+    console.error(
+      '[handleBatchApprove] Failed to notify patients:',
+      patientNotifyError
+    );
+  }
+}
+// ── Notify each bulk appointment requester once ──
+const requesterGroups = new Map();
+
+selectedItems.forEach((item) => {
+  if (!item.booked_by_id) return;
+
+  const groupKey =
+    item.batch_id ||
+    `${item.booked_by_id}-${item.booked_by || 'Requester'}`;
+
+  if (!requesterGroups.has(groupKey)) {
+    requesterGroups.set(groupKey, {
+      batchId: item.batch_id || null,
+      requesterId: item.booked_by_id,
+      requesterName: item.booked_by || 'Requester',
+      count: 0,
+    });
+  }
+
+  requesterGroups.get(groupKey).count += 1;
+});
+
+const requesterNotifications = Array.from(
+  requesterGroups.values()
+).map((group) => ({
+  // Recipient comes from appointments.booked_by_id
+  user_id: group.requesterId,
+
+  type: 'bulk_appointment_approved',
+  title: 'Bulk Appointment Request Approved',
+
+  // Display name comes from appointments.booked_by
+  message:
+    `${group.requesterName}, your bulk appointment request for ` +
+    `${group.count} student${group.count === 1 ? '' : 's'} ` +
+    `has been approved and scheduled for ${batchDate}.`,
+
+  reference_id: group.batchId,
+  reference_type: 'appointment_batch',
+  is_read: false,
+  created_at: new Date().toISOString(),
+}));
+
+if (requesterNotifications.length > 0) {
+  const { error: requesterNotifyError } = await supabase
+    .from('notifications')
+    .insert(requesterNotifications);
+
+  if (requesterNotifyError) {
+    console.error(
+      '[handleBatchApprove] Failed to notify booked_by requester:',
+      requesterNotifyError
+    );
+  }
+}
 
       if (approveAppointment) {
         if (autoStagger && staggerPlan) {

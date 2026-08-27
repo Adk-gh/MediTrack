@@ -292,61 +292,139 @@ const handleSave = async () => {
   setSaving(true);
 
   try {
-    const payload = {
-      institution_keywords: Array.isArray(config.institution_keywords)
-        ? config.institution_keywords
-        : [],
+    /*
+     * Include keywords that are still typed inside the input boxes.
+     * This means the user no longer needs to press Enter before Save.
+     */
+    const roleMappingsToSave = (config.role_mappings || []).map(
+      (mapping, mapIdx) => {
+        const pendingKeyword = String(
+          newRoleKeywords[mapIdx] || ''
+        )
+          .trim()
+          .toUpperCase();
 
-      role_mappings: Array.isArray(config.role_mappings)
-        ? config.role_mappings.map(mapping => ({
-            ...mapping,
-            keywords: Array.isArray(mapping.keywords)
-              ? mapping.keywords
-                  .map(keyword => String(keyword).trim().toUpperCase())
-                  .filter(Boolean)
-              : [],
-          }))
-        : [],
+        const existingKeywords = Array.isArray(mapping.keywords)
+          ? mapping.keywords
+              .map(keyword =>
+                String(keyword).trim().toUpperCase()
+              )
+              .filter(Boolean)
+          : [];
+
+        const mergedKeywords =
+          pendingKeyword &&
+          !existingKeywords.includes(pendingKeyword)
+            ? [...existingKeywords, pendingKeyword]
+            : existingKeywords;
+
+        return {
+          ...mapping,
+          keywords: mergedKeywords,
+        };
+      }
+    );
+
+    /*
+     * Also include an Institution Trigger that is still typed
+     * inside its input when Save Changes is clicked.
+     */
+    const pendingInstitutionKeyword = String(
+      newInstKeyword || ''
+    )
+      .trim()
+      .toUpperCase();
+
+    const existingInstitutionKeywords = Array.isArray(
+      config.institution_keywords
+    )
+      ? config.institution_keywords
+          .map(keyword =>
+            String(keyword).trim().toUpperCase()
+          )
+          .filter(Boolean)
+      : [];
+
+    const institutionKeywordsToSave =
+      pendingInstitutionKeyword &&
+      !existingInstitutionKeywords.includes(
+        pendingInstitutionKeyword
+      )
+        ? [
+            ...existingInstitutionKeywords,
+            pendingInstitutionKeyword,
+          ]
+        : existingInstitutionKeywords;
+
+    const configToSave = {
+      ...config,
+      institution_keywords: institutionKeywordsToSave,
+      role_mappings: roleMappingsToSave,
     };
 
-    console.log('[OCR Settings] Saving payload:', payload);
+    console.log(
+      '[OCR Settings] Configuration being saved:',
+      configToSave
+    );
 
     const res = await fetch(`${OCR_SERVICE_URL}/config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(configToSave),
     });
 
     const result = await res.json().catch(() => ({}));
 
-    if (!res.ok) {
-      console.error('[OCR Settings] Backend response:', result);
-
+    if (!res.ok || result.success === false) {
       throw new Error(
         result.error ||
-        result.message ||
-        `Failed to save OCR configuration (${res.status})`
+          result.message ||
+          `Failed to save OCR configuration (${res.status})`
       );
     }
 
-    // Prefer the configuration returned by the backend.
-    if (result.config) {
-      setConfig(result.config);
-    } else if (result.data) {
-      setConfig(result.data);
-    } else {
-      // Confirm that the database value can be loaded again.
-      await fetchConfig();
-    }
+    /*
+     * Use the backend response when available.
+     * Otherwise, use the exact configuration sent.
+     */
+    const savedConfig =
+      result.config ||
+      result.data ||
+      configToSave;
 
-    showToast('OCR Configuration saved successfully!', 'success');
-  } catch (error) {
-    console.error('[OCR Settings] Save error:', error);
+    setConfig({
+      ...savedConfig,
+      institution_keywords: Array.isArray(
+        savedConfig.institution_keywords
+      )
+        ? savedConfig.institution_keywords
+        : [],
+      role_mappings: Array.isArray(
+        savedConfig.role_mappings
+      )
+        ? savedConfig.role_mappings
+        : [],
+    });
+
+    // Clear all pending input boxes after saving.
+    setNewInstKeyword('');
+    setNewRoleKeywords({});
 
     showToast(
-      error.message || 'Failed to save OCR configuration.',
+      'OCR Configuration saved successfully!',
+      'success'
+    );
+  } catch (error) {
+    console.error(
+      '[OCR Settings] Failed to save configuration:',
+      error
+    );
+
+    showToast(
+      error.message ||
+        'Failed to save OCR configuration.',
       'error'
     );
   } finally {
@@ -354,14 +432,37 @@ const handleSave = async () => {
   }
 };
 
-  const addInstitutionKeyword = () => {
-    if (!newInstKeyword.trim()) return;
-    setConfig(prev => ({
-      ...prev,
-      institution_keywords: [...prev.institution_keywords, newInstKeyword.toUpperCase().trim()]
-    }));
-    setNewInstKeyword('');
-  };
+const addInstitutionKeyword = () => {
+  const value = String(newInstKeyword || '')
+    .trim()
+    .toUpperCase();
+
+  if (!value) return;
+
+  setConfig(previous => {
+    const currentKeywords = Array.isArray(
+      previous.institution_keywords
+    )
+      ? previous.institution_keywords.map(keyword =>
+          String(keyword).trim().toUpperCase()
+        )
+      : [];
+
+    if (currentKeywords.includes(value)) {
+      return previous;
+    }
+
+    return {
+      ...previous,
+      institution_keywords: [
+        ...currentKeywords,
+        value,
+      ],
+    };
+  });
+
+  setNewInstKeyword('');
+};
 
   const requestRemoveInstitutionKeyword = (index) => {
     const keyword = config?.institution_keywords?.[index] || 'this keyword';
@@ -383,17 +484,46 @@ const handleSave = async () => {
     }));
   };
 
-  const addRoleKeyword = (mapIdx) => {
-    const value = (newRoleKeywords[mapIdx] || '').trim();
-    if (!value) return;
-    setConfig(prev => ({
-      ...prev,
-      role_mappings: prev.role_mappings.map((mapping, i) =>
-        i !== mapIdx ? mapping : { ...mapping, keywords: [...mapping.keywords, value.toUpperCase()] }
-      )
-    }));
-    setNewRoleKeywords(prev => ({ ...prev, [mapIdx]: '' }));
-  };
+const addRoleKeyword = mapIdx => {
+  const value = String(
+    newRoleKeywords[mapIdx] || ''
+  )
+    .trim()
+    .toUpperCase();
+
+  if (!value) return;
+
+  setConfig(previous => ({
+    ...previous,
+    role_mappings: previous.role_mappings.map(
+      (mapping, index) => {
+        if (index !== mapIdx) return mapping;
+
+        const currentKeywords = Array.isArray(
+          mapping.keywords
+        )
+          ? mapping.keywords.map(keyword =>
+              String(keyword).trim().toUpperCase()
+            )
+          : [];
+
+        if (currentKeywords.includes(value)) {
+          return mapping;
+        }
+
+        return {
+          ...mapping,
+          keywords: [...currentKeywords, value],
+        };
+      }
+    ),
+  }));
+
+  setNewRoleKeywords(previous => ({
+    ...previous,
+    [mapIdx]: '',
+  }));
+};
 
   const requestRemoveRoleKeyword = (mapIdx, kwIdx) => {
     const mapping = config?.role_mappings?.[mapIdx];

@@ -584,13 +584,22 @@ const HomePageUsers = () => {
 
   const isFieldEmpty = (val) => !val || val === '' || val === null || val === undefined;
 
-  const hasEmptyAcademic = profileData && (
-    isFieldEmpty(profileData.university_id) ||
-    isFieldEmpty(profileData.department) ||
-    isFieldEmpty(profileData.program) ||
-    isFieldEmpty(profileData.year_level) ||
-    isFieldEmpty(profileData.section)
-  );
+ const userRole = (profileData?.role || "").toLowerCase();
+const classification = (profileData?.classification || "").toLowerCase();
+const jobTitle = (profileData?.job_title || "").toLowerCase();
+
+const isStudent =
+  userRole === "student" ||
+  classification.includes("student") ||
+  jobTitle === "student";
+
+const hasEmptyAcademic = isStudent && profileData && (
+  isFieldEmpty(profileData.university_id) ||
+  isFieldEmpty(profileData.department) ||
+  isFieldEmpty(profileData.program) ||
+  isFieldEmpty(profileData.year_level) ||
+  isFieldEmpty(profileData.section)
+);
 
   const hasEmptyContact = profileData && (
     isFieldEmpty(profileData.email) ||
@@ -641,14 +650,17 @@ const HomePageUsers = () => {
       scrollTo:  "emergency",
     };
   } else if (hasEmptyAcademic) {
-    pendingAction = {
-      title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
-      desc:      t('homepage.pendingActions.academicDesc', "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for a f2f consultation."),
-      btnText:   t('homepage.pendingActions.updateProfile', "Update Profile"),
-      targetTab: "profile",
-      scrollTo:  "academic",
-    };
-  } else if (hasEmptyContact) {
+  pendingAction = {
+    title: t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
+    desc: t(
+      'homepage.pendingActions.academicDesc',
+      "You have incomplete items (Academic Info). Please complete your profile before going to the clinic for a f2f consultation."
+    ),
+    btnText: t('homepage.pendingActions.updateProfile', "Update Profile"),
+    targetTab: "profile",
+    scrollTo: "academic",
+  };
+} else if (hasEmptyContact) {
     pendingAction = {
       title:     t('homepage.pendingActions.incompleteProfile', "Incomplete Profile"),
       desc:      t('homepage.pendingActions.contactDesc', "You have incomplete items (Contact Info). Please complete your profile before going to the clinic for a f2f consultation."),
