@@ -177,6 +177,11 @@ const StatusPill = ({ isArchived }) => (
   </span>
 );
 
+// ─── Shared Styles ───────────────────────────────────────────────────────────
+const selectCls = 'px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm';
+const compactSelectCls = `${selectCls} w-full sm:w-auto max-w-[160px] truncate`;
+const compactWideSelectCls = `${selectCls} w-full sm:w-auto max-w-[180px] truncate`;
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export const AuditLogs = () => {
   const [logs, setLogs] = useState([]);
@@ -374,7 +379,6 @@ export const AuditLogs = () => {
     else if (action === 'export') await exportComplianceReport();
   };
 
-  const selectCls = 'px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm';
   const summaryStats = [
     { label: 'Total', count: stats.total, color: 'text-slate-700' },
     { label: 'Today', count: stats.today, color: 'text-emerald-700' },
@@ -408,13 +412,13 @@ export const AuditLogs = () => {
               <div className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 transition-colors shadow-sm ${isArchived ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`} title={isArchived ? 'Viewing Archived Logs' : 'Viewing Live Logs'}>
                 <i className={`fa-solid ${isArchived ? 'fa-box-archive' : 'fa-bolt'}`}></i>
               </div>
-              <select value={viewMode} onChange={e => setViewMode(e.target.value)} className={`${selectCls} w-full sm:w-32`}>
+              <select value={viewMode} onChange={e => setViewMode(e.target.value)} className={compactSelectCls}>
                 <option value="live">Live Logs</option>
                 <option value="archived">Archived</option>
               </select>
             </div>
 
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={`${selectCls} w-full sm:w-44`}>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={compactWideSelectCls}>
               {ACTIVITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
 
@@ -423,12 +427,12 @@ export const AuditLogs = () => {
                 value={dateFilter}
                 onChange={setDateFilter}
                 placeholder="All Dates"
-                className={`${selectCls} w-full pr-8`}
+                className={`${selectCls} w-full pr-8 max-w-[160px] truncate`}
               />
               {dateFilter && (
                 <button
                   onClick={() => setDateFilter('')}
-                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
                   title="Clear date filter"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">

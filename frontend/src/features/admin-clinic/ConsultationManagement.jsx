@@ -1,9 +1,38 @@
 // frontend/src/features/admin-clinic/ConsultationManagement.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom'; // Added for absolute top modals
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 import * as consultationsService from '../../services/consultations.service';
+
 const ITEMS_PER_PAGE = 100;
+
+// ─── Fallback Role Groupings ─────────────────────────────
+const FALLBACK_TEACHING_ROLES = ["instructor", "lecturer", "teacher", "professor", "dean", "department head", "program chair", "program coordinator", "faculty"];
+const FALLBACK_NON_TEACHING_ROLES = ["employee", "staff", "registrar", "guidance counselor", "counselor", "librarian", "technician", "security", "maintenance", "office coordinator"];
+const FALLBACK_CLINIC_ROLES = ["doctor", "nurse", "dentist", "clinic staff"];
+
+// ─── Department Normalization Helpers ────────────────────
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+const getUserDepartment = (user) => user?.department || user?.dept || user?.college || '';
+
+const getUserProgram = (user) => user?.program || user?.course || user?.degree_program || '';
+
+const departmentMatches = (userDepartment, departmentConfig) => {
+  if (!departmentConfig) return false;
+  const userValue = normalizeText(userDepartment);
+  return [
+    departmentConfig.full,
+    departmentConfig.abbr,
+    departmentConfig.name,
+    departmentConfig.value,
+  ]
+    .filter(Boolean)
+    .some((value) => normalizeText(value) === userValue);
+};
+
+const programMatches = (userProgram, selectedProgramValue) =>
+  normalizeText(userProgram) === normalizeText(selectedProgramValue);
 
 const TYPE_OPTIONS = [
   { value: 'all', label: 'All Types' },
@@ -33,28 +62,29 @@ const formatDate = (ts) => {
 export const ConsultationManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = (currentUser.role || '').toLowerCase();
-
-  // Admin identity used for audit logging. Falls back through id -> uid ->
-  // 'system' so a log entry is still written even if the stored user object
-  // is incomplete. Kept consistent with the other admin-clinic screens.
   const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
   const [allFiltered, setAllFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Search & Filters
+  // Search & Basic Filters
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
 
-  // Pagination
+  // Demographic Filters & Config State
+  const [systemConfig, setSystemConfig] = useState(null);
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [selectedProgram, setSelectedProgram] = useState('all');
+
+  // Pagination & Stats
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-
   const [stats, setStats] = useState({ total: 0, active: 0, ended: 0, medical: 0, dental: 0 });
-  const [message, setMessage] = useState(null);
 
+  const [message, setMessage] = useState(null);
   const snackbarTimer = useRef(null);
 
   const showSnackbar = (msg, type = 'success') => {
@@ -63,28 +93,109 @@ export const ConsultationManagement = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
+  // 1. Fetch System Config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const res = await fetch(`${apiUrl}/system-config`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setSystemConfig(json?.data || json || null);
+        }
+      } catch (error) {
+        console.error('Failed to load system config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // 2. Build cascading options
+  const departmentOptions = useMemo(() => {
+    const depts = systemConfig?.departments || [];
+    const offices = systemConfig?.non_academic_offices || systemConfig?.offices || [];
+    let rawList = [];
+
+    if (selectedRole === 'student' || selectedRole === 'teaching') {
+      rawList = depts;
+    } else if (selectedRole === 'non_teaching') {
+      rawList = offices;
+    } else if (selectedRole === 'clinic') {
+      return [];
+    } else {
+      rawList = [...depts, ...offices];
+    }
+
+    if (!Array.isArray(rawList)) return [];
+
+    return rawList
+      .filter(Boolean)
+      .map((department, index) => {
+        if (typeof department === 'string') {
+          return { id: department, full: department, abbr: department, programs: [] };
+        }
+        return {
+          id: department.id || department.abbr || department.full || `department-${index}`,
+          full: department.full || department.name || department.abbr || '',
+          abbr: department.abbr || department.code || department.full || '',
+          programs: Array.isArray(department.programs)
+            ? department.programs
+            : Array.isArray(department.courses) ? department.courses : [],
+        };
+      })
+      .filter((department) => department.full || department.abbr);
+  }, [systemConfig, selectedRole]);
+
+  const selectedDepartmentConfig = useMemo(() => {
+    if (selectedDepartment === 'all') return null;
+    return (
+      departmentOptions.find(
+        (department) =>
+          department.id === selectedDepartment ||
+          department.abbr === selectedDepartment ||
+          department.full === selectedDepartment
+      ) || null
+    );
+  }, [departmentOptions, selectedDepartment]);
+
+  const programOptions = useMemo(() => {
+    if (!selectedDepartmentConfig || selectedRole === 'teaching' || selectedRole === 'non_teaching' || selectedRole === 'clinic') {
+      return [];
+    }
+    return selectedDepartmentConfig.programs
+      .map((program) => {
+        if (typeof program === 'string') return { value: program, label: program };
+        return {
+          value: program.value || program.abbr || program.code || program.name || program.full || '',
+          label: program.full || program.name || program.abbr || program.code || '',
+        };
+      })
+      .filter((program) => program.value);
+  }, [selectedDepartmentConfig, selectedRole]);
+
+  // Reset downstream dropdowns when role changes
+  useEffect(() => {
+    setSelectedDepartment('all');
+    setSelectedProgram('all');
+  }, [selectedRole]);
+
   // Reset pagination to page 1 whenever filters or search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, typeFilter, statusFilter, sortBy]);
+  }, [searchInput, typeFilter, statusFilter, sortBy, selectedRole, selectedDepartment, selectedProgram]);
 
-  // Build query for fetching consultations
+
+  // 3. Fetching and applying all filters
   const buildQuery = useCallback((baseQuery) => {
-    let q = baseQuery;
-
-    // Filter by archived status - only show non-archived
-    q = q.or('is_archived.is.null,is_archived.eq.false');
-
-    // Apply type filter
-    if (typeFilter !== 'all') {
-      q = q.eq('consultation_type', typeFilter);
-    }
-
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      q = q.eq('status', statusFilter);
-    }
-
+    let q = baseQuery.or('is_archived.is.null,is_archived.eq.false');
+    if (typeFilter !== 'all') q = q.eq('consultation_type', typeFilter);
+    if (statusFilter !== 'all') q = q.eq('status', statusFilter);
     return q;
   }, [typeFilter, statusFilter]);
 
@@ -92,7 +203,6 @@ export const ConsultationManagement = () => {
     try {
       setLoading(true);
 
-      // First get all consultations to calculate stats and apply filters
       let query = supabase.from('consultations').select('*');
       query = buildQuery(query);
       query = query.order('created_at', { ascending: false });
@@ -100,12 +210,10 @@ export const ConsultationManagement = () => {
       const { data: allData, error } = await query;
       if (error) throw error;
 
-      // Get patient profiles for filtering
       const { data: profiles } = await supabase.from('users').select('*');
       const profileMap = {};
       profiles?.forEach(p => { profileMap[p.id] = p; });
 
-      // Enrich with patient info and last message
       let enriched = await Promise.all((allData || []).map(async (conv) => {
         const profile = profileMap[conv.patient_id] || {};
         let lastMsg = '';
@@ -113,44 +221,82 @@ export const ConsultationManagement = () => {
           const msgs = await consultationsService.getMessagesByConsultationId(conv.id);
           lastMsg = msgs?.slice(-1)[0]?.message || '';
         } catch {}
+
         return {
           ...conv,
+          userProfile: profile, // Store the raw profile object for accurate helper function checking
           patientName: profile.first_name
             ? `${profile.last_name || ''}, ${profile.first_name}${profile.middle_name ? ' ' + profile.middle_name  : ''}${profile.suffix ? ' ' + profile.suffix : ''}`.trim()
             : conv.patient_name || 'Unknown',
           patientUniversityId: profile.university_id || profile.student_id || '—',
-          patientProgram: profile.program || profile.course || '—',
+          patientProgram: profile.program || profile.course || profile.department || '—',
+          patientRole: profile.role || profile.user_type || '—',
           lastMessage: lastMsg,
         };
       }));
 
-      // Apply search filter — only when there is an actual search term
+      // Apply Search filter
       const term = searchInput.trim().toLowerCase();
       if (term) {
         enriched = enriched.filter(c =>
           c.patientName?.toLowerCase().includes(term) ||
           c.patientUniversityId?.toLowerCase().includes(term) ||
           c.patientProgram?.toLowerCase().includes(term) ||
+          c.patientRole?.toLowerCase().includes(term) ||
           c.lastMessage?.toLowerCase().includes(term)
         );
       }
 
+      // Apply Demographic Filters
+      enriched = enriched.filter(c => {
+        const user = c.userProfile;
+        if (!user) {
+           return (selectedRole === 'all' && selectedDepartment === 'all' && selectedProgram === 'all');
+        }
+
+        // 1. Role Check
+        if (selectedRole !== 'all') {
+          const uRole = (user.role || '').toLowerCase();
+          const isStudent = uRole.includes('student');
+          const isTeaching = systemConfig?.faculty_roles && Array.isArray(systemConfig.faculty_roles)
+            ? systemConfig.faculty_roles.some(r => uRole.includes(r.toLowerCase()))
+            : FALLBACK_TEACHING_ROLES.some(r => uRole.includes(r));
+          const isNonTeaching = systemConfig?.staff_roles && Array.isArray(systemConfig.staff_roles)
+            ? systemConfig.staff_roles.some(r => uRole.includes(r.toLowerCase()))
+            : FALLBACK_NON_TEACHING_ROLES.some(r => uRole.includes(r));
+          const isClinic = systemConfig?.clinic_roles && Array.isArray(systemConfig.clinic_roles)
+            ? systemConfig.clinic_roles.some(r => uRole.includes(r.toLowerCase()))
+            : FALLBACK_CLINIC_ROLES.some(r => uRole.includes(r));
+
+          if (selectedRole === 'student' && !isStudent) return false;
+          if (selectedRole === 'teaching' && !isTeaching) return false;
+          if (selectedRole === 'non_teaching' && !isNonTeaching) return false;
+          if (selectedRole === 'clinic' && !isClinic) return false;
+        }
+
+        // 2. Department Check
+        if (selectedDepartmentConfig && !departmentMatches(getUserDepartment(user), selectedDepartmentConfig)) {
+          return false;
+        }
+
+        // 3. Program Check
+        if (selectedProgram !== 'all' && !programMatches(getUserProgram(user), selectedProgram)) {
+          return false;
+        }
+
+        return true;
+      });
+
       // Sort results
       enriched.sort((a, b) => {
         switch (sortBy) {
-          case 'oldest':
-            return new Date(a.created_at) - new Date(b.created_at);
-          case 'name_asc':
-            return (a.patientName || '').localeCompare(b.patientName || '');
-          case 'name_desc':
-            return (b.patientName || '').localeCompare(a.patientName || '');
-          case 'newest':
-          default:
-            return new Date(b.created_at) - new Date(a.created_at);
+          case 'oldest': return new Date(a.created_at) - new Date(b.created_at);
+          case 'name_asc': return (a.patientName || '').localeCompare(b.patientName || '');
+          case 'name_desc': return (b.patientName || '').localeCompare(a.patientName || '');
+          case 'newest': default: return new Date(b.created_at) - new Date(a.created_at);
         }
       });
 
-      // Calculate stats based on fully filtered data
       const total = enriched.length;
       const active = enriched.filter(c => c.status !== 'ended').length;
       const ended = enriched.filter(c => c.status === 'ended').length;
@@ -158,7 +304,6 @@ export const ConsultationManagement = () => {
       const dental = enriched.filter(c => c.consultation_type === 'dental').length;
 
       setStats({ total, active, ended, medical, dental });
-
       setAllFiltered(enriched);
       setTotalRecords(enriched.length);
 
@@ -170,36 +315,25 @@ export const ConsultationManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [buildQuery, searchInput, sortBy]);
+  }, [buildQuery, searchInput, sortBy, selectedRole, selectedDepartmentConfig, selectedProgram, systemConfig]);
 
-  // Derived paginated state
   const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
   const paginatedConsultations = allFiltered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSearchChange = (e) => {
-    setSearchInput(e.target.value);
-  };
-
-  // Refetch immediately when filters/sort change
+  // Trigger refetch exactly when dependencies change
   useEffect(() => {
     fetchConsultations(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeFilter, statusFilter, sortBy]);
+  }, [typeFilter, statusFilter, sortBy, selectedRole, selectedDepartment, selectedProgram]);
 
-  // Debounce the search box
   useEffect(() => {
-    const handler = setTimeout(() => {
-      fetchConsultations(true);
-    }, 400);
+    const handler = setTimeout(() => fetchConsultations(true), 400);
     return () => clearTimeout(handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
-  const handleDeleteClick = (conv) => {
-    setConsultationToDelete(conv);
-    setShowDeleteModal(true);
-  };
-
+  // Modal Handlers & Rendering (Archive & Edit)
+  const handleDeleteClick = (conv) => { setConsultationToDelete(conv); setShowDeleteModal(true); };
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [consultationToDelete, setConsultationToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -208,32 +342,18 @@ export const ConsultationManagement = () => {
     if (!consultationToDelete) return;
     setDeleting(true);
     try {
-      // 1. ---- SYSTEM NOTIFICATION MESSAGE IN CHAT ----
       await consultationsService.sendMessage(consultationToDelete.id, {
         text: `This consultation has been archived by clinic administration.`,
-        sender_id: null,
-        sender_name: "System",
-        sender_role: "system",
+        sender_id: null, sender_name: "System", sender_role: "system",
       });
-
-      // 2. ---- GLOBAL NOTIFICATION ----
       await supabase.from('notifications').insert({
-        type: 'consultation_archived',
-        title: 'Consultation Archived',
+        type: 'consultation_archived', title: 'Consultation Archived',
         message: 'Your consultation has been archived by the clinic administration.',
-        user_id: consultationToDelete.patient_id,
-        reference_id: consultationToDelete.id,
-        reference_type: 'consultation',
-        is_read: false
+        user_id: consultationToDelete.patient_id, reference_id: consultationToDelete.id, reference_type: 'consultation', is_read: false
       });
-
-      // 3. Archive the consultation
       await consultationsService.deleteConsultation(consultationToDelete.id);
-
       showSnackbar('Consultation archived successfully. You can restore it from the Archives page.');
-      setShowDeleteModal(false);
-      setConsultationToDelete(null);
-      fetchConsultations(true);
+      setShowDeleteModal(false); setConsultationToDelete(null); fetchConsultations(true);
     } catch (err) {
       console.error('Failed to archive consultation:', err);
       showSnackbar('Failed to archive consultation', 'error');
@@ -242,54 +362,29 @@ export const ConsultationManagement = () => {
     }
   };
 
-  // --- Edit Status modal state/handlers ---
+  const handleEditClick = (conv) => { setConsultationToEdit(conv); setEditStatus(conv.status === 'ended' ? 'ended' : 'active'); setShowEditModal(true); };
   const [showEditModal, setShowEditModal] = useState(false);
   const [consultationToEdit, setConsultationToEdit] = useState(null);
   const [editStatus, setEditStatus] = useState('active');
   const [savingStatus, setSavingStatus] = useState(false);
 
-  const handleEditClick = (conv) => {
-    setConsultationToEdit(conv);
-    setEditStatus(conv.status === 'ended' ? 'ended' : 'active');
-    setShowEditModal(true);
-  };
-
   const handleEditSave = async () => {
     if (!consultationToEdit) return;
     setSavingStatus(true);
     try {
-      // 1. Update status
-      const { error } = await supabase
-        .from('consultations')
-        .update({ status: editStatus })
-        .eq('id', consultationToEdit.id);
-
+      const { error } = await supabase.from('consultations').update({ status: editStatus }).eq('id', consultationToEdit.id);
       if (error) throw error;
-
-      // 2. ---- SYSTEM NOTIFICATION MESSAGE IN CHAT ----
       await consultationsService.sendMessage(consultationToEdit.id, {
         text: `Consultation status was changed to ${editStatus} by clinic administration.`,
-        sender_id: null,
-        sender_name: "System",
-        sender_role: "system",
+        sender_id: null, sender_name: "System", sender_role: "system",
       });
-
-      // 3. ---- GLOBAL NOTIFICATION ----
       await supabase.from('notifications').insert({
-        type: 'consultation_status',
-        title: 'Consultation Status Updated',
+        type: 'consultation_status', title: 'Consultation Status Updated',
         message: `Your consultation status was changed to ${editStatus} by the clinic administration.`,
-        user_id: consultationToEdit.patient_id,
-        reference_id: consultationToEdit.id,
-        reference_type: 'consultation',
-        is_read: false
+        user_id: consultationToEdit.patient_id, reference_id: consultationToEdit.id, reference_type: 'consultation', is_read: false
       });
-
-
       showSnackbar('Consultation status updated successfully');
-      setShowEditModal(false);
-      setConsultationToEdit(null);
-      fetchConsultations(true);
+      setShowEditModal(false); setConsultationToEdit(null); fetchConsultations(true);
     } catch (err) {
       console.error('Failed to update consultation status:', err);
       showSnackbar('Failed to update consultation status', 'error');
@@ -299,7 +394,7 @@ export const ConsultationManagement = () => {
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 7;
+  const COL_COUNT = 8; // Adjust col count for new column
 
   const summaryStats = [
     { label: 'Total',   count: stats.total,   color: 'text-slate-700'   },
@@ -322,8 +417,6 @@ export const ConsultationManagement = () => {
 
   return (
     <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
-
-      {/* Summary stats — its own row, separate from the toolbar, stretched full width */}
       <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
         {summaryStats.map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
@@ -333,15 +426,12 @@ export const ConsultationManagement = () => {
         ))}
       </div>
 
-      {/* Main Container */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Unified Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-
-          {/* Left side: Search & Filters */}
-          <div className="flex flex-wrap gap-3 items-center flex-1 w-full xl:w-auto">
-
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col 2xl:flex-row gap-4 items-start 2xl:items-center justify-between">
+          <div className="flex flex-wrap gap-3 items-center flex-1 w-full 2xl:w-auto">
+            {/* Search */}
             <div className="relative w-full sm:w-60">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -350,61 +440,82 @@ export const ConsultationManagement = () => {
                 type="text"
                 placeholder="Search patient, ID, message..."
                 value={searchInput}
-                onChange={handleSearchChange}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
               />
             </div>
 
+            {/* Base Filters */}
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={`${selectCls} w-full sm:w-auto`}>
+              {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${selectCls} w-full sm:w-auto`}>
+              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+
+            {/* Demographic Filters extracted from Config */}
             <select
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value)}
-              className={`${selectCls} w-full sm:w-32`}
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+              className={`${selectCls} w-full sm:w-auto bg-slate-100/50`}
             >
-              {TYPE_OPTIONS.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+              <option value="all">All Personnel</option>
+              <option value="student">Students</option>
+              <option value="teaching">Teaching Personnel</option>
+              <option value="non_teaching">Non-Teaching Personnel</option>
+              <option value="clinic">Clinic Personnel</option>
+            </select>
+
+            <select
+              value={selectedDepartment}
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              disabled={selectedRole === 'clinic'}
+              className={`${selectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+            >
+              <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.abbr || department.full}
+                </option>
               ))}
             </select>
 
             <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className={`${selectCls} w-full sm:w-32`}
+              value={selectedProgram}
+              onChange={(e) => setSelectedProgram(e.target.value)}
+              disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
+              className={`${selectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
             >
-              {STATUS_OPTIONS.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+              <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
+              {programOptions.map((program) => (
+                <option key={program.value} value={program.value}>
+                  {program.label}
+                </option>
               ))}
             </select>
 
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value)}
-              className={`${selectCls} w-full sm:w-36`}
-            >
-              {SORT_OPTIONS.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
+            {/* Sort */}
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={`${selectCls} w-full sm:w-auto`}>
+              {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
 
-          {/* Right side: Refresh */}
-          <button
-              onClick={() => fetchConsultations(true)}
-              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
+          <button onClick={() => fetchConsultations(true)} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
         </div>
 
-        {/* Table */}
         <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Dept / Program</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Type</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Last Message</th>
@@ -437,10 +548,13 @@ export const ConsultationManagement = () => {
                 </tr>
               ) : (
                 paginatedConsultations.map((conv, idx) => {
-                  const tab = conv.consultation_type === 'medical'
-                    ? { accent: '#1a5c3a', light: '#e8f5ee' }
-                    : { accent: '#1a4a7a', light: '#e8f0fa' };
+                  const tab = conv.consultation_type === 'medical' ? { accent: '#1a5c3a', light: '#e8f5ee' } : { accent: '#1a4a7a', light: '#e8f0fa' };
                   const isEnded = conv.status === 'ended';
+
+                  // Render logic to grab the true display text for department/program
+                  const uDept = getUserDepartment(conv.userProfile) || '—';
+                  const uProg = getUserProgram(conv.userProfile) || '—';
+
                   return (
                     <tr key={conv.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                       <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
@@ -448,36 +562,30 @@ export const ConsultationManagement = () => {
                       </td>
                       <td className="p-3">
                         <div className="flex items-center gap-3">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                            style={{ backgroundColor: tab.light, color: tab.accent }}
-                          >
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ backgroundColor: tab.light, color: tab.accent }}>
                             {conv.patientName?.charAt(0).toUpperCase() || '?'}
                           </div>
                           <div>
                             <div className="text-sm font-semibold text-slate-800">{conv.patientName}</div>
-                            <div className="text-xs text-slate-500">{conv.patientUniversityId} • {conv.patientProgram}</div>
+                            <div className="text-xs text-slate-500">{conv.patientUniversityId} • <span className="capitalize">{conv.patientRole}</span></div>
                           </div>
                         </div>
                       </td>
+                      <td className="p-3">
+                        <div className="text-sm text-slate-700 truncate max-w-[150px]" title={uDept}>{uDept}</div>
+                        <div className="text-xs text-slate-500 truncate max-w-[150px]" title={uProg}>{uProg}</div>
+                      </td>
                       <td className="p-3 whitespace-nowrap">
-                        <span
-                          className="text-xs px-2 py-1 rounded-full font-semibold"
-                          style={{ backgroundColor: tab.light, color: tab.accent }}
-                        >
+                        <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: tab.light, color: tab.accent }}>
                           {conv.consultation_type === 'medical' ? 'Medical' : 'Dental'}
                         </span>
                       </td>
                       <td className="p-3 whitespace-nowrap">
-                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                          isEnded
-                            ? 'bg-slate-100 text-slate-500'
-                            : 'bg-emerald-100 text-emerald-700'
-                        }`}>
+                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${isEnded ? 'bg-slate-100 text-slate-500' : 'bg-emerald-100 text-emerald-700'}`}>
                           {isEnded ? 'Ended' : 'Active'}
                         </span>
                       </td>
-                      <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[200px]">
+                      <td className="p-3 text-sm text-slate-600 hidden md:table-cell max-w-[180px]">
                         <span className="truncate block" title={conv.lastMessage}>{conv.lastMessage || 'No messages'}</span>
                       </td>
                       <td className="p-3 whitespace-nowrap">
@@ -485,20 +593,12 @@ export const ConsultationManagement = () => {
                       </td>
                       <td className="p-3 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleEditClick(conv)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all"
-                            title="Edit Status"
-                          >
+                          <button onClick={() => handleEditClick(conv)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-[#466460] hover:bg-[#e0eceb] transition-all" title="Edit Status">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
                             </svg>
                           </button>
-                          <button
-                            onClick={() => handleDeleteClick(conv)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all"
-                            title="Archive Consultation"
-                          >
+                          <button onClick={() => handleDeleteClick(conv)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-red-500 hover:bg-red-50 transition-all" title="Archive Consultation">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                             </svg>
@@ -513,46 +613,27 @@ export const ConsultationManagement = () => {
           </table>
         </div>
 
-        {/* Pagination Footer */}
         {totalPages > 1 && (
           <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
             <div>
               Showing <span className="font-semibold">{totalRecords === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> records
             </div>
             <div className="flex items-center gap-2">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(p => p - 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-              >
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
                 Previous
               </button>
-              <div className="text-xs font-semibold px-2">
-                Page {currentPage} of {Math.max(1, totalPages)}
-              </div>
-              <button
-                disabled={currentPage === totalPages || totalPages === 0}
-                onClick={() => setCurrentPage(p => p + 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-              >
+              <div className="text-xs font-semibold px-2">Page {currentPage} of {Math.max(1, totalPages)}</div>
+              <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
                 Next
               </button>
             </div>
           </div>
         )}
-
       </div>
 
-      {/* Delete Confirmation Modal Using Portal */}
       {showDeleteModal && createPortal(
-        <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
-          onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center" onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -562,42 +643,16 @@ export const ConsultationManagement = () => {
                 <p className="text-sm text-slate-500">You can restore it later from Archives</p>
               </div>
             </div>
-
             <div className="bg-slate-50 rounded-lg p-4 mb-4">
-              <p className="text-sm text-slate-600">
-                Are you sure you want to archive the consultation with <span className="font-semibold">{consultationToDelete?.patientName}</span>?
-              </p>
-              <p className="text-xs text-slate-400 mt-2">
-                All messages in this conversation will be archived and can be restored later.
-              </p>
+              <p className="text-sm text-slate-600">Are you sure you want to archive the consultation with <span className="font-semibold">{consultationToDelete?.patientName}</span>?</p>
+              <p className="text-xs text-slate-400 mt-2">All messages in this conversation will be archived and can be restored later.</p>
             </div>
-
             <div className="flex gap-3">
-              <button
-                onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
-                disabled={deleting}
-              >
+              <button onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all" disabled={deleting}>
                 Cancel
               </button>
-              <button
-                onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
-                disabled={deleting}
-              >
-                {deleting ? (
-                  <>
-                    <i className="fa-solid fa-spinner fa-spin"></i>
-                    Archiving...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
-                    </svg>
-                    Archive
-                  </>
-                )}
+              <button onClick={handleDeleteConfirm} className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2" disabled={deleting}>
+                {deleting ? <><i className="fa-solid fa-spinner fa-spin"></i> Archiving...</> : <><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" /></svg> Archive</>}
               </button>
             </div>
           </div>
@@ -605,82 +660,29 @@ export const ConsultationManagement = () => {
         document.body
       )}
 
-      {/* Edit Status Modal Using Portal */}
       {showEditModal && createPortal(
-        <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
-          onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center" onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" />
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" /></svg>
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Edit Consultation Status</h3>
                 <p className="text-sm text-slate-500">{consultationToEdit?.patientName}</p>
               </div>
             </div>
-
             <div className="bg-slate-50 rounded-lg p-4 mb-4">
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                Status
-              </label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Status</label>
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditStatus('active')}
-                  className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all ${
-                    editStatus === 'active'
-                      ? 'bg-emerald-500 border-emerald-500 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  Active
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditStatus('ended')}
-                  className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all ${
-                    editStatus === 'ended'
-                      ? 'bg-slate-500 border-slate-500 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  Ended
-                </button>
+                <button type="button" onClick={() => setEditStatus('active')} className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all ${editStatus === 'active' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>Active</button>
+                <button type="button" onClick={() => setEditStatus('ended')} className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all ${editStatus === 'ended' ? 'bg-slate-500 border-slate-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>Ended</button>
               </div>
             </div>
-
             <div className="flex gap-3">
-              <button
-                onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
-                disabled={savingStatus}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEditSave}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2"
-                disabled={savingStatus || editStatus === consultationToEdit?.status}
-              >
-                {savingStatus ? (
-                  <>
-                    <i className="fa-solid fa-spinner fa-spin"></i>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <i className="fa-solid fa-check"></i>
-                    Save
-                  </>
-                )}
+              <button onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all" disabled={savingStatus}>Cancel</button>
+              <button onClick={handleEditSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2" disabled={savingStatus || editStatus === consultationToEdit?.status}>
+                {savingStatus ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving...</> : <><i className="fa-solid fa-check"></i> Save</>}
               </button>
             </div>
           </div>
@@ -688,19 +690,12 @@ export const ConsultationManagement = () => {
         document.body
       )}
 
-      {/* Snackbar */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${
-          message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-        }`}>
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
           {message.type === 'success' ? (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
           )}
           {message.text}
         </div>

@@ -1,5 +1,5 @@
 // frontend/src/features/admin-clinic/User-Management.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../../supabase';
 import { createPortal } from 'react-dom';
 import DatePicker from '../../components/Datepicker';
@@ -81,11 +81,37 @@ const PasswordRequirements = ({ password, rules }) => {
   );
 };
 
-// ── Helper Functions ──────────────────────────────────────────────────────────
-const isClinicStaff = (r, config) => config?.clinic_roles?.includes(r?.toLowerCase());
-const isFaculty     = (r, config) => config?.faculty_roles?.includes(r?.toLowerCase());
-const isStudent     = (r) => r?.toLowerCase() === 'student';
-const isAdmin       = (r, config) => config?.admin_roles?.includes(r?.toLowerCase());
+// ── Role Classification Helpers ─────────────────────────────────────────────
+const FALLBACK_TEACHING_ROLES = ["instructor", "lecturer", "teacher", "professor", "dean", "department head", "program chair", "program coordinator", "faculty"];
+const FALLBACK_NON_TEACHING_ROLES = ["employee", "staff", "registrar", "guidance counselor", "counselor", "librarian", "technician", "security", "maintenance", "office coordinator"];
+const FALLBACK_CLINIC_ROLES = ["doctor", "nurse", "dentist", "clinic staff"];
+
+const isAdmin = (r, config) => {
+  const role = (r || '').toLowerCase().trim();
+  return role === 'sysadmin' || role === 'administrator' || role === 'admin' || config?.admin_roles?.map(x => x.toLowerCase()).includes(role);
+};
+
+const isClinicStaff = (r, config) => {
+  const role = (r || '').toLowerCase().trim();
+  if (isAdmin(r, config)) return false;
+  return config?.clinic_roles?.map(x => x.toLowerCase()).includes(role) || FALLBACK_CLINIC_ROLES.includes(role);
+};
+
+const isNonTeaching = (r, config) => {
+  const role = (r || '').toLowerCase().trim();
+  if (isAdmin(r, config) || isClinicStaff(r, config)) return false;
+  // Hard override: force known non-teaching roles to evaluate correctly regardless of DB config errors
+  if (FALLBACK_NON_TEACHING_ROLES.includes(role)) return true;
+  return config?.staff_roles?.map(x => x.toLowerCase()).includes(role);
+};
+
+const isTeaching = (r, config) => {
+  const role = (r || '').toLowerCase().trim();
+  if (isAdmin(r, config) || isClinicStaff(r, config) || isNonTeaching(r, config)) return false;
+  return config?.faculty_roles?.map(x => x.toLowerCase()).includes(role) || FALLBACK_TEACHING_ROLES.includes(role);
+};
+
+const isStudent = (r) => (r || '').toLowerCase().trim() === 'student';
 
 // Extracts unique values from a config field (array or JSONB object values)
 const extractUniqueConfigValues = (configField) => {
@@ -94,11 +120,42 @@ const extractUniqueConfigValues = (configField) => {
   return Array.from(new Set(Object.values(configField).flat()));
 };
 
-const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
+const getDeptOptionsForRole = (role, configData) => {
+  if (!configData) return [];
+  const depts = (configData.departments || []).map(d => ({ label: d.abbr || d.full, value: d.full || d.abbr }));
+  const offices = (configData.non_academic_offices || configData.offices || []).map(o => ({ label: o, value: o }));
 
+  if (isStudent(role) || isTeaching(role, configData)) return depts;
+  if (isNonTeaching(role, configData)) return offices;
+  return [...depts, ...offices]; // fallback for admin/clinic if needed
+};
+
+const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
 const ITEMS_PER_PAGE = 100;
 
-// ── Name Normalization ────────────────────────────────────────────────────────
+// ── Name & Dept Normalization ────────────────────────────────────────────────
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+const getUserDepartment = (user) => user?.department || user?.dept || user?.college || '';
+
+const getUserProgram = (user) => user?.program || user?.course || user?.degree_program || '';
+
+const departmentMatches = (userDepartment, departmentConfig) => {
+  if (!departmentConfig) return false;
+  const userValue = normalizeText(userDepartment);
+  return [
+    departmentConfig.full,
+    departmentConfig.abbr,
+    departmentConfig.name,
+    departmentConfig.value,
+  ]
+    .filter(Boolean)
+    .some((value) => normalizeText(value) === userValue);
+};
+
+const programMatches = (userProgram, selectedProgramValue) =>
+  normalizeText(userProgram) === normalizeText(selectedProgramValue);
+
 const normalizeName = (name) => {
   if (!name) return '';
   let trimmed = name.trim();
@@ -113,6 +170,8 @@ const capitalizeWords = (str) => {
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputCls  = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] bg-white";
 const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+const compactSelectCls = `${filterSelectCls} w-full sm:w-auto min-w-[150px] max-w-[200px] truncate`;
+const compactDeptSelectCls = `${filterSelectCls} w-full sm:w-auto min-w-[210px] max-w-[300px] bg-slate-100/50 truncate disabled:opacity-60 disabled:cursor-not-allowed`;
 const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tracking-wide";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,10 +239,9 @@ const getCurrentUser = () => {
 
 const currentUser = getCurrentUser();
 const isCurrentUserSysAdmin = ['sysadmin', 'administrator', 'admin'].includes(currentUser?.role?.toLowerCase());
-const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CustomSelect Component (Fixes max-height browser issue for native <select>)
+// CustomSelect Component
 // ─────────────────────────────────────────────────────────────────────────────
 const CustomSelect = ({ value, onChange, options, placeholder = "— Select —", disabled = false, grouped = false }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -274,15 +332,16 @@ const CustomSelect = ({ value, onChange, options, placeholder = "— Select —"
   );
 };
 
-// Generate Grouped Role Options safely
+// Generate Grouped Role Options safely using system_config mappings
 const getRoleOptions = (configData) => {
   if (!configData) return [];
   const groups = [];
   if (isCurrentUserSysAdmin) {
     groups.push({ label: 'System Administration', options: (configData.admin_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
   }
-  groups.push({ label: 'Clinic Staff', options: (configData.clinic_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
-  groups.push({ label: 'Faculty', options: (configData.faculty_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: 'Clinic Personnel', options: (configData.clinic_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: 'Teaching Personnel', options: (configData.faculty_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: 'Non-Teaching Personnel', options: (configData.staff_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
   groups.push({ label: 'Student', options: [{ value: 'student', label: 'Student' }] });
   return groups;
 };
@@ -309,23 +368,19 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
 
   const [form, setForm] = useState(initialForm);
 
-  const deptAbbrToFull = Object.fromEntries(configData.departments.map(d => [d.abbr, d.full]));
-  const programsByDeptAbbr = Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs]));
+  const deptAbbrToFull = Object.fromEntries((configData?.departments || []).map(d => [d.abbr, d.full]));
+  const programsByDeptAbbr = Object.fromEntries((configData?.departments || []).map(d => [d.abbr, d.programs]));
 
-  const PLSP_OFFICES_FOR_STAFF = [
-    ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
-    ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
-  ];
-  const uniqueClassifications = extractUniqueConfigValues(configData.classifications);
-  const uniqueJobTitles = extractUniqueConfigValues(configData.job_titles);
+  const uniqueClassifications = extractUniqueConfigValues(configData?.classifications);
+  const uniqueJobTitles = extractUniqueConfigValues(configData?.job_titles);
 
   const cf = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const handleRoleChange = (val) => {
-    let rawClassification = configData.classifications[val?.toLowerCase()];
+    let rawClassification = configData?.classifications?.[val?.toLowerCase()];
     if (Array.isArray(rawClassification)) rawClassification = rawClassification[0];
 
-    let rawJobTitle = configData.job_titles[val?.toLowerCase()];
+    let rawJobTitle = configData?.job_titles?.[val?.toLowerCase()];
     if (Array.isArray(rawJobTitle)) rawJobTitle = rawJobTitle[0];
 
     setForm(f => ({
@@ -335,7 +390,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
     }));
   };
 
-  const handleDeptChange = (val) => {
+  const handleDeptChangeForStudent = (val) => {
     setForm(f => ({ ...f, departmentAbbr: val, department: deptAbbrToFull[val] || val, program: '' }));
   };
 
@@ -364,7 +419,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
       showSnackbar('Please fill all required fields', 'error'); return;
     }
 
-    const pwCheck = validatePassword(form.password, configData.passwordRules);
+    const pwCheck = validatePassword(form.password, configData?.passwordRules);
     if (!pwCheck.valid) {
       showSnackbar(pwCheck.message, 'error');
       return;
@@ -425,9 +480,10 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
   };
 
   const isStudentRole = isStudent(form.role);
-  const isFacultyRole = isFaculty(form.role, configData);
-  const isClinicRole  = isClinicStaff(form.role, configData);
-  const isAdminRole   = isAdmin(form.role, configData);
+  const isTeachingRole = isTeaching(form.role, configData);
+  const isNonTeachingRole = isNonTeaching(form.role, configData);
+  const isClinicRole = isClinicStaff(form.role, configData);
+  const isAdminRole = isAdmin(form.role, configData);
   const secHead = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
 
   return createPortal(
@@ -502,7 +558,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
                   <>
                     <div>
                       <label className={labelCls}>Department <span className="text-red-400">*</span></label>
-                      <CustomSelect value={form.departmentAbbr} onChange={handleDeptChange} options={configData.departments.map(d => ({ value: d.abbr, label: d.abbr }))} />
+                      <CustomSelect value={form.departmentAbbr} onChange={handleDeptChangeForStudent} options={(configData?.departments || []).map(d => ({ value: d.abbr, label: d.abbr }))} />
                       {form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}
                     </div>
                     <div>
@@ -515,7 +571,7 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
                     </div>
                     <div>
                       <label className={labelCls}>Section</label>
-                      <CustomSelect value={form.section} onChange={v => cf('section', v)} options={configData.sections || []} />
+                      <CustomSelect value={form.section} onChange={v => cf('section', v)} options={configData?.sections || []} />
                     </div>
                     <div>
                       <label className={labelCls}>Student Classification</label>
@@ -524,19 +580,19 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
                   </>
                 )}
 
-                {(isFacultyRole || isClinicRole || isAdminRole) && (
+                {(isTeachingRole || isNonTeachingRole || isClinicRole || isAdminRole) && (
                   <>
                     <div>
-                      <label className={labelCls}>Department / Office {!isAdminRole && <span className="text-red-400">*</span>}</label>
-                      <CustomSelect value={form.department} onChange={v => cf('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
+                      <label className={labelCls}>Department / Office {!isAdminRole && !isClinicRole && <span className="text-red-400">*</span>}</label>
+                      <CustomSelect value={form.department} onChange={v => cf('department', v)} options={getDeptOptionsForRole(form.role, configData)} placeholder="— Select Office —" />
                     </div>
 
                     <div>
-                      <label className={labelCls}>Job Title <span className="text-red-400">*</span></label>
+                      <label className={labelCls}>Job Title {!isAdminRole && <span className="text-red-400">*</span>}</label>
                       <CustomSelect value={form.job_title} onChange={v => cf('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
                     </div>
 
-                    {!isAdminRole && (
+                    {!isAdminRole && !isClinicRole && (
                       <div>
                         <label className={labelCls}>Classification</label>
                         <CustomSelect value={form.classification} onChange={v => cf('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
@@ -593,13 +649,15 @@ export const UserManagement = () => {
   const [resendingId, setResendingId]   = useState(null);
 
   // Search & Filters
-  const [currentFilter, setCurrentFilter] = useState('all');
+  const [selectedRole, setSelectedRole]             = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [selectedProgram, setSelectedProgram]       = useState('all');
+
   const [profileFilter, setProfileFilter] = useState('all');
   const [verifyFilter, setVerifyFilter]   = useState('all');
   const [sexFilter, setSexFilter]         = useState('all');
-  const [deptFilter, setDeptFilter]       = useState('all');
   const [sortOrder, setSortOrder]         = useState('asc');
-  const [searchInput, setSearchInput]   = useState('');
+  const [searchInput, setSearchInput]     = useState('');
 
   // Pagination
   const [currentPage, setCurrentPage]   = useState(1);
@@ -636,7 +694,13 @@ export const UserManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, currentFilter, profileFilter, verifyFilter, sexFilter, deptFilter, sortOrder]);
+  }, [searchInput, selectedRole, selectedDepartment, selectedProgram, profileFilter, verifyFilter, sexFilter, sortOrder]);
+
+  // Reset department & program filter when role filter changes
+  useEffect(() => {
+    setSelectedDepartment('all');
+    setSelectedProgram('all');
+  }, [selectedRole]);
 
   const fetchUsers = async () => {
     try {
@@ -652,14 +716,11 @@ export const UserManagement = () => {
     }
   };
 
-const fetchConfig = async () => {
+  const fetchConfig = async () => {
     try {
       setIsConfigLoading(true);
 
-      // 1. Retrieve the token
       const token = localStorage.getItem('token');
-
-      // 2. Attach the headers to the fetch request
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/system-config`, {
         method: 'GET',
         headers: {
@@ -700,31 +761,107 @@ const fetchConfig = async () => {
   const getRoleLabel = (role) => capitalizeWords(role) || '—';
 
   const getRoleBadgeStyle = (role) => {
-    const r = role?.toLowerCase();
-    if (isAdmin(r, configData)) return { background: '#fef9c3', color: '#854d0e' };
-    if (isClinicStaff(r, configData)) return { background: '#dbeafe', color: '#1d4ed8' };
-    if (isStudent(r)) return { background: '#f3e8ff', color: '#6b21a8' };
-    if (isFaculty(r, configData)) return { background: '#fff7ed', color: '#9a3412' };
+    if (isAdmin(role, configData)) return { background: '#fef9c3', color: '#854d0e' };
+    if (isClinicStaff(role, configData)) return { background: '#dbeafe', color: '#1d4ed8' };
+    if (isStudent(role)) return { background: '#f3e8ff', color: '#6b21a8' };
+    if (isTeaching(role, configData)) return { background: '#fff7ed', color: '#9a3412' };
+    if (isNonTeaching(role, configData)) return { background: '#e0e7ff', color: '#1e3a8a' };
     return { background: '#f1f5f9', color: '#475569' };
   };
 
-  const deptAbbrToFull = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.full])) : {};
-  const programsByDeptAbbr = configData ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs])) : {};
-  const PLSP_OFFICES_FOR_STAFF = configData ? [
-    ...configData.departments.map(d => ({ label: d.abbr, value: d.full })),
-    ...configData.non_academic_offices.map(o => ({ label: o, value: o })),
-  ] : [];
+  const deptAbbrToFull = configData?.departments ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.full])) : {};
+
+  // ── Build cascading options ──
+  const departmentOptions = useMemo(() => {
+    const depts = configData?.departments || [];
+    const offices = configData?.non_academic_offices || configData?.offices || [];
+    let rawList = [];
+
+    if (selectedRole === 'student' || selectedRole === 'teaching') {
+      rawList = depts;
+    } else if (selectedRole === 'non_teaching') {
+      rawList = offices;
+    } else if (selectedRole === 'clinic' || selectedRole === 'sysadmin') {
+      return [];
+    } else {
+      rawList = [...depts, ...offices];
+    }
+
+    if (!Array.isArray(rawList)) return [];
+
+    return rawList
+      .filter(Boolean)
+      .map((department, index) => {
+        if (typeof department === 'string') {
+          return { id: department, full: department, abbr: department, programs: [] };
+        }
+        return {
+          id: department.id || department.abbr || department.full || `department-${index}`,
+          full: department.full || department.name || department.abbr || '',
+          abbr: department.abbr || department.code || department.full || '',
+          programs: Array.isArray(department.programs)
+            ? department.programs
+            : Array.isArray(department.courses) ? department.courses : [],
+        };
+      })
+      .filter((department) => department.full || department.abbr);
+  }, [configData, selectedRole]);
+
+  const selectedDepartmentConfig = useMemo(() => {
+    if (selectedDepartment === 'all') return null;
+    return (
+      departmentOptions.find(
+        (department) =>
+          department.id === selectedDepartment ||
+          department.abbr === selectedDepartment ||
+          department.full === selectedDepartment
+      ) || null
+    );
+  }, [departmentOptions, selectedDepartment]);
+
+  const programOptions = useMemo(() => {
+    if (!selectedDepartmentConfig || selectedRole === 'teaching' || selectedRole === 'non_teaching' || selectedRole === 'clinic' || selectedRole === 'sysadmin') {
+      return [];
+    }
+    return selectedDepartmentConfig.programs
+      .map((program) => {
+        if (typeof program === 'string') return { value: program, label: program };
+        return {
+          value: program.value || program.abbr || program.code || program.name || program.full || '',
+          label: program.full || program.name || program.abbr || program.code || '',
+        };
+      })
+      .filter((program) => program.value);
+  }, [selectedDepartmentConfig, selectedRole]);
+
 
   const uniqueClassifications = configData ? extractUniqueConfigValues(configData.classifications) : [];
   const uniqueJobTitles = configData ? extractUniqueConfigValues(configData.job_titles) : [];
 
   let filteredUsers = users.filter(user => {
-    const role = user.role?.toLowerCase();
+    const role = user.role?.toLowerCase() || '';
 
-    if (currentFilter === 'faculty') { if (!isFaculty(role, configData)) return false; }
-    else if (currentFilter === 'clinic_staff') { if (!isClinicStaff(role, configData)) return false; }
-    else if (currentFilter !== 'all') { if (role !== currentFilter) return false; }
+    // 1. Role Check
+    if (selectedRole !== 'all') {
+      const bIsTeaching = isTeaching(role, configData);
+      const bIsNonTeaching = isNonTeaching(role, configData);
+      const bIsClinic = isClinicStaff(role, configData);
+      const bIsAdmin = isAdmin(role, configData);
 
+      if (selectedRole === 'teaching' && !bIsTeaching) return false;
+      if (selectedRole === 'non_teaching' && !bIsNonTeaching) return false;
+      if (selectedRole === 'clinic' && !bIsClinic) return false;
+      if (selectedRole === 'sysadmin' && !bIsAdmin) return false;
+      if (selectedRole === 'student' && !isStudent(role)) return false;
+    }
+
+    // 2. Department Check
+    if (selectedDepartmentConfig && !departmentMatches(getUserDepartment(user), selectedDepartmentConfig)) return false;
+
+    // 3. Program Check
+    if (selectedProgram !== 'all' && !programMatches(getUserProgram(user), selectedProgram)) return false;
+
+    // Additional Filters
     if (profileFilter !== 'all') {
       const isComplete = !!user.profile_complete;
       if (profileFilter === 'active' && !isComplete) return false;
@@ -739,10 +876,6 @@ const fetchConfig = async () => {
 
     if (sexFilter !== 'all') {
       if (user.sex !== sexFilter) return false;
-    }
-
-    if (deptFilter !== 'all') {
-      if (user.department !== deptFilter) return false;
     }
 
     if (searchInput) {
@@ -766,7 +899,7 @@ const fetchConfig = async () => {
   // ── Edit ──────────────────────────────────────────────────────────────────
   const openEditModal = (user) => {
     let foundDeptAbbr = '';
-    if (configData) {
+    if (configData && configData.departments) {
       for (const d of configData.departments) {
         if (d.full === user.department) { foundDeptAbbr = d.abbr; break; }
       }
@@ -825,7 +958,7 @@ const fetchConfig = async () => {
     }
   };
 
-  const handleDeptChange = (val) => {
+  const handleDeptChangeForEditStudent = (val) => {
     setEditForm(f => ({ ...f, departmentAbbr: val, department: deptAbbrToFull[val] || val, program: '' }));
   };
 
@@ -839,15 +972,16 @@ const fetchConfig = async () => {
   };
 
   const handleRoleEditChange = (val) => {
-    let rawClassification = configData.classifications[val?.toLowerCase()];
+    let rawClassification = configData?.classifications?.[val?.toLowerCase()];
     if (Array.isArray(rawClassification)) rawClassification = rawClassification[0];
 
-    let rawJobTitle = configData.job_titles[val?.toLowerCase()];
+    let rawJobTitle = configData?.job_titles?.[val?.toLowerCase()];
     if (Array.isArray(rawJobTitle)) rawJobTitle = rawJobTitle[0];
 
     setEditForm(f => ({
       ...f, role: val, classification: rawClassification || '',
       job_title: rawJobTitle || capitalizeWords(val),
+      department: '', departmentAbbr: '', program: '' // Reset dept when role changes
     }));
   };
 
@@ -869,7 +1003,7 @@ const fetchConfig = async () => {
     }
 
     if (editForm.password) {
-      const pwCheck = validatePassword(editForm.password, configData.passwordRules);
+      const pwCheck = validatePassword(editForm.password, configData?.passwordRules);
       if (!pwCheck.valid) {
         showSnackbar(pwCheck.message, 'error');
         return;
@@ -934,8 +1068,6 @@ const fetchConfig = async () => {
       const data = await response.json();
 
       if (data.success) {
-
-
         showSnackbar(`Verification email sent successfully to ${user.email}`, 'success');
         setShowEditModal(false);
       } else {
@@ -963,8 +1095,6 @@ const fetchConfig = async () => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || 'Failed to archive user');
 
-
-
       setUsers(users.filter(u => u.uid !== deleteTarget.uid));
       showSnackbar('User archived successfully. You can restore them from the Archives page.', 'success');
     } catch (err) {
@@ -983,7 +1113,8 @@ const fetchConfig = async () => {
   const statAdmin       = filteredUsers.filter(u => isAdmin(u.role, configData)).length;
   const statClinicStaff = filteredUsers.filter(u => isClinicStaff(u.role, configData)).length;
   const statStudent     = filteredUsers.filter(u => isStudent(u.role)).length;
-  const statFaculty     = filteredUsers.filter(u => isFaculty(u.role, configData)).length;
+  const statTeaching    = filteredUsers.filter(u => isTeaching(u.role, configData)).length;
+  const statNonTeaching = filteredUsers.filter(u => isNonTeaching(u.role, configData)).length;
 
   const sectionHeadCls = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
   const COL_COUNT = 9;
@@ -1008,14 +1139,14 @@ const fetchConfig = async () => {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
         {[
           { label: 'Total', count: statTotal, color: 'text-slate-800' },
-          { label: 'Admins', count: statAdmin, color: 'text-amber-600' },
           { label: 'Clinic', count: statClinicStaff, color: 'text-blue-600' },
           { label: 'Students', count: statStudent, color: 'text-purple-600' },
-          { label: 'Faculty', count: statFaculty, color: 'text-emerald-600' },
+          { label: 'Teaching', count: statTeaching, color: 'text-emerald-600' },
+          { label: 'Non-Teaching', count: statNonTeaching, color: 'text-amber-600' },
         ].map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
-            <span className="text-sm font-medium text-slate-500">{s.label}</span>
+            <span className="text-[11px] font-medium text-slate-500 leading-tight text-center">{s.label}</span>
           </div>
         ))}
       </div>
@@ -1025,7 +1156,7 @@ const fetchConfig = async () => {
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
           <div className="flex flex-wrap gap-2 items-center flex-1 w-full xl:w-auto">
 
-            <div className="relative w-full sm:w-60">
+            <div className="relative w-full sm:w-56">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
               </svg>
@@ -1034,39 +1165,63 @@ const fetchConfig = async () => {
                 className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
             </div>
 
-            <select value={currentFilter} onChange={e => setCurrentFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-auto`}>
-              <option value="all">All Roles</option>
-              <option value="sysadmin">System Administrators</option>
-              <option value="clinic_staff">Clinic Staff</option>
+            <select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}
+              className={compactSelectCls}>
+              <option value="all">All Personnel</option>
+              {isCurrentUserSysAdmin && <option value="sysadmin">System Administrators</option>}
               <option value="student">Students</option>
-              <option value="faculty">Faculty</option>
+              <option value="teaching">Teaching Personnel</option>
+              <option value="non_teaching">Non-Teaching Personnel</option>
+              <option value="clinic">Clinic Personnel</option>
             </select>
 
-            <select value={profileFilter} onChange={e => setProfileFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+            <select value={profileFilter} onChange={e => setProfileFilter(e.target.value)} className={compactSelectCls}>
               <option value="all">All Profile Status</option>
               <option value="active">Active</option>
               <option value="pending">Pending Setup</option>
             </select>
 
-            <select value={verifyFilter} onChange={e => setVerifyFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+            <select value={verifyFilter} onChange={e => setVerifyFilter(e.target.value)} className={compactSelectCls}>
               <option value="all">All Verification</option>
               <option value="verified">Verified</option>
               <option value="unverified">Unverified</option>
             </select>
 
-            <select value={sexFilter} onChange={e => setSexFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+            <select value={sexFilter} onChange={e => setSexFilter(e.target.value)} className={compactSelectCls}>
               <option value="all">All Sex</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
             </select>
 
-            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
-              <option value="all">All Departments</option>
-              {PLSP_OFFICES_FOR_STAFF.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <select
+              value={selectedDepartment}
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              disabled={selectedRole === 'clinic' || selectedRole === 'sysadmin'}
+              className={compactDeptSelectCls}
+            >
+              <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.abbr || department.full}
+                </option>
+              ))}
             </select>
 
-            <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+            <select
+              value={selectedProgram}
+              onChange={(e) => setSelectedProgram(e.target.value)}
+              disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic' || selectedRole === 'sysadmin'}
+              className={compactDeptSelectCls}
+            >
+              <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
+              {programOptions.map((program) => (
+                <option key={program.value} value={program.value}>
+                  {program.label}
+                </option>
+              ))}
+            </select>
+
+            <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className={compactSelectCls}>
               <option value="asc">Name (A-Z)</option>
               <option value="desc">Name (Z-A)</option>
             </select>
@@ -1099,7 +1254,7 @@ const fetchConfig = async () => {
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Name</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">University ID</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Role</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Department</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Office / Dept</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Sex</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Email</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Profile</th>
@@ -1119,7 +1274,11 @@ const fetchConfig = async () => {
                 </td></tr>
               ) : paginatedUsers.length === 0 ? (
                 <tr><td colSpan={COL_COUNT} className="text-center py-10 text-slate-400">No users found</td></tr>
-              ) : paginatedUsers.map((user, idx) => (
+              ) : paginatedUsers.map((user, idx) => {
+                const uDept = getUserDepartment(user) || '—';
+                const uProg = getUserProgram(user) || '';
+
+                return (
                 <tr key={user.id} className={`border-b border-slate-100 hover:bg-[#e0eceb]/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                   <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
                     {(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}
@@ -1141,7 +1300,10 @@ const fetchConfig = async () => {
                       {getRoleLabel(user.role)}
                     </span>
                   </td>
-                  <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.department || '—'}</td>
+                  <td className="p-3">
+                    <div className="text-sm text-slate-700 truncate max-w-[150px]" title={uDept}>{uDept}</div>
+                    <div className="text-xs text-slate-500 truncate max-w-[150px]" title={uProg}>{uProg}</div>
+                  </td>
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.sex || '—'}</td>
                   <td className="p-3 whitespace-nowrap">
                     {user.is_verified
@@ -1191,7 +1353,7 @@ const fetchConfig = async () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -1303,7 +1465,7 @@ const fetchConfig = async () => {
                       <>
                         <div>
                           <label className={labelCls}>Department</label>
-                          <CustomSelect value={editForm.departmentAbbr} onChange={handleDeptChange} options={configData?.departments?.map(d => ({ value: d.abbr, label: d.abbr }))} />
+                          <CustomSelect value={editForm.departmentAbbr} onChange={handleDeptChangeForEditStudent} options={(configData?.departments || []).map(d => ({ value: d.abbr, label: d.abbr }))} />
                           {editForm.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[editForm.departmentAbbr]}</p>}
                         </div>
                         <div>
@@ -1313,19 +1475,19 @@ const fetchConfig = async () => {
                       </>
                     )}
 
-                    {(isFaculty(editForm.role, configData) || isClinicStaff(editForm.role, configData) || isAdmin(editForm.role, configData)) && (
+                    {(isTeaching(editForm.role, configData) || isNonTeaching(editForm.role, configData) || isClinicStaff(editForm.role, configData) || isAdmin(editForm.role, configData)) && (
                       <>
                         <div>
-                          <label className={labelCls}>Department / Office</label>
-                          <CustomSelect value={editForm.department} onChange={v => field('department', v)} options={PLSP_OFFICES_FOR_STAFF} placeholder="— Select Office —" />
+                          <label className={labelCls}>Department / Office {!isAdmin(editForm.role, configData) && !isClinicStaff(editForm.role, configData) && <span className="text-red-400">*</span>}</label>
+                          <CustomSelect value={editForm.department} onChange={v => field('department', v)} options={getDeptOptionsForRole(editForm.role, configData)} placeholder="— Select Office —" />
                         </div>
 
                         <div>
-                          <label className={labelCls}>Job Title</label>
+                          <label className={labelCls}>Job Title {!isAdmin(editForm.role, configData) && <span className="text-red-400">*</span>}</label>
                           <CustomSelect value={editForm.job_title} onChange={v => field('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
                         </div>
 
-                        {!isAdmin(editForm.role, configData) && (
+                        {!isAdmin(editForm.role, configData) && !isClinicStaff(editForm.role, configData) && (
                           <div>
                             <label className={labelCls}>Classification</label>
                             <CustomSelect value={editForm.classification} onChange={v => field('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
@@ -1497,7 +1659,7 @@ const fetchConfig = async () => {
               </button>
               <button onClick={confirmDelete} className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
                 </svg>
                 Archive
               </button>

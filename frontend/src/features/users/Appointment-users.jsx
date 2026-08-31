@@ -101,26 +101,7 @@ const SortDropdown = ({ value, onChange }) => {
       </button>
       {open && (
         <div
- className="
-    absolute
-    top-1.5
-    right-1.5
-    min-w-[18px]
-    h-[18px]
-    px-1
-    rounded-full
-    bg-red-500
-    text-white
-    text-[9px]
-    font-bold
-    flex
-    items-center
-    justify-center
-    shadow-md
-    ring-2
-    ring-white
-    z-10000
-  "
+          className="absolute right-0 top-full mt-1.5 bg-white border border-[#ddeee5] rounded-xl shadow-lg z-50 flex flex-col py-1 overflow-hidden"
           style={{ minWidth: 140 }}
         >
           {sortOptions.map(opt => (

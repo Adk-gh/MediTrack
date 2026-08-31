@@ -26,13 +26,6 @@ const HEADER_TEXT = 'FFFFFF';
 const LIGHT_BG = 'F4F7F6';
 const BORDER_COLOR = 'D9E2E1';
 
-// ─── Admin identity (audit logging) ──────────────────────────────────────
-const getCurrentUser = () => {
-  try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
-};
-const currentUser = getCurrentUser();
-const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
-
 // ─── Medical conditions ─────────────────────────────────────────────────────
 const MEDICAL_CONDITIONS = [
   { id: 'asthma', name: 'Asthma', keywords: ['asthma'], category: 'Respiratory', color: '#ef4444' },
@@ -79,6 +72,7 @@ const DENTAL_CONDITIONS = [
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
 
 // ─── Icons ────────────────────────────────────────────────────────────────
 const IconTable = ({ size = 16, ...props }) => (
@@ -218,6 +212,97 @@ function getSchoolYear(dateInput) {
   }
 }
 
+// ─── Department Normalization Helpers ─────────────────────────────────────
+const normalizeText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase();
+
+const getUserDepartment = (user) =>
+  user?.department ||
+  user?.dept ||
+  user?.college ||
+  '';
+
+const getUserProgram = (user) =>
+  user?.program ||
+  user?.course ||
+  user?.degree_program ||
+  '';
+
+const departmentMatches = (userDepartment, departmentConfig) => {
+  if (!departmentConfig) return false;
+
+  const userValue = normalizeText(userDepartment);
+
+  return [
+    departmentConfig.full,
+    departmentConfig.abbr,
+    departmentConfig.name,
+    departmentConfig.value,
+  ]
+    .filter(Boolean)
+    .some((value) => normalizeText(value) === userValue);
+};
+
+const programMatches = (userProgram, selectedProgramValue) =>
+  normalizeText(userProgram) === normalizeText(selectedProgramValue);
+
+
+// ─── Personnel classification (system_config is the source of truth) ───────
+const normalizeRole = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase();
+
+const getConfiguredRoles = (config, key) => {
+  const values = config?.[key];
+
+  return Array.isArray(values)
+    ? values.map(normalizeRole).filter(Boolean)
+    : [];
+};
+
+const roleIsConfiguredAs = (role, config, key) =>
+  getConfiguredRoles(config, key).includes(normalizeRole(role));
+
+const getPersonnelType = (userOrRole, config) => {
+  const role = normalizeRole(
+    typeof userOrRole === 'string'
+      ? userOrRole
+      : userOrRole?.role
+  );
+
+  if (!role) return 'unclassified';
+  if (role === 'student') return 'student';
+
+  // Priority prevents one role from appearing in multiple personnel groups.
+  if (roleIsConfiguredAs(role, config, 'admin_roles')) return 'admin';
+  if (roleIsConfiguredAs(role, config, 'clinic_roles')) return 'clinic';
+  if (roleIsConfiguredAs(role, config, 'staff_roles')) return 'non_teaching';
+  if (roleIsConfiguredAs(role, config, 'faculty_roles')) return 'teaching';
+
+  return 'unclassified';
+};
+
+const buildPersonnelCounts = (userList, config) => {
+  const counts = {
+    student: 0,
+    teaching: 0,
+    non_teaching: 0,
+    clinic: 0,
+    admin: 0,
+    unclassified: 0,
+  };
+
+  (Array.isArray(userList) ? userList : []).forEach((user) => {
+    const type = getPersonnelType(user, config);
+    counts[type] = (counts[type] || 0) + 1;
+  });
+
+  return counts;
+};
+
 // ─── Export scope labels (used by the export modal) ────────────────────────
 const EXPORT_SCOPES = {
   full: { label: 'Full Report', hint: 'All sections in one workbook' },
@@ -237,11 +322,16 @@ export const Reports = () => {
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [dentalRecords, setDentalRecords] = useState([]);
   const [users, setUsers] = useState([]);
-  const [clinicStaffCount, setClinicStaffCount] = useState(0);
   const [error, setError] = useState(null);
+
   const [dateRange, setDateRange] = useState('all');
   const [schoolYear, setSchoolYear] = useState('all');
   const [specificMonth, setSpecificMonth] = useState('all');
+
+  const [systemConfig, setSystemConfig] = useState(null);
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [selectedProgram, setSelectedProgram] = useState('all');
 
   // ─── Export modal state ───────────────────────────────────────────────
   const [confirmExport, setConfirmExport] = useState(null);
@@ -261,6 +351,22 @@ export const Reports = () => {
       setError(null);
       const headers = await authService.getAuthHeaders();
 
+      const configRes = await fetch(
+        `${import.meta.env.VITE_API_URL}/system-config`,
+        { headers }
+      ).catch(() => null);
+
+      let loadedConfig = null;
+
+      if (configRes?.ok) {
+        const configJson = await configRes.json();
+        loadedConfig = configJson?.data || configJson || null;
+        setSystemConfig(loadedConfig);
+      } else {
+        console.error('[Reports] Failed to fetch system configuration');
+        setSystemConfig(null);
+      }
+
       // ---- filter archived -------------------------------------------------
       const filterArchived = (data) => {
         if (!Array.isArray(data)) return [];
@@ -277,14 +383,17 @@ export const Reports = () => {
       // ---- Users -----------------------------------------------------------
       const usersRes = await fetch(`${import.meta.env.VITE_API_URL}/user/users`, { headers }).catch(() => null);
       let usersData = [];
+
       if (usersRes && usersRes.ok) {
         const json = await usersRes.json();
         const rawData = filterArchived(json.data || json || []);
-        const patients = rawData.filter(u => u.role?.toLowerCase() !== 'sysadmin');
-        const clinicStaff = rawData.filter(u => ['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => (u.role || '').toLowerCase().includes(k)));
-        usersData = patients;
-        setClinicStaffCount(clinicStaff.length);
+
+        // Admin roles are excluded based only on system_config.admin_roles.
+        usersData = rawData.filter(
+          (user) => getPersonnelType(user, loadedConfig) !== 'admin'
+        );
       }
+
       setUsers(usersData);
 
       // ---- Appointments ----------------------------------------------------
@@ -324,11 +433,194 @@ export const Reports = () => {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // ------------------------------------------------------------------------
+  //  Options building
+  // ------------------------------------------------------------------------
+  const departmentOptions = useMemo(() => {
+    const depts = systemConfig?.departments || [];
+    const offices = systemConfig?.non_academic_offices || systemConfig?.offices || [];
+
+    let rawList = [];
+
+    if (selectedRole === 'student' || selectedRole === 'teaching') {
+      rawList = depts;
+    } else if (selectedRole === 'non_teaching') {
+      rawList = offices;
+    } else if (selectedRole === 'clinic') {
+      return []; // Clinic personnel generally don't use this filter
+    } else {
+      rawList = [...depts, ...offices];
+    }
+
+    if (!Array.isArray(rawList)) {
+      return [];
+    }
+
+    return rawList
+      .filter(Boolean)
+      .map((department, index) => {
+        if (typeof department === 'string') {
+          return {
+            id: department,
+            full: department,
+            abbr: department,
+            programs: [],
+          };
+        }
+
+        return {
+          id: department.id || department.abbr || department.full || `department-${index}`,
+          full: department.full || department.name || department.abbr || '',
+          abbr: department.abbr || department.code || department.full || '',
+          programs: Array.isArray(department.programs)
+            ? department.programs
+            : Array.isArray(department.courses)
+              ? department.courses
+              : [],
+        };
+      })
+      .filter((department) => department.full || department.abbr);
+  }, [systemConfig, selectedRole]);
+
+  const selectedDepartmentConfig = useMemo(() => {
+    if (selectedDepartment === 'all') {
+      return null;
+    }
+
+    return (
+      departmentOptions.find(
+        (department) =>
+          department.id === selectedDepartment ||
+          department.abbr === selectedDepartment ||
+          department.full === selectedDepartment
+      ) || null
+    );
+  }, [departmentOptions, selectedDepartment]);
+
+  const programOptions = useMemo(() => {
+    if (!selectedDepartmentConfig || selectedRole === 'teaching' || selectedRole === 'non_teaching' || selectedRole === 'clinic') {
+      return [];
+    }
+
+    return selectedDepartmentConfig.programs
+      .map((program) => {
+        if (typeof program === 'string') {
+          return {
+            value: program,
+            label: program,
+          };
+        }
+
+        return {
+          value:
+            program.value ||
+            program.abbr ||
+            program.code ||
+            program.name ||
+            program.full ||
+            '',
+
+          label:
+            program.full ||
+            program.name ||
+            program.abbr ||
+            program.code ||
+            '',
+        };
+      })
+      .filter((program) => program.value);
+  }, [selectedDepartmentConfig, selectedRole]);
+
+  useEffect(() => {
+    setSelectedDepartment('all');
+    setSelectedProgram('all');
+  }, [selectedRole]);
+
+  // ------------------------------------------------------------------------
   //  Data processing & chart helpers
   // ------------------------------------------------------------------------
   const processedData = useMemo(() => {
     const now = new Date();
     let startDate = new Date(0);
+
+    const usersById = new Map();
+
+    users.forEach((user) => {
+      [
+        user.id,
+        user.uid,
+        user.user_id,
+        user.auth_user_id,
+        user.university_id,
+      ]
+        .filter(Boolean)
+        .forEach((id) => {
+          usersById.set(String(id), user);
+        });
+    });
+
+    const getRecordUser = (record) => {
+      const possibleIds = [
+        record?.user_id,
+        record?.uid,
+        record?.patient_id,
+        record?.student_id,
+        record?.university_id,
+      ].filter(Boolean);
+
+      for (const id of possibleIds) {
+        const matchedUser = usersById.get(String(id));
+
+        if (matchedUser) {
+          return matchedUser;
+        }
+      }
+
+      return null;
+    };
+
+    const matchesPopulationFilters = (recordOrUser) => {
+      const user =
+        recordOrUser?.department ||
+        recordOrUser?.program ||
+        recordOrUser?.course
+          ? recordOrUser
+          : getRecordUser(recordOrUser);
+
+      if (!user) {
+        return (
+          selectedRole === 'all' &&
+          selectedDepartment === 'all' &&
+          selectedProgram === 'all'
+        );
+      }
+
+      // 1. Check Role
+if (selectedRole !== 'all') {
+  const personnelType = getPersonnelType(user, systemConfig);
+
+  if (personnelType !== selectedRole) {
+    return false;
+  }
+}
+
+      // 2. Check Department
+      if (
+        selectedDepartmentConfig &&
+        !departmentMatches(getUserDepartment(user), selectedDepartmentConfig)
+      ) {
+        return false;
+      }
+
+      // 3. Check Program
+      if (
+        selectedProgram !== 'all' &&
+        !programMatches(getUserProgram(user), selectedProgram)
+      ) {
+        return false;
+      }
+
+      return true;
+    };
 
     const applyRange = (dateInput) => {
       if (!dateInput) return false;
@@ -340,16 +632,54 @@ export const Reports = () => {
       return true;
     };
 
-    const filteredAppts = appointments.filter(a => {
-      let dStr = a.created_at || a.createdAt;
-      if (a.year && a.month && a.day) {
-        dStr = new Date(Number(a.year), Number(a.month) - 1, Number(a.day)).toISOString();
+    const filteredUsers = users.filter(matchesPopulationFilters);
+
+    const filteredAppts = appointments.filter((appointment) => {
+      let dateValue =
+        appointment.created_at ||
+        appointment.createdAt;
+
+      if (
+        appointment.year &&
+        appointment.month &&
+        appointment.day
+      ) {
+        dateValue = new Date(
+          Number(appointment.year),
+          Number(appointment.month) - 1,
+          Number(appointment.day)
+        ).toISOString();
       }
-      return applyRange(dStr);
+
+      return (
+        applyRange(dateValue) &&
+        matchesPopulationFilters(appointment)
+      );
     });
 
-    const filteredMed = medicalRecords.filter(r => applyRange(r.exam_date || r.created_at || r.createdAt));
-    const filteredDen = dentalRecords.filter(r => applyRange(r.exam_date || r.created_at || r.createdAt));
+    const filteredMed = medicalRecords.filter((record) => {
+      const dateValue =
+        record.exam_date ||
+        record.created_at ||
+        record.createdAt;
+
+      return (
+        applyRange(dateValue) &&
+        matchesPopulationFilters(record)
+      );
+    });
+
+    const filteredDen = dentalRecords.filter((record) => {
+      const dateValue =
+        record.exam_date ||
+        record.created_at ||
+        record.createdAt;
+
+      return (
+        applyRange(dateValue) &&
+        matchesPopulationFilters(record)
+      );
+    });
 
     const monthlyAppts = Array(12).fill(0);
     const monthlyMed = Array(12).fill(0);
@@ -406,9 +736,15 @@ export const Reports = () => {
     });
 
     const categoryBreakdown = {};
-    MEDICAL_CONDITIONS.forEach(cond => {
-      if (!categoryBreakdown[cond.category]) categoryBreakdown[cond.category] = 0;
-      categoryBreakdown[cond.category] += conditionCounts[cond.id];
+
+    MEDICAL_CONDITIONS.forEach((condition) => {
+      const category = condition.category || 'Other';
+      const count = Number(conditionCounts[condition.id]) || 0;
+
+      if (count > 0) {
+        categoryBreakdown[category] =
+          (categoryBreakdown[category] || 0) + count;
+      }
     });
 
     const dentalConditionCounts = {};
@@ -445,15 +781,17 @@ export const Reports = () => {
       appointments: filteredAppts,
       medical: filteredMed,
       dental: filteredDen,
-      users,
-      clinicStaffCount,
+      users: filteredUsers,
+      clinicStaffCount: filteredUsers.filter(
+        (user) => getPersonnelType(user, systemConfig) === 'clinic'
+      ).length,
       monthlyAppts,
       monthlyMed,
       monthlyDen,
       totalAppts: filteredAppts.length,
       totalMed: filteredMed.length,
       totalDen: filteredDen.length,
-      totalUsers: users.length,
+      totalUsers: filteredUsers.length,
       completedAppts: filteredAppts.filter(a => a.status === 'done').length,
       pendingAppts: filteredAppts.filter(a => a.status === 'pending').length,
       approvedAppts: filteredAppts.filter(a => a.status === 'approved').length,
@@ -474,7 +812,20 @@ export const Reports = () => {
       dentalFindingsList,
       mostCommonDentalCondition: Object.entries(dentalConditionCounts).sort((a, b) => b[1] - a[1])[0],
     };
-  }, [appointments, medicalRecords, dentalRecords, users, clinicStaffCount, dateRange, schoolYear, specificMonth]);
+  }, [
+    appointments,
+    medicalRecords,
+    dentalRecords,
+    users,
+    dateRange,
+    schoolYear,
+    specificMonth,
+    selectedRole,
+    selectedDepartment,
+    selectedProgram,
+    selectedDepartmentConfig,
+    systemConfig
+  ]);
 
   // ------------------------------------------------------------------------
   //  Chart data memoization
@@ -510,31 +861,169 @@ export const Reports = () => {
     datasets: [{ label: 'Medical', data: processedData.monthlyMed, backgroundColor: '#466460', borderRadius: 4 }, { label: 'Dental', data: processedData.monthlyDen, backgroundColor: '#e07a5f', borderRadius: 4 }]
   }), [processedData.monthlyMed, processedData.monthlyDen]);
 
-  const conditionDistributionData = useMemo(() => ({
-    labels: MEDICAL_CONDITIONS.map(i => i.name),
-    datasets: [{ data: MEDICAL_CONDITIONS.map(i => processedData.conditionCounts[i.id]), backgroundColor: MEDICAL_CONDITIONS.map(i => i.color + '80'), borderColor: MEDICAL_CONDITIONS.map(i => i.color), borderWidth: 1 }]
-  }), [processedData.conditionCounts]);
+  const topHealthConditions = useMemo(() => {
+    return MEDICAL_CONDITIONS
+      .map((condition) => ({
+        ...condition,
+        count:
+          Number(
+            processedData.conditionCounts?.[condition.id]
+          ) || 0,
+      }))
+      .filter((condition) => condition.count > 0)
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
 
-  const categoryBreakdownData = useMemo(() => ({
-    labels: Object.keys(processedData.categoryBreakdown),
-    datasets: [{ label: 'Cases', data: Object.values(processedData.categoryBreakdown), backgroundColor: ['#ef4444', '#f97316', '#eab308', '#84cc16', '#06b6d4', '#8b5cf6', '#ec4899'], borderRadius: 6 }]
-  }), [processedData.categoryBreakdown]);
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 10);
+  }, [processedData.conditionCounts]);
 
-  const dentalConditionData = useMemo(() => ({
-    labels: DENTAL_CONDITIONS.map(c => c.name),
-    datasets: [{ label: 'Count', data: DENTAL_CONDITIONS.map(c => processedData.dentalConditionCounts[c.id]), backgroundColor: DENTAL_CONDITIONS.map(c => c.color), borderRadius: 4 }]
-  }), [processedData.dentalConditionCounts]);
+  const conditionDistributionData = useMemo(
+    () => ({
+      labels: topHealthConditions.map(
+        (condition) => condition.name
+      ),
 
-  const patientTypeData = useMemo(() => {
-    const typeCounts = { student: 0, faculty: 0 };
-    processedData.users.forEach(u => {
-      const role = (u.role || '').toLowerCase();
-      if (role.includes('student')) typeCounts.student++;
-      else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
+      datasets: [
+        {
+          data: topHealthConditions.map(
+            (condition) => condition.count
+          ),
+
+          backgroundColor: topHealthConditions.map(
+            (condition) => `${condition.color}80`
+          ),
+
+          borderColor: topHealthConditions.map(
+            (condition) => condition.color
+          ),
+
+          borderWidth: 1,
+        },
+      ],
+    }),
+    [topHealthConditions]
+  );
+
+const categoryBreakdownData = useMemo(() => {
+  const activeCategories = Object.entries(
+    processedData.categoryBreakdown || {}
+  )
+    .filter(([category, count]) => {
+      return category && Number(count) > 0;
+    })
+    .sort((a, b) => b[1] - a[1]);
+
+  return {
+    labels: activeCategories.map(([category]) => category),
+
+    datasets: [
+      {
+        label: 'Cases',
+        data: activeCategories.map(([, count]) => count),
+
+        backgroundColor: activeCategories.map(
+          (_, index) =>
+            [
+              '#ef4444',
+              '#f97316',
+              '#eab308',
+              '#84cc16',
+              '#06b6d4',
+              '#8b5cf6',
+              '#ec4899',
+              '#14b8a6',
+              '#0ea5e9',
+              '#22c55e'
+            ][index % 10]
+        ),
+
+        borderRadius: 6
+      }
+    ]
+  };
+}, [processedData.categoryBreakdown]);
+
+const dentalConditionData = useMemo(() => {
+  const activeConditions = DENTAL_CONDITIONS
+    .map((condition) => ({
+      ...condition,
+      count: Number(
+        processedData.dentalConditionCounts?.[condition.id]
+      ) || 0,
+    }))
+    .filter((condition) => condition.count > 0)
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+
+      return a.name.localeCompare(b.name);
     });
-    return { labels: ['Students', 'Faculty'], datasets: [{ data: [typeCounts.student, typeCounts.faculty], backgroundColor: ['#466460', '#e07a5f'], borderWidth: 0 }] };
-  }, [processedData.users]);
 
+  return {
+    labels: activeConditions.map(
+      (condition) => condition.name
+    ),
+
+    datasets: [
+      {
+        label: 'Count',
+        data: activeConditions.map(
+          (condition) => condition.count
+        ),
+        backgroundColor: activeConditions.map(
+          (condition) => condition.color
+        ),
+        borderRadius: 4,
+      },
+    ],
+  };
+}, [processedData.dentalConditionCounts]);
+
+const patientTypeData = useMemo(() => {
+  const typeCounts = buildPersonnelCounts(
+    processedData.users,
+    systemConfig
+  );
+
+  const rows = [
+    {
+      label: 'Students',
+      value: typeCounts.student,
+      color: '#466460',
+    },
+    {
+      label: 'Teaching Staff',
+      value: typeCounts.teaching,
+      color: '#e07a5f',
+    },
+    {
+      label: 'Non-Teaching Staff',
+      value: typeCounts.non_teaching,
+      color: '#3b82f6',
+    },
+    {
+      label: 'Clinic Staff',
+      value: typeCounts.clinic,
+      color: '#81b29a',
+    },
+  ].filter((row) => row.value > 0);
+
+  return {
+    labels: rows.map((row) => row.label),
+    datasets: [
+      {
+        data: rows.map((row) => row.value),
+        backgroundColor: rows.map((row) => row.color),
+        borderWidth: 0,
+      },
+    ],
+  };
+}, [processedData.users, systemConfig]);
   // ------------------------------------------------------------------------
   //  Appointment duration summary (average across all appointments)
   // ------------------------------------------------------------------------
@@ -575,12 +1064,74 @@ export const Reports = () => {
   //  Shared subtitle / label helpers for exports
   // ------------------------------------------------------------------------
   const getFilterLabels = useCallback(() => {
-    const todayLabel = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const rangeLabel = dateRange === 'all' ? 'All Time' : dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year';
-    const syLabel = schoolYear === 'all' ? 'All SY' : `SY ${schoolYear}`;
-    const monthLabel = specificMonth === 'all' ? '' : MONTHS_FULL[parseInt(specificMonth)];
-    return { todayLabel, rangeLabel, syLabel, monthLabel };
-  }, [dateRange, schoolYear, specificMonth]);
+    const todayLabel = new Date().toLocaleDateString(
+      'en-US',
+      {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }
+    );
+
+    const rangeLabel =
+      dateRange === 'all'
+        ? 'All Time'
+        : dateRange === 'month'
+          ? 'This Month'
+          : dateRange === 'quarter'
+            ? 'Last 3 Months'
+            : 'This Year';
+
+    const syLabel =
+      schoolYear === 'all'
+        ? 'All SY'
+        : `SY ${schoolYear}`;
+
+    const monthLabel =
+      specificMonth === 'all'
+        ? ''
+        : MONTHS_FULL[parseInt(specificMonth)];
+
+    const roleLabel =
+      selectedRole === 'all' ? 'All Personnel' :
+      selectedRole === 'student' ? 'Students' :
+      selectedRole === 'teaching' ? 'Teaching Personnel' :
+      selectedRole === 'non_teaching' ? 'Non-Teaching Personnel' : 'Clinic Personnel';
+
+    const departmentLabel =
+      selectedDepartmentConfig?.full ||
+      selectedDepartmentConfig?.abbr ||
+      'All Departments/Offices';
+
+    const selectedProgramOption =
+      programOptions.find(
+        (program) => program.value === selectedProgram
+      );
+
+    const programLabel =
+      selectedProgram === 'all'
+        ? 'All Programs'
+        : selectedProgramOption?.label ||
+          selectedProgram;
+
+    return {
+      todayLabel,
+      rangeLabel,
+      syLabel,
+      monthLabel,
+      roleLabel,
+      departmentLabel,
+      programLabel,
+    };
+  }, [
+    dateRange,
+    schoolYear,
+    specificMonth,
+    selectedRole,
+    selectedDepartmentConfig,
+    selectedProgram,
+    programOptions,
+  ]);
 
   // ------------------------------------------------------------------------
   //  Export helpers — XLSX (full report)
@@ -590,9 +1141,29 @@ export const Reports = () => {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
       workbook.created = new Date();
-      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
-      const subtitle = [`Generated: ${todayLabel}`, `Date Range: ${rangeLabel}`, `School Year: ${syLabel}`];
-      if (monthLabel) subtitle.push(`Month: ${monthLabel}`);
+
+      const {
+        todayLabel,
+        rangeLabel,
+        syLabel,
+        monthLabel,
+        roleLabel,
+        departmentLabel,
+        programLabel,
+      } = getFilterLabels();
+
+      const subtitle = [
+        `Generated: ${todayLabel}`,
+        `Date Range: ${rangeLabel}`,
+        `School Year: ${syLabel}`,
+        `Personnel Type: ${roleLabel}`,
+        `Office/Dept: ${departmentLabel}`,
+        `Program: ${programLabel}`,
+      ];
+
+      if (monthLabel) {
+        subtitle.push(`Month: ${monthLabel}`);
+      }
 
       // ---- Overview -------------------------------------------------------
       {
@@ -719,18 +1290,22 @@ export const Reports = () => {
         let r = addTitleBanner(ws, 'Patient Demographics', subtitle, 4);
         r = addSectionHeader(ws, r, 'By Role', 4);
         r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
-        r = addDataRow(ws, r, ['Total Patients (Students + Faculty)', processedData.totalUsers, '', ''], { zebra: false });
-        const typeCounts = { student: 0, faculty: 0 };
-        processedData.users.forEach(u => {
-          const role = (u.role || '').toLowerCase();
-          if (role.includes('student')) typeCounts.student++;
-          else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-        });
+        r = addDataRow(ws, r, ['Total Patients', processedData.totalUsers, '', ''], { zebra: false });
+
+        const typeCounts = buildPersonnelCounts(
+          processedData.users,
+          systemConfig
+        );
+
         const demoRows = [
           ['Students', typeCounts.student],
-          ['Faculty', typeCounts.faculty],
-          ['Clinic Staff', processedData.clinicStaffCount]
-        ].sort((a, b) => b[1] - a[1]);
+          ['Teaching Personnel', typeCounts.teaching],
+          ['Non-Teaching Personnel', typeCounts.non_teaching],
+          ['Clinic Personnel', typeCounts.clinic]
+        ]
+          .filter((row) => row[1] > 0)
+          .sort((a, b) => b[1] - a[1]);
+
         demoRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], processedData.totalUsers), ''], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 3); });
       }
 
@@ -788,9 +1363,29 @@ export const Reports = () => {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'MediTrack';
       workbook.created = new Date();
-      const { todayLabel, rangeLabel, syLabel, monthLabel } = getFilterLabels();
-      const subtitle = [`Generated: ${todayLabel}`, `Date Range: ${rangeLabel}`, `School Year: ${syLabel}`];
-      if (monthLabel) subtitle.push(`Month: ${monthLabel}`);
+
+      const {
+        todayLabel,
+        rangeLabel,
+        syLabel,
+        monthLabel,
+        roleLabel,
+        departmentLabel,
+        programLabel,
+      } = getFilterLabels();
+
+      const subtitle = [
+        `Generated: ${todayLabel}`,
+        `Date Range: ${rangeLabel}`,
+        `School Year: ${syLabel}`,
+        `Personnel Type: ${roleLabel}`,
+        `Office/Dept: ${departmentLabel}`,
+        `Program: ${programLabel}`,
+      ];
+
+      if (monthLabel) {
+        subtitle.push(`Month: ${monthLabel}`);
+      }
 
       const titles = {
         appointments: 'Appointments Analysis',
@@ -896,18 +1491,22 @@ export const Reports = () => {
         case 'demographics': {
           r = addSectionHeader(ws, r, 'By Role', 4);
           r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
-          r = addDataRow(ws, r, ['Total Patients (Students + Faculty)', processedData.totalUsers, '', ''], { zebra: false });
-          const typeCounts = { student: 0, faculty: 0 };
-          processedData.users.forEach(u => {
-            const role = (u.role || '').toLowerCase();
-            if (role.includes('student')) typeCounts.student++;
-            else if (role.includes('faculty') || role.includes('lecturer') || role.includes('professor')) typeCounts.faculty++;
-          });
+          r = addDataRow(ws, r, ['Total Patients', processedData.totalUsers, '', ''], { zebra: false });
+
+          const typeCounts = buildPersonnelCounts(
+            processedData.users,
+            systemConfig
+          );
+
           const demoRows = [
             ['Students', typeCounts.student],
-            ['Faculty', typeCounts.faculty],
-            ['Clinic Staff', processedData.clinicStaffCount]
-          ].sort((a, b) => b[1] - a[1]);
+            ['Teaching Personnel', typeCounts.teaching],
+            ['Non-Teaching Personnel', typeCounts.non_teaching],
+            ['Clinic Personnel', typeCounts.clinic]
+          ]
+            .filter((row) => row[1] > 0)
+            .sort((a, b) => b[1] - a[1]);
+
           demoRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], processedData.totalUsers), ''], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 3); });
           break;
         }
@@ -1032,6 +1631,63 @@ export const Reports = () => {
       {/* ── Toolbar / Controls ── */}
       <div className="flex justify-end items-center mb-6">
         <div className="flex flex-wrap items-center justify-end gap-3 w-full">
+
+          {/* Role Filter */}
+          <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm">
+            <IconUsers size={16} className="text-slate-400 ml-2" />
+            <select
+              value={selectedRole}
+              onChange={(event) => setSelectedRole(event.target.value)}
+              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer max-w-[170px]"
+            >
+              <option value="all">All Personnel</option>
+              <option value="student">Students</option>
+              <option value="teaching">Teaching Personnel</option>
+              <option value="non_teaching">Non-Teaching Personnel</option>
+              <option value="clinic">Clinic Personnel</option>
+            </select>
+          </div>
+
+          {/* Department / Office Filter */}
+          <div className={`flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm ${selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
+            <IconUsers size={16} className="text-slate-400 ml-2" />
+            <select
+              value={selectedDepartment}
+              onChange={(event) => setSelectedDepartment(event.target.value)}
+              disabled={selectedRole === 'clinic'}
+              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer disabled:cursor-not-allowed max-w-[190px]"
+            >
+              <option value="all">
+                {selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}
+              </option>
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.abbr || department.full}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Program Filter */}
+          <div className={`flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm ${selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
+            <IconTable size={16} className="text-slate-400 ml-2" />
+            <select
+              value={selectedProgram}
+              onChange={(event) => setSelectedProgram(event.target.value)}
+              disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
+              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer disabled:cursor-not-allowed max-w-[190px]"
+            >
+              <option value="all">
+                {selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}
+              </option>
+              {programOptions.map((program) => (
+                <option key={program.value} value={program.value}>
+                  {program.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* School Year Filter */}
           <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconCalendar size={16} className="text-slate-400 ml-2" />
@@ -1140,7 +1796,24 @@ export const Reports = () => {
 
             {/* Compact Stat Cards */}
             <div className="xl:w-7/12 grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <StatBox title="Total Patients" value={processedData.totalUsers} subtitle="Students + Fac" icon={IconUsers} color="#466460" className="col-span-2 sm:col-span-1" />
+              <StatBox
+  title="Total Patients"
+  value={processedData.totalUsers}
+  subtitle={
+    selectedRole === 'all'
+      ? 'All Personnel'
+      : selectedRole === 'student'
+        ? 'Students'
+        : selectedRole === 'teaching'
+          ? 'Teaching Personnel'
+          : selectedRole === 'non_teaching'
+            ? 'Non-Teaching Personnel'
+            : 'Clinic Personnel'
+  }
+  icon={IconUsers}
+  color="#466460"
+  className="col-span-2 sm:col-span-1"
+/>
               <StatBox title="Clinic Staff" value={processedData.clinicStaffCount} subtitle="Doc+Nurse+Dentist" icon={IconUsers} color="#81b29a" />
               <StatBox title="Medical" value={processedData.totalMed} subtitle="Health Consults" icon={IconStethoscope} color="#3b82f6" />
               <StatBox title="Dental" value={processedData.totalDen} subtitle="Dental Consults" icon={IconTooth} color="#e07a5f" />
@@ -1164,21 +1837,53 @@ export const Reports = () => {
               </button>
             </div>
             <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
-                processedData.totalMed === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No medical data available</div>
-                ) : (
-                  <PolarArea
-                    id="condition-distribution"
-                    data={conditionDistributionData}
-                    options={{
-                      responsive: true, maintainAspectRatio: false,
-                      plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 }, padding: 12 } } },
-                      scales: { r: { ticks: { display: false }, grid: { color: 'rgba(0,0,0,0.05)' } } },
-                    }}
-                  />
-                ))}
-
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : topHealthConditions.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                  No health conditions found for the selected filters
+                </div>
+              ) : (
+                <PolarArea
+                  id="condition-distribution"
+                  data={conditionDistributionData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        display: true,
+                        position: 'right',
+                        labels: {
+                          boxWidth: 10,
+                          font: { size: 11 },
+                          padding: 12,
+                        },
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: (context) => {
+                            const label = context.label || 'Condition';
+                            const value = context.raw || 0;
+                            return `${label}: ${value}`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      r: {
+                        beginAtZero: true,
+                        ticks: {
+                          display: false,
+                        },
+                        grid: {
+                          color: 'rgba(0,0,0,0.05)',
+                        },
+                      },
+                    },
+                  }}
+                />
+              )}
             </div>
           </GlassCard>
 
@@ -1383,22 +2088,47 @@ export const Reports = () => {
                 <IconDownload size={12} /> Download
               </button>
             </div>
-            <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
-                <Bar
-                  id="dental-conditions"
-                  data={dentalConditionData}
-                  options={{
-                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-                    plugins: { legend: { display: false } },
-                    scales: {
-                      x: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
-                      y: { ticks: { font: { size: 11 } }, grid: { display: false } },
-                    },
-                  }}
-                />
-              )}
-            </div>
+<div className="h-[260px]">
+  {loading ? (
+    <ChartSkeleton h="260px" />
+  ) : dentalConditionData.labels.length === 0 ? (
+    <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+      No dental conditions found for the selected filters
+    </div>
+  ) : (
+    <Bar
+      id="dental-conditions"
+      data={dentalConditionData}
+      options={{
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+
+        plugins: {
+          legend: {
+            display: false,
+          },
+        },
+
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: {
+              stepSize: 1,
+              precision: 0,
+            },
+          },
+
+          y: {
+            grid: {
+              display: false,
+            },
+          },
+        },
+      }}
+    />
+  )}
+</div>
           </GlassCard>
         </div>
 

@@ -1,6 +1,6 @@
 // frontend/src/features/admin-clinic/AppointmentManagement.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom'; // Added for absolute top modals
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 import * as appointmentsService from '../../services/appointments.service';
 import DatePicker from '../../components/Datepicker';
@@ -15,6 +15,34 @@ const CLINIC_SLOTS = [
 
 // Adjust this number to match the clinic's actual capacity per time slot
 const MAX_PATIENTS_PER_SLOT = 3;
+
+// ─── Fallback Role Groupings ─────────────────────────────
+const FALLBACK_TEACHING_ROLES = ["instructor", "lecturer", "teacher", "professor", "dean", "department head", "program chair", "program coordinator", "faculty"];
+const FALLBACK_NON_TEACHING_ROLES = ["employee", "staff", "registrar", "guidance counselor", "counselor", "librarian", "technician", "security", "maintenance", "office coordinator"];
+const FALLBACK_CLINIC_ROLES = ["doctor", "nurse", "dentist", "clinic staff"];
+
+// ─── Department Normalization Helpers ────────────────────
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+const getUserDepartment = (user) => user?.department || user?.dept || user?.college || '';
+
+const getUserProgram = (user) => user?.program || user?.course || user?.degree_program || '';
+
+const departmentMatches = (userDepartment, departmentConfig) => {
+  if (!departmentConfig) return false;
+  const userValue = normalizeText(userDepartment);
+  return [
+    departmentConfig.full,
+    departmentConfig.abbr,
+    departmentConfig.name,
+    departmentConfig.value,
+  ]
+    .filter(Boolean)
+    .some((value) => normalizeText(value) === userValue);
+};
+
+const programMatches = (userProgram, selectedProgramValue) =>
+  normalizeText(userProgram) === normalizeText(selectedProgramValue);
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Status' },
@@ -75,16 +103,10 @@ export const AppointmentManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const userRole = (currentUser.role || '').toLowerCase();
 
-  const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
-  const adminEmail = currentUser?.email ?? null;
-  const adminName = currentUser?.name
-    ?? [currentUser?.first_name, currentUser?.last_name].filter(Boolean).join(' ')
-    ?? null;
-
   const [allFiltered, setAllFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Search & Filters
+  // Search & Basic Filters
   const [searchInput, setSearchInput] = useState('');
   const [reasonFilter, setReasonFilter] = useState('all');
   const [reasonOptions, setReasonOptions] = useState([{ value: 'all', label: 'All Reasons' }]);
@@ -92,7 +114,13 @@ export const AppointmentManagement = () => {
   const [dateFilter, setDateFilter] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // Pagination
+  // Demographic Filters & Config State
+  const [systemConfig, setSystemConfig] = useState(null);
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [selectedProgram, setSelectedProgram] = useState('all');
+
+  // Pagination & Stats
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
@@ -108,20 +136,115 @@ export const AppointmentManagement = () => {
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
 
+  // 1. Fetch System Config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const res = await fetch(`${apiUrl}/system-config`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setSystemConfig(json?.data || json || null);
+        }
+      } catch (error) {
+        console.error('Failed to load system config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // 2. Build cascading options
+  const departmentOptions = useMemo(() => {
+    const depts = systemConfig?.departments || [];
+    const offices = systemConfig?.non_academic_offices || systemConfig?.offices || [];
+    let rawList = [];
+
+    if (selectedRole === 'student' || selectedRole === 'teaching') {
+      rawList = depts;
+    } else if (selectedRole === 'non_teaching') {
+      rawList = offices;
+    } else if (selectedRole === 'clinic') {
+      return [];
+    } else {
+      rawList = [...depts, ...offices];
+    }
+
+    if (!Array.isArray(rawList)) return [];
+
+    return rawList
+      .filter(Boolean)
+      .map((department, index) => {
+        if (typeof department === 'string') {
+          return { id: department, full: department, abbr: department, programs: [] };
+        }
+        return {
+          id: department.id || department.abbr || department.full || `department-${index}`,
+          full: department.full || department.name || department.abbr || '',
+          abbr: department.abbr || department.code || department.full || '',
+          programs: Array.isArray(department.programs)
+            ? department.programs
+            : Array.isArray(department.courses) ? department.courses : [],
+        };
+      })
+      .filter((department) => department.full || department.abbr);
+  }, [systemConfig, selectedRole]);
+
+  const selectedDepartmentConfig = useMemo(() => {
+    if (selectedDepartment === 'all') return null;
+    return (
+      departmentOptions.find(
+        (department) =>
+          department.id === selectedDepartment ||
+          department.abbr === selectedDepartment ||
+          department.full === selectedDepartment
+      ) || null
+    );
+  }, [departmentOptions, selectedDepartment]);
+
+  const programOptions = useMemo(() => {
+    if (!selectedDepartmentConfig || selectedRole === 'teaching' || selectedRole === 'non_teaching' || selectedRole === 'clinic') {
+      return [];
+    }
+    return selectedDepartmentConfig.programs
+      .map((program) => {
+        if (typeof program === 'string') return { value: program, label: program };
+        return {
+          value: program.value || program.abbr || program.code || program.name || program.full || '',
+          label: program.full || program.name || program.abbr || program.code || '',
+        };
+      })
+      .filter((program) => program.value);
+  }, [selectedDepartmentConfig, selectedRole]);
+
+  // Reset downstream dropdowns when role changes
+  useEffect(() => {
+    setSelectedDepartment('all');
+    setSelectedProgram('all');
+  }, [selectedRole]);
+
+  // Reset pagination on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, reasonFilter, statusFilter, dateFilter, sortBy]);
+  }, [searchInput, reasonFilter, statusFilter, dateFilter, sortBy, selectedRole, selectedDepartment, selectedProgram]);
 
   const applyFiltersAndSort = useCallback((rawData, profileMap) => {
     let enriched = (rawData || []).map(apt => {
       const profile = profileMap[apt.user_id] || {};
       return {
         ...apt,
+        userProfile: profile,
         patientName: profile.first_name
           ? `${profile.last_name || ''}, ${profile.first_name}${profile.middle_name ? ' ' + profile.middle_name  : ''}${profile.suffix ? ' ' + profile.suffix : ''}`.trim()
           : apt.patient_name || apt.name || 'Unknown',
         patientUniversityId: profile.university_id || profile.student_id || '—',
-        patientProgram: profile.program || profile.course || '—',
+        patientProgram: profile.program || profile.course || profile.department || '—',
+        patientRole: profile.role || profile.user_type || '—',
         patientEmail: profile.email || '—',
         patientPhone: profile.phone_number || '—',
       };
@@ -145,6 +268,38 @@ export const AppointmentManagement = () => {
       enriched = enriched.filter(a => Number(a.year) === fy && Number(a.month) === fm && Number(a.day) === fd);
     }
 
+    // Apply Demographic Filters
+    enriched = enriched.filter(c => {
+      const user = c.userProfile;
+      if (!user) {
+         return (selectedRole === 'all' && selectedDepartment === 'all' && selectedProgram === 'all');
+      }
+
+      if (selectedRole !== 'all') {
+        const uRole = (user.role || '').toLowerCase();
+        const isStudent = uRole.includes('student');
+        const isTeaching = systemConfig?.faculty_roles && Array.isArray(systemConfig.faculty_roles)
+          ? systemConfig.faculty_roles.some(r => uRole.includes(r.toLowerCase()))
+          : FALLBACK_TEACHING_ROLES.some(r => uRole.includes(r));
+        const isNonTeaching = systemConfig?.staff_roles && Array.isArray(systemConfig.staff_roles)
+          ? systemConfig.staff_roles.some(r => uRole.includes(r.toLowerCase()))
+          : FALLBACK_NON_TEACHING_ROLES.some(r => uRole.includes(r));
+        const isClinic = systemConfig?.clinic_roles && Array.isArray(systemConfig.clinic_roles)
+          ? systemConfig.clinic_roles.some(r => uRole.includes(r.toLowerCase()))
+          : FALLBACK_CLINIC_ROLES.some(r => uRole.includes(r));
+
+        if (selectedRole === 'student' && !isStudent) return false;
+        if (selectedRole === 'teaching' && !isTeaching) return false;
+        if (selectedRole === 'non_teaching' && !isNonTeaching) return false;
+        if (selectedRole === 'clinic' && !isClinic) return false;
+      }
+
+      if (selectedDepartmentConfig && !departmentMatches(getUserDepartment(user), selectedDepartmentConfig)) return false;
+      if (selectedProgram !== 'all' && !programMatches(getUserProgram(user), selectedProgram)) return false;
+
+      return true;
+    });
+
     const term = searchInput.trim().toLowerCase();
     if (term) {
       enriched = enriched.filter(a => {
@@ -153,6 +308,7 @@ export const AppointmentManagement = () => {
           a.patientName?.toLowerCase().includes(term) ||
           a.patientUniversityId?.toLowerCase().includes(term) ||
           a.patientProgram?.toLowerCase().includes(term) ||
+          a.patientRole?.toLowerCase().includes(term) ||
           a.patientEmail?.toLowerCase().includes(term) ||
           a.reason?.toLowerCase().includes(term) ||
           formattedDate.includes(term)
@@ -181,7 +337,7 @@ export const AppointmentManagement = () => {
     });
 
     return enriched;
-  }, [reasonFilter, statusFilter, dateFilter, searchInput, sortBy]);
+  }, [reasonFilter, statusFilter, dateFilter, searchInput, sortBy, selectedRole, selectedDepartmentConfig, selectedProgram, systemConfig]);
 
   const fetchAppointments = useCallback(async (isRefresh = false) => {
     try {
@@ -249,7 +405,7 @@ export const AppointmentManagement = () => {
   useEffect(() => {
     fetchAppointments(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reasonFilter, statusFilter, dateFilter, sortBy]);
+  }, [reasonFilter, statusFilter, dateFilter, sortBy, selectedRole, selectedDepartment, selectedProgram]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -325,31 +481,19 @@ export const AppointmentManagement = () => {
         status: editForm.status,
       };
 
-if (!isFinalStatus) {
-  if (editForm.status === 'pending') {
-    updates.year = null;
-    updates.month = null;
-    updates.day = null;
-    updates.time = null;
-  } else {
-    updates.year = editForm.year
-      ? String(editForm.year)
-      : null;
-
-    updates.month = editForm.month
-      ? String(editForm.month).padStart(2, '0')
-      : null;
-
-    updates.day = editForm.day
-      ? String(editForm.day).padStart(2, '0')
-      : null;
-
-    updates.time = editForm.time
-      ? String(editForm.time).slice(0, 5)
-      : null;
-  }
-}
-      // isFinalStatus (done/missed/rejected) keeps its existing date/time untouched.
+      if (!isFinalStatus) {
+        if (editForm.status === 'pending') {
+          updates.year = null;
+          updates.month = null;
+          updates.day = null;
+          updates.time = null;
+        } else {
+          updates.year = editForm.year ? String(editForm.year) : null;
+          updates.month = editForm.month ? String(editForm.month).padStart(2, '0') : null;
+          updates.day = editForm.day ? String(editForm.day).padStart(2, '0') : null;
+          updates.time = editForm.time ? String(editForm.time).slice(0, 5) : null;
+        }
+      }
 
       if (typeof appointmentsService.updateAppointment === 'function') {
         await appointmentsService.updateAppointment(appointmentToEdit.id, updates);
@@ -360,9 +504,6 @@ if (!isFinalStatus) {
           .eq('id', appointmentToEdit.id);
         if (error) throw error;
       }
-
-      const previousStatus = (appointmentToEdit.status || 'pending').toLowerCase();
-
 
       showSnackbar('Appointment updated successfully');
       setShowEditModal(false);
@@ -451,7 +592,6 @@ if (!isFinalStatus) {
   CLINIC_SLOTS.forEach(slot => {
     const taken = slotCounts[slot] || 0;
     const remaining = MAX_PATIENTS_PER_SLOT - taken;
-    // Add the slot to the available list for each open spot it has
     for (let i = 0; i < remaining; i++) {
       availableSlots.push(slot);
     }
@@ -548,18 +688,12 @@ if (!isFinalStatus) {
   const getStatusColor = (status) => {
     const s = status?.toLowerCase();
     switch (s) {
-      case 'pending':
-        return { bg: 'bg-amber-100', text: 'text-amber-700' };
-      case 'approved':
-        return { bg: 'bg-emerald-100', text: 'text-emerald-700' };
-      case 'done':
-        return { bg: 'bg-slate-200', text: 'text-slate-600' };
-      case 'missed':
-        return { bg: 'bg-orange-100', text: 'text-orange-700' };
-      case 'rejected':
-        return { bg: 'bg-red-100', text: 'text-red-700' };
-      default:
-        return { bg: 'bg-slate-100', text: 'text-slate-600' };
+      case 'pending': return { bg: 'bg-amber-100', text: 'text-amber-700' };
+      case 'approved': return { bg: 'bg-emerald-100', text: 'text-emerald-700' };
+      case 'done': return { bg: 'bg-slate-200', text: 'text-slate-600' };
+      case 'missed': return { bg: 'bg-orange-100', text: 'text-orange-700' };
+      case 'rejected': return { bg: 'bg-red-100', text: 'text-red-700' };
+      default: return { bg: 'bg-slate-100', text: 'text-slate-600' };
     }
   };
 
@@ -572,7 +706,7 @@ if (!isFinalStatus) {
   };
 
   const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const COL_COUNT = 6;
+  const COL_COUNT = 7;
 
   if (userRole !== 'sysadmin') {
     return (
@@ -604,14 +738,12 @@ if (!isFinalStatus) {
         ))}
       </div>
 
-      {/* Main Container */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Unified Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-
-          {/* Left side: Search & Filters */}
-          <div className="flex flex-wrap gap-2 items-center flex-1 w-full xl:w-auto">
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col 2xl:flex-row gap-4 items-start 2xl:items-center justify-between">
+          <div className="flex flex-wrap gap-3 items-center flex-1 w-full 2xl:w-auto">
+            {/* Search */}
             <div className="relative w-full sm:w-56">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -625,24 +757,16 @@ if (!isFinalStatus) {
               />
             </div>
 
-            <select
-              value={reasonFilter}
-              onChange={e => setReasonFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-36`}
-            >
-              {reasonOptions.map(r => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
+           <select
+  value={reasonFilter}
+  onChange={e => setReasonFilter(e.target.value)}
+  className={`${filterSelectCls} w-full sm:w-auto max-w-[160px] truncate`}
+>
+  {reasonOptions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+</select>
 
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-28`}
-            >
-              {STATUS_OPTIONS.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
 
             <div className="relative w-full sm:w-40">
@@ -665,31 +789,58 @@ if (!isFinalStatus) {
               )}
             </div>
 
+            {/* Demographic Filters */}
             <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-36`}
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+              className={`${filterSelectCls} w-full sm:w-auto bg-slate-100/50`}
             >
-              {SORT_OPTIONS.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+              <option value="all">All Personnel</option>
+              <option value="student">Students</option>
+              <option value="teaching">Teaching Personnel</option>
+              <option value="non_teaching">Non-Teaching Personnel</option>
+              <option value="clinic">Clinic Personnel</option>
+            </select>
+
+            <select
+              value={selectedDepartment}
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              disabled={selectedRole === 'clinic'}
+              className={`${filterSelectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+            >
+              <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.abbr || department.full}
+                </option>
               ))}
+            </select>
+
+            <select
+              value={selectedProgram}
+              onChange={(e) => setSelectedProgram(e.target.value)}
+              disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
+              className={`${filterSelectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+            >
+              <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
+              {programOptions.map((program) => (
+                <option key={program.value} value={program.value}>
+                  {program.label}
+                </option>
+              ))}
+            </select>
+
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+              {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
 
-          {/* Right side: Inline Stats & Bulk Action */}
           <div className="flex gap-2 flex-wrap items-center justify-end">
-            <button
-              onClick={handleBulkClick}
-              className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm ml-1"
-              title="Move all appointments from one date to another"
-            >
+            <button onClick={handleBulkClick} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm ml-1" title="Move all appointments from one date to another">
               <i className="fa-solid fa-calendar-days text-slate-400"></i>
               <span className="hidden sm:inline">Reschedule</span>
             </button>
-            <button
-              onClick={() => fetchAppointments(true)}
-              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
-            >
+            <button onClick={() => fetchAppointments(true)} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
               </svg>
@@ -705,6 +856,7 @@ if (!isFinalStatus) {
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Patient</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Dept / Program</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Date & Time</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
                 <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden md:table-cell">Reason</th>
@@ -737,6 +889,9 @@ if (!isFinalStatus) {
               ) : (
                 paginatedAppointments.map((apt, idx) => {
                   const statusStyle = getStatusColor(apt.status);
+                  const uDept = getUserDepartment(apt.userProfile) || '—';
+                  const uProg = getUserProgram(apt.userProfile) || '—';
+
                   return (
                     <tr key={apt.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                       <td className="p-3 pl-4 text-xs font-semibold text-slate-500 w-12 text-center">
@@ -749,9 +904,13 @@ if (!isFinalStatus) {
                           </div>
                           <div>
                             <div className="text-sm font-semibold text-slate-800">{apt.patientName}</div>
-                            <div className="text-xs text-slate-500">{apt.patientUniversityId} • {apt.patientProgram}</div>
+                            <div className="text-xs text-slate-500">{apt.patientUniversityId} • <span className="capitalize">{apt.patientRole}</span></div>
                           </div>
                         </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="text-sm text-slate-700 truncate max-w-[150px]" title={uDept}>{uDept}</div>
+                        <div className="text-xs text-slate-500 truncate max-w-[150px]" title={uProg}>{uProg}</div>
                       </td>
                       <td className="p-3 whitespace-nowrap">
                         <div className="text-sm text-slate-700">{formatDate(apt.year, apt.month, apt.day)}</div>
@@ -855,22 +1014,16 @@ if (!isFinalStatus) {
                 </label>
                 <select
                   value={editForm.status}
-onChange={e => {
-  const status = e.target.value;
-
-  setEditForm(f => ({
-    ...f,
-    status,
-    ...(status === 'pending'
-      ? {
-          year: '',
-          month: '',
-          day: '',
-          time: '',
-        }
-      : {}),
-  }));
-}}
+                  onChange={e => {
+                    const status = e.target.value;
+                    setEditForm(f => ({
+                      ...f,
+                      status,
+                      ...(status === 'pending'
+                        ? { year: '', month: '', day: '', time: '' }
+                        : {}),
+                    }));
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
                 >
                   {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => (
@@ -888,10 +1041,7 @@ onChange={e => {
                   value={toDateInputValue(editForm.year, editForm.month, editForm.day)}
                   onChange={handleEditDateChange}
                   placeholder="Select date"
-                  disabled={
-  LOCKED_STATUSES.includes(editForm.status) ||
-  editForm.status === 'pending'
-}
+                  disabled={LOCKED_STATUSES.includes(editForm.status) || editForm.status === 'pending'}
                 />
               </div>
 
@@ -904,10 +1054,7 @@ onChange={e => {
                   value={editForm.time || ''}
                   onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
-                  disabled={
-  LOCKED_STATUSES.includes(editForm.status) ||
-  editForm.status === 'pending'
-}
+                  disabled={LOCKED_STATUSES.includes(editForm.status) || editForm.status === 'pending'}
                 >
                   <option value="" disabled>Select time</option>
                   {CLINIC_SLOTS.map(slot => (
@@ -1036,7 +1183,7 @@ onChange={e => {
                         </div>
                       )}
 
-                      {/* Display Existing Appointments on Target Date ALWAYS (if any exist) */}
+                      {/* Display Existing Appointments on Target Date */}
                       {bulkTargetMatches.length > 0 && (
                         <div className="mt-3">
                           <p className="text-xs font-semibold text-slate-700 mb-1">Existing appointments on target date:</p>

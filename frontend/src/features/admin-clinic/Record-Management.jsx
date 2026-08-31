@@ -1,5 +1,5 @@
 // frontend/src/features/admin-clinic/Record-Management.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../supabase';
 import DatePicker from '../../components/Datepicker';
@@ -20,6 +20,34 @@ const STATUS_STYLES = {
   rejected: { bg: 'bg-red-100',     text: 'text-red-700',     dot: 'bg-red-500'     },
 };
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ─── Fallback Role Groupings ─────────────────────────────
+const FALLBACK_TEACHING_ROLES = ["instructor", "lecturer", "teacher", "professor", "dean", "department head", "program chair", "program coordinator", "faculty"];
+const FALLBACK_NON_TEACHING_ROLES = ["employee", "staff", "registrar", "guidance counselor", "counselor", "librarian", "technician", "security", "maintenance", "office coordinator"];
+const FALLBACK_CLINIC_ROLES = ["doctor", "nurse", "dentist", "clinic staff"];
+
+// ─── Department Normalization Helpers ────────────────────
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+const getUserDepartment = (user) => user?.department || user?.dept || user?.college || '';
+
+const getUserProgram = (user) => user?.program || user?.course || user?.degree_program || '';
+
+const departmentMatches = (userDepartment, departmentConfig) => {
+  if (!departmentConfig) return false;
+  const userValue = normalizeText(userDepartment);
+  return [
+    departmentConfig.full,
+    departmentConfig.abbr,
+    departmentConfig.name,
+    departmentConfig.value,
+  ]
+    .filter(Boolean)
+    .some((value) => normalizeText(value) === userValue);
+};
+
+const programMatches = (userProgram, selectedProgramValue) =>
+  normalizeText(userProgram) === normalizeText(selectedProgramValue);
 
 const getStatusStyle = (status) =>
   STATUS_STYLES[status?.toLowerCase()] ?? { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400' };
@@ -57,6 +85,8 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
   const isMedical = record._kind === 'medical';
   const name      = getFullName(record._user || record);
   const initials  = getInitials(name);
+  const uDept     = getUserDepartment(record._user) || '—';
+  const uProg     = getUserProgram(record._user) || '';
 
   return (
     <tr className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group">
@@ -85,8 +115,8 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
           </div>
           <div>
             <p className="font-semibold text-sm text-slate-800">{name}</p>
-            <p className="text-xs text-slate-400">
-              {record._user?.role || '—'} · {record._user?.department || '—'}
+            <p className="text-xs text-slate-400 capitalize truncate max-w-[200px]" title={`${record._user?.role || '—'} · ${uDept} ${uProg ? `- ${uProg}` : ''}`}>
+              {record._user?.role || '—'} · {uDept} {uProg ? `- ${uProg}` : ''}
             </p>
           </div>
         </div>
@@ -191,10 +221,16 @@ export const RecordManagement = () => {
   const [searchInput, setSearchInput]   = useState('');
   const [filterType, setFilterType]     = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterDept, setFilterDept]     = useState('all');
   const [filterDate, setFilterDate]     = useState('');
   const [filterCert, setFilterCert]     = useState('all');
   const [sortOrder, setSortOrder]       = useState('desc');
+
+  // Demographic Filters & Config State
+  const [systemConfig, setSystemConfig] = useState(null);
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [selectedProgram, setSelectedProgram] = useState('all');
+
   const [message, setMessage]           = useState(null);
 
   // Pagination State
@@ -219,6 +255,98 @@ export const RecordManagement = () => {
     setMessage({ text: msg, type });
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
   };
+
+  // 1. Fetch System Config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const res = await fetch(`${apiUrl}/system-config`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setSystemConfig(json?.data || json || null);
+        }
+      } catch (error) {
+        console.error('Failed to load system config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // 2. Build cascading options
+  const departmentOptions = useMemo(() => {
+    const depts = systemConfig?.departments || [];
+    const offices = systemConfig?.non_academic_offices || systemConfig?.offices || [];
+    let rawList = [];
+
+    if (selectedRole === 'student' || selectedRole === 'teaching') {
+      rawList = depts;
+    } else if (selectedRole === 'non_teaching') {
+      rawList = offices;
+    } else if (selectedRole === 'clinic') {
+      return [];
+    } else {
+      rawList = [...depts, ...offices];
+    }
+
+    if (!Array.isArray(rawList)) return [];
+
+    return rawList
+      .filter(Boolean)
+      .map((department, index) => {
+        if (typeof department === 'string') {
+          return { id: department, full: department, abbr: department, programs: [] };
+        }
+        return {
+          id: department.id || department.abbr || department.full || `department-${index}`,
+          full: department.full || department.name || department.abbr || '',
+          abbr: department.abbr || department.code || department.full || '',
+          programs: Array.isArray(department.programs)
+            ? department.programs
+            : Array.isArray(department.courses) ? department.courses : [],
+        };
+      })
+      .filter((department) => department.full || department.abbr);
+  }, [systemConfig, selectedRole]);
+
+  const selectedDepartmentConfig = useMemo(() => {
+    if (selectedDepartment === 'all') return null;
+    return (
+      departmentOptions.find(
+        (department) =>
+          department.id === selectedDepartment ||
+          department.abbr === selectedDepartment ||
+          department.full === selectedDepartment
+      ) || null
+    );
+  }, [departmentOptions, selectedDepartment]);
+
+  const programOptions = useMemo(() => {
+    if (!selectedDepartmentConfig || selectedRole === 'teaching' || selectedRole === 'non_teaching' || selectedRole === 'clinic') {
+      return [];
+    }
+    return selectedDepartmentConfig.programs
+      .map((program) => {
+        if (typeof program === 'string') return { value: program, label: program };
+        return {
+          value: program.value || program.abbr || program.code || program.name || program.full || '',
+          label: program.full || program.name || program.abbr || program.code || '',
+        };
+      })
+      .filter((program) => program.value);
+  }, [selectedDepartmentConfig, selectedRole]);
+
+  // Reset downstream dropdowns when role changes
+  useEffect(() => {
+    setSelectedDepartment('all');
+    setSelectedProgram('all');
+  }, [selectedRole]);
 
   const fetchAllRecords = async () => {
     setLoading(true);
@@ -258,28 +386,51 @@ export const RecordManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchInput, filterType, filterStatus, filterDept, filterDate, filterCert, sortOrder]);
+  }, [searchInput, filterType, filterStatus, filterDate, filterCert, sortOrder, selectedRole, selectedDepartment, selectedProgram]);
 
-  const deptOptions = ['all', ...new Set(
-    records.map(r => r._user?.department).filter(Boolean)
-  )].sort((a, b) => a === 'all' ? -1 : b === 'all' ? 1 : a.localeCompare(b));
-
+  // 3. Filter Execution
   const filtered = records
     .filter(r => {
-      if (filterType   !== 'all' && r._kind            !== filterType)   return false;
-      if (filterStatus !== 'all' && r.status           !== filterStatus) return false;
-      if (filterDept   !== 'all' && r._user?.department !== filterDept)   return false;
+      // Basic Filters
+      if (filterType   !== 'all' && r._kind           !== filterType)   return false;
+      if (filterStatus !== 'all' && r.status          !== filterStatus) return false;
       if (filterCert === 'issued' && r.issue_cert !== true) return false;
       if (filterCert === 'not_issued' && r.issue_cert === true) return false;
       if (filterDate) {
         const recDateStr = (r.exam_date || r.created_at || '').split('T')[0];
         if (recDateStr !== filterDate) return false;
       }
+
+      // Demographic Filters
+      const user = r._user || r;
+      if (selectedRole !== 'all') {
+        const uRole = (user.role || '').toLowerCase();
+        const isStudent = uRole.includes('student');
+        const isTeaching = systemConfig?.faculty_roles && Array.isArray(systemConfig.faculty_roles)
+          ? systemConfig.faculty_roles.some(role => uRole.includes(role.toLowerCase()))
+          : FALLBACK_TEACHING_ROLES.some(role => uRole.includes(role));
+        const isNonTeaching = systemConfig?.staff_roles && Array.isArray(systemConfig.staff_roles)
+          ? systemConfig.staff_roles.some(role => uRole.includes(role.toLowerCase()))
+          : FALLBACK_NON_TEACHING_ROLES.some(role => uRole.includes(role));
+        const isClinic = systemConfig?.clinic_roles && Array.isArray(systemConfig.clinic_roles)
+          ? systemConfig.clinic_roles.some(role => uRole.includes(role.toLowerCase()))
+          : FALLBACK_CLINIC_ROLES.some(role => uRole.includes(role));
+
+        if (selectedRole === 'student' && !isStudent) return false;
+        if (selectedRole === 'teaching' && !isTeaching) return false;
+        if (selectedRole === 'non_teaching' && !isNonTeaching) return false;
+        if (selectedRole === 'clinic' && !isClinic) return false;
+      }
+
+      if (selectedDepartmentConfig && !departmentMatches(getUserDepartment(user), selectedDepartmentConfig)) return false;
+      if (selectedProgram !== 'all' && !programMatches(getUserProgram(user), selectedProgram)) return false;
+
+      // Search
       if (searchInput) {
         const s    = searchInput.toLowerCase();
-        const name = getFullName(r._user || r).toLowerCase();
-        const uid  = (r.university_id || r._user?.university_id || '').toLowerCase();
-        const email = (r._user?.email || '').toLowerCase();
+        const name = getFullName(user).toLowerCase();
+        const uid  = (r.university_id || user.university_id || '').toLowerCase();
+        const email = (user.email || '').toLowerCase();
         return name.includes(s) || uid.includes(s) || email.includes(s);
       }
       return true;
@@ -316,10 +467,6 @@ export const RecordManagement = () => {
     if (!editRecord) return;
     setSavingEdit(true);
     try {
-      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
-      const table = editRecord._kind === 'medical' ? 'medical_records' : 'dental_records';
-
       await updateRecord(editRecord._id, {
         recordType: editRecord._kind,
         status: editStatus,
@@ -355,13 +502,7 @@ export const RecordManagement = () => {
     setDeleting(true);
 
     try {
-      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      const adminUid = currentUser?.id ?? currentUser?.uid ?? 'system';
-
       await archiveRecord(recordToDelete._id, recordToDelete._kind);
-
-      const table = recordToDelete._kind === 'medical' ? 'medical_records' : 'dental_records';
-
       setRecords(prev => prev.filter(r => r._id !== recordToDelete._id));
       showSnackbar('Record archived successfully. You can restore it from the Archives page.');
     } catch (err) {
@@ -375,6 +516,8 @@ export const RecordManagement = () => {
   };
 
   const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const compactSelectCls = `${selectCls} w-full sm:w-auto max-w-[160px] truncate`;
+  const compactFilterCls = `${selectCls} w-full sm:w-auto max-w-[180px] bg-slate-100/50 truncate disabled:opacity-60 disabled:cursor-not-allowed`;
   const COL_COUNT = 9;
 
   const summaryStats = [
@@ -401,10 +544,12 @@ export const RecordManagement = () => {
 
       {/* Table container */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
+
         {/* Combined Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-          <div className="flex flex-wrap gap-3 items-center flex-1">
-            <div className="relative w-full sm:w-60">
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col 2xl:flex-row gap-4 items-start 2xl:items-center justify-between">
+          <div className="flex flex-wrap gap-3 items-center flex-1 w-full 2xl:w-auto">
+            {/* Search */}
+            <div className="relative w-full sm:w-56">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
               </svg>
@@ -417,14 +562,15 @@ export const RecordManagement = () => {
               />
             </div>
 
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={`${selectCls} w-full sm:w-32`}>
-              <option value="all">All types</option>
+            {/* Base Filters */}
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className={compactSelectCls}>
+              <option value="all">All Types</option>
               <option value="medical">Medical</option>
               <option value="dental">Dental</option>
             </select>
 
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`${selectCls} w-full sm:w-36`}>
-              <option value="all">All statuses</option>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={compactSelectCls}>
+              <option value="all">All Statuses</option>
               {STATUS_OPTIONS.map(s => (
                 <option key={s} value={s} className="capitalize">
                   {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -432,30 +578,18 @@ export const RecordManagement = () => {
               ))}
             </select>
 
-            <select value={filterCert} onChange={e => setFilterCert(e.target.value)} className={`${selectCls} w-full sm:w-36`}>
+            <select value={filterCert} onChange={e => setFilterCert(e.target.value)} className={compactSelectCls}>
               {CERT_OPTIONS.map(c => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
 
-            <select
-              value={filterDept}
-              onChange={e => setFilterDept(e.target.value)}
-              className={`${selectCls} w-full sm:w-44 truncate`}
-              title={filterDept === 'all' ? 'All departments' : filterDept}
-            >
-              <option value="all">All departments</option>
-              {deptOptions.filter(d => d !== 'all').map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-
-            <div className="relative w-full sm:w-40">
+            <div className="relative w-full sm:w-36">
               <DatePicker
                 value={filterDate}
                 onChange={setFilterDate}
                 placeholder="All Dates"
-                className={`${selectCls} w-full pr-8`}
+                className={`${selectCls} w-full pr-8 truncate`}
               />
               {filterDate && (
                 <button
@@ -470,9 +604,51 @@ export const RecordManagement = () => {
               )}
             </div>
 
+            {/* Demographic Config Filters */}
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+              className={compactFilterCls}
+            >
+              <option value="all">All Personnel</option>
+              <option value="student">Students</option>
+              <option value="teaching">Teaching Personnel</option>
+              <option value="non_teaching">Non-Teaching Personnel</option>
+              <option value="clinic">Clinic Personnel</option>
+            </select>
+
+            <select
+              value={selectedDepartment}
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              disabled={selectedRole === 'clinic'}
+              className={compactFilterCls}
+            >
+              <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.abbr || department.full}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedProgram}
+              onChange={(e) => setSelectedProgram(e.target.value)}
+              disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
+              className={compactFilterCls}
+            >
+              <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
+              {programOptions.map((program) => (
+                <option key={program.value} value={program.value}>
+                  {program.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Sort Toggle */}
             <button
               onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
-              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:border-[#466460] hover:text-[#466460] transition shadow-sm"
+              className={`${selectCls} flex items-center justify-center gap-1.5 hover:border-[#466460] hover:text-[#466460] transition`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
@@ -483,7 +659,7 @@ export const RecordManagement = () => {
 
           <button
               onClick={fetchAllRecords}
-              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+              className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm shrink-0"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
@@ -505,7 +681,7 @@ export const RecordManagement = () => {
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden lg:table-cell">Details</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Status</th>
                 <th className="text-left p-3 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap hidden sm:table-cell">Document</th>
-                <th className="text-left p-3 pr-4 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
+                <th className="text-right p-3 pr-4 text-xs font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>

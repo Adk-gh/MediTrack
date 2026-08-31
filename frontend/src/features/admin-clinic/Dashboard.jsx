@@ -23,36 +23,33 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 const TYPE_COLORS = {
   student:       '#466460',
-  faculty:       '#e07a5f',
-  staff:         '#81b29a',
-  doctor:        '#e9c46a',
-  nurse:         '#a8dadc',
+  teaching:      '#e07a5f',
+  non_teaching:  '#81b29a',
+  clinic_staff:  '#e9c46a',
   administrator: '#f4a261',
-  lecturer:      '#2a9d8f',
-  professor:     '#264653',
-  guard:         '#e76f51',
 };
-
-
 
 const RECORD_COLORS = ['#466460', '#e07a5f'];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Role Classification Helpers ──────────────────────────────────────────────
+const FALLBACK_TEACHING_ROLES = ["instructor", "lecturer", "teacher", "professor", "dean", "department head", "program chair", "program coordinator", "faculty"];
+const FALLBACK_NON_TEACHING_ROLES = ["employee", "staff", "registrar", "guidance counselor", "counselor", "librarian", "technician", "security", "maintenance", "office coordinator", "admin", "guard", "janitor", "utility"];
+const FALLBACK_CLINIC_ROLES = ["doctor", "nurse", "dentist", "clinic staff", "physician", "clinic"];
+
 const normaliseRole = (raw = '') => {
   const r = String(raw).toLowerCase();
 
   // 1. Clinic Staff (handled separately via isClinicStaff before this ever runs,
   //    kept here only as a safety net so these roles never fall through to 'student')
-  if (['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k))) return 'clinic_staff';
+  if (FALLBACK_CLINIC_ROLES.some(k => r.includes(k))) return 'clinic_staff';
 
-  // 2. Faculty Staff
-  if (['instructor', 'faculty', 'lecturer', 'professor', 'dean'].some(k => r.includes(k))) return 'faculty';
+  // 2. Teaching Personnel
+  if (FALLBACK_TEACHING_ROLES.some(k => r.includes(k))) return 'teaching';
 
-  // 3. General / Support Staff — maintenance, security, admin, guards, etc.
-  //    These are patients too (they can book consultations), just tracked as their own group.
-  if (['maintenance', 'security', 'admin', 'guard', 'janitor', 'utility', 'staff'].some(k => r.includes(k))) return 'staff';
+  // 3. Non-Teaching / Support Staff
+  if (FALLBACK_NON_TEACHING_ROLES.some(k => r.includes(k))) return 'non_teaching';
 
   // 4. Students (and default fallback)
   return 'student';
@@ -61,7 +58,7 @@ const normaliseRole = (raw = '') => {
 // Helper to check if a role is clinic staff
 const isClinicStaff = (role) => {
   const r = (role || '').toLowerCase();
-  return ['doctor', 'dentist', 'nurse', 'clinic', 'physician'].some(k => r.includes(k));
+  return FALLBACK_CLINIC_ROLES.some(k => r.includes(k));
 };
 
 const getAuthHeaders = () => {
@@ -101,7 +98,6 @@ const SectionLabel = ({ icon, children }) => (
   </p>
 );
 
-
 const normalizeValue = (value) =>
   value === null || value === undefined
     ? ''
@@ -118,7 +114,6 @@ const findAppointmentUser = (users, appointment) => {
     appointment?.patientId,
     appointment?.student_id,
     appointment?.studentId,
-
     appointment?.user?.id,
     appointment?.user?.uid,
     appointment?.patient?.id,
@@ -198,85 +193,46 @@ function DashboardContent() {
 
       // ── Users / Patient Records ──────────────────────────
       if (usersRes.ok) {
-  const usersData = await usersRes.json();
-  const raw = usersData.data || usersData || [];
+        const usersData = await usersRes.json();
+        const raw = usersData.data || usersData || [];
 
-  console.log('[Dashboard] Raw users count:', raw.length);
-console.log(
-  '[Dashboard] Raw user IDs:',
-  raw.map((u) => ({
-    id: u.id,
-    uid: u.uid,
-    name: `${u.first_name || ''} ${u.last_name || ''}`,
-  }))
-);
-  // Exclude archived users and sysadmin.
-  const activeRaw = raw.filter((u) => {
-    const role = String(u.role || '').toLowerCase();
+        // Exclude archived users and sysadmin.
+        const activeRaw = raw.filter((u) => {
+          const role = String(u.role || '').toLowerCase();
+          return u.is_archived !== true && role !== 'sysadmin';
+        });
 
-    return u.is_archived !== true && role !== 'sysadmin';
-  });
+        // Separate patients from clinic staff.
+        const patients = activeRaw.filter((u) => !isClinicStaff(u.role));
+        const clinicStaff = activeRaw.filter((u) => isClinicStaff(u.role));
 
-  // Separate patients from clinic staff.
-  const patients = activeRaw.filter(
-    (u) => !isClinicStaff(u.role)
-  );
+        setUsers(
+          patients.map((u) => ({
+            // Preserve both IDs from the users table.
+            id: u.id,
+            uid: u.uid,
 
-  const clinicStaff = activeRaw.filter(
-    (u) => isClinicStaff(u.role)
-  );
+            // These fields come directly from users table.
+            universityId: u.university_id || u.universityId || '',
+            prog: u.program || '',
+            name: `${u.last_name || u.lastName || ''}, ${u.first_name || u.firstName || ''}`
+                .replace(/^,\s*/, '')
+                .trim() || u.name || 'Unknown',
 
-  setUsers(
-    patients.map((u) => ({
-      // Preserve both IDs from the users table.
-      id: u.id,
-      uid: u.uid,
+            type: normaliseRole(u.role || u.type || u.user_type || 'student'),
+            role: u.role || 'student',
 
-      // These fields come directly from users table.
-      universityId:
-        u.university_id ||
-        u.universityId ||
-        '',
+            year: u.year_level || u.yearLevel || '',
+            section: u.section || '',
+            email: u.email || '',
+            department: u.department || '',
+            createdAt: u.created_at || u.createdAt || '',
+          }))
+        );
 
-      prog:
-        u.program ||
-        '',
+        setClinicStaffCount(clinicStaff.length);
+      }
 
-      name:
-        `${u.last_name || u.lastName || ''}, ${
-          u.first_name || u.firstName || ''
-        }`
-          .replace(/^,\s*/, '')
-          .trim() ||
-        u.name ||
-        'Unknown',
-
-      type: normaliseRole(
-        u.role ||
-        u.type ||
-        u.user_type ||
-        'student'
-      ),
-
-      role: u.role || 'student',
-
-      year:
-        u.year_level ||
-        u.yearLevel ||
-        '',
-
-      section: u.section || '',
-      email: u.email || '',
-      department: u.department || '',
-      createdAt:
-        u.created_at ||
-        u.createdAt ||
-        '',
-    }))
-  );
-
-  setClinicStaffCount(clinicStaff.length);
-}
       // ── Medical Records ──────────────────────────────────
       let medData = [];
       if (medRes && medRes.ok) {
@@ -447,8 +403,8 @@ console.log(
       labels = MONTHS.map(m => `${m} ${y}`);
     }
 
-    const types = filter === 'all' ? ['student', 'faculty', 'staff'] : [filter];
-    const borderDashes = { student: [], faculty: [6, 3], staff: [2, 3] };
+    const types = filter === 'all' ? ['student', 'teaching', 'non_teaching'] : [filter];
+    const borderDashes = { student: [], teaching: [6, 3], non_teaching: [2, 3] };
 
     const recordsWithTypes = filteredRecords.map(r => {
       // Clean, exact ID match based on your schema
@@ -459,20 +415,28 @@ console.log(
       };
     });
 
-    const datasets = types.map(t => ({
-      label:            t.charAt(0).toUpperCase() + t.slice(1),
-      data:             ymTargets.map(ymTarget => {
-        return recordsWithTypes.filter(r => r.uType === t && r.ymString === ymTarget).length;
-      }),
-      borderColor:      TYPE_COLORS[t],
-      backgroundColor:  TYPE_COLORS[t] + '18',
-      borderWidth:      2,
-      pointRadius:      3,
-      pointHoverRadius: 5,
-      tension:          0.35,
-      fill:             false,
-      borderDash:       borderDashes[t],
-    }));
+    const datasets = types.map(t => {
+      let labelText = '';
+      if (t === 'student') labelText = 'Students';
+      else if (t === 'teaching') labelText = 'Teaching';
+      else if (t === 'non_teaching') labelText = 'Non-Teaching';
+      else labelText = t.charAt(0).toUpperCase() + t.slice(1);
+
+      return {
+        label:            labelText,
+        data:             ymTargets.map(ymTarget => {
+          return recordsWithTypes.filter(r => r.uType === t && r.ymString === ymTarget).length;
+        }),
+        borderColor:      TYPE_COLORS[t],
+        backgroundColor:  TYPE_COLORS[t] + '18',
+        borderWidth:      2,
+        pointRadius:      3,
+        pointHoverRadius: 5,
+        tension:          0.35,
+        fill:             false,
+        borderDash:       borderDashes[t],
+      };
+    });
 
     return { labels, datasets };
   }, [filter, schoolYearFilter, semesterFilter, allRecords, users]);
@@ -506,8 +470,16 @@ console.log(
   const typeChartData = useMemo(() => {
     const counts = {};
     filteredUsers.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
+
+    const labelsMap = {
+      student: 'Students',
+      teaching: 'Teaching',
+      non_teaching: 'Non-Teaching',
+      clinic_staff: 'Clinic Staff'
+    };
+
     return {
-      labels:   Object.keys(counts),
+      labels:   Object.keys(counts).map(k => labelsMap[k] || k),
       datasets: [{
         label:           'Count',
         data:            Object.values(counts),
@@ -555,7 +527,7 @@ console.log(
             <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Patients</p>
               <h4 className="text-3xl font-bold text-slate-800">{users.length}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Students + Faculty + Staff</p>
+              <p className="text-xs text-emerald-500 mt-1">Students + Teaching + Non-Teaching</p>
             </GlassCard>
 
             <GlassCard className="p-5">
@@ -595,7 +567,7 @@ console.log(
             {loading && <span className="ml-2 text-[10px] font-normal text-slate-400 animate-pulse">loading…</span>}
           </h3>
           <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 [&::-webkit-scrollbar]:hidden">
-            {['all', 'student', 'faculty', 'staff'].map(f => (
+            {['all', 'student', 'teaching', 'non_teaching'].map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -605,7 +577,7 @@ console.log(
                     : 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0] hover:border-[#466460]'
                   }`}
               >
-                {f === 'all' ? 'All' : f === 'student' ? 'Students' : f === 'faculty' ? 'Faculty' : 'Staff'}
+                {f === 'all' ? 'All' : f === 'student' ? 'Students' : f === 'teaching' ? 'Teaching' : 'Non-Teaching'}
               </button>
             ))}
           </div>
@@ -649,14 +621,14 @@ console.log(
                 <span className="w-7 h-[3px] rounded bg-[#466460]"></span>Students
               </div>
             )}
-            {(filter === 'all' || filter === 'faculty') && (
+            {(filter === 'all' || filter === 'teaching') && (
               <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
-                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#e07a5f 0,#e07a5f 6px,transparent 6px,transparent 10px)' }}></span>Faculty
+                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#e07a5f 0,#e07a5f 6px,transparent 6px,transparent 10px)' }}></span>Teaching
               </div>
             )}
-            {(filter === 'all' || filter === 'staff') && (
+            {(filter === 'all' || filter === 'non_teaching') && (
               <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
-                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#81b29a 0,#81b29a 2px,transparent 2px,transparent 5px)' }}></span>Staff
+                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#81b29a 0,#81b29a 2px,transparent 2px,transparent 5px)' }}></span>Non-Teaching
               </div>
             )}
 
