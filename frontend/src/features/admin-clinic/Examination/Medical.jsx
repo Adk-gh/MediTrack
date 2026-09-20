@@ -3,6 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabase';
 import DatePicker from '../../../components/Datepicker';
 import DateTimePicker from '../../../components/DateTimePicker';
+import {
+  createMedicalExamination,
+  updateMedicalExamination,
+} from '../../../services/examinations.service';
 
 
 const API_URL = (
@@ -369,33 +373,417 @@ const HistoryTagGroup = ({ title, items, tint }) => {
   );
 };
 
+// ── Visit-history analytics helpers ──────────────────────────────────────────
+const HEALTH_QUESTIONNAIRE_ITEMS = [
+  { key: 'q1', label: 'Are you in good health?' },
+  { key: 'q2', label: 'Are you under medical treatment now?', detailKey: 'q2Details' },
+  { key: 'q3', label: 'Have you ever had serious illness or surgical operation/hospitalization in the last 5 years?', detailKey: 'q3Details' },
+  { key: 'q4', label: 'Are you taking any medication?', detailKey: 'q4Details' },
+  { key: 'q5', label: 'For women only: Are you pregnant?' },
+  { key: 'q5b', label: 'Are you nursing?' },
+];
+
+const parseHistoryJson = (value, fallback) => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const asHistoryArray = (value) => {
+  const parsed = parseHistoryJson(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+};
+
+const asHistoryObject = (value) => {
+  const parsed = parseHistoryJson(value, {});
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+};
+
+const formatHistoryDate = (value, withTime = false) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    ...(withTime
+      ? { hour: 'numeric', minute: '2-digit', hour12: true }
+      : {}),
+  });
+};
+
+const normalizeYesNo = (value) => String(value || '').trim().toLowerCase();
+
+const getRecordPatientInfo = (record) => asHistoryObject(record?.patient_info);
+const getRecordVitals = (record) => {
+  const raw = parseHistoryJson(record?.vital_records, {});
+  return Array.isArray(raw) ? (raw[0] || {}) : (raw || {});
+};
+
+const getRecordQuestionnaire = (record) => asHistoryObject(record?.questionnaire);
+const getRecordLabs = (record) => asHistoryObject(record?.laboratory_results);
+const getRecordCovid = (record) => asHistoryObject(record?.covid_history);
+const getRecordSurgical = (record) => {
+  const parsed = parseHistoryJson(record?.surgical_history, []);
+  if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed?.operations)) return parsed.operations;
+  return [];
+};
+
+const getRecordSex = (record) => {
+  const patientInfo = getRecordPatientInfo(record);
+  return String(patientInfo?.sex || record?.sex || '').trim();
+};
+
+const TinyBar = ({ label, value, total, suffix = '' }) => {
+  const safeTotal = Math.max(Number(total) || 0, 1);
+  const safeValue = Math.max(Number(value) || 0, 0);
+  const width = Math.min(100, Math.round((safeValue / safeTotal) * 100));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <span className="text-[11px] font-semibold text-slate-600 truncate">{label}</span>
+        <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+          {safeValue}{suffix}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-[#466460] transition-all"
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const MiniLineChart = ({ title, values, unit = '' }) => {
+  const clean = values
+    .map((item, index) => ({
+      index,
+      label: item.label,
+      value: Number(item.value),
+    }))
+    .filter(item => Number.isFinite(item.value));
+
+  if (clean.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
+        <p className="text-xs text-slate-400 mt-3 italic">No recorded values yet.</p>
+      </div>
+    );
+  }
+
+  const width = 260;
+  const height = 92;
+  const pad = 12;
+  const min = Math.min(...clean.map(v => v.value));
+  const max = Math.max(...clean.map(v => v.value));
+  const spread = Math.max(max - min, 1);
+
+  const points = clean.map((item, i) => {
+    const x = clean.length === 1
+      ? width / 2
+      : pad + (i / (clean.length - 1)) * (width - pad * 2);
+
+    const y = height - pad - ((item.value - min) / spread) * (height - pad * 2);
+    return { ...item, x, y };
+  });
+
+  const polyline = points.map(p => `${p.x},${p.y}`).join(' ');
+  const latest = clean[clean.length - 1]?.value;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
+        <p className="text-sm font-extrabold text-[#466460]">
+          {latest}{unit}
+        </p>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[92px] overflow-visible">
+        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} stroke="#e2e8f0" strokeWidth="1" />
+        <polyline
+          points={polyline}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          className="text-[#466460]"
+        />
+        {points.map((point, index) => (
+          <g key={`${title}-${index}`}>
+            <circle cx={point.x} cy={point.y} r="4" fill="white" stroke="currentColor" strokeWidth="2" className="text-[#466460]" />
+            <title>{`${point.label}: ${point.value}${unit}`}</title>
+          </g>
+        ))}
+      </svg>
+      <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+        <span>Oldest</span>
+        <span>Latest</span>
+      </div>
+    </div>
+  );
+};
+
+const MedicalHistoryAnalytics = ({ records }) => {
+  const chronological = [...records].sort(
+    (a, b) => new Date(a.exam_date || a.created_at || 0) - new Date(b.exam_date || b.created_at || 0)
+  );
+
+  const total = records.length;
+  const patientVisits = records.filter(r => r.visit_type === 'patient').length;
+  const nonPatientVisits = records.filter(r => r.visit_type === 'non_patient').length;
+  const approved = records.filter(r => normalizeYesNo(r.status) === 'approved').length;
+  const pending = records.filter(r => normalizeYesNo(r.status) === 'pending').length;
+  const certificates = records.filter(r => r.issue_cert === true).length;
+
+  const purposeCounts = records.reduce((acc, record) => {
+    const label = String(record.visit_reason || '').trim() || 'Unspecified';
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
+
+  const topPurposes = Object.entries(purposeCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  const conditionCounts = records.reduce((acc, record) => {
+    asHistoryArray(record.checked_health).forEach(item => {
+      const label = parseHistoryItemDisplay(item);
+      if (label) acc[label] = (acc[label] || 0) + 1;
+    });
+    return acc;
+  }, {});
+
+  const topConditions = Object.entries(conditionCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  const questionnaireYes = HEALTH_QUESTIONNAIRE_ITEMS.map(item => ({
+    ...item,
+    count: records.filter(record => {
+      const questionnaire = getRecordQuestionnaire(record);
+      return normalizeYesNo(questionnaire[item.key]) === 'yes';
+    }).length,
+  }));
+
+  const smokingYes = records.filter(r => normalizeYesNo(r.smoking) === 'yes').length;
+  const alcoholYes = records.filter(r => normalizeYesNo(r.alcohol) === 'yes').length;
+  const drugsYes = records.filter(r => normalizeYesNo(r.drugs) === 'yes').length;
+
+  const vitalsSeries = chronological.map(record => {
+    const vitals = getRecordVitals(record);
+    return {
+      label: formatHistoryDate(record.exam_date || record.created_at),
+      pr: vitals.pr,
+      rr: vitals.rr,
+      temp: vitals.temp,
+    };
+  });
+
+  if (records.length === 0) return null;
+
+  return (
+    <div className="mb-6 space-y-4">
+      <div className="rounded-2xl border border-[#d1e7e5] bg-gradient-to-br from-[#f0f7f6] to-white p-4">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h5 className="text-sm font-extrabold text-[#466460] flex items-center gap-2">
+              <i className="fa-solid fa-chart-line"></i>
+              Personalized Visit Analytics
+            </h5>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Summary of this patient's recorded medical visits. This is descriptive history, not a diagnosis.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-[#466460] bg-white border border-[#d1e7e5] px-2.5 py-1 rounded-full">
+            {total} total visit{total !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+          {[
+            ['Patient Visits', patientVisits, 'fa-stethoscope'],
+            ['Non-Patient', nonPatientVisits, 'fa-file-circle-check'],
+            ['Approved', approved, 'fa-circle-check'],
+            ['Pending', pending, 'fa-clock'],
+            ['Certificates', certificates, 'fa-file-medical'],
+            ['Unclassified', total - patientVisits - nonPatientVisits, 'fa-circle-question'],
+          ].map(([label, value, icon]) => (
+            <div key={label} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <i className={`fa-solid ${icon} text-[#466460] text-xs`}></i>
+              <p className="text-xl font-extrabold text-slate-800 mt-2">{value}</p>
+              <p className="text-[10px] font-semibold text-slate-500">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Visit Purpose Distribution
+          </h6>
+          <div className="space-y-3">
+            {topPurposes.map(([label, count]) => (
+              <TinyBar key={label} label={label} value={count} total={total} />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Repeated Health Conditions
+          </h6>
+          {topConditions.length > 0 ? (
+            <div className="space-y-3">
+              {topConditions.map(([label, count]) => (
+                <TinyBar key={label} label={label} value={count} total={total} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic">No checked health conditions recorded yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MiniLineChart
+          title="Pulse Rate Trend"
+          unit=" bpm"
+          values={vitalsSeries.map(v => ({ label: v.label, value: v.pr }))}
+        />
+        <MiniLineChart
+          title="Respiratory Rate Trend"
+          unit=" cpm"
+          values={vitalsSeries.map(v => ({ label: v.label, value: v.rr }))}
+        />
+        <MiniLineChart
+          title="Temperature Trend"
+          unit=" °C"
+          values={vitalsSeries.map(v => ({ label: v.label, value: v.temp }))}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Questionnaire — Yes Responses Across Visits
+          </h6>
+          <div className="space-y-3">
+            {questionnaireYes.map(item => (
+              <TinyBar
+                key={item.key}
+                label={item.label}
+                value={item.count}
+                total={total}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Personal / Social History Occurrence
+          </h6>
+          <div className="space-y-3">
+            <TinyBar label="Smoking marked Yes" value={smokingYes} total={total} />
+            <TinyBar label="Alcohol marked Yes" value={alcoholYes} total={total} />
+            <TinyBar label="Illicit drugs marked Yes" value={drugsYes} total={total} />
+          </div>
+          <p className="text-[10px] text-slate-400 mt-4">
+            Counts show how many recorded visits contained a “Yes” response; they do not determine current behavior.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MedicalVisitCard = ({ record, defaultOpen = false }) => {
   const [open, setOpen] = useState(defaultOpen);
 
-  const getVitalSigns = () => {
-    const v = record.vital_records;
-    const vitals = Array.isArray(v) ? (v[0] || {}) : (v || {});
-    return {
-      bp: vitals.bp || '',
-      pr: vitals.pr || '',
-      rr: vitals.rr || '',
-      temp: vitals.temp || '',
-      remarks: vitals.remarks || '',
-    };
-  };
+  const vitals = getRecordVitals(record);
+  const questionnaire = getRecordQuestionnaire(record);
+  const patientInfo = getRecordPatientInfo(record);
+  const labs = getRecordLabs(record);
+  const covid = getRecordCovid(record);
+  const surgicalHistory = getRecordSurgical(record);
+  const sex = getRecordSex(record);
+  const isFemale = sex.toLowerCase() === 'female';
 
   const history = {
-    medical: (Array.isArray(record.checked_medical) ? record.checked_medical : []).map(parseHistoryItemDisplay),
-    family: (Array.isArray(record.checked_family) ? record.checked_family : []).map(parseHistoryItemDisplay),
-    health: (Array.isArray(record.checked_health) ? record.checked_health : []).map(parseHistoryItemDisplay),
+    medical: asHistoryArray(record.checked_medical).map(parseHistoryItemDisplay),
+    family: asHistoryArray(record.checked_family).map(parseHistoryItemDisplay),
+    health: asHistoryArray(record.checked_health).map(parseHistoryItemDisplay),
   };
 
-  const vitals = getVitalSigns();
-  const hasVitals = vitals.bp || vitals.pr || vitals.rr || vitals.temp;
-  const hasHistory = history.medical.length > 0 || history.family.length > 0 || history.health.length > 0;
-  const hasRemarks = record.finding1 || record.remarks;
-  const hasOtherHistory = record.other_medical_history || record.other_family_history;
-  const hasVisitInfo = record.visit_reason || record.visit_type;
+  const hasVitals = [
+    vitals.bp,
+    vitals.pr,
+    vitals.rr,
+    vitals.temp,
+    vitals.height,
+    vitals.weight,
+    vitals.bmi,
+    vitals.waist,
+    isFemale ? vitals.lmp : '',
+  ].some(Boolean);
+
+  const hasHistory =
+    history.medical.length > 0 ||
+    history.family.length > 0 ||
+    history.health.length > 0;
+
+  const hasOtherHistory =
+    record.other_medical_history ||
+    record.other_family_history;
+
+  const hasVisitInfo =
+    record.visit_reason ||
+    record.visit_type ||
+    record.school_year ||
+    record.semester;
+
+  const hasSocialHistory =
+    record.smoking ||
+    record.alcohol ||
+    record.drugs;
+
+  const hasQuestionnaire =
+    Object.keys(questionnaire).length > 0;
+
+  const hasLabs = ['cbc', 'ua', 'xray'].some(key => {
+    const item = labs?.[key] || {};
+    return item?.result || item?.facility || item?.date;
+  });
+
+  const hasCovid =
+    Object.keys(covid).length > 0 &&
+    (
+      covid?.history ||
+      covid?.dose1?.vaccineName ||
+      covid?.dose2?.vaccineName ||
+      covid?.booster1?.vaccineName ||
+      covid?.booster2?.vaccineName
+    );
+
+  const hasRemarks =
+    record.finding1 ||
+    record.remarks ||
+    record.is_fit !== null ||
+    record.is_normal_findings !== null;
 
   return (
     <div className="relative">
@@ -405,18 +793,23 @@ const MedicalVisitCard = ({ record, defaultOpen = false }) => {
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+          className="w-full flex items-center justify-between gap-4 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}></i>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-800">{record._datetime}</p>
-              <p className="text-xs text-slate-500">
-                Nurse on duty: <span className="font-medium text-slate-600">{record.nurse_on_duty || 'Unknown'}</span>
+              <p className="text-xs text-slate-500 truncate">
+                {record.physician ? (
+                  <>Physician: <span className="font-medium text-slate-600">{record.physician}</span></>
+                ) : (
+                  <>Nurse on duty: <span className="font-medium text-slate-600">{record.nurse_on_duty || 'Unknown'}</span></>
+                )}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 shrink-0">
             {record.visit_type && (
               <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
                 record.visit_type === 'patient'
@@ -431,72 +824,371 @@ const MedicalVisitCard = ({ record, defaultOpen = false }) => {
         </button>
 
         {open && (
-          <div className="p-4 space-y-4 border-t border-slate-100">
-            {hasVisitInfo && (
-              <div>
-                <HistorySectionLabel icon="fa-clipboard-question" color="text-[#466460]">Visit Information</HistorySectionLabel>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Reason for Visit</p>
-                    <p className="text-sm font-bold text-slate-800">{record.visit_reason || 'Not provided'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Classification</p>
-                    <p className="text-sm font-bold text-slate-800">{getVisitTypeLabel(record.visit_type)}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {hasVitals && (
-              <div>
-                <HistorySectionLabel icon="fa-heart-pulse" color="text-rose-500">Vital Signs</HistorySectionLabel>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                  {[
-                    { label: 'Blood Pressure', value: vitals.bp, unit: 'mmHg' },
-                    { label: 'Heart Rate', value: vitals.pr, unit: 'bpm' },
-                    { label: 'Respiratory Rate', value: vitals.rr, unit: 'cpm' },
-                    { label: 'Temperature', value: vitals.temp, unit: '°C' },
-                  ].filter(v => v.value).map((v, i) => (
-                    <div key={i} className="bg-rose-50/60 border border-rose-100 rounded-lg px-3 py-2">
-                      <p className="text-[10px] font-semibold text-rose-500 uppercase tracking-wide">{v.label}</p>
-                      <p className="text-sm font-bold text-slate-800">{v.value} <span className="text-xs font-medium text-slate-400">{v.unit}</span></p>
-                    </div>
-                  ))}
-                </div>
-                {vitals.remarks && <p className="text-xs text-slate-500 italic mt-2">Remarks: {vitals.remarks}</p>}
-              </div>
-            )}
+          <div className="p-4 space-y-5 border-t border-slate-100">
 
-            {(hasHistory || hasOtherHistory) && (
-              <div>
-                <HistorySectionLabel icon="fa-notes-medical" color="text-purple-500">Clinical History</HistorySectionLabel>
-                <div className="grid md:grid-cols-3 gap-3 mt-2">
-                  <HistoryTagGroup title="Past Medical History" items={history.medical} tint="amber" />
-                  <HistoryTagGroup title="Family History" items={history.family} tint="purple" />
-                  <HistoryTagGroup title="Other Conditions" items={history.health} tint="cyan" />
-                </div>
-                {record.other_medical_history && (
-                  <p className="text-xs text-slate-500 italic mt-2">Medical history notes: {record.other_medical_history}</p>
-                )}
-                {record.other_family_history && (
-                  <p className="text-xs text-slate-500 italic mt-1">Family history notes: {record.other_family_history}</p>
-                )}
-              </div>
-            )}
+            {/* Visit information */}
+            <div>
+              <HistorySectionLabel icon="fa-clipboard-question" color="text-[#466460]">
+                Visit Information
+              </HistorySectionLabel>
 
-            {hasRemarks && (
-              <div>
-                <HistorySectionLabel icon="fa-file-medical" color="text-teal-500">Doctor's Remarks</HistorySectionLabel>
-                <div className="bg-teal-50/60 border border-teal-100 rounded-lg px-3 py-2.5 mt-2">
-                  <p className="text-sm text-slate-700 leading-relaxed">
-                    {record.finding1 || ''}{record.finding1 && record.remarks ? ' — ' : ''}{record.remarks || ''}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-2">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Reason / Purpose</p>
+                  <p className="text-sm font-bold text-slate-800">{record.visit_reason || 'Not recorded'}</p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Classification</p>
+                  <p className="text-sm font-bold text-slate-800">{getVisitTypeLabel(record.visit_type)}</p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">School Year / Semester</p>
+                  <p className="text-sm font-bold text-slate-800">
+                    {[record.school_year, record.semester].filter(Boolean).join(' · ') || 'Not recorded'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Exam Date</p>
+                  <p className="text-sm font-bold text-slate-800">
+                    {formatHistoryDate(record.exam_date || record.created_at, true)}
                   </p>
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase">Physician</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5">{record.physician || 'Not recorded'}</p>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase">Nurse on Duty</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5">{record.nurse_on_duty || 'Not recorded'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Vitals + LMP */}
+            {hasVitals && (
+              <div>
+                <HistorySectionLabel icon="fa-heart-pulse" color="text-rose-500">
+                  Vital Signs & Anthropometric Measurements
+                </HistorySectionLabel>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2 mt-2">
+                  {[
+                    { label: 'Blood Pressure', value: vitals.bp, unit: 'mmHg' },
+                    { label: 'Pulse Rate', value: vitals.pr, unit: 'bpm' },
+                    { label: 'Respiratory Rate', value: vitals.rr, unit: 'cpm' },
+                    { label: 'Temperature', value: vitals.temp, unit: '°C' },
+                    { label: 'Height', value: vitals.height, unit: 'cm' },
+                    { label: 'Weight', value: vitals.weight, unit: 'kg' },
+                    { label: 'BMI', value: vitals.bmi, unit: 'kg/m²' },
+                    { label: 'Waist', value: vitals.waist, unit: 'cm' },
+                  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '').map((item) => (
+                    <div key={item.label} className="bg-rose-50/60 border border-rose-100 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-rose-500 uppercase tracking-wide">{item.label}</p>
+                      <p className="text-sm font-bold text-slate-800">
+                        {item.value} <span className="text-[10px] font-medium text-slate-400">{item.unit}</span>
+                      </p>
+                    </div>
+                  ))}
+
+                  {isFemale && (
+                    <div className="bg-pink-50 border border-pink-100 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-pink-600 uppercase tracking-wide">
+                        Last Menstrual Period (LMP)
+                      </p>
+                      <p className="text-sm font-bold text-slate-800">
+                        {vitals.lmp ? formatHistoryDate(vitals.lmp) : 'Not recorded'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {vitals.remarks && (
+                  <div className="mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Vital-sign remarks</p>
+                    <p className="text-xs text-slate-600 mt-1">{vitals.remarks}</p>
+                  </div>
+                )}
+              </div>
             )}
 
-            {!hasVisitInfo && !hasVitals && !hasHistory && !hasOtherHistory && !hasRemarks && (
-              <p className="text-xs text-slate-400 italic">No additional details recorded for this visit.</p>
+            {/* Social history */}
+            {hasSocialHistory && (
+              <div>
+                <HistorySectionLabel icon="fa-person" color="text-orange-500">
+                  Personal / Social History
+                </HistorySectionLabel>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                  {[
+                    ['Smoking', record.smoking, record.smoking_details],
+                    ['Alcohol', record.alcohol, record.alcohol_details],
+                    ['Illicit Drugs', record.drugs, record.drugs_details],
+                  ].map(([label, answer, details]) => {
+                    const yes = normalizeYesNo(answer) === 'yes';
+
+                    return (
+                      <div
+                        key={label}
+                        className={`rounded-lg border px-3 py-2 ${
+                          yes
+                            ? 'bg-amber-50 border-amber-200'
+                            : 'bg-emerald-50/50 border-emerald-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-bold uppercase text-slate-500">{label}</p>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            yes
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {answer || 'Not recorded'}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-600 mt-2">
+                          {details || (yes ? 'Yes, but no additional details were recorded.' : 'No additional details.')}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Questionnaire */}
+            {hasQuestionnaire && (
+              <div>
+                <HistorySectionLabel icon="fa-circle-question" color="text-blue-500">
+                  Health History Questionnaire
+                </HistorySectionLabel>
+
+                <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+                  {HEALTH_QUESTIONNAIRE_ITEMS.map((item, index) => {
+                    const answer = questionnaire[item.key];
+                    const detail = item.detailKey ? questionnaire[item.detailKey] : '';
+                    const yes = normalizeYesNo(answer) === 'yes';
+
+                    return (
+                      <div
+                        key={item.key}
+                        className={`grid grid-cols-[1fr_auto] gap-3 px-3 py-2.5 ${
+                          index > 0 ? 'border-t border-slate-100' : ''
+                        }`}
+                      >
+                        <div>
+                          <p className="text-xs text-slate-700">{item.label}</p>
+                          {detail && (
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Details: <span className="font-medium">{detail}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        <span className={`self-start text-[10px] font-bold px-2 py-1 rounded-full ${
+                          yes
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {answer || 'Not answered'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Clinical history */}
+            {(hasHistory || hasOtherHistory) && (
+              <div>
+                <HistorySectionLabel icon="fa-notes-medical" color="text-purple-500">
+                  Clinical History
+                </HistorySectionLabel>
+
+                <div className="grid md:grid-cols-3 gap-3 mt-2">
+                  <HistoryTagGroup title="Past Medical History" items={history.medical} tint="amber" />
+                  <HistoryTagGroup title="Family History" items={history.family} tint="purple" />
+                  <HistoryTagGroup title="Checked Health Conditions" items={history.health} tint="cyan" />
+                </div>
+
+                {record.other_medical_history && (
+                  <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Additional Medical History</p>
+                    <p className="text-xs text-slate-600 mt-1">{record.other_medical_history}</p>
+                  </div>
+                )}
+
+                {record.other_family_history && (
+                  <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Additional Family History</p>
+                    <p className="text-xs text-slate-600 mt-1">{record.other_family_history}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Surgical history */}
+            {surgicalHistory.length > 0 && (
+              <div>
+                <HistorySectionLabel icon="fa-scalpel" color="text-fuchsia-500">
+                  Surgical / Hospitalization History
+                </HistorySectionLabel>
+
+                <div className="mt-2 space-y-2">
+                  {surgicalHistory.map((item, index) => (
+                    <div key={item.id || index} className="grid grid-cols-1 md:grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-slate-400">Operation</p>
+                        <p className="text-xs font-semibold text-slate-700">{item.operation || 'Not recorded'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-slate-400">Date</p>
+                        <p className="text-xs font-semibold text-slate-700">{formatHistoryDate(item.date)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-slate-400">Notes</p>
+                        <p className="text-xs font-semibold text-slate-700">{item.notes || '—'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Labs */}
+            {hasLabs && (
+              <div>
+                <HistorySectionLabel icon="fa-flask" color="text-teal-500">
+                  Laboratory Results
+                </HistorySectionLabel>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                  {[
+                    ['Complete Blood Count (CBC)', labs?.cbc],
+                    ['Urinalysis', labs?.ua],
+                    ['Chest X-Ray', labs?.xray],
+                  ].map(([label, item]) => (
+                    <div key={label} className="rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase text-teal-600">{label}</p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1">{item?.result || 'No result recorded'}</p>
+                      {item?.facility && <p className="text-[10px] text-slate-500 mt-1">Facility: {item.facility}</p>}
+                      {item?.date && <p className="text-[10px] text-slate-500">Date: {formatHistoryDate(item.date)}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* COVID history */}
+            {hasCovid && (
+              <div>
+                <HistorySectionLabel icon="fa-syringe" color="text-lime-500">
+                  COVID-19 History & Vaccination
+                </HistorySectionLabel>
+
+                {covid.history && (
+                  <div className="mt-2 mb-2 rounded-lg bg-lime-50/60 border border-lime-100 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase text-lime-600">COVID-19 History</p>
+                    <p className="text-xs text-slate-700 mt-1">{covid.history}</p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    ['Dose 1', covid?.dose1],
+                    ['Dose 2', covid?.dose2],
+                    ['Booster 1', covid?.booster1],
+                    ['Booster 2', covid?.booster2],
+                  ].map(([label, dose]) => (
+                    <div key={label} className="rounded-lg border border-lime-100 bg-lime-50/40 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase text-lime-600">{label}</p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1">{dose?.vaccineName || 'Not recorded'}</p>
+                      {dose?.date && <p className="text-[10px] text-slate-500 mt-1">{formatHistoryDate(dose.date)}</p>}
+                      {dose?.remarks && <p className="text-[10px] text-slate-500">{dose.remarks}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Assessment */}
+            {hasRemarks && (
+              <div>
+                <HistorySectionLabel icon="fa-user-doctor" color="text-teal-500">
+                  Clinical Assessment
+                </HistorySectionLabel>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Finding</p>
+                    <p className="text-xs text-slate-700 mt-1">{record.finding1 || 'Not recorded'}</p>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Remarks</p>
+                    <p className="text-xs text-slate-700 mt-1">{record.remarks || 'Not recorded'}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {record.is_fit !== null && record.is_fit !== undefined && (
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                      record.is_fit ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {record.is_fit ? 'Fit' : 'Not marked fit'}
+                    </span>
+                  )}
+
+                  {record.is_normal_findings !== null && record.is_normal_findings !== undefined && (
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                      record.is_normal_findings ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {record.is_normal_findings ? 'Normal findings' : 'Findings require attention'}
+                    </span>
+                  )}
+
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    record.issue_cert
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {record.issue_cert ? 'Certificate issued' : 'No certificate issued'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Patient demographics snapshot */}
+            {Object.keys(patientInfo).length > 0 && (
+              <details className="rounded-lg border border-slate-200 bg-white">
+                <summary className="cursor-pointer px-3 py-2 text-[11px] font-bold uppercase text-slate-500">
+                  Demographics snapshot from this visit
+                </summary>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-3 pb-3">
+                  {[
+                    ['Age', patientInfo.age],
+                    ['Sex', patientInfo.sex],
+                    ['Birthday', formatHistoryDate(patientInfo.birthday)],
+                    ['Civil Status', patientInfo.civil_status],
+                    ['Religion', patientInfo.religion],
+                    ['Nationality', patientInfo.nationality],
+                    ['Contact', patientInfo.contact_no],
+                    ['Emergency Contact', patientInfo.emergency_contact],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-md bg-slate-50 px-2.5 py-2">
+                      <p className="text-[9px] font-bold uppercase text-slate-400">{label}</p>
+                      <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{value || '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
         )}
@@ -510,34 +1202,56 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // History + analytics filter
+  const [historyFilterMode, setHistoryFilterMode] = useState('all');
+  const [historyDate, setHistoryDate] = useState('');
+  const [historyMonth, setHistoryMonth] = useState('');
+
   useEffect(() => {
     const { uid } = normalizePatient(selectedPatient);
-    if (!uid) return;
+
+    if (!uid) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
 
     const fetchRecords = async () => {
+      setLoading(true);
+
       try {
-        // Fetch ONLY medical records
         const { data: medData, error: medError } = await supabase
           .from('medical_records')
           .select('*')
           .eq('user_id', uid)
+          .eq('is_archived', false)
           .order('created_at', { ascending: false });
 
-        if (medError) console.error('Error fetching medical records:', medError);
+        if (medError) throw medError;
 
-        const medRecords = (medData || []).map(r => ({
-          ...r,
+        const medRecords = (medData || []).map(record => ({
+          ...record,
+
+          // Normalize JSONB fields in case a database export/API returns them as strings.
+          patient_info: asHistoryObject(record.patient_info),
+          vital_records: getRecordVitals(record),
+          questionnaire: getRecordQuestionnaire(record),
+          checked_medical: asHistoryArray(record.checked_medical),
+          checked_family: asHistoryArray(record.checked_family),
+          checked_health: asHistoryArray(record.checked_health),
+          laboratory_results: getRecordLabs(record),
+          covid_history: getRecordCovid(record),
+          surgical_history: getRecordSurgical(record),
+
           kind: 'medical',
-          _date: r.exam_date || r.created_at?.split('T')[0] || '',
-          _datetime: r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
-            year: 'numeric', month: 'long', day: 'numeric',
-            hour: 'numeric', minute: '2-digit', hour12: true
-          }) : (r.exam_date || ''),
+          _date: record.exam_date || record.created_at?.split('T')[0] || '',
+          _datetime: formatHistoryDate(record.created_at || record.exam_date, true),
         }));
 
         setRecords(medRecords);
       } catch (err) {
-        console.error('Error fetching records:', err);
+        console.error('Error fetching medical visit history:', err);
+        setRecords([]);
       } finally {
         setLoading(false);
       }
@@ -545,6 +1259,107 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
 
     fetchRecords();
   }, [selectedPatient?.uid, selectedPatient?.id, selectedPatient?.users]);
+
+  // Reset filters when switching to a different patient
+  useEffect(() => {
+    setHistoryFilterMode('all');
+    setHistoryDate('');
+    setHistoryMonth('');
+  }, [selectedPatient?.uid, selectedPatient?.id]);
+
+  const getRecordFilterDate = (record) => {
+    const rawDate =
+      record.exam_date ||
+      record.created_at ||
+      record.approved_at ||
+      record.updated_at;
+
+    if (!rawDate) return null;
+
+    const parsed = new Date(rawDate);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed;
+  };
+
+  const filteredRecords = records.filter(record => {
+    if (historyFilterMode === 'all') {
+      return true;
+    }
+
+    const recordDate = getRecordFilterDate(record);
+
+    if (!recordDate) {
+      return false;
+    }
+
+    if (historyFilterMode === 'date') {
+      if (!historyDate) return true;
+
+      const year = recordDate.getFullYear();
+      const month = String(recordDate.getMonth() + 1).padStart(2, '0');
+      const day = String(recordDate.getDate()).padStart(2, '0');
+      const recordDateString = `${year}-${month}-${day}`;
+
+      return recordDateString === historyDate;
+    }
+
+    if (historyFilterMode === 'month') {
+      if (!historyMonth) return true;
+
+      const year = recordDate.getFullYear();
+      const month = String(recordDate.getMonth() + 1).padStart(2, '0');
+      const recordMonthString = `${year}-${month}`;
+
+      return recordMonthString === historyMonth;
+    }
+
+    return true;
+  });
+
+  const clearHistoryFilter = () => {
+    setHistoryFilterMode('all');
+    setHistoryDate('');
+    setHistoryMonth('');
+  };
+
+  const hasActiveHistoryFilter =
+    historyFilterMode !== 'all' &&
+    (
+      (historyFilterMode === 'date' && historyDate) ||
+      (historyFilterMode === 'month' && historyMonth)
+    );
+
+  const getFilterLabel = () => {
+    if (historyFilterMode === 'date' && historyDate) {
+      const parsed = new Date(`${historyDate}T00:00:00`);
+
+      return Number.isNaN(parsed.getTime())
+        ? historyDate
+        : parsed.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+    }
+
+    if (historyFilterMode === 'month' && historyMonth) {
+      const [year, month] = historyMonth.split('-');
+      const parsed = new Date(Number(year), Number(month) - 1, 1);
+
+      return Number.isNaN(parsed.getTime())
+        ? historyMonth
+        : parsed.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+          });
+    }
+
+    return 'All dates';
+  };
 
   if (loading) {
     return (
@@ -556,34 +1371,173 @@ const MedicalVisitHistory = ({ selectedPatient }) => {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#e07a5f]/10 to-transparent">
-        <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
-          <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i> Medical Visit History
-        </h4>
-        {records.length > 0 && (
-          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-            {records.length} record{records.length !== 1 ? 's' : ''}
+    <div className="space-y-5">
+
+      {/* ===================================================== */}
+      {/* VISIT HISTORY / ANALYTICS FILTER */}
+      {/* ===================================================== */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
+          <div>
+            <h5 className="text-sm font-extrabold text-[#466460] flex items-center gap-2">
+              <i className="fa-solid fa-filter"></i>
+              Filter Visit History & Analytics
+            </h5>
+            <p className="text-[11px] text-slate-500 mt-1">
+              The same filter is applied to both the personalized analytics and the detailed visit history below.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+
+            {/* FILTER MODE */}
+            <div>
+              <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Filter By
+              </label>
+              <select
+                value={historyFilterMode}
+                onChange={(e) => {
+                  const mode = e.target.value;
+                  setHistoryFilterMode(mode);
+
+                  if (mode !== 'date') {
+                    setHistoryDate('');
+                  }
+
+                  if (mode !== 'month') {
+                    setHistoryMonth('');
+                  }
+                }}
+                className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+              >
+                <option value="all">All Dates</option>
+                <option value="month">Specific Month</option>
+                <option value="date">Specific Date</option>
+              </select>
+            </div>
+
+            {/* MONTH PICKER */}
+            {historyFilterMode === 'month' && (
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Month
+                </label>
+                <input
+                  type="month"
+                  value={historyMonth}
+                  onChange={(e) => setHistoryMonth(e.target.value)}
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+                />
+              </div>
+            )}
+
+            {/* DATE PICKER */}
+            {historyFilterMode === 'date' && (
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={historyDate}
+                  onChange={(e) => setHistoryDate(e.target.value)}
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+                />
+              </div>
+            )}
+
+            {/* RESET */}
+            {historyFilterMode !== 'all' && (
+              <button
+                type="button"
+                onClick={clearHistoryFilter}
+                className="h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-bold hover:bg-slate-100 transition"
+              >
+                <i className="fa-solid fa-rotate-left mr-1.5"></i>
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Showing:
           </span>
-        )}
+
+          <span className="text-[11px] font-semibold text-[#466460] bg-[#e0eceb] px-2.5 py-1 rounded-full">
+            {getFilterLabel()}
+          </span>
+
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+            {filteredRecords.length} of {records.length} visit{records.length !== 1 ? 's' : ''}
+          </span>
+
+          {hasActiveHistoryFilter && filteredRecords.length === 0 && (
+            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+              No visits found for this period
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="p-5">
-        {records.length === 0 ? (
-          <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
-            <i className="fa-solid fa-file-medical text-2xl text-slate-300 mb-2 block"></i>
-            <p className="text-sm text-slate-400">No medical visit history found.</p>
+      {/* Analytics uses FILTERED records */}
+      <MedicalHistoryAnalytics records={filteredRecords} />
+
+      {/* Detailed history also uses FILTERED records */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#e07a5f]/10 to-transparent">
+          <div>
+            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+              <i className="fa-solid fa-stethoscope text-[#e07a5f]"></i>
+              Detailed Medical Visit History
+            </h4>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Expand a visit to review questionnaire answers, social history, health conditions, vitals, LMP, labs, surgical history, and clinical assessment.
+            </p>
           </div>
-        ) : (
-          <div className="relative pl-6">
-            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
-            <div className="space-y-4">
-              {records.map((r, idx) => (
-                <MedicalVisitCard key={r.id} record={r} defaultOpen={idx === 0} />
-              ))}
+
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+            {filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div className="p-5">
+          {records.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+              <i className="fa-solid fa-file-medical text-2xl text-slate-300 mb-2 block"></i>
+              <p className="text-sm text-slate-400">No medical visit history found.</p>
             </div>
-          </div>
-        )}
+          ) : filteredRecords.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-amber-200 rounded-xl bg-amber-50/50">
+              <i className="fa-solid fa-calendar-xmark text-2xl text-amber-300 mb-2 block"></i>
+              <p className="text-sm font-semibold text-amber-700">
+                No visits found for {getFilterLabel()}.
+              </p>
+              <button
+                type="button"
+                onClick={clearHistoryFilter}
+                className="mt-3 px-4 py-2 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-bold hover:bg-amber-50 transition"
+              >
+                Show all visits
+              </button>
+            </div>
+          ) : (
+            <div className="relative pl-6">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+              <div className="space-y-4">
+                {filteredRecords.map((record, index) => (
+                  <MedicalVisitCard
+                    key={record.id}
+                    record={record}
+                    defaultOpen={index === 0}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1137,14 +2091,23 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
 
       const recordId = selectedPatient?.existingRecord?.id || formData.recordId || null;
 
-      let error;
       if (recordId) {
-        const { status, is_approved, created_at, ...updatePayload } = supabasePayload;
-        ({ error } = await supabase.from('medical_records').update(updatePayload).eq('id', recordId));
+        const {
+          status,
+          is_approved,
+          created_at,
+          ...updatePayload
+        } = supabasePayload;
+
+        await updateMedicalExamination(
+          recordId,
+          updatePayload
+        );
       } else {
-        ({ error } = await supabase.from('medical_records').insert(supabasePayload));
+        await createMedicalExamination(
+          supabasePayload
+        );
       }
-      if (error) throw error;
 
       setShowSummary(false);
       showMessage(recordId ? 'Medical record updated successfully!' : 'Medical record saved to database successfully!');

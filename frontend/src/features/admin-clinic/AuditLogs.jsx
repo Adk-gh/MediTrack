@@ -78,8 +78,8 @@ function addDataRow(ws, row, values, { zebra = false, boldFirst = false } = {}) 
 // ─── Activity Types ─────────────────────────────────────────────────────────
 const ACTIVITY_TYPES = [
   { value: 'all', label: 'All Activities' },
-  { value: 'auth', label: 'Authentication' },
-  { value: 'user', label: 'User Management' },
+  { value: 'authentication', label: 'Authentication' },
+  { value: 'user_management', label: 'User Management' },
   { value: 'consultation', label: 'Consultations' },
   { value: 'appointment', label: 'Appointments' },
   { value: 'announcement', label: 'Announcements' },
@@ -87,6 +87,17 @@ const ACTIVITY_TYPES = [
   { value: 'archive', label: 'Archives' },
   { value: 'system', label: 'System' },
 ];
+
+const ACTIVITY_TYPE_ALIASES = {
+  authentication: ['authentication', 'auth'],
+  user_management: ['user_management', 'user management', 'user'],
+  consultation: ['consultation', 'consultations'],
+  appointment: ['appointment', 'appointments'],
+  announcement: ['announcement', 'announcements'],
+  examination: ['examination', 'examinations'],
+  archive: ['archive', 'archives'],
+  system: ['system'],
+};
 
 const RETENTION_DAYS = 14;
 const PERMANENT_RETENTION_DAYS = 90;
@@ -196,6 +207,10 @@ export const AuditLogs = () => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [stats, setStats] = useState({ total: 0, today: 0, users: 0, actions: 0 });
   const [message, setMessage] = useState(null);
+
+  // UI States
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
@@ -224,7 +239,27 @@ export const AuditLogs = () => {
     let q = baseQuery;
 
     if (typeFilter !== 'all') {
-      q = isArchived ? q.eq('data->>type', typeFilter) : q.eq('type', typeFilter);
+      const allowedTypes =
+        ACTIVITY_TYPE_ALIASES[typeFilter] || [typeFilter];
+
+      // Supabase/PostgREST equality is case-sensitive.
+      // Audit rows may contain values such as "AUTHENTICATION",
+      // "authentication", or the older short value "auth".
+      // Use ILIKE so all casing variants continue to match.
+      const typeConditions = allowedTypes
+        .map((value) => {
+          const safeValue = String(value)
+            .replace(/,/g, '')
+            .replace(/\(/g, '')
+            .replace(/\)/g, '');
+
+          return isArchived
+            ? `data->>type.ilike.${safeValue}`
+            : `type.ilike.${safeValue}`;
+        })
+        .join(',');
+
+      q = q.or(typeConditions);
     }
 
     if (dateFilter) {
@@ -270,15 +305,42 @@ export const AuditLogs = () => {
         total: count || 0,
         today: fetchedLogs.filter(l => new Date(l.created_at || l.timestamp).toDateString() === todayStr).length,
         users: new Set(fetchedLogs.map(l => l.userId || l.userEmail)).size,
-        actions: new Set(fetchedLogs.map(l => l.action)).size,
+        actions: new Set(
+          fetchedLogs
+            .map(l => String(l.type || '').trim().toLowerCase())
+            .filter(Boolean)
+        ).size,
       });
     } catch (err) {
       console.error('Error fetching audit logs:', err);
-      showSnackbar('Failed to load audit logs', 'error');
+      console.error('Audit log filter state:', {
+        viewMode,
+        typeFilter,
+        dateFilter,
+        debouncedSearch,
+        currentPage,
+      });
+
+      showSnackbar(
+        err?.message
+          ? `Failed to load audit logs: ${err.message}`
+          : 'Failed to load audit logs',
+        'error'
+      );
     } finally {
       setLoading(false);
     }
-  }, [buildQuery, isArchived, cursorField, currentPage, normalizeArchiveRow]);
+  }, [
+    buildQuery,
+    isArchived,
+    cursorField,
+    currentPage,
+    normalizeArchiveRow,
+    viewMode,
+    typeFilter,
+    dateFilter,
+    debouncedSearch,
+  ]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -398,16 +460,55 @@ export const AuditLogs = () => {
       </div>
 
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-          <div className="flex flex-wrap gap-3 items-center flex-1 w-full xl:w-auto">
 
-            <div className="relative w-full sm:w-60">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
-              <input type="text" placeholder="Search user, action, details..." value={searchInput} onChange={handleSearchChange} className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
+        {/* Unified Inline Toolbar */}
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+
+          {/* Top Controls: Search, Filter Toggle, and Actions */}
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+              {/* Search */}
+              <div className="relative w-full sm:w-64">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+                <input type="text" placeholder="Search user, action, details..." value={searchInput} onChange={handleSearchChange} className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
+              </div>
+
+              {/* Mobile Filter Toggle Button */}
+              <button
+                onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                title="Toggle Filters"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+                </svg>
+                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+              </button>
             </div>
 
+            {/* Actions */}
+            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
+              <button onClick={handleArchiveClick} disabled={archiving || viewMode === 'archived'} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title={`Move logs older than ${RETENTION_DAYS} days to the archive now`}>
+                <i className={`fa-solid ${archiving ? 'fa-spinner fa-spin' : 'fa-box-archive'} text-slate-400`}></i>
+                <span className="hidden sm:inline">{archiving ? 'Archiving…' : 'Archive'}</span>
+              </button>
+              <button onClick={handleExportClick} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm" title="Export all matching audit logs">
+                <i className="fa-solid fa-file-export text-slate-400"></i>
+                <span className="hidden sm:inline">Export</span>
+              </button>
+              <button onClick={() => fetchLogs()} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Expandable Filters Container */}
+          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <div className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 transition-colors shadow-sm ${isArchived ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`} title={isArchived ? 'Viewing Archived Logs' : 'Viewing Live Logs'}>
                 <i className={`fa-solid ${isArchived ? 'fa-box-archive' : 'fa-bolt'}`}></i>
@@ -441,24 +542,6 @@ export const AuditLogs = () => {
                 </button>
               )}
             </div>
-
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button onClick={handleArchiveClick} disabled={archiving || viewMode === 'archived'} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title={`Move logs older than ${RETENTION_DAYS} days to the archive now`}>
-              <i className={`fa-solid ${archiving ? 'fa-spinner fa-spin' : 'fa-box-archive'} text-slate-400`}></i>
-              <span className="hidden sm:inline">{archiving ? 'Archiving…' : 'Archive'}</span>
-            </button>
-            <button onClick={handleExportClick} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm" title="Export all matching audit logs">
-              <i className="fa-solid fa-file-export text-slate-400"></i>
-              <span className="hidden sm:inline">Export</span>
-            </button>
-            <button onClick={() => fetchLogs()} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
           </div>
         </div>
 

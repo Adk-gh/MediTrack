@@ -19,7 +19,7 @@ const useBrandingLogo = () => {
 
   const loadLogo = async () => {
     try {
-      const response = await fetch(`${API_URL}/storage/branding/logo`, {
+      const response = await fetch(`${API_URL}/storage/branding/logogo`, {
         cache: 'no-store',
       });
 
@@ -79,51 +79,75 @@ const dentalProcedures = [
   'Pulp Therapy', 'Periodontal Therapy', 'Orthodontic Therapy', 'TMJ Treatment', 'Prosthodontic Therapy',
 ];
 
-const visitReasonGroups = [
+// ── Dental visit purpose / classification ───────────────────────────────────
+const dentalVisitReasonGroups = [
   {
     label: 'Patient Visit — Consultation / Treatment',
     options: [
-      'Dental Consultation', 'Toothache / Dental Pain', 'Gum Pain / Swelling',
-      'Dental Injury / Accident', 'Emergency Dental Care',
-      'Follow-up Dental Treatment', 'Other Dental Concern',
+      'Dental Consultation',
+      'Toothache / Dental Pain',
+      'Gum Pain / Swelling',
+      'Dental Injury / Accident',
+      'Emergency Dental Care',
+      'Follow-up Dental Treatment',
+      'Other Dental Concern',
     ],
     type: 'patient',
   },
   {
     label: 'Non-Patient Visit — Clearance / Requirement',
     options: [
-      'Dental Clearance', 'School Requirement', 'OJT / Internship Requirement',
-      'Employment Requirement', 'Dental Certificate / Documentation',
-      'Routine Dental Examination', 'Other Requirement',
+      'Dental Clearance',
+      'School Requirement',
+      'OJT / Internship Requirement',
+      'Employment Requirement',
+      'Dental Certificate / Documentation',
+      'Routine Dental Examination',
+      'Other Requirement',
     ],
     type: 'non_patient',
   },
 ];
 
-const visitReasonOptions = visitReasonGroups.flatMap(group =>
-  group.options.map(label => ({ label, type: group.type }))
+const dentalVisitReasonOptions = dentalVisitReasonGroups.flatMap(group =>
+  group.options.map(label => ({
+    label,
+    type: group.type,
+  }))
 );
 
-const getSuggestedVisitType = (reason) => {
+const getSuggestedDentalVisitType = (reason) => {
   const normalizedReason = String(reason || '').trim().toLowerCase();
+
   if (!normalizedReason) return '';
 
-  const exactMatch = visitReasonOptions.find(
+  const exactMatch = dentalVisitReasonOptions.find(
     option => option.label.toLowerCase() === normalizedReason
   );
-  if (exactMatch) return exactMatch.type;
+
+  if (exactMatch) {
+    return exactMatch.type;
+  }
 
   const nonPatientKeywords = [
-    'clearance', 'requirement', 'ojt', 'internship', 'employment',
-    'documentation', 'certificate', 'routine dental examination',
+    'clearance',
+    'requirement',
+    'ojt',
+    'internship',
+    'employment',
+    'documentation',
+    'certificate',
+    'routine dental examination',
   ];
 
-  return nonPatientKeywords.some(keyword => normalizedReason.includes(keyword))
+  return nonPatientKeywords.some(keyword =>
+    normalizedReason.includes(keyword)
+  )
     ? 'non_patient'
     : 'patient';
 };
 
-const getVisitTypeLabel = (type) => {
+const getDentalVisitTypeLabel = (type) => {
   if (type === 'patient') return 'Patient Visit';
   if (type === 'non_patient') return 'Non-Patient Visit';
   return 'Unclassified';
@@ -150,7 +174,7 @@ const toothConditions = [
 ];
 
 const toothOperations = [
-  { value: '',    label: 'None'                          },
+  { value: '',    label: 'None'                                },
   { value: 'AM',  label: 'Amalgam (AM)'                  },
   { value: 'AB',  label: 'Abutment (AB)'                 },
   { value: 'SI',  label: 'Silicate Cement (SI)'          },
@@ -220,15 +244,6 @@ const fetchDentists = async () => {
 const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
   const existingRecord = p?.existingRecord || null;
 
-  const initialVisitReason =
-    existingRecord?.visit_reason || p?.visitReason || p?.visit_reason ||
-    p?.appointmentReason || p?.appointment_reason || p?.reason ||
-    p?.appointment?.reason || '';
-
-  const initialVisitType =
-    existingRecord?.visit_type || p?.visitType || p?.visit_type ||
-    getSuggestedVisitType(initialVisitReason);
-
   const lastName  = p?.lastName  || (p?.name ? p.name.split(', ')[0] : '') || existingRecord?.last_name || '';
   const firstName = p?.firstName || (p?.name ? (p.name.split(', ')[1] || '') : '') || existingRecord?.first_name || '';
   const middleName = p?.middleName || existingRecord?.middle_name || '';
@@ -236,8 +251,29 @@ const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
   const vax = p?.vaccinations || {};
   const vaxDate = (key) => vax[key]?.date || '';
 
-  const dh = p?.dentalHistory || existingRecord?.dental_history || {};
+  const dh =
+    p?.users?.dental_history ||
+    p?.dental_history ||
+    p?.dentalHistory ||
+    existingRecord?.dental_history ||
+    {};
   const parsedDH = typeof dh === 'string' ? JSON.parse(dh || '{}') : dh;
+
+  const initialVisitReason =
+    existingRecord?.visit_reason ||
+    p?.visitReason ||
+    p?.visit_reason ||
+    p?.appointmentReason ||
+    p?.appointment_reason ||
+    p?.reason ||
+    p?.appointment?.reason ||
+    '';
+
+  const initialVisitType =
+    existingRecord?.visit_type ||
+    p?.visitType ||
+    p?.visit_type ||
+    getSuggestedDentalVisitType(initialVisitReason);
 
   return {
     dRecordId:   existingRecord?.id || '',
@@ -248,7 +284,12 @@ const buildDentalForm = (p, defaultSchoolYear = '', defaultSemester = '') => {
     dSex:        p?.gender || p?.sex || existingRecord?.sex || 'Male',
     dAge:        p?.age ? String(p.age) : existingRecord?.age ? String(existingRecord.age) : '',
     dBirthday:   p?.birthday || p?.birthdate || existingRecord?.birthday || '',
-    dAddress:    p?.homeAddress || existingRecord?.address || '',
+    dAddress:
+      p?.users?.home_address ||
+      p?.home_address ||
+      p?.homeAddress ||
+      existingRecord?.address ||
+      '',
     dCellphone:  p?.phoneNumber || existingRecord?.cellphone || '',
     dCourseYear: [p?.program || p?.prog || existingRecord?.course_year || '', p?.yearLevel || p?.year || existingRecord?.year_level || '', p?.section || existingRecord?.section || ''].filter(Boolean).join(' '),
     dOfficeAddress: existingRecord?.office_address || '',
@@ -300,6 +341,253 @@ const toothConditionStyle = {
 
 const conditionLabel = { caries: 'C', filled: '●', missing: 'M', extracted: 'X', 'root-fragment': 'RF', improved: 'IM', pontic: 'P' };
 
+const TOOTH_SURFACES = [
+  { key: 'topLeft', label: 'Top Left' },
+  { key: 'topRight', label: 'Top Right' },
+  { key: 'bottomLeft', label: 'Bottom Left' },
+  { key: 'bottomRight', label: 'Bottom Right' },
+];
+
+const createEmptySurfaces = () => ({
+  topLeft: '',
+  topRight: '',
+  bottomLeft: '',
+  bottomRight: '',
+});
+
+const normalizeOperationValue = (value) => {
+  if (!value) return '';
+  return toothOperations.find(op => op.value === value || op.label === value)?.value || value;
+};
+
+const normalizeToothEntry = (entry = {}) => {
+  const emptySurfaces = createEmptySurfaces();
+
+  if (entry?.surfaces && typeof entry.surfaces === 'object') {
+    return {
+      surfaces: Object.fromEntries(
+        Object.keys(emptySurfaces).map(surfaceKey => [
+          surfaceKey,
+          getConditionAbbr(entry.surfaces[surfaceKey] || ''),
+        ])
+      ),
+      operation: normalizeOperationValue(entry.operation),
+    };
+  }
+
+  const oldCondition = getConditionAbbr(entry?.condition || '');
+  if (oldCondition) {
+    return {
+      surfaces: {
+        topLeft: oldCondition,
+        topRight: oldCondition,
+        bottomLeft: oldCondition,
+        bottomRight: oldCondition,
+      },
+      operation: normalizeOperationValue(entry.operation),
+    };
+  }
+
+  return {
+    surfaces: emptySurfaces,
+    operation: normalizeOperationValue(entry?.operation),
+  };
+};
+
+const ToothTopView = ({
+  surfaces = {},
+  selectedSurface = null,
+  onSurfaceClick,
+  size = 56,
+  interactive = true,
+}) => {
+  const conditionColors = {
+    caries: '#fecaca',
+    filled: '#fef08a',
+    missing: '#e2e8f0',
+    extracted: '#fbcfe8',
+    'root-fragment': '#fde68a',
+    improved: '#bfdbfe',
+    pontic: '#ddd6fe',
+  };
+
+  const conditionLetters = {
+    caries: 'C',
+    filled: '●',
+    missing: 'M',
+    extracted: 'X',
+    'root-fragment': 'RF',
+    improved: 'IM',
+    pontic: 'P',
+  };
+
+  const fillFor = surfaceKey =>
+    conditionColors[surfaces?.[surfaceKey]] || '#ffffff';
+
+  const labelFor = surfaceKey =>
+    conditionLetters[surfaces?.[surfaceKey]] || '';
+
+  const strokeFor = surfaceKey =>
+    selectedSurface === surfaceKey ? '#466460' : '#94a3b8';
+
+  const widthFor = surfaceKey =>
+    selectedSurface === surfaceKey ? 5 : 2.5;
+
+  const clickSurface = surfaceKey => {
+    if (
+      interactive &&
+      typeof onSurfaceClick === 'function'
+    ) {
+      onSurfaceClick(surfaceKey);
+    }
+  };
+
+  const getFontSize = label => {
+    if (!label) return 0;
+    if (label.length >= 2) return 10;
+    return 14;
+  };
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      className="drop-shadow-sm select-none"
+      role="img"
+      aria-label="Top view of tooth divided into four surfaces"
+    >
+      {/* Top Left */}
+      <path
+        d="M50 50 L12 50 Q7 30 22 15 Q35 5 50 9 Z"
+        fill={fillFor('topLeft')}
+        stroke={strokeFor('topLeft')}
+        strokeWidth={widthFor('topLeft')}
+        className={
+          interactive
+            ? 'cursor-pointer hover:brightness-95'
+            : ''
+        }
+        onClick={() => clickSurface('topLeft')}
+      />
+
+      {/* Top Right */}
+      <path
+        d="M50 50 L50 9 Q65 5 78 15 Q93 30 88 50 Z"
+        fill={fillFor('topRight')}
+        stroke={strokeFor('topRight')}
+        strokeWidth={widthFor('topRight')}
+        className={
+          interactive
+            ? 'cursor-pointer hover:brightness-95'
+            : ''
+        }
+        onClick={() => clickSurface('topRight')}
+      />
+
+      {/* Bottom Right */}
+      <path
+        d="M50 50 L88 50 Q93 70 78 85 Q65 95 50 91 Z"
+        fill={fillFor('bottomRight')}
+        stroke={strokeFor('bottomRight')}
+        strokeWidth={widthFor('bottomRight')}
+        className={
+          interactive
+            ? 'cursor-pointer hover:brightness-95'
+            : ''
+        }
+        onClick={() => clickSurface('bottomRight')}
+      />
+
+      {/* Bottom Left */}
+      <path
+        d="M50 50 L50 91 Q35 95 22 85 Q7 70 12 50 Z"
+        fill={fillFor('bottomLeft')}
+        stroke={strokeFor('bottomLeft')}
+        strokeWidth={widthFor('bottomLeft')}
+        className={
+          interactive
+            ? 'cursor-pointer hover:brightness-95'
+            : ''
+        }
+        onClick={() => clickSurface('bottomLeft')}
+      />
+
+      {/* Condition labels */}
+      {labelFor('topLeft') && (
+        <text
+          x="32"
+          y="34"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={getFontSize(labelFor('topLeft'))}
+          fontWeight="800"
+          fill="#334155"
+          pointerEvents="none"
+        >
+          {labelFor('topLeft')}
+        </text>
+      )}
+
+      {labelFor('topRight') && (
+        <text
+          x="68"
+          y="34"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={getFontSize(labelFor('topRight'))}
+          fontWeight="800"
+          fill="#334155"
+          pointerEvents="none"
+        >
+          {labelFor('topRight')}
+        </text>
+      )}
+
+      {labelFor('bottomLeft') && (
+        <text
+          x="32"
+          y="68"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={getFontSize(labelFor('bottomLeft'))}
+          fontWeight="800"
+          fill="#334155"
+          pointerEvents="none"
+        >
+          {labelFor('bottomLeft')}
+        </text>
+      )}
+
+      {labelFor('bottomRight') && (
+        <text
+          x="68"
+          y="68"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={getFontSize(labelFor('bottomRight'))}
+          fontWeight="800"
+          fill="#334155"
+          pointerEvents="none"
+        >
+          {labelFor('bottomRight')}
+        </text>
+      )}
+
+      {/* Center circle */}
+      <circle
+        cx="50"
+        cy="50"
+        r="8"
+        fill="#f8fafc"
+        stroke="#94a3b8"
+        strokeWidth="2"
+        pointerEvents="none"
+      />
+    </svg>
+  );
+};
+
 const summaryBadgeStyle = {
   caries:          'bg-red-100 text-red-700 border-red-200',
   filled:          'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -348,34 +636,927 @@ const HistorySectionLabel = ({ icon, color, children }) => (
   </h5>
 );
 
-const DentalVisitCard = ({ record, defaultOpen = false }) => {
-  const [open, setOpen] = useState(defaultOpen);
+// ── Dental visit-history helpers ─────────────────────────────────────────────
+const parseDentalJson = (value, fallback = {}) => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'object') return value;
 
-  const parseJson = (str, fallback = {}) => {
-    if (!str) return fallback;
-    if (typeof str === 'object') return str;
-    try { return JSON.parse(str); } catch { return fallback; }
-  };
+  try {
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const month = d.toLocaleDateString('en-US', { month: 'long' });
-    const day = String(d.getDate()).padStart(2, '0');
-    const year = d.getFullYear();
-    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    return `${month} ${day}, ${year} ${time}`;
-  };
+const formatDentalHistoryDate = (value, withTime = false) => {
+  if (!value) return '—';
 
-  const intraoral = parseJson(record.intraoral, {});
-  const toothData = parseJson(record.tooth_data, {});
-  const dentalHistory = parseJson(record.dental_history, {});
+  const date = new Date(value);
 
-  const hasIntraoral = intraoral && Object.keys(intraoral).some(k => intraoral[k]);
-  const hasToothData = toothData && Object.keys(toothData).length > 0;
-  const hasProcedures = dentalHistory && Object.keys(dentalHistory).some(k => dentalHistory[k] === 'Yes');
-  const hasVisitInfo = record.visit_reason || record.visit_type;
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    ...(withTime
+      ? {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        }
+      : {}),
+  });
+};
+
+const normalizeDentalYesNo = (value) =>
+  String(value || '').trim().toLowerCase();
+
+const getDentalToothData = (record) => {
+  const raw = parseDentalJson(
+    record?.tooth_data,
+    {}
+  );
+
+  if (!raw || typeof raw !== 'object') {
+    return {};
+  }
+
+  return raw;
+};
+
+const isNewSurfaceToothFormat = (entry) => {
+  return Boolean(
+    entry &&
+    typeof entry === 'object' &&
+    entry.surfaces &&
+    typeof entry.surfaces === 'object'
+  );
+};
+
+const normalizeDentalHistoryToothData = (
+  record
+) => {
+  const rawToothData =
+    getDentalToothData(record);
+
+  return Object.fromEntries(
+    Object.entries(rawToothData).map(
+      ([toothNumber, rawEntry]) => [
+        toothNumber,
+        {
+          ...normalizeToothEntry(
+            rawEntry
+          ),
+          _format:
+            isNewSurfaceToothFormat(
+              rawEntry
+            )
+              ? 'surface'
+              : 'legacy',
+          _raw: rawEntry,
+        },
+      ]
+    )
+  );
+};
+
+const getAffectedDentalTeeth = (record) => {
+  const normalized =
+    normalizeDentalHistoryToothData(
+      record
+    );
+
+  return Object.entries(normalized)
+    .map(([toothNumber, entry]) => {
+      const affectedSurfaces =
+        Object.entries(
+          entry.surfaces || {}
+        )
+          .filter(
+            ([, condition]) =>
+              Boolean(condition)
+          )
+          .map(
+            ([surfaceKey, condition]) => ({
+              surfaceKey,
+              surfaceLabel:
+                TOOTH_SURFACES.find(
+                  (item) =>
+                    item.key ===
+                    surfaceKey
+                )?.label ||
+                surfaceKey,
+              condition,
+            })
+          );
+
+      return {
+        toothNumber,
+        ...entry,
+        affectedSurfaces,
+      };
+    })
+    .filter(
+      (tooth) =>
+        tooth.affectedSurfaces.length >
+          0 ||
+        Boolean(tooth.operation)
+    );
+};
+
+const getDentalProcedureHistory = (
+  record
+) => {
+  const parsed = parseDentalJson(
+    record?.dental_history,
+    {}
+  );
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object'
+  ) {
+    return {};
+  }
+
+  return parsed?.procedures &&
+    typeof parsed.procedures ===
+      'object'
+    ? parsed.procedures
+    : parsed;
+};
+
+const getDentalIntraoral = (
+  record
+) => {
+  const parsed = parseDentalJson(
+    record?.intraoral,
+    {}
+  );
+
+  return parsed &&
+    typeof parsed === 'object'
+    ? parsed
+    : {};
+};
+
+const getDentalTreatments = (
+  record
+) => {
+  const parsed = parseDentalJson(
+    record?.treatments,
+    {}
+  );
+
+  return parsed &&
+    typeof parsed === 'object'
+    ? parsed
+    : {};
+};
+
+const getDentalTreatmentRemarks = (
+  record
+) => {
+  const parsed = parseDentalJson(
+    record?.treatment_remarks,
+    {}
+  );
+
+  return parsed &&
+    typeof parsed === 'object'
+    ? parsed
+    : {};
+};
+
+const DentalTinyBar = ({
+  label,
+  value,
+  total,
+}) => {
+  const safeTotal = Math.max(
+    Number(total) || 0,
+    1
+  );
+  const safeValue = Math.max(
+    Number(value) || 0,
+    0
+  );
+
+  const width = Math.min(
+    100,
+    Math.round(
+      (safeValue / safeTotal) * 100
+    )
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <span className="text-[11px] font-semibold text-slate-600 truncate">
+          {label}
+        </span>
+        <span className="text-[10px] font-bold text-slate-500">
+          {safeValue}
+        </span>
+      </div>
+
+      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-[#466460] transition-all"
+          style={{
+            width: `${width}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const DentalMiniLineChart = ({
+  title,
+  values,
+}) => {
+  const clean = values
+    .map((item) => ({
+      ...item,
+      value: Number(item.value),
+    }))
+    .filter((item) =>
+      Number.isFinite(item.value)
+    );
+
+  if (clean.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          {title}
+        </p>
+        <p className="text-xs text-slate-400 mt-3 italic">
+          No recorded values yet.
+        </p>
+      </div>
+    );
+  }
+
+  const width = 260;
+  const height = 92;
+  const pad = 12;
+
+  const min = Math.min(
+    ...clean.map(
+      (item) => item.value
+    )
+  );
+
+  const max = Math.max(
+    ...clean.map(
+      (item) => item.value
+    )
+  );
+
+  const spread = Math.max(
+    max - min,
+    1
+  );
+
+  const points = clean.map(
+    (item, index) => {
+      const x =
+        clean.length === 1
+          ? width / 2
+          : pad +
+            (index /
+              (clean.length - 1)) *
+              (width - pad * 2);
+
+      const y =
+        height -
+        pad -
+        ((item.value - min) /
+          spread) *
+          (height - pad * 2);
+
+      return {
+        ...item,
+        x,
+        y,
+      };
+    }
+  );
+
+  const polyline = points
+    .map(
+      (point) =>
+        `${point.x},${point.y}`
+    )
+    .join(' ');
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          {title}
+        </p>
+
+        <p className="text-sm font-extrabold text-[#466460]">
+          {
+            clean[
+              clean.length - 1
+            ]?.value
+          }
+        </p>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-[92px] overflow-visible"
+      >
+        <line
+          x1={pad}
+          y1={height - pad}
+          x2={width - pad}
+          y2={height - pad}
+          stroke="#e2e8f0"
+          strokeWidth="1"
+        />
+
+        <polyline
+          points={polyline}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          className="text-[#466460]"
+        />
+
+        {points.map(
+          (point, index) => (
+            <g
+              key={`${title}-${index}`}
+            >
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r="4"
+                fill="white"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-[#466460]"
+              />
+
+              <title>
+                {`${point.label}: ${point.value}`}
+              </title>
+            </g>
+          )
+        )}
+      </svg>
+
+      <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+        <span>Oldest</span>
+        <span>Latest</span>
+      </div>
+    </div>
+  );
+};
+
+const DentalVisitAnalytics = ({
+  records,
+}) => {
+  if (records.length === 0) {
+    return null;
+  }
+
+  const total = records.length;
+
+  const patientVisits =
+    records.filter(
+      (record) =>
+        record.visit_type ===
+        'patient'
+    ).length;
+
+  const nonPatientVisits =
+    records.filter(
+      (record) =>
+        record.visit_type ===
+        'non_patient'
+    ).length;
+
+  const approved =
+    records.filter(
+      (record) =>
+        normalizeDentalYesNo(
+          record.status
+        ) === 'approved' ||
+        record.is_approved === true
+    ).length;
+
+  const pending =
+    records.filter(
+      (record) =>
+        normalizeDentalYesNo(
+          record.status
+        ) === 'pending' &&
+        record.is_approved !== true
+    ).length;
+
+  const certificates =
+    records.filter(
+      (record) =>
+        record.issue_cert === true
+    ).length;
+
+  const purposeCounts =
+    records.reduce(
+      (acc, record) => {
+        const label =
+          String(
+            record.visit_reason || ''
+          ).trim() ||
+          'Unspecified';
+
+        acc[label] =
+          (acc[label] || 0) + 1;
+
+        return acc;
+      },
+      {}
+    );
+
+  const topPurposes =
+    Object.entries(purposeCounts)
+      .sort(
+        (a, b) => b[1] - a[1]
+      )
+      .slice(0, 6);
+
+  const conditionCounts = {};
+  const procedureCounts = {};
+  const intraoralCounts = {};
+  const affectedTeethSeries = [];
+
+  [...records]
+    .sort(
+      (a, b) =>
+        new Date(
+          a.exam_date ||
+            a.created_at ||
+            0
+        ) -
+        new Date(
+          b.exam_date ||
+            b.created_at ||
+            0
+        )
+    )
+    .forEach((record) => {
+      const affectedTeeth =
+        getAffectedDentalTeeth(
+          record
+        );
+
+      affectedTeethSeries.push({
+        label:
+          formatDentalHistoryDate(
+            record.exam_date ||
+              record.created_at
+          ),
+        value:
+          affectedTeeth.length,
+      });
+
+      affectedTeeth.forEach(
+        (tooth) => {
+          tooth.affectedSurfaces.forEach(
+            ({ condition }) => {
+              const label =
+                getConditionFullName(
+                  condition
+                ) ||
+                condition;
+
+              conditionCounts[
+                label
+              ] =
+                (conditionCounts[
+                  label
+                ] || 0) + 1;
+            }
+          );
+        }
+      );
+
+      const procedures =
+        getDentalProcedureHistory(
+          record
+        );
+
+      Object.entries(
+        procedures
+      ).forEach(([name, value]) => {
+        if (
+          normalizeDentalYesNo(
+            value
+          ) === 'yes'
+        ) {
+          procedureCounts[name] =
+            (procedureCounts[
+              name
+            ] || 0) + 1;
+        }
+      });
+
+      const treatments =
+        getDentalTreatments(
+          record
+        );
+
+      Object.entries(
+        treatments
+      ).forEach(([name, value]) => {
+        if (value === true) {
+          const label = name
+            .replace(
+              /([A-Z])/g,
+              ' $1'
+            )
+            .replace(
+              /^./,
+              (char) =>
+                char.toUpperCase()
+            );
+
+          procedureCounts[label] =
+            (procedureCounts[
+              label
+            ] || 0) + 1;
+        }
+      });
+
+      const intraoral =
+        getDentalIntraoral(
+          record
+        );
+
+      Object.entries(
+        intraoral
+      ).forEach(([key, value]) => {
+        if (
+          !value ||
+          key === 'tmjExam'
+        ) {
+          return;
+        }
+
+        const label =
+          `${key
+            .replace(
+              /([A-Z])/g,
+              ' $1'
+            )
+            .replace(
+              /^./,
+              (char) =>
+                char.toUpperCase()
+            )}: ${String(value)}`;
+
+        intraoralCounts[label] =
+          (intraoralCounts[
+            label
+          ] || 0) + 1;
+      });
+
+      if (
+        intraoral.tmjExam === true
+      ) {
+        intraoralCounts[
+          'TMJ Examination: Yes'
+        ] =
+          (intraoralCounts[
+            'TMJ Examination: Yes'
+          ] || 0) + 1;
+      }
+    });
+
+  const topConditions =
+    Object.entries(
+      conditionCounts
+    )
+      .sort(
+        (a, b) => b[1] - a[1]
+      )
+      .slice(0, 7);
+
+  const topProcedures =
+    Object.entries(
+      procedureCounts
+    )
+      .sort(
+        (a, b) => b[1] - a[1]
+      )
+      .slice(0, 7);
+
+  const topIntraoral =
+    Object.entries(
+      intraoralCounts
+    )
+      .sort(
+        (a, b) => b[1] - a[1]
+      )
+      .slice(0, 7);
+
+  return (
+    <div className="mb-6 space-y-4">
+      <div className="rounded-2xl border border-[#d1e7e5] bg-gradient-to-br from-[#f0f7f6] to-white p-4">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h5 className="text-sm font-extrabold text-[#466460] flex items-center gap-2">
+              <i className="fa-solid fa-chart-line"></i>
+              Personalized Dental Analytics
+            </h5>
+
+            <p className="text-[11px] text-slate-500 mt-1">
+              Summary of this patient's recorded dental visits. This is descriptive history, not a diagnosis.
+            </p>
+          </div>
+
+          <span className="text-[10px] font-bold uppercase tracking-wide text-[#466460] bg-white border border-[#d1e7e5] px-2.5 py-1 rounded-full">
+            {total} total visit
+            {total !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+          {[
+            [
+              'Patient Visits',
+              patientVisits,
+              'fa-tooth',
+            ],
+            [
+              'Non-Patient',
+              nonPatientVisits,
+              'fa-file-circle-check',
+            ],
+            [
+              'Approved',
+              approved,
+              'fa-circle-check',
+            ],
+            [
+              'Pending',
+              pending,
+              'fa-clock',
+            ],
+            [
+              'Certificates',
+              certificates,
+              'fa-file-medical',
+            ],
+            [
+              'Unclassified',
+              total -
+                patientVisits -
+                nonPatientVisits,
+              'fa-circle-question',
+            ],
+          ].map(
+            ([label, value, icon]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-3"
+              >
+                <i
+                  className={`fa-solid ${icon} text-[#466460] text-xs`}
+                ></i>
+
+                <p className="text-xl font-extrabold text-slate-800 mt-2">
+                  {value}
+                </p>
+
+                <p className="text-[10px] font-semibold text-slate-500">
+                  {label}
+                </p>
+              </div>
+            )
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Visit Purpose Distribution
+          </h6>
+
+          <div className="space-y-3">
+            {topPurposes.map(
+              ([label, count]) => (
+                <DentalTinyBar
+                  key={label}
+                  label={label}
+                  value={count}
+                  total={total}
+                />
+              )
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Tooth Condition Occurrences
+          </h6>
+
+          {topConditions.length > 0 ? (
+            <div className="space-y-3">
+              {topConditions.map(
+                ([label, count]) => (
+                  <DentalTinyBar
+                    key={label}
+                    label={label}
+                    value={count}
+                    total={Math.max(
+                      ...topConditions.map(
+                        ([, value]) =>
+                          value
+                      ),
+                      1
+                    )}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic">
+              No tooth conditions recorded yet.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <DentalMiniLineChart
+          title="Affected Teeth Per Visit"
+          values={
+            affectedTeethSeries
+          }
+        />
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Procedures / Treatments
+          </h6>
+
+          {topProcedures.length >
+          0 ? (
+            <div className="space-y-3">
+              {topProcedures.map(
+                ([label, count]) => (
+                  <DentalTinyBar
+                    key={label}
+                    label={label}
+                    value={count}
+                    total={total}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic">
+              No completed procedures or treatments recorded yet.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h6 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide mb-3">
+            Common Intraoral Findings
+          </h6>
+
+          {topIntraoral.length > 0 ? (
+            <div className="space-y-3">
+              {topIntraoral.map(
+                ([label, count]) => (
+                  <DentalTinyBar
+                    key={label}
+                    label={label}
+                    value={count}
+                    total={total}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic">
+              No intraoral findings recorded yet.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DentalVisitCard = ({
+  record,
+  defaultOpen = false,
+}) => {
+  const [open, setOpen] =
+    useState(defaultOpen);
+
+  const intraoral =
+    getDentalIntraoral(record);
+
+  const toothData =
+    normalizeDentalHistoryToothData(
+      record
+    );
+
+  const affectedTeeth =
+    getAffectedDentalTeeth(record);
+
+  const dentalHistory =
+    getDentalProcedureHistory(
+      record
+    );
+
+  const treatments =
+    getDentalTreatments(record);
+
+  const treatmentRemarks =
+    getDentalTreatmentRemarks(
+      record
+    );
+
+  const hasIntraoral =
+    Object.entries(intraoral).some(
+      ([key, value]) =>
+        key === 'tmjExam'
+          ? value === true
+          : Boolean(value)
+    );
+
+  const hasToothData =
+    Object.keys(toothData).length >
+      0;
+
+  const hasAffectedTeeth =
+    affectedTeeth.length > 0;
+
+  const positiveProcedures =
+    Object.entries(dentalHistory)
+      .filter(
+        ([, value]) =>
+          normalizeDentalYesNo(
+            value
+          ) === 'yes'
+      )
+      .map(([name]) => name);
+
+  const activeTreatments =
+    Object.entries(treatments)
+      .filter(([, value]) =>
+        Boolean(value)
+      )
+      .map(([name]) => name);
+
+  const hasTreatmentRemarks =
+    Object.values(
+      treatmentRemarks
+    ).some(Boolean);
+
+  const legacyCount =
+    Object.values(
+      toothData
+    ).filter(
+      (entry) =>
+        entry._format === 'legacy'
+    ).length;
+
+  const surfaceCount =
+    Object.values(
+      toothData
+    ).filter(
+      (entry) =>
+        entry._format === 'surface'
+    ).length;
+
+  const formatTypeLabel =
+    legacyCount > 0 &&
+    surfaceCount > 0
+      ? 'Mixed legacy + surface format'
+      : surfaceCount > 0
+      ? 'Surface-based format'
+      : legacyCount > 0
+      ? 'Legacy whole-tooth format'
+      : '';
 
   return (
     <div className="relative">
@@ -384,140 +1565,579 @@ const DentalVisitCard = ({ record, defaultOpen = false }) => {
       <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+          onClick={() =>
+            setOpen(!open)
+          }
+          className="w-full flex items-center justify-between gap-4 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
         >
-          <div className="flex items-center gap-3">
-            <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}></i>
-            <div>
-              <p className="text-sm font-semibold text-slate-800">{record._datetime}</p>
-              <p className="text-xs text-slate-500">
-                Examined by: <span className="font-medium text-slate-600">{record.examined_by || 'Unknown'}</span>
+          <div className="flex items-center gap-3 min-w-0">
+            <i
+              className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${
+                open
+                  ? 'rotate-90'
+                  : ''
+              }`}
+            ></i>
+
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800">
+                {record._datetime}
+              </p>
+
+              <p className="text-xs text-slate-500 truncate">
+                Examined by:{' '}
+                <span className="font-medium text-slate-600">
+                  {record.examined_by ||
+                    'Unknown'}
+                </span>
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 shrink-0">
             {record.visit_type && (
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                record.visit_type === 'patient'
-                  ? 'bg-rose-100 text-rose-700 border-rose-200'
-                  : 'bg-sky-100 text-sky-700 border-sky-200'
-              }`}>
-                {getVisitTypeLabel(record.visit_type)}
+              <span
+                className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                  record.visit_type ===
+                  'patient'
+                    ? 'bg-rose-100 text-rose-700 border-rose-200'
+                    : 'bg-sky-100 text-sky-700 border-sky-200'
+                }`}
+              >
+                {record.visit_type ===
+                'patient'
+                  ? 'Patient Visit'
+                  : 'Non-Patient Visit'}
               </span>
             )}
-            <HistoryStatusBadge status={record.status} />
+
+            <HistoryStatusBadge
+              status={
+                record.status ||
+                (record.is_approved
+                  ? 'approved'
+                  : 'pending')
+              }
+            />
           </div>
         </button>
 
         {open && (
-          <div className="p-4 space-y-4 border-t border-slate-100 text-xs">
-            {hasVisitInfo && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="p-4 space-y-5 border-t border-slate-100 text-xs">
+
+            {/* Visit information */}
+            <div>
+              <HistorySectionLabel
+                icon="fa-clipboard-question"
+                color="text-[#466460]"
+              >
+                Visit Information
+              </HistorySectionLabel>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-2">
                 <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                  <p className="text-[9px] text-slate-400 uppercase">Reason for Visit</p>
-                  <p className="font-semibold text-slate-700">{record.visit_reason || 'Not provided'}</p>
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Reason / Purpose
+                  </p>
+
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {record.visit_reason ||
+                      'Not recorded'}
+                  </p>
                 </div>
+
                 <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                  <p className="text-[9px] text-slate-400 uppercase">Visit Classification</p>
-                  <p className="font-semibold text-slate-700">{getVisitTypeLabel(record.visit_type)}</p>
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Classification
+                  </p>
+
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {record.visit_type ===
+                    'patient'
+                      ? 'Patient Visit'
+                      : record.visit_type ===
+                        'non_patient'
+                      ? 'Non-Patient Visit'
+                      : 'Unclassified'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    School Year / Semester
+                  </p>
+
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {[
+                      record.school_year,
+                      record.semester,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') ||
+                      'Not recorded'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Exam Date
+                  </p>
+
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {formatDentalHistoryDate(
+                      record.exam_date ||
+                        record.created_at,
+                      true
+                    )}
+                  </p>
                 </div>
               </div>
-            )}
 
-            {/* Basic Info */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div><p className="text-[7px] text-slate-400 uppercase">Examined By</p><p className="font-medium">{record.examined_by || '-'}</p></div>
-              <div><p className="text-[7px] text-slate-400 uppercase">Exam Date</p><p className="font-medium">{formatDate(record.exam_date)}</p></div>
-              <div><p className="text-[7px] text-slate-400 uppercase">Upper Teeth</p><p className="font-mono">{record.teeth_upper || '-'}</p></div>
-              <div><p className="text-[7px] text-slate-400 uppercase">Lower Teeth</p><p className="font-mono">{record.teeth_lower || '-'}</p></div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                {[
+                  [
+                    'Teeth Present — Upper',
+                    record.teeth_upper,
+                  ],
+                  [
+                    'Teeth Present — Lower',
+                    record.teeth_lower,
+                  ],
+                  [
+                    'Last Dental Visit',
+                    record.last_visit
+                      ? formatDentalHistoryDate(
+                          record.last_visit
+                        )
+                      : '—',
+                  ],
+                  [
+                    'Previous Dentist',
+                    record.prev_dentist ||
+                      '—',
+                  ],
+                ].map(
+                  ([label, value]) => (
+                    <div
+                      key={label}
+                      className="bg-white border border-slate-200 rounded-lg px-3 py-2"
+                    >
+                      <p className="text-[9px] font-bold uppercase text-slate-400">
+                        {label}
+                      </p>
+
+                      <p className="text-xs font-semibold text-slate-700 mt-1">
+                        {value || '—'}
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
             </div>
 
-            {/* Intraoral Examination */}
+            {/* Intraoral */}
             {hasIntraoral && (
-              <div className="border-t border-slate-100 pt-3">
-                <HistorySectionLabel icon="fa-teeth" color="text-[#3b82f6]">Intraoral Examination</HistorySectionLabel>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {Object.entries(intraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
-                    <div key={key} className="bg-slate-50 rounded px-2 py-1">
-                      <span className="text-[9px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}: </span>
-                      <span className="font-medium text-slate-700">{String(val)}</span>
-                    </div>
-                  ))}
-                  {intraoral.tmjExam && (
-                    <div className="bg-slate-50 rounded px-2 py-1">
-                      <span className="text-[9px] text-slate-400">TMJ: </span>
-                      <span className="font-medium text-slate-700">Examined</span>
+              <div>
+                <HistorySectionLabel
+                  icon="fa-teeth"
+                  color="text-[#3b82f6]"
+                >
+                  Intraoral Examination
+                </HistorySectionLabel>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  {Object.entries(
+                    intraoral
+                  )
+                    .filter(
+                      ([key, value]) =>
+                        key !==
+                          'tmjExam' &&
+                        Boolean(value)
+                    )
+                    .map(
+                      ([key, value]) => (
+                        <div
+                          key={key}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
+                        >
+                          <p className="text-[9px] font-bold uppercase text-slate-400">
+                            {key
+                              .replace(
+                                /([A-Z])/g,
+                                ' $1'
+                              )
+                              .replace(
+                                /^./,
+                                (char) =>
+                                  char.toUpperCase()
+                              )}
+                          </p>
+
+                          <p className="text-xs font-semibold text-slate-700 mt-1">
+                            {String(value)}
+                          </p>
+                        </div>
+                      )
+                    )}
+
+                  {intraoral.tmjExam ===
+                    true && (
+                    <div className="bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase text-sky-600">
+                        TMJ Examination
+                      </p>
+
+                      <p className="text-xs font-semibold text-slate-700 mt-1">
+                        Examined
+                      </p>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Tooth Conditions Chart */}
+            {/* Tooth chart */}
             {hasToothData && (
-              <div className="border-t border-slate-100 pt-3">
-                <HistorySectionLabel icon="fa-teeth-open" color="text-[#3b82f6]">Tooth Conditions Chart</HistorySectionLabel>
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <HistorySectionLabel
+                    icon="fa-teeth-open"
+                    color="text-[#3b82f6]"
+                  >
+                    Patient Dental Chart
+                  </HistorySectionLabel>
 
-                <div className="flex gap-2 mb-3 text-xs">
-                  {(() => {
-                    const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
-                    Object.values(toothData).forEach(d => {
-                      const condAbbr = getConditionAbbr(d.condition);
-                      if (condAbbr && conditions.hasOwnProperty(condAbbr)) {
-                        conditions[condAbbr]++;
-                      }
-                    });
-                    return (
-                      <>
-                        <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                        <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                        <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {Object.entries(toothData).map(([tooth, data]) => {
-                    const condAbbr = getConditionAbbr(data.condition);
-                    const conditionColors = {
-                      'caries': 'bg-red-100 text-red-700 border-red-300',
-                      'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                      'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                      'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                      'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                    };
-
-                    return (
-                      <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[condAbbr] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-                        <span className="block font-bold text-xs">#{tooth}</span>
-                        <span className="block text-[9px]">{data.condition || '-'}</span>
-                        {data.operation && <span className="block text-[8px] opacity-75">{data.operation}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Dental History / Procedures */}
-            {hasProcedures && (
-              <div className="border-t border-slate-100 pt-3">
-                <HistorySectionLabel icon="fa-clipboard-list" color="text-[#3b82f6]">Procedures Done</HistorySectionLabel>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(dentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
-                    <span key={key} className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-                      {key}
+                  {formatTypeLabel && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                      {formatTypeLabel}
                     </span>
-                  ))}
+                  )}
+                </div>
+
+                <p className="text-[10px] text-slate-400 mb-3">
+                  Older whole-tooth records are automatically converted for display. Newer records show the four individual tooth surfaces.
+                </p>
+
+                {hasAffectedTeeth ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {affectedTeeth.map(
+                      (tooth) => (
+                        <div
+                          key={
+                            tooth.toothNumber
+                          }
+                          className="border border-slate-200 rounded-xl p-3 bg-white"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="shrink-0">
+                              <ToothTopView
+                                size={72}
+                                surfaces={
+                                  tooth.surfaces
+                                }
+                                interactive={
+                                  false
+                                }
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-extrabold text-[#466460]">
+                                  Tooth #
+                                  {
+                                    tooth.toothNumber
+                                  }
+                                </p>
+
+                                {tooth._format ===
+                                  'legacy' && (
+                                  <span className="text-[8px] uppercase font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                                    Legacy
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="space-y-1 mt-2">
+                                {tooth.affectedSurfaces.map(
+                                  (
+                                    surface
+                                  ) => (
+                                    <div
+                                      key={
+                                        surface.surfaceKey
+                                      }
+                                      className="flex items-start justify-between gap-2"
+                                    >
+                                      <span className="text-[9px] font-bold uppercase text-slate-400">
+                                        {
+                                          surface.surfaceLabel
+                                        }
+                                      </span>
+
+                                      <span className="text-[10px] font-semibold text-slate-700 text-right">
+                                        {getConditionFullName(
+                                          surface.condition
+                                        ) ||
+                                          surface.condition}
+                                      </span>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+
+                              {tooth.operation && (
+                                <div className="mt-2 pt-2 border-t border-slate-100">
+                                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                                    Operation
+                                  </p>
+
+                                  <p className="text-[10px] font-semibold text-[#466460] mt-0.5">
+                                    {getOperationFullName(
+                                      tooth.operation
+                                    ) ||
+                                      tooth.operation}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">
+                    Tooth chart was saved, but no affected surfaces or operations were recorded.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Dental history */}
+            {positiveProcedures.length >
+              0 && (
+              <div>
+                <HistorySectionLabel
+                  icon="fa-clipboard-list"
+                  color="text-emerald-500"
+                >
+                  Dental History / Procedures
+                </HistorySectionLabel>
+
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {positiveProcedures.map(
+                    (name) => (
+                      <span
+                        key={name}
+                        className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full font-semibold"
+                      >
+                        {name}
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
             )}
 
-            {!hasVisitInfo && !hasIntraoral && !hasToothData && !hasProcedures && (
-              <p className="text-xs text-slate-400 italic">No additional details recorded for this visit.</p>
+            {/* Treatments */}
+            {(activeTreatments.length >
+              0 ||
+              hasTreatmentRemarks) && (
+              <div>
+                <HistorySectionLabel
+                  icon="fa-screwdriver-wrench"
+                  color="text-indigo-500"
+                >
+                  Treatments & Remarks
+                </HistorySectionLabel>
+
+                {activeTreatments.length >
+                  0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
+                    {activeTreatments.map(
+                      (name) => (
+                        <span
+                          key={name}
+                          className="text-[9px] px-2 py-1 bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full font-semibold"
+                        >
+                          {name
+                            .replace(
+                              /([A-Z])/g,
+                              ' $1'
+                            )
+                            .replace(
+                              /^./,
+                              (char) =>
+                                char.toUpperCase()
+                            )}
+                        </span>
+                      )
+                    )}
+                  </div>
+                )}
+
+                {hasTreatmentRemarks && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {Object.entries(
+                      treatmentRemarks
+                    )
+                      .filter(
+                        ([, value]) =>
+                          Boolean(value)
+                      )
+                      .map(
+                        ([key, value]) => (
+                          <div
+                            key={key}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
+                          >
+                            <p className="text-[9px] font-bold uppercase text-slate-400">
+                              {key
+                                .replace(
+                                  /([A-Z])/g,
+                                  ' $1'
+                                )
+                                .replace(
+                                  /^./,
+                                  (char) =>
+                                    char.toUpperCase()
+                                )}
+                            </p>
+
+                            <p className="text-xs text-slate-700 mt-1">
+                              {String(
+                                value
+                              )}
+                            </p>
+                          </div>
+                        )
+                      )}
+                  </div>
+                )}
+              </div>
             )}
+
+            {/* Vaccination */}
+            {(record.vax1_date ||
+              record.vax2_date ||
+              record.booster_date) && (
+              <div>
+                <HistorySectionLabel
+                  icon="fa-syringe"
+                  color="text-lime-500"
+                >
+                  Vaccination Dates
+                </HistorySectionLabel>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                  {[
+                    [
+                      'Dose 1',
+                      record.vax1_date,
+                    ],
+                    [
+                      'Dose 2',
+                      record.vax2_date,
+                    ],
+                    [
+                      'Booster',
+                      record.booster_date,
+                    ],
+                  ].map(
+                    ([label, value]) => (
+                      <div
+                        key={label}
+                        className="bg-lime-50/50 border border-lime-100 rounded-lg px-3 py-2"
+                      >
+                        <p className="text-[9px] font-bold uppercase text-lime-600">
+                          {label}
+                        </p>
+
+                        <p className="text-xs font-semibold text-slate-700 mt-1">
+                          {value
+                            ? formatDentalHistoryDate(
+                                value
+                              )
+                            : 'Not recorded'}
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Record outcome */}
+            <div>
+              <HistorySectionLabel
+                icon="fa-circle-check"
+                color="text-teal-500"
+              >
+                Record Outcome
+              </HistorySectionLabel>
+
+              <div className="flex flex-wrap gap-2 mt-2">
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    record.is_approved
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {record.is_approved
+                    ? 'Approved'
+                    : 'Not approved'}
+                </span>
+
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    record.issue_cert
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {record.issue_cert
+                    ? 'Certificate issued'
+                    : 'No certificate issued'}
+                </span>
+
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    record.cert_requested
+                      ? 'bg-violet-100 text-violet-700'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {record.cert_requested
+                    ? 'Certificate requested'
+                    : 'No certificate request'}
+                </span>
+              </div>
+
+              {record.approved_at && (
+                <p className="text-[10px] text-slate-400 mt-2">
+                  Approved:{' '}
+                  {formatDentalHistoryDate(
+                    record.approved_at,
+                    true
+                  )}
+                </p>
+              )}
+            </div>
+
+            {!hasIntraoral &&
+              !hasToothData &&
+              positiveProcedures.length ===
+                0 &&
+              activeTreatments.length ===
+                0 &&
+              !hasTreatmentRemarks && (
+                <p className="text-xs text-slate-400 italic">
+                  No additional dental details were recorded for this visit.
+                </p>
+              )}
           </div>
         )}
       </div>
@@ -527,47 +2147,292 @@ const DentalVisitCard = ({ record, defaultOpen = false }) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dental Visit History Component
-const DentalVisitHistory = ({ selectedPatient }) => {
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
+const DentalVisitHistory = ({
+  selectedPatient,
+}) => {
+  const [records, setRecords] =
+    useState([]);
+  const [loading, setLoading] =
+    useState(true);
+
+  const [
+    historyFilterMode,
+    setHistoryFilterMode,
+  ] = useState('all');
+
+  const [
+    historyDate,
+    setHistoryDate,
+  ] = useState('');
+
+  const [
+    historyMonth,
+    setHistoryMonth,
+  ] = useState('');
 
   useEffect(() => {
-    if (!selectedPatient?.uid) return;
+    const patientUid =
+      selectedPatient?.uid ||
+      selectedPatient?.users?.uid ||
+      selectedPatient?.user_id ||
+      null;
+
+    if (!patientUid) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
 
     const fetchRecords = async () => {
+      setLoading(true);
+
       try {
-        const { data: denData, error: denError } = await supabase
+        const {
+          data: denData,
+          error: denError,
+        } = await supabase
           .from('dental_records')
           .select('*')
-          .eq('user_id', selectedPatient.uid)
-          .order('created_at', { ascending: false });
+          .eq(
+            'user_id',
+            patientUid
+          )
+          .eq(
+            'is_archived',
+            false
+          )
+          .order(
+            'created_at',
+            {
+              ascending: false,
+            }
+          );
 
-        if (denError) console.error('Error fetching dental records:', denError);
+        if (denError) {
+          throw denError;
+        }
 
-        const denRecords = (denData || []).map(r => {
-          const dateStr = r.exam_date || r.created_at;
-          const _datetime = dateStr ? new Date(dateStr).toLocaleString('en-US', {
-            year: 'numeric', month: 'long', day: 'numeric',
-            hour: 'numeric', minute: '2-digit', hour12: true
-          }) : '-';
+        const denRecords = (
+          denData || []
+        ).map((record) => {
+          const dateStr =
+            record.exam_date ||
+            record.created_at;
+
           return {
-            ...r,
+            ...record,
+
+            tooth_data:
+              getDentalToothData(
+                record
+              ),
+
+            dental_history:
+              getDentalProcedureHistory(
+                record
+              ),
+
+            intraoral:
+              getDentalIntraoral(
+                record
+              ),
+
+            treatments:
+              getDentalTreatments(
+                record
+              ),
+
+            treatment_remarks:
+              getDentalTreatmentRemarks(
+                record
+              ),
+
             kind: 'dental',
-            _date: r.exam_date || r.last_visit || r.created_at?.split('T')[0] || '',
-            _datetime,
+
+            _date:
+              record.exam_date ||
+              record.last_visit ||
+              record.created_at?.split(
+                'T'
+              )[0] ||
+              '',
+
+            _datetime:
+              formatDentalHistoryDate(
+                dateStr,
+                true
+              ),
           };
         });
 
         setRecords(denRecords);
       } catch (err) {
-        console.error('Error fetching records:', err);
+        console.error(
+          'Error fetching dental visit history:',
+          err
+        );
+
+        setRecords([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchRecords();
-  }, [selectedPatient?.uid]);
+  }, [
+    selectedPatient?.uid,
+    selectedPatient?.id,
+    selectedPatient?.users,
+  ]);
+
+  useEffect(() => {
+    setHistoryFilterMode('all');
+    setHistoryDate('');
+    setHistoryMonth('');
+  }, [
+    selectedPatient?.uid,
+    selectedPatient?.id,
+  ]);
+
+  const getRecordFilterDate = (
+    record
+  ) => {
+    const rawDate =
+      record.exam_date ||
+      record.created_at ||
+      record.approved_at ||
+      record.updated_at;
+
+    if (!rawDate) return null;
+
+    const parsed =
+      new Date(rawDate);
+
+    return Number.isNaN(
+      parsed.getTime()
+    )
+      ? null
+      : parsed;
+  };
+
+  const filteredRecords =
+    records.filter((record) => {
+      if (
+        historyFilterMode ===
+        'all'
+      ) {
+        return true;
+      }
+
+      const recordDate =
+        getRecordFilterDate(
+          record
+        );
+
+      if (!recordDate) {
+        return false;
+      }
+
+      if (
+        historyFilterMode ===
+        'date'
+      ) {
+        if (!historyDate) {
+          return true;
+        }
+
+        const year =
+          recordDate.getFullYear();
+
+        const month = String(
+          recordDate.getMonth() + 1
+        ).padStart(2, '0');
+
+        const day = String(
+          recordDate.getDate()
+        ).padStart(2, '0');
+
+        return (
+          `${year}-${month}-${day}` ===
+          historyDate
+        );
+      }
+
+      if (
+        historyFilterMode ===
+        'month'
+      ) {
+        if (!historyMonth) {
+          return true;
+        }
+
+        const year =
+          recordDate.getFullYear();
+
+        const month = String(
+          recordDate.getMonth() + 1
+        ).padStart(2, '0');
+
+        return (
+          `${year}-${month}` ===
+          historyMonth
+        );
+      }
+
+      return true;
+    });
+
+  const clearHistoryFilter = () => {
+    setHistoryFilterMode('all');
+    setHistoryDate('');
+    setHistoryMonth('');
+  };
+
+  const getFilterLabel = () => {
+    if (
+      historyFilterMode ===
+        'date' &&
+      historyDate
+    ) {
+      const parsed = new Date(
+        `${historyDate}T00:00:00`
+      );
+
+      return parsed.toLocaleDateString(
+        'en-US',
+        {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }
+      );
+    }
+
+    if (
+      historyFilterMode ===
+        'month' &&
+      historyMonth
+    ) {
+      const [year, month] =
+        historyMonth.split('-');
+
+      const parsed = new Date(
+        Number(year),
+        Number(month) - 1,
+        1
+      );
+
+      return parsed.toLocaleDateString(
+        'en-US',
+        {
+          year: 'numeric',
+          month: 'long',
+        }
+      );
+    }
+
+    return 'All dates';
+  };
 
   if (loading) {
     return (
@@ -579,34 +2444,228 @@ const DentalVisitHistory = ({ selectedPatient }) => {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#3b82f6]/10 to-transparent">
-        <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
-          <i className="fa-solid fa-tooth text-[#3b82f6]"></i> Dental Visit History
-        </h4>
-        {records.length > 0 && (
-          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-            {records.length} record{records.length !== 1 ? 's' : ''}
+    <div className="space-y-5">
+
+      {/* FILTER */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
+          <div>
+            <h5 className="text-sm font-extrabold text-[#466460] flex items-center gap-2">
+              <i className="fa-solid fa-filter"></i>
+              Filter Dental History & Analytics
+            </h5>
+
+            <p className="text-[11px] text-slate-500 mt-1">
+              The selected period is applied to both the dental analytics and the detailed history.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Filter By
+              </label>
+
+              <select
+                value={
+                  historyFilterMode
+                }
+                onChange={(event) => {
+                  const mode =
+                    event.target.value;
+
+                  setHistoryFilterMode(
+                    mode
+                  );
+
+                  if (
+                    mode !== 'date'
+                  ) {
+                    setHistoryDate('');
+                  }
+
+                  if (
+                    mode !== 'month'
+                  ) {
+                    setHistoryMonth('');
+                  }
+                }}
+                className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+              >
+                <option value="all">
+                  All Dates
+                </option>
+
+                <option value="month">
+                  Specific Month
+                </option>
+
+                <option value="date">
+                  Specific Date
+                </option>
+              </select>
+            </div>
+
+            {historyFilterMode ===
+              'month' && (
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Month
+                </label>
+
+                <input
+                  type="month"
+                  value={historyMonth}
+                  onChange={(event) =>
+                    setHistoryMonth(
+                      event.target.value
+                    )
+                  }
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+                />
+              </div>
+            )}
+
+            {historyFilterMode ===
+              'date' && (
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Date
+                </label>
+
+                <input
+                  type="date"
+                  value={historyDate}
+                  onChange={(event) =>
+                    setHistoryDate(
+                      event.target.value
+                    )
+                  }
+                  className="h-10 px-3 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+                />
+              </div>
+            )}
+
+            {historyFilterMode !==
+              'all' && (
+              <button
+                type="button"
+                onClick={
+                  clearHistoryFilter
+                }
+                className="h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-bold hover:bg-slate-100 transition"
+              >
+                <i className="fa-solid fa-rotate-left mr-1.5"></i>
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Showing:
           </span>
-        )}
+
+          <span className="text-[11px] font-semibold text-[#466460] bg-[#e0eceb] px-2.5 py-1 rounded-full">
+            {getFilterLabel()}
+          </span>
+
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+            {filteredRecords.length}{' '}
+            of {records.length}{' '}
+            visit
+            {records.length !== 1
+              ? 's'
+              : ''}
+          </span>
+        </div>
       </div>
 
-      <div className="p-5">
-        {records.length === 0 ? (
-          <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
-            <i className="fa-solid fa-file-medical text-2xl text-slate-300 mb-2 block"></i>
-            <p className="text-sm text-slate-400">No visit history found</p>
+      {/* ANALYTICS */}
+      <DentalVisitAnalytics
+        records={filteredRecords}
+      />
+
+      {/* HISTORY */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#3b82f6]/10 to-transparent">
+          <div>
+            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+              <i className="fa-solid fa-tooth text-[#3b82f6]"></i>
+              Detailed Dental Visit History
+            </h4>
+
+            <p className="text-[10px] text-slate-400 mt-1">
+              Expand a visit to review its tooth chart, surface conditions, procedures, treatments, intraoral findings, and outcome.
+            </p>
           </div>
-        ) : (
-          <div className="relative pl-6">
-            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
-            <div className="space-y-4">
-              {records.map((r, idx) => (
-                <DentalVisitCard key={r.id} record={r} defaultOpen={idx === 0} />
-              ))}
+
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+            {filteredRecords.length}{' '}
+            record
+            {filteredRecords.length !== 1
+              ? 's'
+              : ''}
+          </span>
+        </div>
+
+        <div className="p-5">
+          {records.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
+              <i className="fa-solid fa-file-medical text-2xl text-slate-300 mb-2 block"></i>
+
+              <p className="text-sm text-slate-400">
+                No dental visit history found.
+              </p>
             </div>
-          </div>
-        )}
+          ) : filteredRecords.length ===
+            0 ? (
+            <div className="text-center py-10 border border-dashed border-amber-200 rounded-xl bg-amber-50/50">
+              <i className="fa-solid fa-calendar-xmark text-2xl text-amber-300 mb-2 block"></i>
+
+              <p className="text-sm font-semibold text-amber-700">
+                No dental visits found for{' '}
+                {getFilterLabel()}.
+              </p>
+
+              <button
+                type="button"
+                onClick={
+                  clearHistoryFilter
+                }
+                className="mt-3 px-4 py-2 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-bold hover:bg-amber-50 transition"
+              >
+                Show all visits
+              </button>
+            </div>
+          ) : (
+            <div className="relative pl-6">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
+
+              <div className="space-y-4">
+                {filteredRecords.map(
+                  (
+                    record,
+                    index
+                  ) => (
+                    <DentalVisitCard
+                      key={
+                        record.id
+                      }
+                      record={
+                        record
+                      }
+                      defaultOpen={
+                        index === 0
+                      }
+                    />
+                  )
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -617,7 +2676,9 @@ const DentalVisitHistory = ({ selectedPatient }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaultSemester, readOnly = false, onSaved, onDirtyChange }) => {
   const logoUrl = useBrandingLogo();
-  const [toothModal, setToothModal]         = useState({ open: false, toothNum: null });
+  const [toothModal, setToothModal] = useState({ open: false, toothNum: null });
+  const [selectedSurface, setSelectedSurface] = useState('topLeft');
+  const [toothSurfaces, setToothSurfaces] = useState(createEmptySurfaces());
   const [toothCondition, setToothCondition] = useState('');
   const [toothOperation, setToothOperation] = useState('');
   const [showSummary, setShowSummary]       = useState(false);
@@ -665,6 +2726,168 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     };
     loadDentists();
   }, []);
+
+  // Fetch the patient's HOME ADDRESS and DENTAL HISTORY directly
+  // from the users table. These two fields use users as the source of truth.
+  //
+  // IMPORTANT:
+  // In some MediTrack screens, selectedPatient.uid is actually users.id
+  // (the internal UUID), while in others it is users.uid (Supabase Auth UUID).
+  // Therefore we search BOTH columns using every available candidate.
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUserDentalProfile = async () => {
+      const nestedUser = Array.isArray(selectedPatient?.users)
+        ? selectedPatient.users[0] || {}
+        : selectedPatient?.users || {};
+
+      const candidates = [
+        selectedPatient?.user_id,
+        selectedPatient?.uid,
+        nestedUser?.id,
+        nestedUser?.uid,
+      ]
+        .filter(Boolean)
+        .map(value => String(value).trim())
+        .filter(Boolean);
+
+      const uniqueCandidates = [...new Set(candidates)];
+
+      if (uniqueCandidates.length === 0) {
+        console.warn(
+          '[Dental] Cannot fetch users.home_address / users.dental_history because no user identifier was found.',
+          { selectedPatient }
+        );
+        return;
+      }
+
+      try {
+        const orConditions = uniqueCandidates
+          .flatMap(value => [
+            `id.eq.${value}`,
+            `uid.eq.${value}`,
+          ])
+          .join(',');
+
+        console.log(
+          '[Dental] Looking up users profile with candidates:',
+          uniqueCandidates
+        );
+
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('users')
+          .select(`
+            id,
+            uid,
+            home_address,
+            dental_history
+          `)
+          .or(orConditions)
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (!data) {
+          console.warn(
+            '[Dental] No matching users row found for:',
+            uniqueCandidates
+          );
+          return;
+        }
+
+        console.log(
+          '[Dental] Loaded users profile:',
+          {
+            id: data.id,
+            uid: data.uid,
+            home_address: data.home_address,
+            dental_history: data.dental_history,
+          }
+        );
+
+        let parsedDentalHistory = {};
+
+        try {
+          parsedDentalHistory =
+            typeof data.dental_history === 'string'
+              ? JSON.parse(data.dental_history || '{}')
+              : data.dental_history || {};
+        } catch (parseError) {
+          console.error(
+            '[Dental] Failed to parse users.dental_history:',
+            parseError
+          );
+
+          parsedDentalHistory = {};
+        }
+
+        const procedures =
+          parsedDentalHistory?.procedures &&
+          typeof parsedDentalHistory.procedures === 'object'
+            ? parsedDentalHistory.procedures
+            : parsedDentalHistory;
+
+        const normalizedDentalHistory =
+          Object.fromEntries(
+            dentalProcedures.map(procedure => [
+              procedure,
+              String(procedures?.[procedure] || '')
+                .trim()
+                .toLowerCase() === 'yes'
+                ? 'Yes'
+                : 'No',
+            ])
+          );
+
+        // users.home_address is the source of truth for Address.
+        // users.dental_history is the source of truth for Last Visit,
+        // Previous Dentist, and procedure history.
+        setDentalFormData(prev => ({
+          ...prev,
+          dAddress: data.home_address || '',
+          dLastVisit:
+            parsedDentalHistory?.lastVisit ||
+            parsedDentalHistory?.last_visit ||
+            '',
+          dPrevDentist:
+            parsedDentalHistory?.prevDentist ||
+            parsedDentalHistory?.prev_dentist ||
+            '',
+        }));
+
+        setDentalHistory(
+          normalizedDentalHistory
+        );
+      } catch (error) {
+        console.error(
+          '[Dental] Failed to fetch users.home_address / users.dental_history:',
+          error
+        );
+      }
+    };
+
+    loadUserDentalProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    selectedPatient?.uid,
+    selectedPatient?.id,
+    selectedPatient?.user_id,
+    selectedPatient?.users,
+  ]);
 
   // Re-populate when a *new* patient is selected
   useEffect(() => {
@@ -733,18 +2956,21 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
     setDentalFormData(prev => ({ ...prev, [id || name]: value }));
   };
 
-  const handleVisitReasonChange = (e) => {
+  const handleDentalVisitReasonChange = (e) => {
     if (readOnly) return;
+
     const value = e.target.value;
+
     setDentalFormData(prev => ({
       ...prev,
       dVisitReason: value,
-      dVisitType: getSuggestedVisitType(value),
+      dVisitType: getSuggestedDentalVisitType(value),
     }));
+
     setValidationErrors(prev => ({
       ...prev,
-      dVisitReason: undefined,
-      dVisitType: undefined,
+      dVisitReason: '',
+      dVisitType: '',
     }));
   };
 
@@ -755,51 +2981,100 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
 
   const openToothModal = (num) => {
     if (readOnly) return;
+    const normalizedEntry = normalizeToothEntry(toothData[num]);
     setToothModal({ open: true, toothNum: num });
-    setToothCondition(toothData[num]?.condition || '');
-    setToothOperation(toothData[num]?.operation || '');
+    setSelectedSurface('topLeft');
+    setToothSurfaces(normalizedEntry.surfaces);
+    setToothCondition(normalizedEntry.surfaces.topLeft || '');
+    setToothOperation(normalizedEntry.operation || '');
+  };
+
+  const selectToothSurface = (surfaceKey) => {
+    setSelectedSurface(surfaceKey);
+    setToothCondition(toothSurfaces[surfaceKey] || '');
+  };
+
+  const handleSurfaceConditionChange = (value) => {
+    setToothCondition(value);
+    setToothSurfaces(prev => ({ ...prev, [selectedSurface]: value }));
+  };
+
+  const clearSelectedSurface = () => handleSurfaceConditionChange('');
+
+  const applyConditionToAllSurfaces = () => {
+    setToothSurfaces({
+      topLeft: toothCondition,
+      topRight: toothCondition,
+      bottomLeft: toothCondition,
+      bottomRight: toothCondition,
+    });
+  };
+
+  const closeToothModal = () => {
+    setToothModal({ open: false, toothNum: null });
+    setSelectedSurface('topLeft');
+    setToothCondition('');
+    setToothOperation('');
+    setToothSurfaces(createEmptySurfaces());
   };
 
   const saveToothStatus = () => {
-    if (readOnly) return;
-    if (toothModal.toothNum) {
-      setToothData(prev => ({
-        ...prev,
-        [toothModal.toothNum]: { condition: toothCondition, operation: toothOperation },
-      }));
-      setToothModal({ open: false, toothNum: null });
-    }
+    if (readOnly || !toothModal.toothNum) return;
+    setToothData(prev => ({
+      ...prev,
+      [toothModal.toothNum]: {
+        surfaces: { ...createEmptySurfaces(), ...toothSurfaces },
+        operation: toothOperation,
+      },
+    }));
+    closeToothModal();
   };
 
-  const getToothLabel = (num) => {
-    const condition = toothData[num]?.condition;
-    return conditionLabel[condition] || '/';
-  };
+  const hasToothCondition = (num) => Object.values(normalizeToothEntry(toothData[num]).surfaces).some(Boolean);
 
-  const getToothClass = (num) => toothConditionStyle[toothData[num]?.condition] || 'bg-white border-slate-300 text-slate-400';
-
-  const renderToothRow = (teeth) => teeth.map(n => (
-    <div key={n} className="flex flex-col items-center">
-      <span className="text-[9px] text-slate-500 mb-1">{n}</span>
-      <div
-        className={`w-7 h-7 border-2 flex items-center justify-center text-[10px] font-bold rounded transition-all ${readOnly ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:scale-110'} ${getToothClass(n)}`}
-        onClick={() => openToothModal(n)}
-        title={`Tooth #${n}`}
-      >
-        {getToothLabel(n)}
+  const renderToothRow = (teeth) => teeth.map(num => {
+    const entry = normalizeToothEntry(toothData[num]);
+    return (
+      <div key={num} className="flex flex-col items-center min-w-[42px]">
+        <span className="text-[9px] text-slate-500 mb-1">{num}</span>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() => openToothModal(num)}
+          title={`Edit tooth #${num}`}
+          className={`rounded-xl p-1 transition-all ${readOnly ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:scale-110 hover:bg-white hover:shadow-md'} ${hasToothCondition(num) ? 'bg-white ring-1 ring-slate-300' : 'bg-transparent'}`}
+        >
+          <ToothTopView size={34} surfaces={entry.surfaces} interactive={false} />
+        </button>
+        {entry.operation && <span className="mt-1 max-w-[38px] truncate text-[7px] font-bold text-[#466460]" title={entry.operation}>{entry.operation}</span>}
       </div>
-    </div>
-  ));
+    );
+  });
 
   const affectedTeeth = Object.entries(toothData)
-    .filter(([, d]) => d?.condition)
-    .map(([num, d]) => ({ num, condition: d.condition, operation: d.operation }));
+    .map(([num, rawEntry]) => {
+      const entry = normalizeToothEntry(rawEntry);
+      const affectedSurfaces = Object.entries(entry.surfaces)
+        .filter(([, condition]) => Boolean(condition))
+        .map(([surface, condition]) => ({
+          surface,
+          surfaceLabel: TOOTH_SURFACES.find(item => item.key === surface)?.label || surface,
+          condition,
+        }));
+      return { num, surfaces: entry.surfaces, affectedSurfaces, operation: entry.operation };
+    })
+    .filter(tooth => tooth.affectedSurfaces.length > 0);
 
   const handleOpenSummary = () => {
     const errors = {};
 
-    if (!dentalFormData.dVisitReason?.trim()) errors.dVisitReason = 'Reason for Visit is required';
-    if (!dentalFormData.dVisitType?.trim()) errors.dVisitType = 'Visit Classification is required';
+    if (!dentalFormData.dVisitReason?.trim()) {
+      errors.dVisitReason = 'Reason / Purpose of Visit is required';
+    }
+
+    if (!dentalFormData.dVisitType?.trim()) {
+      errors.dVisitType = 'Visit Classification is required';
+    }
 
     if (!dentalFormData.dExamDate?.trim()) errors.dExamDate = 'Examination Date is required';
     if (!dentalFormData.dExaminedBy?.trim()) errors.dExaminedBy = 'Examined By is required';
@@ -809,7 +3084,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
       setAlertModal({
         open: true,
         title: 'Missing Required Fields',
-        message: 'Please fill in all required fields:\n\n• Reason for Visit\n• Visit Classification\n• Examination Date\n• Examined By'
+        message: 'Please fill in all required fields:\n\n• Reason / Purpose of Visit\n• Visit Classification\n• Examination Date\n• Examined By'
       });
       return;
     }
@@ -839,10 +3114,16 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
       const examDateTime = dentalFormData.dExamDate ? `${dentalFormData.dExamDate}:00` : null;
 
       const transformedToothData = {};
-      Object.entries(toothData).forEach(([toothNum, data]) => {
+      Object.entries(toothData).forEach(([toothNum, rawEntry]) => {
+        const entry = normalizeToothEntry(rawEntry);
         transformedToothData[toothNum] = {
-          condition: data.condition ? getConditionFullName(data.condition) : '',
-          operation: data.operation ? getOperationFullName(data.operation) : '',
+          surfaces: Object.fromEntries(
+            Object.entries(entry.surfaces).map(([surfaceKey, condition]) => [
+              surfaceKey,
+              condition ? getConditionFullName(condition) : '',
+            ])
+          ),
+          operation: entry.operation ? getOperationFullName(entry.operation) : '',
         };
       });
 
@@ -886,7 +3167,7 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         exam_date: payload.examDateTime || null,
         school_year: payload.dSchoolYear || null,
         semester: payload.dSemester || null,
-        visit_reason: payload.dVisitReason?.trim() || null,
+        visit_reason: payload.dVisitReason || null,
         visit_type: payload.dVisitType || null,
         status: "pending",
         is_approved: false,
@@ -1083,64 +3364,111 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         </>
         ) : (
         <>
+
+          {/* ════ EXAMINATION TAB ════ */}
+
           <div className={sectionClass}>Visit Information</div>
+
           <div className="grid grid-cols-12 gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4">
             <div className="col-span-12 md:col-span-8">
               <label className={requiredLabelClass}>
                 Reason / Purpose of Visit <span className="text-red-500">*</span>
               </label>
+
               <input
                 id="dVisitReason"
                 type="text"
                 list="dental-visit-reasons"
-                className={`${inputClass} ${validationErrors.dVisitReason ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+                className={`${inputClass} ${
+                  validationErrors.dVisitReason
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                    : ''
+                }`}
                 placeholder="Select or type the reason for this visit"
                 value={dentalFormData.dVisitReason}
                 disabled={readOnly}
-                onChange={handleVisitReasonChange}
+                onChange={handleDentalVisitReasonChange}
               />
+
               <datalist id="dental-visit-reasons">
-                {visitReasonGroups.map(group => (
+                {dentalVisitReasonGroups.map(group => (
                   <React.Fragment key={group.label}>
                     {group.options.map(option => (
-                      <option key={option} value={option}>{group.label}</option>
+                      <option key={option} value={option}>
+                        {group.label}
+                      </option>
                     ))}
                   </React.Fragment>
                 ))}
               </datalist>
+
               <p className="text-[10px] text-slate-400 mt-1.5">
-                Choose a common reason or enter the reason from the appointment or walk-in encounter.
+                Choose a common reason or type a specific reason from the appointment or walk-in encounter.
               </p>
+
+              {validationErrors.dVisitReason && (
+                <p className="text-[10px] text-red-500 mt-1">
+                  {validationErrors.dVisitReason}
+                </p>
+              )}
             </div>
 
             <div className="col-span-12 md:col-span-4">
               <label className={requiredLabelClass}>
                 Visit Classification <span className="text-red-500">*</span>
               </label>
+
               <select
                 id="dVisitType"
-                className={`${inputClass} font-semibold ${validationErrors.dVisitType ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+                className={`${inputClass} font-semibold ${
+                  validationErrors.dVisitType
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                    : ''
+                }`}
                 value={dentalFormData.dVisitType}
-                disabled={readOnly || !dentalFormData.dVisitReason.trim()}
-                onChange={handleDentalChange}
+                disabled={readOnly || !dentalFormData.dVisitReason?.trim()}
+                onChange={(e) => {
+                  handleDentalChange(e);
+                  setValidationErrors(prev => ({
+                    ...prev,
+                    dVisitType: '',
+                  }));
+                }}
               >
                 <option value="">Select classification</option>
                 <option value="patient">Patient Visit</option>
                 <option value="non_patient">Non-Patient Visit</option>
               </select>
+
               <p className="text-[10px] text-slate-400 mt-1.5">
-                Suggested automatically. Clinic staff may correct it when needed.
+                Suggested automatically from the reason. Clinic staff may correct it when needed.
               </p>
+
+              {validationErrors.dVisitType && (
+                <p className="text-[10px] text-red-500 mt-1">
+                  {validationErrors.dVisitType}
+                </p>
+              )}
             </div>
 
             {dentalFormData.dVisitType && (
-              <div className={`col-span-12 px-3 py-2 rounded-lg border text-xs font-semibold ${
-                dentalFormData.dVisitType === 'patient'
-                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                  : 'bg-sky-50 text-sky-700 border-sky-200'
-              }`}>
-                <i className={`fa-solid ${dentalFormData.dVisitType === 'patient' ? 'fa-tooth' : 'fa-file-circle-check'} mr-2`}></i>
-                This encounter will be counted as a {getVisitTypeLabel(dentalFormData.dVisitType)} on the dashboard.
+              <div
+                className={`col-span-12 px-3 py-2 rounded-lg border text-xs font-semibold ${
+                  dentalFormData.dVisitType === 'patient'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-sky-50 text-sky-700 border-sky-200'
+                }`}
+              >
+                <i
+                  className={`fa-solid ${
+                    dentalFormData.dVisitType === 'patient'
+                      ? 'fa-tooth'
+                      : 'fa-file-circle-check'
+                  } mr-2`}
+                ></i>
+
+                This encounter will be counted as a{' '}
+                {getDentalVisitTypeLabel(dentalFormData.dVisitType)} on the dashboard.
               </div>
             )}
           </div>
@@ -1179,14 +3507,39 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
                 )}
               </div>
             ))}
-          </div>
 
-          <div className="grid grid-cols-12 gap-4 mb-4">
-            <div className="col-span-4">
-              <label className={labelClass}>Number of Teeth Present</label>
-              <div className="flex gap-4">
-                <div><label className="text-xs block mb-1">Upper</label><input type="number" id="dTeethUpper" className={`${inputClass} ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`} style={{ width: '80px' }} min="0" max="16" value={dentalFormData.dTeethUpper} readOnly={readOnly} onChange={handleDentalChange} /></div>
-                <div><label className="text-xs block mb-1">Lower</label><input type="number" id="dTeethLower" className={`${inputClass} ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`} style={{ width: '80px' }} min="0" max="16" value={dentalFormData.dTeethLower} readOnly={readOnly} onChange={handleDentalChange} /></div>
+            {/* Added: Number of Teeth Present inline with the findings grid */}
+            <div className="bg-slate-50 rounded-lg border border-slate-200 p-4">
+              <p className="text-xs font-bold text-[#466460] uppercase mb-3 pb-2 border-b border-[#e0eceb]">
+                Number of Teeth Present
+              </p>
+              <div className="flex gap-6 mt-2">
+                <div className="flex-1">
+                  <label className="text-sm font-semibold text-slate-600 block mb-2">Upper</label>
+                  <input
+                    type="number"
+                    id="dTeethUpper"
+                    className={`w-full p-3 border border-slate-300 rounded-lg text-base outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`}
+                    min="0"
+                    max="16"
+                    value={dentalFormData.dTeethUpper}
+                    readOnly={readOnly}
+                    onChange={handleDentalChange}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-semibold text-slate-600 block mb-2">Lower</label>
+                  <input
+                    type="number"
+                    id="dTeethLower"
+                    className={`w-full p-3 border border-slate-300 rounded-lg text-base outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white ${readOnly ? 'bg-slate-50 cursor-not-allowed' : ''}`}
+                    min="0"
+                    max="16"
+                    value={dentalFormData.dTeethLower}
+                    readOnly={readOnly}
+                    onChange={handleDentalChange}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1203,10 +3556,12 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             ].map(({ label, right, left }) => (
               <div key={label} className="mb-4">
                 <p className="text-xs font-bold text-[#466460] uppercase text-center py-2 bg-slate-100 rounded">{label}</p>
-                <div className="flex justify-center gap-1 my-2">
-                  {renderToothRow(right)}
-                  <span className="mx-4" />
-                  {renderToothRow(left)}
+                <div className="overflow-x-auto pb-2">
+                  <div className="flex justify-center gap-1.5 my-3 min-w-max">
+                    {renderToothRow(right)}
+                    <span className="mx-4 shrink-0" />
+                    {renderToothRow(left)}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-[9px] text-slate-400 text-center">
                   <div>RIGHT</div><div>LEFT</div>
@@ -1354,8 +3709,14 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
             <div className="overflow-y-auto flex-1 px-7 py-5">
               <SumSection icon="fa-clipboard-question" title="Visit Information">
                 <div className="grid grid-cols-2 gap-2">
-                  <SumItem label="Reason for Visit" value={dentalFormData.dVisitReason} />
-                  <SumItem label="Visit Classification" value={getVisitTypeLabel(dentalFormData.dVisitType)} />
+                  <SumItem
+                    label="Reason / Purpose of Visit"
+                    value={dentalFormData.dVisitReason}
+                  />
+                  <SumItem
+                    label="Visit Classification"
+                    value={getDentalVisitTypeLabel(dentalFormData.dVisitType)}
+                  />
                 </div>
               </SumSection>
 
@@ -1410,19 +3771,26 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
                   <p className="text-[11px] text-slate-400 italic">All teeth recorded as free from caries.</p>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {affectedTeeth.map(({ num, condition, operation }) => (
-                      <div key={num} className="flex items-center gap-3 text-[11px]">
-                        <span className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center font-bold text-slate-600 text-xs shrink-0">{num}</span>
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${summaryBadgeStyle[condition] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                          {conditionLabel[condition] || condition}
-                        </span>
-                        <span className="text-slate-600">{toothConditions.find(c => c.value === condition)?.label || condition}</span>
-                        {operation && (
-                          <>
-                            <span className="text-slate-300">·</span>
-                            <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600">{operation}</span>
-                          </>
-                        )}
+                    {affectedTeeth.map(({ num, surfaces, affectedSurfaces, operation }) => (
+                      <div key={num} className="flex items-start gap-3 border border-slate-200 rounded-xl p-3 bg-white">
+                        <div className="shrink-0 text-center">
+                          <ToothTopView size={48} surfaces={surfaces} interactive={false} />
+                          <span className="block text-[9px] font-bold text-slate-500 mt-1">#{num}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex flex-wrap gap-1.5">
+                            {affectedSurfaces.map(surface => (
+                              <span key={surface.surface} className={`px-2 py-1 rounded-md border text-[9px] font-semibold ${summaryBadgeStyle[surface.condition] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                {surface.surfaceLabel}: {conditionLabel[surface.condition] || surface.condition}
+                              </span>
+                            ))}
+                          </div>
+                          {operation && (
+                            <p className="text-[10px] text-slate-500 mt-2">
+                              <span className="font-bold">Operation:</span> {toothOperations.find(item => item.value === operation)?.label || operation}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1470,26 +3838,73 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
         </div>
       )}
 
-      {/* ═══ TOOTH MODAL ════════════════════════════════════════════════════ */}
+      {/* ═══ TOOTH SURFACE MODAL ═════════════════════════════════════════ */}
       {toothModal.open && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl w-[320px] shadow-2xl">
-            <h3 className="text-lg font-bold text-[#466460] mb-4">Tooth #{toothModal.toothNum}</h3>
-            <div className="mb-3">
-              <label className={labelClass}>Condition</label>
-              <select className={inputClass} value={toothCondition} onChange={e => setToothCondition(e.target.value)}>
-                {toothConditions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onMouseDown={e => { if (e.target === e.currentTarget) closeToothModal(); }}>
+          <div className="bg-white rounded-2xl w-full max-w-[520px] shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold">Tooth #{toothModal.toothNum}</h3>
+                <p className="text-[11px] text-white/70 mt-0.5">Select a tooth surface, then choose its condition.</p>
+              </div>
+              <button type="button" onClick={closeToothModal} className="w-9 h-9 rounded-full hover:bg-white/10 transition" aria-label="Close tooth modal">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
             </div>
-            <div className="mb-5">
-              <label className={labelClass}>Operation / Restoration</label>
-              <select className={inputClass} value={toothOperation} onChange={e => setToothOperation(e.target.value)}>
-                {toothOperations.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-[190px_1fr] gap-6">
+                <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-4">Occlusal / Top View</p>
+                  <ToothTopView size={150} surfaces={toothSurfaces} selectedSurface={selectedSurface} onSurfaceClick={selectToothSurface} />
+                  <p className="text-[10px] text-slate-400 text-center mt-4">Click one of the four sections.</p>
+                </div>
+
+                <div>
+                  <div className="mb-4">
+                    <label className={labelClass}>Selected Surface</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {TOOTH_SURFACES.map(surface => {
+                        const condition = toothSurfaces[surface.key];
+                        const isSelected = selectedSurface === surface.key;
+                        return (
+                          <button type="button" key={surface.key} onClick={() => selectToothSurface(surface.key)} className={`px-3 py-2 rounded-lg border text-[11px] font-semibold transition-all text-left ${isSelected ? 'border-[#466460] bg-[#e8f2f1] text-[#466460] ring-2 ring-[#466460]/10' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                            <span className="block">{surface.label}</span>
+                            <span className="block text-[9px] mt-0.5 opacity-70 truncate">{condition ? toothConditions.find(item => item.value === condition)?.label : 'Free from caries'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className={labelClass}>Condition for {TOOTH_SURFACES.find(surface => surface.key === selectedSurface)?.label}</label>
+                    <select className={inputClass} value={toothCondition} onChange={e => handleSurfaceConditionChange(e.target.value)}>
+                      {toothConditions.map(condition => <option key={condition.value} value={condition.value}>{condition.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="flex gap-2 mb-5">
+                    <button type="button" onClick={clearSelectedSurface} className="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-slate-600 text-[11px] font-semibold hover:bg-slate-50 transition">Clear Surface</button>
+                    <button type="button" onClick={applyConditionToAllSurfaces} className="flex-1 px-3 py-2 rounded-lg border border-[#466460] text-[#466460] bg-[#e8f2f1] text-[11px] font-semibold hover:bg-[#dcebea] transition">Apply to All</button>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Operation / Restoration</label>
+                    <select className={inputClass} value={toothOperation} onChange={e => setToothOperation(e.target.value)}>
+                      {toothOperations.map(operation => <option key={operation.value} value={operation.value}>{operation.label}</option>)}
+                    </select>
+                    <p className="text-[9px] text-slate-400 mt-1">The operation applies to the entire tooth.</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={saveToothStatus} className="flex-1 bg-[#466460] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#3a524f] transition">Save</button>
-              <button type="button" onClick={() => setToothModal({ open: false, toothNum: null })} className="flex-1 bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-300 transition">Cancel</button>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button type="button" onClick={closeToothModal} className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-300 transition">Cancel</button>
+              <button type="button" onClick={saveToothStatus} className="px-5 py-2.5 rounded-xl bg-[#466460] text-white text-sm font-bold hover:bg-[#3a524f] transition">
+                <i className="fa-solid fa-check mr-2"></i>Save Tooth
+              </button>
             </div>
           </div>
         </div>

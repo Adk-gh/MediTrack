@@ -457,19 +457,13 @@ router.get(
           await findFallbackBrandingLogo();
       }
 
-      if (!activeLogo) {
-        return res
-          .status(404)
-          .json({
-            success: false,
+if (!activeLogo) {
+  activeLogo = {
+    path: 'branding/logogo.jpg',
+    name: 'logogo.jpg',
+  };
+}
 
-            error:
-              'No branding logo was found inside public-assets/branding.',
-          });
-      }
-
-      const logoPath =
-        activeLogo.path;
 
       const logoName =
         activeLogo.name ||
@@ -477,11 +471,14 @@ router.get(
           .split('/')
           .pop();
 
-      const basePublicUrl =
-        getPublicStorageUrl(
-          PUBLIC_ASSETS_BUCKET,
-          logoPath
-        );
+const logoPath =
+  activeLogo.path;
+
+const basePublicUrl =
+  getPublicStorageUrl(
+    PUBLIC_ASSETS_BUCKET,
+    logoPath
+  );
 
       // Cache-busting parameter ensures
       // replaced logos update immediately.

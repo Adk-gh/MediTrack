@@ -262,6 +262,7 @@ export const Announcements = () => {
 
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [viewData, setViewData] = useState(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
   const [formSaving, setFormSaving] = useState(false);
 
@@ -417,6 +418,7 @@ export const Announcements = () => {
   const viewDrawer = useDrawerDrag(() => {
     setIsViewModalOpen(false);
     setShowAllDepts(false);
+    setShowShareMenu(false);
   });
 
   // ============================================================
@@ -932,36 +934,114 @@ export const Announcements = () => {
   const handleView = (item) => {
     setViewData(item);
     setShowAllDepts(false);
+    setShowShareMenu(false);
     setIsViewModalOpen(true);
   };
 
   // ============================================================
-  // FACEBOOK SHARE
+  // SHARE HELPERS
   // ============================================================
-const handleFacebookShare = (announcement) => {
-  if (!announcement?.id) {
-    showSnackbar(
-      'Unable to share this announcement.',
-      'error'
+  const getAnnouncementShareUrl = (announcement) => {
+    if (!announcement?.id) return '';
+
+    return `${API_URL}/announcements/share/${announcement.id}`;
+  };
+
+  const handleFacebookShare = (announcement) => {
+    const announcementUrl =
+      getAnnouncementShareUrl(announcement);
+
+    if (!announcementUrl) {
+      showSnackbar(
+        'Unable to share this announcement.',
+        'error'
+      );
+      return;
+    }
+
+    const facebookShareUrl =
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+        announcementUrl
+      )}`;
+
+    window.open(
+      facebookShareUrl,
+      'facebook-share-dialog',
+      'width=700,height=600,noopener,noreferrer'
     );
 
-    return;
-  }
+    setShowShareMenu(false);
+  };
 
-  const announcementUrl =
-    `${API_URL}/announcements/share/${announcement.id}`;
+  const handleCopyLink = async (announcement) => {
+    const shareUrl =
+      getAnnouncementShareUrl(announcement);
 
-  const facebookShareUrl =
-    `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-      announcementUrl
-    )}`;
+    if (!shareUrl) {
+      showSnackbar(
+        'Unable to copy announcement link.',
+        'error'
+      );
+      return;
+    }
 
-  window.open(
-    facebookShareUrl,
-    'facebook-share-dialog',
-    'width=700,height=600,noopener,noreferrer'
-  );
-};
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+
+      showSnackbar(
+        'Announcement link copied!',
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        '[Announcements] Copy link error:',
+        error
+      );
+
+      // Fallback for browsers where navigator.clipboard is unavailable.
+      const textarea =
+        document.createElement('textarea');
+
+      textarea.value = shareUrl;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.opacity = '0';
+
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      try {
+        const copied =
+          document.execCommand('copy');
+
+        if (!copied) {
+          throw new Error(
+            'Browser rejected copy command.'
+          );
+        }
+
+        showSnackbar(
+          'Announcement link copied!',
+          'success'
+        );
+      } catch (fallbackError) {
+        console.error(
+          '[Announcements] Copy fallback error:',
+          fallbackError
+        );
+
+        showSnackbar(
+          'Unable to copy announcement link.',
+          'error'
+        );
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+
+    setShowShareMenu(false);
+  };
 
   const setField = (key, val) =>
     setFormData((f) => ({
@@ -2151,6 +2231,7 @@ const handleFacebookShare = (announcement) => {
                 false
               );
               setShowAllDepts(false);
+              setShowShareMenu(false);
             }}
           >
             <div
@@ -2478,7 +2559,7 @@ const handleFacebookShare = (announcement) => {
               {/* ================================================= */}
               {/* VIEW MODAL BUTTONS */}
               {/* ================================================= */}
-              <div className="px-6 sm:px-8 py-5 border-t border-slate-100 shrink-0 bg-white flex flex-col-reverse sm:flex-row gap-3 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
+              <div className="px-6 sm:px-8 py-5 border-t border-slate-100 shrink-0 bg-white flex gap-3 pb-[max(1rem,env(safe-area-inset-bottom,16px))]">
                 {/* CLOSE */}
                 <button
                   onClick={() => {
@@ -2488,62 +2569,94 @@ const handleFacebookShare = (announcement) => {
                     setShowAllDepts(
                       false
                     );
+                    setShowShareMenu(
+                      false
+                    );
                   }}
-                  className="w-full sm:w-auto sm:flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors"
+                  className="flex-1 bg-[#e2e8f0] text-slate-600 py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-slate-200 transition-colors"
                 >
                   Close
                 </button>
 
-                {/* FACEBOOK SHARE */}
-                <button
-                  onClick={() =>
-                    handleFacebookShare(
-                      viewData
-                    )
-                  }
-                  className="w-full sm:w-auto sm:flex-1 bg-[#1877F2] text-white py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#166FE5] transition-all flex items-center justify-center gap-2"
-                >
-                  <i className="fa-brands fa-facebook-f" />
-                  Share
-                </button>
-
-                {/* EDIT - ADMIN ONLY */}
-                {canManage && (
+                {/* SHARE WITH DROPDOWN */}
+                <div className="relative flex-1">
                   <button
-                    onClick={() => {
-                      setIsViewModalOpen(
-                        false
-                      );
-                      setShowAllDepts(
-                        false
-                      );
-
-                      handleOpenForm(
-                        viewData.id
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowShareMenu(
+                        (prev) => !prev
                       );
                     }}
-                    className="w-full sm:w-auto sm:flex-1 bg-[#e0eceb] text-[#466460] py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#466460] hover:text-white transition-all flex items-center justify-center gap-2"
+                    className="w-full bg-[#1877F2] text-white py-3 sm:py-2.5 rounded-xl font-bold text-[13px] hover:bg-[#166FE5] transition-all flex items-center justify-center gap-2"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={
-                        1.5
-                      }
-                      stroke="currentColor"
-                      className="w-3.5 h-3.5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 001.13-1.89l10.8-10.8z"
-                      />
-                    </svg>
-
-                    Edit
+                    <i className="fa-solid fa-share-nodes" />
+                    Share
+                    <i
+                      className={`fa-solid ${
+                        showShareMenu
+                          ? 'fa-chevron-up'
+                          : 'fa-chevron-down'
+                      } text-[9px] ml-1`}
+                    />
                   </button>
-                )}
+
+                  {showShareMenu && (
+                    <div
+                      className="absolute bottom-full right-0 mb-2 w-full min-w-[210px] bg-white border border-[#e2e8f0] rounded-xl shadow-2xl overflow-hidden z-[100]"
+                      onClick={(e) =>
+                        e.stopPropagation()
+                      }
+                    >
+                      {/* SHARE TO FACEBOOK */}
+                      <button
+                        onClick={() =>
+                          handleFacebookShare(
+                            viewData
+                          )
+                        }
+                        className="w-full px-4 py-3 text-left text-[13px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-3"
+                      >
+                        <span className="w-8 h-8 rounded-full bg-[#1877F2] text-white flex items-center justify-center shrink-0">
+                          <i className="fa-brands fa-facebook-f" />
+                        </span>
+
+                        <span className="flex flex-col">
+                          <span>
+                            Share to Facebook
+                          </span>
+                          <span className="text-[10px] font-normal text-slate-400 mt-0.5">
+                            Open Facebook share
+                          </span>
+                        </span>
+                      </button>
+
+                      <div className="border-t border-slate-100" />
+
+                      {/* COPY LINK */}
+                      <button
+                        onClick={() =>
+                          handleCopyLink(
+                            viewData
+                          )
+                        }
+                        className="w-full px-4 py-3 text-left text-[13px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-3"
+                      >
+                        <span className="w-8 h-8 rounded-full bg-[#e0eceb] text-[#466460] flex items-center justify-center shrink-0">
+                          <i className="fa-solid fa-link" />
+                        </span>
+
+                        <span className="flex flex-col">
+                          <span>
+                            Copy Link
+                          </span>
+                          <span className="text-[10px] font-normal text-slate-400 mt-0.5">
+                            Copy public announcement link
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>,

@@ -2264,9 +2264,9 @@ const patientTypeData = useMemo(() => {
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
             <StatBox title="Total Users" value={processedData.totalUsers} subtitle="System admins excluded" icon={IconUsers} color="#466460" />
             <StatBox title="Clinic Staff" value={processedData.clinicStaffCount} subtitle="Doc+Nurse+Dentist" icon={IconUsers} color="#81b29a" />
-            <StatBox title="Medical" value={processedData.totalMed} subtitle="Health Consults" icon={IconStethoscope} color="#3b82f6" />
-            <StatBox title="Dental" value={processedData.totalDen} subtitle="Dental Consults" icon={IconTooth} color="#e07a5f" />
-            <StatBox title="Appts" value={processedData.totalAppts} subtitle={`${processedData.completedAppts} done`} icon={IconCalendar} color="#10b981" />
+            <StatBox title="Medical" value={processedData.totalMed} subtitle="Health Records" icon={IconStethoscope} color="#3b82f6" />
+            <StatBox title="Dental" value={processedData.totalDen} subtitle="Dental Records" icon={IconTooth} color="#e07a5f" />
+            <StatBox title="Appts" value={processedData.totalAppts} subtitle={`${processedData.completedAppts} done appointments`} icon={IconCalendar} color="#10b981" />
             <StatBox title="Total Visits" value={processedData.totalVisits} subtitle={`${processedData.unclassifiedVisits} unclassified`} icon={IconActivity} color="#466460" />
             <StatBox title="Patient Visits" value={processedData.patientVisits} subtitle={`${Math.round(pctOf(processedData.patientVisits, processedData.totalVisits) * 100)}% of visits`} icon={IconStethoscope} color="#e07a5f" />
             <StatBox title="Non-Patient" value={processedData.nonPatientVisits} subtitle={`${Math.round(pctOf(processedData.nonPatientVisits, processedData.totalVisits) * 100)}% of visits`} icon={IconFileText} color="#3b82f6" />

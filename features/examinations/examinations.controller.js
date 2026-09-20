@@ -1,7 +1,11 @@
 // C:\Users\HP\MediTrack\features\examinations\examinations.controller.js
 
-const examinationsService = require('./examinations.service');
-const { sendNotification } = require('../../utils/notifier');
+const examinationsService =
+  require('./examinations.service');
+
+const {
+  sendNotification,
+} = require('../../utils/notifier');
 
 // ============================================================
 // HELPERS
@@ -9,16 +13,27 @@ const { sendNotification } = require('../../utils/notifier');
 
 const resolveActorName = (req) => {
   const fullName = [
-    req.user?.first_name || req.user?.firstName,
-    req.user?.middle_name || req.user?.middleName,
-    req.user?.last_name || req.user?.lastName,
+    req.user?.first_name ||
+      req.user?.firstName,
+
+    req.user?.middle_name ||
+      req.user?.middleName,
+
+    req.user?.last_name ||
+      req.user?.lastName,
   ]
     .filter(Boolean)
-    .map((value) => String(value).trim())
+    .map((value) =>
+      String(value).trim()
+    )
     .filter(Boolean)
     .join(' ');
 
-  return fullName || req.user?.email || 'System User';
+  return (
+    fullName ||
+    req.user?.email ||
+    'System User'
+  );
 };
 
 const resolveActorId = (req) => {
@@ -29,52 +44,17 @@ const resolveActorId = (req) => {
   );
 };
 
-const resolveExaminationId = (
-  result,
-  fallback = null
-) => {
-  return (
-    result?.id ||
-    result?.examination?.id ||
-    result?.data?.id ||
-    fallback
-  );
-};
-
-const resolveExaminationType = (
-  result,
-  requestBody = {}
-) => {
-  return (
-    result?.type ||
-    result?.examination_type ||
-    result?.examinationType ||
-    result?.record_type ||
-    result?.recordType ||
-    requestBody?.type ||
-    requestBody?.examination_type ||
-    requestBody?.examinationType ||
-    requestBody?.record_type ||
-    requestBody?.recordType ||
-    null
-  );
-};
-
 const resolvePatientId = (
   result,
   requestBody = {}
 ) => {
   return (
+    result?.user_id ||
     result?.patient_id ||
     result?.patientId ||
-    result?.user_id ||
-    result?.userId ||
-    result?.patient?.id ||
-    result?.user?.id ||
+    requestBody?.user_id ||
     requestBody?.patient_id ||
     requestBody?.patientId ||
-    requestBody?.user_id ||
-    requestBody?.userId ||
     null
   );
 };
@@ -86,60 +66,34 @@ const resolvePatientName = (
   const directName =
     result?.patient_name ||
     result?.patientName ||
-    result?.user_name ||
-    result?.userName ||
     requestBody?.patient_name ||
-    requestBody?.patientName ||
-    requestBody?.user_name ||
-    requestBody?.userName;
+    requestBody?.patientName;
 
   if (directName) {
     return String(directName).trim();
   }
 
-  const patientObject =
-    result?.patient ||
-    result?.user ||
-    {};
-
   const fullName = [
-    patientObject?.first_name ||
-      patientObject?.firstName ||
-      result?.first_name ||
-      result?.firstName ||
+    result?.first_name ||
       requestBody?.first_name ||
       requestBody?.firstName,
 
-    patientObject?.middle_name ||
-      patientObject?.middleName ||
-      result?.middle_name ||
-      result?.middleName ||
+    result?.middle_name ||
       requestBody?.middle_name ||
       requestBody?.middleName,
 
-    patientObject?.last_name ||
-      patientObject?.lastName ||
-      result?.last_name ||
-      result?.lastName ||
+    result?.last_name ||
       requestBody?.last_name ||
       requestBody?.lastName,
   ]
     .filter(Boolean)
-    .map((value) => String(value).trim())
+    .map((value) =>
+      String(value).trim()
+    )
     .filter(Boolean)
     .join(' ');
 
   return fullName || null;
-};
-
-const resolveArchiveId = (result) => {
-  return (
-    result?.archiveId ||
-    result?.archive_id ||
-    result?.archive?.id ||
-    result?.archivedItem?.id ||
-    null
-  );
 };
 
 const setAuditData = (
@@ -147,12 +101,117 @@ const setAuditData = (
   description,
   details = {}
 ) => {
-  res.locals.auditDescription = description;
-  res.locals.auditDetails = details;
+  res.locals.auditDescription =
+    description;
+
+  res.locals.auditDetails =
+    details;
 };
 
+const buildAuditDetails = ({
+  req,
+  result,
+  type,
+  operation,
+  extra = {},
+}) => {
+  return {
+    operation,
+    examinationId:
+      result?.id || req.params?.id || null,
+    examinationType: type,
+    patientId:
+      resolvePatientId(
+        result,
+        req.body
+      ),
+    patientName:
+      resolvePatientName(
+        result,
+        req.body
+      ),
+    status:
+      result?.status ||
+      req.body?.status ||
+      null,
+
+    performedBy: {
+      id: resolveActorId(req),
+      email:
+        req.user?.email || null,
+      name: resolveActorName(req),
+    },
+
+    ...extra,
+  };
+};
+
+const sendApprovalNotification =
+  async ({
+    patientId,
+    type,
+    examinationId,
+  }) => {
+    if (!patientId) return;
+
+    try {
+      await sendNotification({
+        userId: patientId,
+        type: 'approval',
+        title: 'Record Approved',
+        message:
+          `Your ${type} examination record has been verified and approved by the clinic.`,
+        referenceId:
+          examinationId,
+        referenceType:
+          type === 'dental'
+            ? 'dental_record'
+            : 'medical_record',
+      });
+    } catch (error) {
+      // Approval must not fail just because notification delivery failed.
+      console.error(
+        '[Examinations] Approval notification failed:',
+        error
+      );
+    }
+  };
+
+const sendCertificateNotification =
+  async ({
+    patientId,
+    type,
+    examinationId,
+  }) => {
+    if (!patientId) return;
+
+    try {
+      await sendNotification({
+        userId: patientId,
+        type: 'certificate',
+        title:
+          type === 'dental'
+            ? 'Dental Certificate Issued'
+            : 'Medical Certificate Issued',
+        message:
+          `Your ${type} certificate has been issued by the clinic.`,
+        referenceId:
+          examinationId,
+        referenceType:
+          type === 'dental'
+            ? 'dental_record'
+            : 'medical_record',
+      });
+    } catch (error) {
+      console.error(
+        '[Examinations] Certificate notification failed:',
+        error
+      );
+    }
+  };
+
 // ============================================================
-// GET ALL EXAMINATIONS
+// READ
 // ============================================================
 
 const getAllExaminations = async (
@@ -173,342 +232,422 @@ const getAllExaminations = async (
   }
 };
 
-// ============================================================
-// GET EXAMINATION BY ID
-// ============================================================
+const getMedicalExaminations =
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.getMedicalExaminations();
 
-const getExaminationById = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Examination ID is required.',
+      return res.status(200).json({
+        success: true,
+        data: result,
       });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    const result =
-      await examinationsService.getExaminationById(
-        id
-      );
+const getDentalExaminations =
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.getDentalExaminations();
 
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+const getMedicalExaminationById =
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.getTypedExaminationById(
+          'medical',
+          req.params.id
+        );
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+const getDentalExaminationById =
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.getTypedExaminationById(
+          'dental',
+          req.params.id
+        );
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+const getExaminationById =
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.getExaminationById(
+          req.params.id
+        );
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
 // ============================================================
-// CREATE EXAMINATION
+// CREATE / SUBMIT
 // ============================================================
 
-const createExamination = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const result =
-      await examinationsService.createExamination(
-        req.body
+const createTypedExamination =
+  (type) =>
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.createExamination(
+          type,
+          req.body
+        );
+
+      const patientName =
+        resolvePatientName(
+          result,
+          req.body
+        );
+
+      const patientSuffix =
+        patientName
+          ? ` for ${patientName}`
+          : '';
+
+      setAuditData(
+        res,
+        `Submitted ${type} examination${patientSuffix} with ID ${result.id}.`,
+        buildAuditDetails({
+          req,
+          result,
+          type,
+          operation:
+            `submit_${type}_examination`,
+          extra: {
+            examDate:
+              result?.exam_date ||
+              req.body?.exam_date ||
+              null,
+          },
+        })
       );
 
-    const examinationId =
-      resolveExaminationId(result);
-
-    const examinationType =
-      resolveExaminationType(
-        result,
-        req.body
-      );
-
-    const patientId =
-      resolvePatientId(
-        result,
-        req.body
-      );
-
-    const patientName =
-      resolvePatientName(
-        result,
-        req.body
-      );
-
-    const readableType =
-      examinationType
-        ? String(examinationType)
-            .replace(/_/g, ' ')
-            .trim()
-        : 'health';
-
-    let description =
-      `Created ${readableType} examination`;
-
-    if (patientName) {
-      description += ` for ${patientName}`;
+      return res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    if (examinationId) {
-      description += ` with ID ${examinationId}`;
+const createMedicalExamination =
+  createTypedExamination('medical');
+
+const createDentalExamination =
+  createTypedExamination('dental');
+
+// ============================================================
+// UPDATE
+// ============================================================
+
+const updateTypedExamination =
+  (type) =>
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.updateExamination(
+          type,
+          req.params.id,
+          req.body
+        );
+
+      const patientName =
+        resolvePatientName(
+          result,
+          req.body
+        );
+
+      const patientSuffix =
+        patientName
+          ? ` for ${patientName}`
+          : '';
+
+      setAuditData(
+        res,
+        `Updated ${type} examination with ID ${result.id}${patientSuffix}.`,
+        buildAuditDetails({
+          req,
+          result,
+          type,
+          operation:
+            `update_${type}_examination`,
+          extra: {
+            updatedFields:
+              Object.keys(
+                req.body || {}
+              ),
+          },
+        })
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    description += '.';
+const updateMedicalExamination =
+  updateTypedExamination('medical');
 
-    setAuditData(
-      res,
-      description,
-      {
-        operation: 'create_examination',
-        examinationId,
-        examinationType,
+const updateDentalExamination =
+  updateTypedExamination('dental');
+
+// ============================================================
+// APPROVAL
+// ============================================================
+
+const approveTypedExamination =
+  (type) =>
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.approveExamination(
+          type,
+          req.params.id,
+          req.body
+        );
+
+      const patientId =
+        resolvePatientId(
+          result,
+          req.body
+        );
+
+      const patientName =
+        resolvePatientName(
+          result,
+          req.body
+        );
+
+      const patientSuffix =
+        patientName
+          ? ` for ${patientName}`
+          : '';
+
+      setAuditData(
+        res,
+        `Approved ${type} examination with ID ${result.id}${patientSuffix}.`,
+        buildAuditDetails({
+          req,
+          result,
+          type,
+          operation:
+            `approve_${type}_examination`,
+          extra: {
+            approvedAt:
+              result?.approved_at ||
+              null,
+            updatedFields:
+              Object.keys(
+                req.body || {}
+              ),
+          },
+        })
+      );
+
+      await sendApprovalNotification({
         patientId,
-        patientName,
-        examDate:
-          result?.exam_date ||
-          result?.examDate ||
-          req.body?.exam_date ||
-          req.body?.examDate ||
-          null,
-        status:
-          result?.status ||
-          req.body?.status ||
-          null,
-        createdBy: {
-          id: resolveActorId(req),
-          email: req.user?.email || null,
-          name: resolveActorName(req),
-        },
-      }
-    );
+        type,
+        examinationId:
+          result.id,
+      });
 
-    return res.status(201).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+const approveMedicalExamination =
+  approveTypedExamination('medical');
+
+const approveDentalExamination =
+  approveTypedExamination('dental');
 
 // ============================================================
-// UPDATE EXAMINATION
+// CERTIFICATE
 // ============================================================
 
-const updateExamination = async (req, res, next) => {
-  try {
-    const { id } = req.params;
+const issueTypedCertificate =
+  (type) =>
+  async (req, res, next) => {
+    try {
+      const result =
+        await examinationsService.issueCertificate(
+          type,
+          req.params.id,
+          req.body
+        );
 
-    if (!id) {
-      return res.status(400).json({ success: false, message: 'Examination ID is required.' });
+      const patientId =
+        resolvePatientId(
+          result,
+          req.body
+        );
+
+      const patientName =
+        resolvePatientName(
+          result,
+          req.body
+        );
+
+      const certificateLabel =
+        type === 'dental'
+          ? 'dental certificate'
+          : 'medical certificate';
+
+      const patientSuffix =
+        patientName
+          ? ` for ${patientName}`
+          : '';
+
+      setAuditData(
+        res,
+        `Issued ${certificateLabel}${patientSuffix} from examination ${result.id}.`,
+        buildAuditDetails({
+          req,
+          result,
+          type,
+          operation:
+            `issue_${type}_certificate`,
+          extra: {
+            issueCert: true,
+            certificateIssuedAt:
+              new Date().toISOString(),
+          },
+        })
+      );
+
+      await sendCertificateNotification({
+        patientId,
+        type,
+        examinationId:
+          result.id,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    const result = await examinationsService.updateExamination(id, req.body);
+const issueMedicalCertificate =
+  issueTypedCertificate('medical');
 
-    const examinationId = resolveExaminationId(result, id);
-    const examinationType = resolveExaminationType(result, req.body);
-    const patientId = resolvePatientId(result, req.body);
-    const patientName = resolvePatientName(result, req.body);
-    const readableType = examinationType ? String(examinationType).replace(/_/g, ' ').trim() : 'health';
+const issueDentalCertificate =
+  issueTypedCertificate('dental');
 
-    // 1. Check if this specific update is an APPROVAL
-    const isApproval = req.body?.status?.toLowerCase() === 'approved' || req.body?.is_approved === true;
+// ============================================================
+// ARCHIVE
+// ============================================================
 
-    // 2. Format the exact string for your Audit Log
-    let description = isApproval
-      ? `Approved ${readableType} examination with ID ${examinationId}`
-      : `Updated ${readableType} examination with ID ${examinationId}`;
-
-    if (patientName) {
-      description += ` for ${patientName}`;
-    }
-    description += '.';
-
-    // This data gets caught by the auditLog middleware in your routes!
-    setAuditData(res, description, {
-      operation: isApproval ? 'approve_examination' : 'update_examination',
-      examinationId,
-      examinationType,
-      patientId,
-      patientName,
-      updatedFields: Object.keys(req.body || {}),
-      status: result?.status || req.body?.status || null,
-      updatedBy: {
+const deleteTypedExamination =
+  (type) =>
+  async (req, res, next) => {
+    try {
+      const deletedBy = {
         id: resolveActorId(req),
-        email: req.user?.email || null,
+        email:
+          req.user?.email || null,
         name: resolveActorName(req),
-      },
-    });
+      };
 
-    // 3. Send a Red Bell Notification to the Patient if it's an approval
-    if (isApproval && patientId) {
-      await sendNotification({
-        userId: patientId,
-        type: 'approval', // Matches the CheckIcon in your frontend notifications
-        title: 'Record Approved',
-        message: `Your ${readableType} examination record has been verified and approved by the clinic.`,
-        referenceId: examinationId,
-        referenceType: examinationType === 'dental' ? 'dental_record' : 'medical_record'
-      });
-    }
+      const result =
+        await examinationsService.archiveExamination(
+          type,
+          req.params.id,
+          deletedBy.name
+        );
 
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+      const patientName =
+        resolvePatientName(
+          result,
+          {}
+        );
 
-// ============================================================
-// DELETE / ARCHIVE EXAMINATION
-// ============================================================
+      const patientSuffix =
+        patientName
+          ? ` for ${patientName}`
+          : '';
 
-const deleteExamination = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Examination ID is required.',
-      });
-    }
-
-    const result =
-      await examinationsService.deleteExamination(
-        id
+      setAuditData(
+        res,
+        `Archived ${type} examination with ID ${result.id}${patientSuffix}.`,
+        buildAuditDetails({
+          req,
+          result,
+          type,
+          operation:
+            `archive_${type}_examination`,
+          extra: {
+            archivedBy:
+              deletedBy,
+          },
+        })
       );
 
-    const examinationId =
-      resolveExaminationId(result, id);
-
-    const examinationType =
-      resolveExaminationType(result);
-
-    const patientId =
-      resolvePatientId(result);
-
-    const patientName =
-      resolvePatientName(result);
-
-    const archiveId =
-      resolveArchiveId(result);
-
-    const readableType =
-      examinationType
-        ? String(examinationType)
-            .replace(/_/g, ' ')
-            .trim()
-        : 'health';
-
-    let description =
-      archiveId
-        ? `Archived ${readableType} examination with ID ${examinationId} under archive ID ${archiveId}`
-        : `Archived ${readableType} examination with ID ${examinationId}`;
-
-    if (patientName) {
-      description += ` for ${patientName}`;
+      return res.status(200).json({
+        success: true,
+        message:
+          'Examination archived successfully.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    description += '.';
+const deleteMedicalExamination =
+  deleteTypedExamination('medical');
 
-    setAuditData(
-      res,
-      description,
-      {
-        operation: 'archive_examination',
-        examinationId,
-        examinationType,
-        patientId,
-        patientName,
-        archiveId,
-        tableName:
-          examinationType === 'dental'
-            ? 'dental_records'
-            : examinationType === 'medical'
-              ? 'medical_records'
-              : 'examinations',
-        archivedBy: {
-          id: resolveActorId(req),
-          email: req.user?.email || null,
-          name: resolveActorName(req),
-        },
-      }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message:
-        archiveId
-          ? 'Examination moved to archives'
-          : 'Examination deleted',
-      data:
-        result || {
-          id: examinationId,
-          archiveId,
-        },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ============================================================
-// GET MEDICAL EXAMINATIONS
-// ============================================================
-
-const getMedicalExaminations = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const result =
-      await examinationsService.getMedicalExaminations();
-
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ============================================================
-// GET DENTAL EXAMINATIONS
-// ============================================================
-
-const getDentalExaminations = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const result =
-      await examinationsService.getDentalExaminations();
-
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+const deleteDentalExamination =
+  deleteTypedExamination('dental');
 
 // ============================================================
 // EXPORTS
@@ -516,10 +655,26 @@ const getDentalExaminations = async (
 
 module.exports = {
   getAllExaminations,
-  getExaminationById,
-  createExamination,
-  updateExamination,
-  deleteExamination,
+
   getMedicalExaminations,
   getDentalExaminations,
+
+  getMedicalExaminationById,
+  getDentalExaminationById,
+  getExaminationById,
+
+  createMedicalExamination,
+  createDentalExamination,
+
+  updateMedicalExamination,
+  updateDentalExamination,
+
+  approveMedicalExamination,
+  approveDentalExamination,
+
+  issueMedicalCertificate,
+  issueDentalCertificate,
+
+  deleteMedicalExamination,
+  deleteDentalExamination,
 };

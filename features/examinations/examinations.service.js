@@ -1,77 +1,406 @@
 // C:\Users\HP\MediTrack\features\examinations\examinations.service.js
+
 const supabase = require('../../configs/database');
 
-// 1. Fetch from the actual medical_records table
+const TABLES = {
+  medical: 'medical_records',
+  dental: 'dental_records',
+};
+
+const getTable = (type) => {
+  const normalized = String(type || '')
+    .trim()
+    .toLowerCase();
+
+  const table = TABLES[normalized];
+
+  if (!table) {
+    const error = new Error(
+      'Invalid examination type. Use medical or dental.'
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return table;
+};
+
+const sanitizePayload = (payload = {}) => {
+  const clean = { ...payload };
+
+  // Never allow the frontend to replace the primary key through update payloads.
+  delete clean.id;
+
+  // Frontend-only helper fields that do not belong in the database.
+  delete clean.type;
+  delete clean.recordType;
+  delete clean.record_type;
+  delete clean.examinationType;
+  delete clean.examination_type;
+
+  return clean;
+};
+
+const throwNotFound = (type, id) => {
+  const error = new Error(
+    `${type === 'dental' ? 'Dental' : 'Medical'} examination not found: ${id}`
+  );
+  error.statusCode = 404;
+  throw error;
+};
+
+// ============================================================
+// READ
+// ============================================================
+
 exports.getMedicalExaminations = async () => {
   const { data, error } = await supabase
-    .from('medical_records')
+    .from(TABLES.medical)
     .select('*')
     .eq('is_archived', false)
-    .order('created_at', { ascending: false });
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
-  return data;
+
+  return data || [];
 };
 
-// 2. Fetch from the actual dental_records table
 exports.getDentalExaminations = async () => {
   const { data, error } = await supabase
-    .from('dental_records')
+    .from(TABLES.dental)
     .select('*')
     .eq('is_archived', false)
-    .order('created_at', { ascending: false });
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
-  return data;
+
+  return data || [];
 };
 
-// 3. Fallback: Combine both for the general "/" route to prevent crashes
 exports.getAllExaminations = async () => {
-  const [medical, dental] = await Promise.all([
-    supabase.from('medical_records').select('*').eq('is_archived', false),
-    supabase.from('dental_records').select('*').eq('is_archived', false)
-  ]);
+  const [medical, dental] =
+    await Promise.all([
+      supabase
+        .from(TABLES.medical)
+        .select('*')
+        .eq('is_archived', false),
 
-  if (medical.error) throw medical.error;
-  if (dental.error) throw dental.error;
+      supabase
+        .from(TABLES.dental)
+        .select('*')
+        .eq('is_archived', false),
+    ]);
 
-  // Combine them and inject a 'type' property so the frontend can tell them apart
+  if (medical.error) {
+    throw medical.error;
+  }
+
+  if (dental.error) {
+    throw dental.error;
+  }
+
   const combined = [
-    ...(medical.data || []).map(m => ({ ...m, type: 'medical' })),
-    ...(dental.data || []).map(d => ({ ...d, type: 'dental' }))
+    ...(medical.data || []).map(
+      (record) => ({
+        ...record,
+        type: 'medical',
+      })
+    ),
+
+    ...(dental.data || []).map(
+      (record) => ({
+        ...record,
+        type: 'dental',
+      })
+    ),
   ];
 
-  // Sort the combined array by date (newest first)
-  return combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return combined.sort(
+    (a, b) =>
+      new Date(b.created_at || 0) -
+      new Date(a.created_at || 0)
+  );
 };
 
-// --- CRUD Operations (You will need to update these later based on which table you are saving to) ---
+exports.getTypedExaminationById =
+  async (type, id) => {
+    const table = getTable(type);
+
+    const { data, error } =
+      await supabase
+        .from(table)
+        .select('*')
+        .eq('id', id)
+        .eq('is_archived', false)
+        .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      throwNotFound(type, id);
+    }
+
+    return {
+      ...data,
+      type,
+    };
+  };
+
 exports.getExaminationById = async (id) => {
-  // Note: To make this work properly in the future, you'll need to check both tables
-  // or pass the record type from the frontend. For now, we will leave it pointing to the empty table to avoid crashes.
-  const { data, error } = await supabase.from('examinations').select('*').eq('id', id).single();
-  if (error || !data) {
-    const err = new Error('Examination not found');
-    err.statusCode = 404;
-    throw err;
+  const medical =
+    await supabase
+      .from(TABLES.medical)
+      .select('*')
+      .eq('id', id)
+      .eq('is_archived', false)
+      .maybeSingle();
+
+  if (medical.error) {
+    throw medical.error;
   }
-  return data;
+
+  if (medical.data) {
+    return {
+      ...medical.data,
+      type: 'medical',
+    };
+  }
+
+  const dental =
+    await supabase
+      .from(TABLES.dental)
+      .select('*')
+      .eq('id', id)
+      .eq('is_archived', false)
+      .maybeSingle();
+
+  if (dental.error) {
+    throw dental.error;
+  }
+
+  if (dental.data) {
+    return {
+      ...dental.data,
+      type: 'dental',
+    };
+  }
+
+  const error = new Error(
+    'Examination not found'
+  );
+  error.statusCode = 404;
+  throw error;
 };
 
-exports.createExamination = async (data) => {
-  const { data: examination, error } = await supabase.from('examinations').insert(data).select().single();
+// ============================================================
+// CREATE / SUBMIT
+// ============================================================
+
+exports.createExamination = async (
+  type,
+  payload
+) => {
+  const table = getTable(type);
+
+  const insertPayload = {
+    ...sanitizePayload(payload),
+    status:
+      payload?.status || 'pending',
+    is_approved:
+      payload?.is_approved ?? false,
+    is_archived:
+      payload?.is_archived ?? false,
+  };
+
+  const { data, error } =
+    await supabase
+      .from(table)
+      .insert(insertPayload)
+      .select()
+      .single();
+
   if (error) throw error;
-  return examination;
+
+  return {
+    ...data,
+    type,
+  };
 };
 
-exports.updateExamination = async (id, data) => {
-  const { error } = await supabase.from('examinations').update(data).eq('id', id);
+// ============================================================
+// UPDATE
+// ============================================================
+
+exports.updateExamination = async (
+  type,
+  id,
+  payload
+) => {
+  const table = getTable(type);
+
+  const updatePayload =
+    sanitizePayload(payload);
+
+  const { data, error } =
+    await supabase
+      .from(table)
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('is_archived', false)
+      .select()
+      .maybeSingle();
+
   if (error) throw error;
-  return { id, ...data };
+
+  if (!data) {
+    throwNotFound(type, id);
+  }
+
+  return {
+    ...data,
+    type,
+  };
 };
 
-exports.deleteExamination = async (id) => {
-  const { error } = await supabase.from('examinations').delete().eq('id', id);
+// ============================================================
+// APPROVE
+// ============================================================
+
+exports.approveExamination = async (
+  type,
+  id,
+  payload = {}
+) => {
+  const table = getTable(type);
+
+  const now =
+    new Date().toISOString();
+
+  const updatePayload = {
+    ...sanitizePayload(payload),
+
+    status: 'approved',
+    is_approved: true,
+
+    // Keep an existing approval timestamp if one was supplied;
+    // otherwise record the current approval time.
+    approved_at:
+      payload?.approved_at || now,
+  };
+
+  const { data, error } =
+    await supabase
+      .from(table)
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('is_archived', false)
+      .select()
+      .maybeSingle();
+
   if (error) throw error;
-  return { id };
+
+  if (!data) {
+    throwNotFound(type, id);
+  }
+
+  return {
+    ...data,
+    type,
+  };
+};
+
+// ============================================================
+// ISSUE CERTIFICATE
+// ============================================================
+
+exports.issueCertificate = async (
+  type,
+  id,
+  payload = {}
+) => {
+  const table = getTable(type);
+
+  const current =
+    await exports.getTypedExaminationById(
+      type,
+      id
+    );
+
+  const updatePayload = {
+    ...sanitizePayload(payload),
+
+    // Certificates are only issued from an approved examination.
+    status: 'approved',
+    is_approved: true,
+
+    approved_at:
+      current.approved_at ||
+      payload?.approved_at ||
+      new Date().toISOString(),
+
+    issue_cert: true,
+
+    // A fulfilled request should no longer remain pending.
+    cert_requested: false,
+  };
+
+  const { data, error } =
+    await supabase
+      .from(table)
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('is_archived', false)
+      .select()
+      .maybeSingle();
+
+  if (error) throw error;
+
+  if (!data) {
+    throwNotFound(type, id);
+  }
+
+  return {
+    ...data,
+    type,
+  };
+};
+
+// ============================================================
+// ARCHIVE
+// ============================================================
+
+exports.archiveExamination = async (
+  type,
+  id,
+  deletedBy = null
+) => {
+  const table = getTable(type);
+
+  const { data, error } =
+    await supabase
+      .from(table)
+      .update({
+        is_archived: true,
+        deleted_by:
+          deletedBy || null,
+      })
+      .eq('id', id)
+      .eq('is_archived', false)
+      .select()
+      .maybeSingle();
+
+  if (error) throw error;
+
+  if (!data) {
+    throwNotFound(type, id);
+  }
+
+  return {
+    ...data,
+    type,
+  };
 };

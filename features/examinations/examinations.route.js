@@ -1,7 +1,6 @@
 // C:\Users\HP\MediTrack\features\examinations\examinations.route.js
 
 const express = require('express');
-
 const router = express.Router();
 
 const examinationsController = require('./examinations.controller');
@@ -9,13 +8,6 @@ const examinationsController = require('./examinations.controller');
 const {
   authorized,
 } = require('../../middleware/authorized');
-
-const validateData = require('../../validation/validate-data');
-
-const {
-  createExaminationSchema,
-  updateExaminationSchema,
-} = require('./examinations.validation');
 
 const {
   auditLog,
@@ -49,8 +41,6 @@ const normalizeConfiguredRoles = (roles) => {
 // DYNAMIC ROLE MIDDLEWARES
 // =========================================================
 
-// Allows Admin Roles + Clinic Staffs.
-// Used for creating and updating examinations.
 const allowDynamicClinicStaffs = async (
   req,
   res,
@@ -92,7 +82,9 @@ const allowDynamicClinicStaffs = async (
       ]),
     ];
 
-    if (allowedRoles.includes(userRole)) {
+    if (
+      allowedRoles.includes(userRole)
+    ) {
       return next();
     }
 
@@ -115,8 +107,6 @@ const allowDynamicClinicStaffs = async (
   }
 };
 
-// Allows configured Admin Roles only.
-// Used for deleting or archiving examinations.
 const allowDynamicAdmin = async (
   req,
   res,
@@ -149,7 +139,9 @@ const allowDynamicAdmin = async (
       ]),
     ];
 
-    if (allowedRoles.includes(userRole)) {
+    if (
+      allowedRoles.includes(userRole)
+    ) {
       return next();
     }
 
@@ -173,31 +165,21 @@ const allowDynamicAdmin = async (
 };
 
 // =========================================================
-// VIEW EXAMINATIONS
+// READ EXAMINATIONS
 // =========================================================
 
-// Get all examinations.
-// Any authenticated user.
 router.get(
   '/',
   authorized,
   examinationsController.getAllExaminations
 );
 
-// =========================================================
-// SPECIFIC EXAMINATION TYPES
-// =========================================================
-
-// Keep static routes before "/:id".
-
-// Get medical examinations.
 router.get(
   '/medical',
   authorized,
   examinationsController.getMedicalExaminations
 );
 
-// Get dental examinations.
 router.get(
   '/dental',
   authorized,
@@ -205,125 +187,215 @@ router.get(
 );
 
 // =========================================================
-// CREATE EXAMINATION
+// SUBMIT / CREATE EXAMINATION
 // =========================================================
 
-// Admin + clinic staff.
 router.post(
-  '/',
+  '/medical',
   authorized,
   allowDynamicClinicStaffs,
-
-  validateData(createExaminationSchema),
-
   auditLog(
-    'Create Examination',
+    'Submit Medical Examination',
     'EXAMINATION',
-    (req, res) => {
-      if (res.locals.auditDescription) {
-        return res.locals.auditDescription;
-      }
-
-      const examinationType =
-        req.body?.examination_type ||
-        req.body?.examinationType ||
-        req.body?.type ||
-        'medical';
-
-      return (
-        `Created a new ${examinationType} ` +
-        'examination.'
-      );
-    }
+    (req, res) =>
+      res.locals.auditDescription ||
+      'Submitted a medical examination.'
   ),
+  examinationsController.createMedicalExamination
+);
 
-  examinationsController.createExamination
+router.post(
+  '/dental',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Submit Dental Examination',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      'Submitted a dental examination.'
+  ),
+  examinationsController.createDentalExamination
 );
 
 // =========================================================
-// GET SINGLE EXAMINATION
+// APPROVE EXAMINATION
 // =========================================================
 
-// Keep dynamic "/:id" after static routes.
-router.get(
-  '/:id',
+router.patch(
+  '/medical/:id/approve',
   authorized,
-  examinationsController.getExaminationById
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Approve Medical Examination',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Approved medical examination with ID ${req.params.id}.`
+  ),
+  examinationsController.approveMedicalExamination
+);
+
+router.patch(
+  '/dental/:id/approve',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Approve Dental Examination',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Approved dental examination with ID ${req.params.id}.`
+  ),
+  examinationsController.approveDentalExamination
+);
+
+// =========================================================
+// ISSUE CERTIFICATE
+// =========================================================
+
+router.patch(
+  '/medical/:id/certificate',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Issue Medical Certificate',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Issued a medical certificate for examination ${req.params.id}.`
+  ),
+  examinationsController.issueMedicalCertificate
+);
+
+router.patch(
+  '/dental/:id/certificate',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Issue Dental Certificate',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Issued a dental certificate for examination ${req.params.id}.`
+  ),
+  examinationsController.issueDentalCertificate
 );
 
 // =========================================================
 // UPDATE EXAMINATION
 // =========================================================
 
-// Admin + clinic staff.
 router.put(
-  '/:id',
+  '/medical/:id',
   authorized,
   allowDynamicClinicStaffs,
-
-  validateData(updateExaminationSchema),
-
   auditLog(
-    'Update Examination',
+    'Update Medical Examination',
     'EXAMINATION',
-    (req, res) => {
-      return (
-        res.locals.auditDescription ||
-        `Updated examination with ID ${req.params.id}.`
-      );
-    }
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Updated medical examination with ID ${req.params.id}.`
   ),
-
-  examinationsController.updateExamination
+  examinationsController.updateMedicalExamination
 );
 
-// Optional PATCH alias for partial updates.
 router.patch(
-  '/:id',
+  '/medical/:id',
   authorized,
   allowDynamicClinicStaffs,
-
   auditLog(
-    'Update Examination',
+    'Update Medical Examination',
     'EXAMINATION',
-    (req, res) => {
-      return (
-        res.locals.auditDescription ||
-        `Updated examination with ID ${req.params.id}.`
-      );
-    }
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Updated medical examination with ID ${req.params.id}.`
   ),
+  examinationsController.updateMedicalExamination
+);
 
-  examinationsController.updateExamination
+router.put(
+  '/dental/:id',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Update Dental Examination',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Updated dental examination with ID ${req.params.id}.`
+  ),
+  examinationsController.updateDentalExamination
+);
+
+router.patch(
+  '/dental/:id',
+  authorized,
+  allowDynamicClinicStaffs,
+  auditLog(
+    'Update Dental Examination',
+    'EXAMINATION',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Updated dental examination with ID ${req.params.id}.`
+  ),
+  examinationsController.updateDentalExamination
 );
 
 // =========================================================
 // DELETE / ARCHIVE EXAMINATION
 // =========================================================
 
-// Admin only.
-//
-// This assumes examinationsService.deleteExamination()
-// archives the record. If it permanently deletes instead,
-// rename the action to "Delete Examination" and change
-// the category back to "EXAMINATION".
 router.delete(
-  '/:id',
+  '/medical/:id',
   authorized,
   allowDynamicAdmin,
-
   auditLog(
-    'Archive Examination',
+    'Archive Medical Examination',
     'ARCHIVE',
-    (req, res) => {
-      return (
-        res.locals.auditDescription ||
-        `Archived examination with ID ${req.params.id}.`
-      );
-    }
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Archived medical examination with ID ${req.params.id}.`
   ),
+  examinationsController.deleteMedicalExamination
+);
 
-  examinationsController.deleteExamination
+router.delete(
+  '/dental/:id',
+  authorized,
+  allowDynamicAdmin,
+  auditLog(
+    'Archive Dental Examination',
+    'ARCHIVE',
+    (req, res) =>
+      res.locals.auditDescription ||
+      `Archived dental examination with ID ${req.params.id}.`
+  ),
+  examinationsController.deleteDentalExamination
+);
+
+// =========================================================
+// GET SINGLE EXAMINATION
+// =========================================================
+// Keep this AFTER all named/static routes.
+
+router.get(
+  '/medical/:id',
+  authorized,
+  examinationsController.getMedicalExaminationById
+);
+
+router.get(
+  '/dental/:id',
+  authorized,
+  examinationsController.getDentalExaminationById
+);
+
+// Legacy fallback: searches medical first, then dental.
+router.get(
+  '/:id',
+  authorized,
+  examinationsController.getExaminationById
 );
 
 module.exports = router;

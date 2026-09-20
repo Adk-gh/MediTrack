@@ -13,6 +13,78 @@ import logo from '../assets/logo.jpg';
 // ─── Notification type groupings ─────────────────────────────────────────────
 const RECORD_NOTIF_TYPES = ["record_added", "record_updated"];
 
+const formatRoleLabel = (role) => {
+  const rawRole = String(role || "").trim();
+
+  if (!rawRole) return "User";
+
+  const normalized = rawRole.toLowerCase();
+
+  const roleLabels = {
+    student: "Student",
+    instructor: "Instructor",
+    faculty: "Faculty",
+    employee: "Employee",
+    staff: "Staff",
+    nurse: "Nurse",
+    doctor: "Doctor",
+    dentist: "Dentist",
+    admin: "Administrator",
+    administrator: "Administrator",
+    sysadmin: "System Administrator",
+    "system administrator": "System Administrator",
+    "non-teaching personnel": "Non-Teaching Personnel",
+    non_teaching_personnel: "Non-Teaching Personnel",
+    "teaching personnel": "Teaching Personnel",
+    teaching_personnel: "Teaching Personnel",
+  };
+
+  if (roleLabels[normalized]) {
+    return roleLabels[normalized];
+  }
+
+  return rawRole
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getStoredUserRole = () => {
+  // Prefer the currently logged-in user object because it is tied
+  // to the active session/account.
+  try {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+
+    if (storedUser?.role) {
+      return storedUser.role;
+    }
+
+    if (storedUser?.user_metadata?.role) {
+      return storedUser.user_metadata.role;
+    }
+  } catch (_) {}
+
+  // Fallback if your login flow stores role separately.
+  const directRole = localStorage.getItem("role");
+
+  if (directRole) {
+    return directRole;
+  }
+
+  // Fallback to the cached MediTrack profile.
+  try {
+    const cachedProfile = JSON.parse(
+      sessionStorage.getItem("meditrack_user_profile") || "null"
+    );
+
+    if (cachedProfile?.role) {
+      return cachedProfile.role;
+    }
+  } catch (_) {}
+
+  return "";
+};
+
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
 
 const HomeIcon = ({ active }) => (
@@ -217,11 +289,32 @@ const MOBILE_NAV = [
 
 // ─── Header Profile Dropdown ──────────────────────────────────────────────────
 
-function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
+function ProfileDropdown({ userName, userRole, onLogout, onLogoutModalChange }) {
   const [isOpen, setIsOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [displayRole, setDisplayRole] = useState(() =>
+    formatRoleLabel(userRole || getStoredUserRole())
+  );
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const refreshRole = () => {
+      setDisplayRole(
+        formatRoleLabel(userRole || getStoredUserRole())
+      );
+    };
+
+    refreshRole();
+
+    window.addEventListener("storage", refreshRole);
+    window.addEventListener("meditrackUserChanged", refreshRole);
+
+    return () => {
+      window.removeEventListener("storage", refreshRole);
+      window.removeEventListener("meditrackUserChanged", refreshRole);
+    };
+  }, [userRole]);
 
   useEffect(() => {
     if (onLogoutModalChange) {
@@ -272,7 +365,7 @@ function ProfileDropdown({ userName, onLogout, onLogoutModalChange }) {
               </p>
 
               <p className="text-xs font-bold text-slate-800 truncate">
-                {userName || "Student"}
+                {displayRole}
               </p>
             </div>
 
@@ -747,6 +840,7 @@ function DesktopShell({
   notificationCount,
   onNotificationClick,
   userName,
+  userRole,
   onLogout,
   consultUnreadCount,
   apptNotifCount,
@@ -773,7 +867,7 @@ function DesktopShell({
             count={notificationCount}
           />
 
-          <ProfileDropdown userName={userName} onLogout={onLogout} />
+          <ProfileDropdown userName={userName} userRole={userRole} onLogout={onLogout} />
         </div>
       </header>
 
@@ -859,6 +953,7 @@ function MobileShell({
   notificationCount,
   onNotificationClick,
   userName,
+  userRole,
   onLogout,
   consultUnreadCount,
   apptNotifCount,
@@ -898,6 +993,7 @@ function MobileShell({
 
           <ProfileDropdown
             userName={userName}
+            userRole={userRole}
             onLogout={onLogout}
             onLogoutModalChange={setLogoutModalOpen}
           />
@@ -946,6 +1042,7 @@ export default function UserDashboardLayout({
   onClosePreview,
   onLogout,
   userName,
+  userRole,
   userId,
   children,
 }) {
@@ -955,6 +1052,27 @@ export default function UserDashboardLayout({
   const [consultUnreadCount, setConsultUnreadCount] = useState(0);
   const [apptNotifCount, setApptNotifCount] = useState(0);
   const [recordNotifCount, setRecordNotifCount] = useState(0);
+  const [resolvedUserRole, setResolvedUserRole] = useState(() =>
+    formatRoleLabel(userRole || getStoredUserRole())
+  );
+
+  useEffect(() => {
+    const refreshRole = () => {
+      setResolvedUserRole(
+        formatRoleLabel(userRole || getStoredUserRole())
+      );
+    };
+
+    refreshRole();
+
+    window.addEventListener("storage", refreshRole);
+    window.addEventListener("meditrackUserChanged", refreshRole);
+
+    return () => {
+      window.removeEventListener("storage", refreshRole);
+      window.removeEventListener("meditrackUserChanged", refreshRole);
+    };
+  }, [userRole]);
 
   const handleNotificationClick = () => {
     setShowNotifications(true);
@@ -1292,6 +1410,7 @@ setApptNotifCount(uniqueAppointmentIds.size);
     onTabChange,
     onLogout,
     userName,
+    userRole: resolvedUserRole,
     userId,
     preview,
     onClosePreview,

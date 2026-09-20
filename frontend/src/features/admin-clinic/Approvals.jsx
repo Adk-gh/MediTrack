@@ -6,7 +6,14 @@ import { MedicalCertificate } from '../../components/MedicalCertificate';
 import { DentalExaminationReport } from '../../components/DentalExaminationReport';
 import { Medical } from './Examination/Medical';
 import { Dental } from './Examination/Dental';
-import {updateRecord} from '../../services/records.service';
+import {
+  approveMedicalExamination,
+  approveDentalExamination,
+  issueMedicalCertificate,
+  issueDentalCertificate,
+  updateMedicalExamination,
+  updateDentalExamination,
+} from '../../services/examinations.service';
 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
@@ -227,29 +234,264 @@ const StatusBadge = ({ status }) => {
 };
 
 // ============================================================
-// PAST MEDICAL RECORD HISTORY HELPERS (redesigned)
+// APPROVALS — DETAILED VISIT HISTORY HELPERS
 // ============================================================
 const SectionLabel = ({ icon, color, children }) => (
   <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-    <i className={`fa-solid ${icon} ${color}`}></i>{children}
+    <i className={`fa-solid ${icon} ${color}`}></i>
+    {children}
   </h5>
 );
 
-const HistoryGroup = ({ title, items, other, tint }) => {
+const parseHistoryJson = (value, fallback = {}) => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const asHistoryArray = (value) => {
+  const parsed = parseHistoryJson(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+};
+
+const formatHistoryDate = (value, withTime = false) => {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    ...(withTime
+      ? {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        }
+      : {}),
+  });
+};
+
+const normalizeYesNo = (value) =>
+  String(value || '').trim().toLowerCase();
+
+const getVisitTypeLabel = (type) => {
+  if (type === 'patient') return 'Patient Visit';
+  if (type === 'non_patient') return 'Non-Patient Visit';
+  return 'Unclassified';
+};
+
+const HistoryGroup = ({ title, items, other, tint = 'purple' }) => {
   const tints = {
     purple: 'bg-purple-50 text-purple-700 border-purple-100',
     fuchsia: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
     indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    cyan: 'bg-cyan-50 text-cyan-700 border-cyan-100',
   };
+
+  const safeItems = Array.isArray(items) ? items : [];
+
   return (
     <div>
-      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">{title}</p>
+      <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">
+        {title}
+      </p>
+
       <div className="flex flex-wrap gap-1.5">
-        {(items.length > 0 ? items : ['None recorded']).map((h, i) => (
-          <span key={i} className={`px-2 py-1 rounded-md text-[10px] font-bold border ${tints[tint]}`}>{h}</span>
+        {(safeItems.length > 0 ? safeItems : ['None recorded']).map((item, index) => (
+          <span
+            key={`${title}-${index}`}
+            className={`px-2 py-1 rounded-md text-[10px] font-bold border ${tints[tint] || tints.purple}`}
+          >
+            {typeof item === 'string'
+              ? item
+              : item?.label || item?.name || item?.condition || JSON.stringify(item)}
+          </span>
         ))}
       </div>
-      {other && <p className="text-[11px] text-slate-500 italic mt-1.5">Other: {other}</p>}
+
+      {other && (
+        <p className="text-[11px] text-slate-500 italic mt-1.5">
+          Other: {other}
+        </p>
+      )}
+    </div>
+  );
+};
+
+const HistoryFilterBar = ({
+  mode,
+  setMode,
+  date,
+  setDate,
+  month,
+  setMonth,
+  total,
+  filteredTotal,
+  onReset,
+}) => (
+  <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4">
+    <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-3">
+      <div>
+        <p className="text-[11px] font-extrabold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+          <i className="fa-solid fa-filter"></i>
+          Filter Visit History & Analytics
+        </p>
+        <p className="text-[10px] text-slate-400 mt-1">
+          The selected period applies to the history and summary below.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">
+            Filter By
+          </label>
+          <select
+            value={mode}
+            onChange={(event) => {
+              const nextMode = event.target.value;
+              setMode(nextMode);
+              if (nextMode !== 'date') setDate('');
+              if (nextMode !== 'month') setMonth('');
+            }}
+            className="h-9 px-2.5 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+          >
+            <option value="all">All Dates</option>
+            <option value="month">Specific Month</option>
+            <option value="date">Specific Date</option>
+          </select>
+        </div>
+
+        {mode === 'month' && (
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">
+              Month
+            </label>
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+              className="h-9 px-2.5 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+            />
+          </div>
+        )}
+
+        {mode === 'date' && (
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-slate-400 mb-1">
+              Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              className="h-9 px-2.5 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 bg-white outline-none focus:border-[#466460]"
+            />
+          </div>
+        )}
+
+        {mode !== 'all' && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition"
+          >
+            <i className="fa-solid fa-rotate-left mr-1.5"></i>
+            Reset
+          </button>
+        )}
+      </div>
+    </div>
+
+    <div className="mt-3">
+      <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+        {filteredTotal} of {total} previous visit{total !== 1 ? 's' : ''}
+      </span>
+    </div>
+  </div>
+);
+
+const HistoryAnalytics = ({ records, type }) => {
+  if (!records.length) return null;
+
+  const total = records.length;
+  const patientVisits = records.filter((record) => record.visit_type === 'patient').length;
+  const nonPatientVisits = records.filter((record) => record.visit_type === 'non_patient').length;
+  const approved = records.filter(
+    (record) =>
+      normalizeYesNo(record.status) === 'approved' ||
+      record.is_approved === true
+  ).length;
+
+  const purposeCounts = records.reduce((acc, record) => {
+    const label = String(record.visit_reason || '').trim() || 'Unspecified';
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
+
+  const topPurposes = Object.entries(purposeCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const maxPurpose = Math.max(...topPurposes.map(([, count]) => count), 1);
+
+  return (
+    <div className="rounded-xl border border-[#d1e7e5] bg-gradient-to-br from-[#f0f7f6] to-white p-4 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <p className="text-[11px] font-extrabold text-[#466460] uppercase tracking-wide">
+            Personalized {type === 'dental' ? 'Dental' : 'Medical'} History Analytics
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Descriptive summary of the patient's filtered previous visits.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        {[
+          ['Visits', total],
+          ['Patient', patientVisits],
+          ['Non-Patient', nonPatientVisits],
+          ['Approved', approved],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <p className="text-lg font-extrabold text-[#466460]">{value}</p>
+            <p className="text-[9px] font-bold uppercase text-slate-400">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">
+          Visit Purpose Distribution
+        </p>
+
+        <div className="space-y-2">
+          {topPurposes.map(([label, count]) => (
+            <div key={label}>
+              <div className="flex justify-between gap-2 mb-1">
+                <span className="text-[10px] font-semibold text-slate-600 truncate">{label}</span>
+                <span className="text-[10px] font-bold text-slate-500">{count}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#466460]"
+                  style={{ width: `${Math.round((count / maxPurpose) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
@@ -257,137 +499,202 @@ const HistoryGroup = ({ title, items, other, tint }) => {
 const PastMedicalRecord = ({ consult, defaultOpen = false }) => {
   const [open, setOpen] = useState(defaultOpen);
 
-  const parseJson = (str, fallback = {}) => {
-    if (!str) return fallback;
-    if (typeof str === 'object') return str;
-    try { return JSON.parse(str); } catch { return fallback; }
-  };
+  const vitalRaw = parseHistoryJson(consult.vital_records, {});
+  const vitals = Array.isArray(vitalRaw) ? vitalRaw[0] || {} : vitalRaw || {};
+  const questionnaire = parseHistoryJson(consult.questionnaire, {});
+  const labs = parseHistoryJson(consult.laboratory_results, {});
+  const covid = parseHistoryJson(consult.covid_history, {});
+  const surgical = asHistoryArray(consult.surgical_history);
+  const checkedMedical = asHistoryArray(consult.checked_medical);
+  const checkedFamily = asHistoryArray(consult.checked_family);
+  const checkedHealth = asHistoryArray(consult.checked_health);
 
-  const formatFullDate = (dateStr) => {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) +
-      ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  };
+  const patientInfo = parseHistoryJson(consult.patient_info, {});
+  const sex = String(patientInfo.sex || consult.sex || '').toLowerCase();
+  const isFemale = sex === 'female';
 
-  const vitalRec = (() => {
-    const v = consult.vital_records;
-    if (!v) return {};
-    if (Array.isArray(v)) return v[0] || {};
-    if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } }
-    return v;
-  })();
-
-  const labResultsRaw = parseJson(consult.laboratory_results, {});
-  const labResults = {
-    cbc: labResultsRaw.cbc?.result || consult.lab_cbc || '',
-    cbcFacility: labResultsRaw.cbc?.facility || consult.lab_cbc_facility || '',
-    ua: labResultsRaw.ua?.result || consult.lab_ua || '',
-    uaFacility: labResultsRaw.ua?.facility || consult.lab_ua_facility || '',
-    xray: labResultsRaw.xray?.result || consult.lab_xray || '',
-    xrayFacility: labResultsRaw.xray?.facility || consult.lab_xray_facility || '',
-  };
-
-  const pastMedicalHistory = consult.checked_medical || [];
-  const pastFamilyHistory = consult.checked_family || [];
-  const pastSurgicalHistory = consult.surgical_history?.map(s => `${s.operation} (${s.date})`) || [];
-  const pastQuestionnaire = parseJson(consult.questionnaire, {});
-  const pastCovidHistory = parseJson(consult.covid_history, {});
-  const dateTime = formatFullDate(consult.exam_date || consult.created_at);
+  const socialRows = [
+    ['Smoking', consult.smoking, consult.smoking_details],
+    ['Alcohol', consult.alcohol, consult.alcohol_details],
+    ['Illicit Drugs', consult.drugs, consult.drugs_details],
+  ];
 
   return (
     <div className="relative">
-      <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#466460] ring-4 ring-white"></div>
+      <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#e07a5f] ring-4 ring-white"></div>
 
       <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
         <button
+          type="button"
           onClick={() => setOpen(!open)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <i className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${open ? 'rotate-90' : ''}`}></i>
-            <div>
-              <p className="text-sm font-semibold text-slate-800">{dateTime}</p>
-              <p className="text-xs text-slate-500">
-                Physician: <span className="font-medium text-slate-600">{consult.physician || consult.nurse_on_duty || 'Unknown'}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800">
+                {formatHistoryDate(consult.exam_date || consult.created_at, true)}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {consult.physician
+                  ? `Physician: ${consult.physician}`
+                  : `Nurse on duty: ${consult.nurse_on_duty || 'Unknown'}`}
               </p>
             </div>
           </div>
-          <StatusBadge status={consult.status} />
+
+          <div className="flex items-center gap-2 shrink-0">
+            {consult.visit_type && (
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                consult.visit_type === 'patient'
+                  ? 'bg-rose-100 text-rose-700 border-rose-200'
+                  : 'bg-sky-100 text-sky-700 border-sky-200'
+              }`}>
+                {getVisitTypeLabel(consult.visit_type)}
+              </span>
+            )}
+            <StatusBadge status={consult.status} />
+          </div>
         </button>
 
         {open && (
-          <div className="p-4 space-y-4 border-t border-slate-100">
-            {(vitalRec.bp || vitalRec.pr || vitalRec.rr || vitalRec.temp) && (
-              <div>
-                <SectionLabel icon="fa-heart-pulse" color="text-rose-500">Vital Signs</SectionLabel>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                  {[
-                    { label: 'Blood Pressure', value: vitalRec.bp, unit: 'mmHg' },
-                    { label: 'Heart Rate', value: vitalRec.pr, unit: 'bpm' },
-                    { label: 'Respiratory Rate', value: vitalRec.rr, unit: 'cpm' },
-                    { label: 'Temperature', value: vitalRec.temp, unit: '°C' },
-                  ].filter(v => v.value).map((v, i) => (
-                    <div key={i} className="bg-rose-50/60 border border-rose-100 rounded-lg px-3 py-2">
-                      <p className="text-[10px] font-semibold text-rose-500 uppercase tracking-wide">{v.label}</p>
-                      <p className="text-sm font-bold text-slate-800">{v.value} <span className="text-[11px] font-medium text-slate-400">{v.unit}</span></p>
+          <div className="p-4 space-y-5 border-t border-slate-100">
+            <div>
+              <SectionLabel icon="fa-clipboard-question" color="text-[#466460]">
+                Visit Information
+              </SectionLabel>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">Reason / Purpose</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">{consult.visit_reason || 'Not recorded'}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">Classification</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">{getVisitTypeLabel(consult.visit_type)}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">School Year / Semester</p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {[consult.school_year, consult.semester].filter(Boolean).join(' · ') || 'Not recorded'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <SectionLabel icon="fa-heart-pulse" color="text-rose-500">
+                Vital Signs & Measurements
+              </SectionLabel>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                {[
+                  ['Blood Pressure', vitals.bp, 'mmHg'],
+                  ['Pulse Rate', vitals.pr, 'bpm'],
+                  ['Respiratory Rate', vitals.rr, 'cpm'],
+                  ['Temperature', vitals.temp, '°C'],
+                  ['Height', vitals.height, 'cm'],
+                  ['Weight', vitals.weight, 'kg'],
+                  ['BMI', vitals.bmi, 'kg/m²'],
+                  ['Waist', vitals.waist, 'cm'],
+                ]
+                  .filter(([, value]) => value !== undefined && value !== null && value !== '')
+                  .map(([label, value, unit]) => (
+                    <div key={label} className="bg-rose-50/60 border border-rose-100 rounded-lg px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase text-rose-500">{label}</p>
+                      <p className="text-sm font-bold text-slate-800">
+                        {value} <span className="text-[10px] text-slate-400">{unit}</span>
+                      </p>
                     </div>
                   ))}
-                </div>
-                {vitalRec.remarks && <p className="text-xs text-slate-500 italic mt-2">Remarks: {vitalRec.remarks}</p>}
-              </div>
-            )}
 
-            {(pastMedicalHistory.length > 0 || pastFamilyHistory.length > 0 || pastSurgicalHistory.length > 0 || consult.other_medical_history || consult.other_family_history) && (
+                {isFemale && (
+                  <div className="bg-pink-50 border border-pink-100 rounded-lg px-3 py-2">
+                    <p className="text-[9px] font-bold uppercase text-pink-600">Last Menstrual Period (LMP)</p>
+                    <p className="text-sm font-bold text-slate-800">
+                      {vitals.lmp ? formatHistoryDate(vitals.lmp) : 'Not recorded'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <SectionLabel icon="fa-person" color="text-orange-500">
+                Personal / Social History
+              </SectionLabel>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                {socialRows.map(([label, answer, details]) => (
+                  <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[9px] font-bold uppercase text-slate-400">{label}</p>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
+                        {answer || 'Not recorded'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">{details || 'No additional details.'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {(checkedMedical.length > 0 || checkedFamily.length > 0 || checkedHealth.length > 0 || surgical.length > 0) && (
               <div>
-                <SectionLabel icon="fa-notes-medical" color="text-purple-500">Clinical History</SectionLabel>
+                <SectionLabel icon="fa-notes-medical" color="text-purple-500">
+                  Clinical History
+                </SectionLabel>
+
                 <div className="grid md:grid-cols-3 gap-3 mt-2">
-                  <HistoryGroup title="Medical History" items={pastMedicalHistory} other={consult.other_medical_history} tint="purple" />
-                  <HistoryGroup title="Family History" items={pastFamilyHistory} other={consult.other_family_history} tint="fuchsia" />
-                  <HistoryGroup title="Surgical History" items={pastSurgicalHistory} tint="indigo" />
+                  <HistoryGroup title="Past Medical History" items={checkedMedical} other={consult.other_medical_history} tint="purple" />
+                  <HistoryGroup title="Family History" items={checkedFamily} other={consult.other_family_history} tint="fuchsia" />
+                  <HistoryGroup title="Checked Health Conditions" items={checkedHealth} tint="cyan" />
                 </div>
-              </div>
-            )}
 
-            {(labResults.cbc || labResults.ua || labResults.xray) && (
-              <div>
-                <SectionLabel icon="fa-flask" color="text-teal-500">Laboratory Results</SectionLabel>
-                <div className="grid md:grid-cols-3 gap-2 mt-2">
-                  {[
-                    { label: 'CBC', result: labResults.cbc, facility: labResults.cbcFacility },
-                    { label: 'UA', result: labResults.ua, facility: labResults.uaFacility },
-                    { label: 'CXR', result: labResults.xray, facility: labResults.xrayFacility },
-                  ].filter(t => t.result).map((t, i) => (
-                    <div key={i} className="bg-teal-50/60 border border-teal-100 rounded-lg px-3 py-2">
-                      <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide">{t.label}</p>
-                      <p className="text-sm font-semibold text-slate-800">{t.result}</p>
-                      {t.facility && <p className="text-[11px] text-slate-400">{t.facility}</p>}
+                {surgical.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-2">Surgical / Hospitalization History</p>
+                    <div className="space-y-1.5">
+                      {surgical.map((item, index) => (
+                        <div key={item.id || index} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          <span className="font-semibold">{item.operation || 'Operation'}</span>
+                          {item.date ? ` · ${formatHistoryDate(item.date)}` : ''}
+                          {item.notes ? ` · ${item.notes}` : ''}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {pastQuestionnaire && Object.keys(pastQuestionnaire).length > 0 && (
+            {Object.keys(questionnaire).length > 0 && (
               <div>
-                <SectionLabel icon="fa-circle-question" color="text-cyan-500">Health History Questionnaire</SectionLabel>
+                <SectionLabel icon="fa-circle-question" color="text-cyan-500">
+                  Health History Questionnaire
+                </SectionLabel>
+
                 <div className="space-y-1.5 mt-2">
                   {HEALTH_HISTORY_QUESTIONS.map(({ q, name, detail }) => {
-                    const answer = pastQuestionnaire?.[name];
+                    const answer = questionnaire?.[name];
                     if (answer === undefined) return null;
-                    const isYes = answer?.toLowerCase() === 'yes';
+
                     return (
-                      <div key={name} className="flex items-center justify-between gap-3 bg-slate-50 rounded-lg px-3 py-2">
-                        <span className="text-xs text-slate-600 flex-1">{q}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {detail && pastQuestionnaire?.[detail] && (
-                            <span className="text-[11px] text-slate-400 italic max-w-[180px] truncate">{pastQuestionnaire[detail]}</span>
+                      <div key={name} className="flex items-start justify-between gap-3 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                        <div className="flex-1">
+                          <p className="text-xs text-slate-600">{q}</p>
+                          {detail && questionnaire?.[detail] && (
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Details: {questionnaire[detail]}
+                            </p>
                           )}
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isYes ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                            {answer}
-                          </span>
                         </div>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                          normalizeYesNo(answer) === 'yes'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {answer}
+                        </span>
                       </div>
                     );
                   })}
@@ -395,24 +702,47 @@ const PastMedicalRecord = ({ consult, defaultOpen = false }) => {
               </div>
             )}
 
-            {pastCovidHistory && (pastCovidHistory.dose1?.vaccineName || pastCovidHistory.dose2?.vaccineName || pastCovidHistory.booster1?.vaccineName || pastCovidHistory.booster2?.vaccineName || pastCovidHistory.history) && (
+            {Object.keys(labs).length > 0 && (
               <div>
-                <SectionLabel icon="fa-syringe" color="text-lime-500">COVID-19 Vaccination</SectionLabel>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                <SectionLabel icon="fa-flask" color="text-teal-500">
+                  Laboratory Results
+                </SectionLabel>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
                   {[
-                    { label: '1st Dose', name: pastCovidHistory.dose1?.vaccineName, date: pastCovidHistory.dose1?.date },
-                    { label: '2nd Dose', name: pastCovidHistory.dose2?.vaccineName, date: pastCovidHistory.dose2?.date },
-                    { label: 'Booster 1', name: pastCovidHistory.booster1?.vaccineName, date: pastCovidHistory.booster1?.date },
-                    { label: 'Booster 2', name: pastCovidHistory.booster2?.vaccineName, date: pastCovidHistory.booster2?.date },
-                  ].filter(v => v.name).map((v, i) => (
-                    <div key={i} className="bg-lime-50/60 border border-lime-100 rounded-lg px-3 py-2">
-                      <p className="text-[10px] font-semibold text-lime-600 uppercase">{v.label}</p>
-                      <p className="text-xs font-semibold text-slate-800">{v.name}</p>
-                      {v.date && <p className="text-[11px] text-slate-400">{v.date}</p>}
+                    ['CBC', labs?.cbc],
+                    ['Urinalysis', labs?.ua],
+                    ['Chest X-Ray', labs?.xray],
+                  ].map(([label, item]) => (
+                    <div key={label} className="bg-teal-50/50 border border-teal-100 rounded-lg px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase text-teal-600">{label}</p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1">{item?.result || 'No result recorded'}</p>
+                      {item?.facility && <p className="text-[10px] text-slate-400 mt-1">{item.facility}</p>}
                     </div>
                   ))}
                 </div>
-                {pastCovidHistory.history && <p className="text-xs text-slate-500 italic mt-2">History: {pastCovidHistory.history}</p>}
+              </div>
+            )}
+
+            {Object.keys(covid).length > 0 && (
+              <div>
+                <SectionLabel icon="fa-syringe" color="text-lime-500">
+                  COVID-19 History & Vaccination
+                </SectionLabel>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  {[
+                    ['Dose 1', covid?.dose1],
+                    ['Dose 2', covid?.dose2],
+                    ['Booster 1', covid?.booster1],
+                    ['Booster 2', covid?.booster2],
+                  ].map(([label, dose]) => (
+                    <div key={label} className="bg-lime-50/50 border border-lime-100 rounded-lg px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase text-lime-600">{label}</p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1">{dose?.vaccineName || 'Not recorded'}</p>
+                      {dose?.date && <p className="text-[10px] text-slate-400">{formatHistoryDate(dose.date)}</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -421,6 +751,612 @@ const PastMedicalRecord = ({ consult, defaultOpen = false }) => {
     </div>
   );
 };
+
+const DENTAL_SURFACE_KEYS = [
+  ['topLeft', 'Top Left'],
+  ['topRight', 'Top Right'],
+  ['bottomLeft', 'Bottom Left'],
+  ['bottomRight', 'Bottom Right'],
+];
+
+const getDentalConditionColor = (condition) => {
+  const value = String(condition || '').toLowerCase();
+
+  if (value.includes('caries')) return '#fecaca';
+  if (value.includes('filled')) return '#bbf7d0';
+  if (value.includes('missing')) return '#cbd5e1';
+  if (value.includes('extraction')) return '#fda4af';
+  if (value.includes('root fragment')) return '#fde68a';
+  if (value.includes('improved')) return '#bfdbfe';
+  if (value.includes('pontic')) return '#ddd6fe';
+
+  return '#f8fafc';
+};
+
+const getDentalConditionShort = (condition) => {
+  const value = String(condition || '').toLowerCase();
+
+  if (value.includes('caries')) return 'C';
+  if (value.includes('filled')) return 'F';
+  if (value.includes('missing')) return 'M';
+  if (value.includes('extraction')) return 'X';
+  if (value.includes('root fragment')) return 'RF';
+  if (value.includes('improved')) return 'IM';
+  if (value.includes('pontic')) return 'P';
+
+  return '';
+};
+
+const ApprovalToothTopView = ({
+  surfaces = {},
+  size = 72,
+}) => {
+  const half = size / 2;
+  const radius = size / 2;
+  const center = size / 2;
+
+  const segments = [
+    {
+      key: 'topLeft',
+      x: 0,
+      y: 0,
+      path: `M ${center} ${center} L 0 ${center} A ${radius} ${radius} 0 0 1 ${center} 0 Z`,
+    },
+    {
+      key: 'topRight',
+      x: half,
+      y: 0,
+      path: `M ${center} ${center} L ${center} 0 A ${radius} ${radius} 0 0 1 ${size} ${center} Z`,
+    },
+    {
+      key: 'bottomLeft',
+      x: 0,
+      y: half,
+      path: `M ${center} ${center} L 0 ${center} A ${radius} ${radius} 0 0 0 ${center} ${size} Z`,
+    },
+    {
+      key: 'bottomRight',
+      x: half,
+      y: half,
+      path: `M ${center} ${center} L ${center} ${size} A ${radius} ${radius} 0 0 0 ${size} ${center} Z`,
+    },
+  ];
+
+  return (
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      width={size}
+      height={size}
+      className="drop-shadow-sm"
+    >
+      {segments.map((segment) => {
+        const condition = surfaces?.[segment.key] || '';
+        const fill = getDentalConditionColor(condition);
+        const short = getDentalConditionShort(condition);
+
+        return (
+          <g key={segment.key}>
+            <path
+              d={segment.path}
+              fill={fill}
+              stroke="#94a3b8"
+              strokeWidth="1.5"
+            />
+
+            {short && (
+              <text
+                x={
+                  segment.key.includes('Right')
+                    ? center + center / 2
+                    : center / 2
+                }
+                y={
+                  segment.key.includes('bottom')
+                    ? center + center / 2 + 4
+                    : center / 2 + 4
+                }
+                textAnchor="middle"
+                fontSize={short.length > 1 ? 8 : 10}
+                fontWeight="700"
+                fill="#334155"
+              >
+                {short}
+              </text>
+            )}
+          </g>
+        );
+      })}
+
+      <circle
+        cx={center}
+        cy={center}
+        r="7"
+        fill="#ffffff"
+        stroke="#94a3b8"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+};
+
+const normalizeDentalToothEntry = (entry) => {
+  if (!entry || typeof entry !== 'object') {
+    return {
+      surfaces: {},
+      operation: '',
+      format: 'unknown',
+    };
+  }
+
+  if (entry.surfaces && typeof entry.surfaces === 'object') {
+    return {
+      surfaces: entry.surfaces,
+      operation: entry.operation || '',
+      format: 'surface',
+    };
+  }
+
+  const condition = entry.condition || '';
+
+  return {
+    surfaces: condition
+      ? {
+          topLeft: condition,
+          topRight: condition,
+          bottomLeft: condition,
+          bottomRight: condition,
+        }
+      : {},
+    operation: entry.operation || '',
+    format: 'legacy',
+  };
+};
+
+const PastDentalRecord = ({ consult, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const toothData = parseHistoryJson(consult.tooth_data, {});
+  const dentalHistoryRaw = parseHistoryJson(consult.dental_history, {});
+  const dentalHistory =
+    dentalHistoryRaw?.procedures && typeof dentalHistoryRaw.procedures === 'object'
+      ? dentalHistoryRaw.procedures
+      : dentalHistoryRaw;
+
+  const intraoral = parseHistoryJson(consult.intraoral, {});
+  const treatments = parseHistoryJson(consult.treatments, {});
+  const treatmentRemarks = parseHistoryJson(consult.treatment_remarks, {});
+
+  const affectedTeeth = Object.entries(toothData)
+    .map(([toothNumber, rawEntry]) => {
+      const normalized = normalizeDentalToothEntry(rawEntry);
+
+      const surfaces = Object.entries(normalized.surfaces || {})
+        .filter(([, value]) => Boolean(value))
+        .map(([key, value]) => ({
+          key,
+          label:
+            DENTAL_SURFACE_KEYS.find(([surfaceKey]) => surfaceKey === key)?.[1] ||
+            key,
+          value,
+        }));
+
+      return {
+        toothNumber,
+        ...normalized,
+        surfaces,
+      };
+    })
+    .filter((tooth) => tooth.surfaces.length > 0 || tooth.operation);
+
+  const positiveDentalHistory = Object.entries(dentalHistory || {})
+    .filter(([, value]) => normalizeYesNo(value) === 'yes')
+    .map(([key]) => key);
+
+  const activeTreatments = Object.entries(treatments || {})
+    .filter(([, value]) => value === true)
+    .map(([key]) =>
+      key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (char) => char.toUpperCase())
+    );
+
+  const hasTreatmentRemarks = Object.values(
+    treatmentRemarks || {}
+  ).some(Boolean);
+
+  const legacyCount = Object.values(toothData || {}).filter(
+    (entry) => !entry?.surfaces && entry?.condition
+  ).length;
+
+  const surfaceCount = Object.values(toothData || {}).filter(
+    (entry) => entry?.surfaces && typeof entry.surfaces === 'object'
+  ).length;
+
+  const formatTypeLabel =
+    legacyCount > 0 && surfaceCount > 0
+      ? 'Mixed legacy + surface format'
+      : surfaceCount > 0
+      ? 'Surface-based format'
+      : legacyCount > 0
+      ? 'Legacy whole-tooth format'
+      : '';
+
+  return (
+    <div className="relative">
+      <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#3b82f6] ring-4 ring-white"></div>
+
+      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between gap-4 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <i
+              className={`fa-solid fa-chevron-right text-slate-400 text-xs transition-transform ${
+                open ? 'rotate-90' : ''
+              }`}
+            ></i>
+
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800">
+                {formatHistoryDate(
+                  consult.exam_date || consult.created_at,
+                  true
+                )}
+              </p>
+
+              <p className="text-xs text-slate-500 truncate">
+                Examined by:{' '}
+                <span className="font-medium text-slate-600">
+                  {consult.examined_by || 'Unknown'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {consult.visit_type && (
+              <span
+                className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                  consult.visit_type === 'patient'
+                    ? 'bg-rose-100 text-rose-700 border-rose-200'
+                    : 'bg-sky-100 text-sky-700 border-sky-200'
+                }`}
+              >
+                {getVisitTypeLabel(consult.visit_type)}
+              </span>
+            )}
+
+            <StatusBadge status={consult.status} />
+          </div>
+        </button>
+
+        {open && (
+          <div className="p-5 space-y-6 border-t border-slate-100">
+            {/* Visit Information */}
+            <div>
+              <SectionLabel icon="fa-clipboard-question" color="text-[#466460]">
+                Visit Information
+              </SectionLabel>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Reason / Purpose
+                  </p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {consult.visit_reason || 'Not recorded'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Classification
+                  </p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {getVisitTypeLabel(consult.visit_type)}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    School Year / Semester
+                  </p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {[consult.school_year, consult.semester]
+                      .filter(Boolean)
+                      .join(' · ') || 'Not recorded'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Exam Date
+                  </p>
+                  <p className="text-xs font-semibold text-slate-700 mt-1">
+                    {formatHistoryDate(
+                      consult.exam_date || consult.created_at,
+                      true
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                {[
+                  ['Teeth Present — Upper', consult.teeth_upper || '—'],
+                  ['Teeth Present — Lower', consult.teeth_lower || '—'],
+                  [
+                    'Last Dental Visit',
+                    consult.last_visit
+                      ? formatHistoryDate(consult.last_visit)
+                      : '—',
+                  ],
+                  ['Previous Dentist', consult.prev_dentist || '—'],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="bg-white border border-slate-200 rounded-lg px-3 py-2"
+                  >
+                    <p className="text-[9px] font-bold uppercase text-slate-400">
+                      {label}
+                    </p>
+                    <p className="text-xs font-semibold text-slate-700 mt-1">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Intraoral */}
+            {Object.keys(intraoral).length > 0 && (
+              <div>
+                <SectionLabel icon="fa-teeth" color="text-blue-500">
+                  Intraoral Examination
+                </SectionLabel>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+                  {Object.entries(intraoral)
+                    .filter(
+                      ([key, value]) =>
+                        key !== 'tmjExam' && Boolean(value)
+                    )
+                    .map(([key, value]) => (
+                      <div
+                        key={key}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
+                      >
+                        <p className="text-[9px] font-bold uppercase text-slate-400">
+                          {key
+                            .replace(/([A-Z])/g, ' $1')
+                            .replace(/^./, (char) => char.toUpperCase())}
+                        </p>
+                        <p className="text-xs font-semibold text-slate-700 mt-1">
+                          {String(value)}
+                        </p>
+                      </div>
+                    ))}
+
+                  {intraoral.tmjExam === true && (
+                    <div className="bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase text-sky-600">
+                        TMJ Examination
+                      </p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1">
+                        Examined
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Dental Chart */}
+            {affectedTeeth.length > 0 && (
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <SectionLabel icon="fa-teeth-open" color="text-blue-500">
+                    Patient Dental Chart
+                  </SectionLabel>
+
+                  {formatTypeLabel && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                      {formatTypeLabel}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-slate-400 mt-2 mb-3">
+                  Older whole-tooth records are automatically converted for display.
+                  Newer records show the four individual tooth surfaces.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {affectedTeeth.map((tooth) => (
+                    <div
+                      key={tooth.toothNumber}
+                      className="border border-slate-200 rounded-xl p-3 bg-white"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="shrink-0">
+                          <ApprovalToothTopView
+                            size={72}
+                            surfaces={tooth.surfaces.reduce(
+                              (acc, surface) => ({
+                                ...acc,
+                                [surface.key]: surface.value,
+                              }),
+                              {}
+                            )}
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-extrabold text-[#466460]">
+                              Tooth #{tooth.toothNumber}
+                            </p>
+
+                            {tooth.format === 'legacy' && (
+                              <span className="text-[8px] uppercase font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                                Legacy
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-1 mt-2">
+                            {tooth.surfaces.map((surface) => (
+                              <div
+                                key={surface.key}
+                                className="flex items-start justify-between gap-2"
+                              >
+                                <span className="text-[9px] font-bold uppercase text-slate-400">
+                                  {surface.label}
+                                </span>
+
+                                <span className="text-[10px] font-semibold text-slate-700 text-right">
+                                  {surface.value}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {tooth.operation && (
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <p className="text-[9px] font-bold uppercase text-slate-400">
+                                Operation
+                              </p>
+                              <p className="text-[10px] font-semibold text-[#466460] mt-0.5">
+                                {tooth.operation}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Dental History */}
+            {positiveDentalHistory.length > 0 && (
+              <div>
+                <SectionLabel icon="fa-clipboard-list" color="text-emerald-500">
+                  Dental History / Procedures
+                </SectionLabel>
+
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {positiveDentalHistory.map((name) => (
+                    <span
+                      key={name}
+                      className="text-[9px] px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full font-semibold"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Treatments */}
+            {(activeTreatments.length > 0 || hasTreatmentRemarks) && (
+              <div>
+                <SectionLabel
+                  icon="fa-screwdriver-wrench"
+                  color="text-indigo-500"
+                >
+                  Treatments & Remarks
+                </SectionLabel>
+
+                {activeTreatments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
+                    {activeTreatments.map((name) => (
+                      <span
+                        key={name}
+                        className="text-[9px] px-2 py-1 bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full font-semibold"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {hasTreatmentRemarks && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {Object.entries(treatmentRemarks)
+                      .filter(([, value]) => Boolean(value))
+                      .map(([key, value]) => (
+                        <div
+                          key={key}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
+                        >
+                          <p className="text-[9px] font-bold uppercase text-slate-400">
+                            {key
+                              .replace(/([A-Z])/g, ' $1')
+                              .replace(/^./, (char) => char.toUpperCase())}
+                          </p>
+                          <p className="text-xs text-slate-700 mt-1">
+                            {String(value)}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Outcome */}
+            <div>
+              <SectionLabel icon="fa-circle-check" color="text-teal-500">
+                Record Outcome
+              </SectionLabel>
+
+              <div className="flex flex-wrap gap-2 mt-2">
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    consult.is_approved
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {consult.is_approved ? 'Approved' : 'Not approved'}
+                </span>
+
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    consult.issue_cert
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {consult.issue_cert
+                    ? 'Certificate issued'
+                    : 'No certificate issued'}
+                </span>
+
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                    consult.cert_requested
+                      ? 'bg-violet-100 text-violet-700'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {consult.cert_requested
+                    ? 'Certificate requested'
+                    : 'No certificate request'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 
 export const Approvals = () => {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
@@ -469,9 +1405,13 @@ export const Approvals = () => {
   const [pendingCount, setPendingCount] = useState(0);
   const [requestedCount, setRequestedCount] = useState(0);
 
-  // State for Medical History
+  // State for Medical / Dental Visit History
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const [historyFilterMode, setHistoryFilterMode] = useState('all');
+  const [historyFilterDate, setHistoryFilterDate] = useState('');
+  const [historyFilterMonth, setHistoryFilterMonth] = useState('');
 
   // States for Certificate Toggle
   const [showApproveModal, setShowApproveModal] = useState(false);
@@ -641,8 +1581,11 @@ export const Approvals = () => {
     nurseName: record.nurse_on_duty || 'Unknown',
     physician: record.physician || '',
     schoolYear: record.school_year || '',
+    semester: record.semester || '',
     status: record.status || 'pending',
-    reason: record.reason || 'Medical Examination',
+    reason: record.visit_reason || record.reason || 'Medical Examination',
+    visitReason: record.visit_reason || '',
+    visitType: record.visit_type || '',
 
     // Certificate Details
     finding1: record.finding1,
@@ -706,6 +1649,14 @@ export const Approvals = () => {
     },
     otherMedicalHistory: record.other_medical_history || '',
     otherFamilyHistory: record.other_family_history || '',
+
+    rawRecord: record,
+    smoking: record.smoking,
+    smokingDetails: record.smoking_details,
+    alcohol: record.alcohol,
+    alcoholDetails: record.alcohol_details,
+    drugs: record.drugs,
+    drugsDetails: record.drugs_details,
   };
 });
         setExaminations(fetchedExams);
@@ -784,6 +1735,10 @@ export const Approvals = () => {
             examDate: record.exam_date || record.created_at || '',
             status: record.status,
             createdAt: record.created_at,
+            schoolYear: record.school_year || '',
+            semester: record.semester || '',
+            visitReason: record.visit_reason || '',
+            visitType: record.visit_type || '',
             dentalHistory,
             intraoral,
             toothData: toothData,
@@ -798,12 +1753,13 @@ export const Approvals = () => {
             certRequestedAt: record.cert_requested_at || null,
             age: record.age || userData.age || '',
             sex: record.sex || userData.sex || '',
-            address: record.address || userData.address || '',
+            address: userData.home_address || record.address || userData.address || '',
             lastVisit: record.last_visit,
             prevDentist: record.prev_dentist,
             university_id: record.university_id,
             teeth_upper: record.teeth_upper || '',
             teeth_lower: record.teeth_lower || '',
+            rawRecord: record,
           };
         });
 
@@ -910,6 +1866,57 @@ export const Approvals = () => {
       isMounted = false;
     };
   }, [selectedExam, examType]);
+
+  // Reset visit-history filters when the selected examination changes.
+  useEffect(() => {
+    setHistoryFilterMode('all');
+    setHistoryFilterDate('');
+    setHistoryFilterMonth('');
+  }, [selectedExam?.id, examType]);
+
+  const filteredConsultationHistory = consultationHistory.filter((record) => {
+    if (historyFilterMode === 'all') {
+      return true;
+    }
+
+    const rawDate =
+      record.exam_date ||
+      record.created_at ||
+      record.approved_at ||
+      record.updated_at;
+
+    if (!rawDate) return false;
+
+    const parsed = new Date(rawDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    if (historyFilterMode === 'date') {
+      if (!historyFilterDate) return true;
+
+      const year = parsed.getFullYear();
+      const month = String(parsed.getMonth() + 1).padStart(2, '0');
+      const day = String(parsed.getDate()).padStart(2, '0');
+
+      return `${year}-${month}-${day}` === historyFilterDate;
+    }
+
+    if (historyFilterMode === 'month') {
+      if (!historyFilterMonth) return true;
+
+      const year = parsed.getFullYear();
+      const month = String(parsed.getMonth() + 1).padStart(2, '0');
+
+      return `${year}-${month}` === historyFilterMonth;
+    }
+
+    return true;
+  });
+
+  const resetHistoryFilter = () => {
+    setHistoryFilterMode('all');
+    setHistoryFilterDate('');
+    setHistoryFilterMonth('');
+  };
 
   // Derived Filter Lists based on current data (both medical and dental)
   const allExaminations = [...examinations, ...dentalExaminations];
@@ -1118,6 +2125,10 @@ export const Approvals = () => {
         lastVisit: exam.last_visit || '',
         teethUpper: exam.teeth_upper || '',
         teethLower: exam.teeth_lower || '',
+        schoolYear: exam.schoolYear || exam.school_year || '',
+        semester: exam.semester || '',
+        visitReason: exam.visitReason || exam.visit_reason || '',
+        visitType: exam.visitType || exam.visit_type || '',
       };
       setSelectedExam(mappedExam);
     } else {
@@ -1136,12 +2147,15 @@ const handleApprove = async (exam) => {
   setLoading(true);
 
   try {
-   await updateRecord(recordId, {
-  recordType: 'medical',
-  status: 'approved',
-  is_approved: true,
-  approved_at: new Date().toISOString(),
-});
+    await approveMedicalExamination(
+      recordId,
+      {
+        status: 'approved',
+        is_approved: true,
+        approved_at:
+          new Date().toISOString(),
+      }
+    );
 
     if (activeTab === 'pending') {
       setExaminations((previous) =>
@@ -1201,12 +2215,15 @@ const handleDentalApprove = async (exam) => {
   setLoading(true);
 
   try {
- await updateRecord(recordId, {
-  recordType: 'dental',
-  status: 'approved',
-  is_approved: true,
-  approved_at: new Date().toISOString(),
-});
+    await approveDentalExamination(
+      recordId,
+      {
+        status: 'approved',
+        is_approved: true,
+        approved_at:
+          new Date().toISOString(),
+      }
+    );
 
     if (activeTab === 'pending') {
       setDentalExaminations((previous) =>
@@ -1327,21 +2344,30 @@ const handleSaveDentalReport = async (data) => {
           new Date().toISOString()
         : new Date().toISOString();
 
-await updateRecord(recordId, {
-  recordType: 'dental',
-  dental_history: updatedDentalHistory,
-  intraoral: data.intraoral || {},
-  tooth_data: data.toothData || {},
-  treatment_remarks:
-    data.treatmentRemarks || {},
-  treatments: data.treatments || {},
-  status: 'approved',
-  is_approved: true,
-  approved_at: approvedAt,
-  examined_by: data.examinedBy || null,
-  exam_date: data.examDate || null,
-  issue_cert: true,
-});
+    await issueDentalCertificate(
+      recordId,
+      {
+        dental_history:
+          updatedDentalHistory,
+        intraoral:
+          data.intraoral || {},
+        tooth_data:
+          data.toothData || {},
+        treatment_remarks:
+          data.treatmentRemarks || {},
+        treatments:
+          data.treatments || {},
+        status: 'approved',
+        is_approved: true,
+        approved_at:
+          approvedAt,
+        examined_by:
+          data.examinedBy || null,
+        exam_date:
+          data.examDate || null,
+        issue_cert: true,
+      }
+    );
 
     const updatedExam = {
       ...selectedExam,
@@ -1440,18 +2466,24 @@ const handleSubmitCertificate = async (data) => {
           new Date().toISOString()
         : new Date().toISOString();
 
-await updateRecord(recordId, {
-  recordType: 'medical',
-  status: 'approved',
-  is_approved: true,
-  finding1: data.finding1 ?? '',
-  remarks: data.remarks ?? '',
-  is_fit: data.isFit ?? true,
-  is_normal_findings:
-    data.isNormalFindings ?? true,
-  approved_at: approvedAt,
-  issue_cert: true,
-});
+    await issueMedicalCertificate(
+      recordId,
+      {
+        status: 'approved',
+        is_approved: true,
+        finding1:
+          data.finding1 ?? '',
+        remarks:
+          data.remarks ?? '',
+        is_fit:
+          data.isFit ?? true,
+        is_normal_findings:
+          data.isNormalFindings ?? true,
+        approved_at:
+          approvedAt,
+        issue_cert: true,
+      }
+    );
 
     const updatedExam = {
       ...selectedExam,
@@ -1932,6 +2964,33 @@ await updateRecord(recordId, {
           </div>
         </div>
 
+        {/* Current Visit Information */}
+        <div className="bg-white rounded-xl p-4 mb-4 border border-slate-200 shadow-sm">
+          <h4 className="text-sm font-bold text-[#466460] mb-3 uppercase tracking-wide border-b border-slate-200 pb-2">
+            <i className="fa-solid fa-clipboard-question mr-2"></i>
+            Visit Information
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase text-slate-400">Reason / Purpose</p>
+              <p className="text-xs font-semibold text-slate-700 mt-1">{exam.visitReason || 'Not recorded'}</p>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase text-slate-400">Classification</p>
+              <p className="text-xs font-semibold text-slate-700 mt-1">{getVisitTypeLabel(exam.visitType)}</p>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase text-slate-400">School Year / Semester</p>
+              <p className="text-xs font-semibold text-slate-700 mt-1">
+                {[exam.schoolYear, exam.semester].filter(Boolean).join(' · ') || 'Not recorded'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Intraoral Examination */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
           <h4 className="text-sm font-bold text-[#466460] mb-3 uppercase tracking-wide border-b border-slate-200 pb-2">
@@ -1953,214 +3012,254 @@ await updateRecord(recordId, {
           </div>
         </div>
 
-        {/* Tooth Chart */}
-        {toothData && Object.keys(toothData).length > 0 && (
-          <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
-            <h4 className="text-sm font-bold text-[#466460] mb-3 uppercase tracking-wide border-b border-slate-200 pb-2">
-              <i className="fa-solid fa-teeth-open mr-2"></i>Tooth Conditions Chart
+        {/* Patient Dental Chart — same surface-based format used in Dental.jsx */}
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-3">
+            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide">
+              <i className="fa-solid fa-teeth-open mr-2"></i>
+              Patient Dental Chart
             </h4>
 
-            {/* Summary counts - convert full names to abbreviations for counting */}
-            <div className="flex gap-4 mb-4 text-xs">
-              {(() => {
-                const conditions = { caries: 0, filled: 0, extracted: 0, missing: 0, improved: 0 };
-                Object.values(toothData).forEach(d => {
-                  const condAbbr = getConditionAbbrFromFull(d.condition);
-                  if (condAbbr && conditions.hasOwnProperty(condAbbr)) {
-                    conditions[condAbbr]++;
-                  }
-                });
-                return (
-                  <>
-                    <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                    <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                    <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                  </>
-                );
-              })()}
-            </div>
+            {(() => {
+              const entries = Object.values(toothData || {});
+              const surfaceCount = entries.filter(
+                (entry) => entry?.surfaces && typeof entry.surfaces === 'object'
+              ).length;
+              const legacyCount = entries.filter(
+                (entry) => !entry?.surfaces && entry?.condition
+              ).length;
 
-            {/* Individual teeth - display full names but use abbreviations for colors */}
-            <div className="grid grid-cols-4 gap-2">
-              {Object.entries(toothData).map(([tooth, data]) => {
-                const condAbbr = getConditionAbbrFromFull(data.condition);
-                const conditionColors = {
-                  'caries': 'bg-red-100 text-red-700 border-red-300',
-                  'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                  'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                  'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                  'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                  'root-fragment': 'bg-amber-100 text-amber-700 border-amber-300',
+              if (surfaceCount > 0 && legacyCount > 0) {
+                return (
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                    Mixed Legacy + Surface Format
+                  </span>
+                );
+              }
+
+              if (surfaceCount > 0) {
+                return (
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                    Surface-Based Format
+                  </span>
+                );
+              }
+
+              if (legacyCount > 0) {
+                return (
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                    Legacy Whole-Tooth Format
+                  </span>
+                );
+              }
+
+              return null;
+            })()}
+          </div>
+
+          {(() => {
+            const normalizedTeeth = Object.entries(toothData || {})
+              .map(([toothNumber, rawEntry]) => {
+                const normalized = normalizeDentalToothEntry(rawEntry);
+
+                const affectedSurfaces = Object.entries(normalized.surfaces || {})
+                  .filter(([, condition]) => Boolean(condition))
+                  .map(([surfaceKey, condition]) => ({
+                    surfaceKey,
+                    surfaceLabel:
+                      DENTAL_SURFACE_KEYS.find(
+                        ([key]) => key === surfaceKey
+                      )?.[1] || surfaceKey,
+                    condition,
+                  }));
+
+                return {
+                  toothNumber,
+                  ...normalized,
+                  affectedSurfaces,
                 };
-                return (
-                  <div key={tooth} className={`text-xs px-2 py-2 rounded border ${conditionColors[condAbbr] || 'bg-slate-50 text-slate-600'}`}>
-                    <span className="font-bold">#{tooth}</span>
-                    <span className="block">{data.condition || '—'}</span>
-                    {data.operation && <span className="text-[10px] opacity-75">{data.operation}</span>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+              })
+              .filter(
+                (tooth) =>
+                  tooth.affectedSurfaces.length > 0 || Boolean(tooth.operation)
+              );
 
-        {/* No tooth data */}
-        {(!toothData || Object.keys(toothData).length === 0) && (
-          <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200 shadow-sm">
-            <h4 className="text-sm font-bold text-[#466460] mb-3 uppercase tracking-wide border-b border-slate-200 pb-2">
-              <i className="fa-solid fa-teeth-open mr-2"></i>Tooth Conditions
-            </h4>
-            <p className="text-xs text-slate-400 italic">No tooth conditions recorded</p>
-          </div>
-        )}
+            const conditionCounts = {};
+
+            normalizedTeeth.forEach((tooth) => {
+              tooth.affectedSurfaces.forEach(({ condition }) => {
+                const label = String(condition || '').trim();
+                if (!label) return;
+                conditionCounts[label] = (conditionCounts[label] || 0) + 1;
+              });
+            });
+
+            const conditionSummary = Object.entries(conditionCounts)
+              .sort((a, b) => b[1] - a[1]);
+
+            if (normalizedTeeth.length === 0) {
+              return (
+                <p className="text-xs text-slate-400 italic">
+                  No tooth conditions recorded.
+                </p>
+              );
+            }
+
+            return (
+              <>
+                <p className="text-[10px] text-slate-400 mb-3">
+                  Older whole-tooth records are automatically converted for display.
+                  Newer records show the four individual tooth surfaces.
+                </p>
+
+                {conditionSummary.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {conditionSummary.map(([condition, count]) => (
+                      <span
+                        key={condition}
+                        className="text-[9px] font-bold px-2 py-1 rounded-full border border-slate-200 bg-slate-50 text-slate-600"
+                      >
+                        {condition}: {count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {normalizedTeeth.map((tooth) => (
+                    <div
+                      key={tooth.toothNumber}
+                      className="border border-slate-200 rounded-xl p-3 bg-white"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="shrink-0">
+                          <ApprovalToothTopView
+                            size={72}
+                            surfaces={tooth.surfaces}
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-extrabold text-[#466460]">
+                              Tooth #{tooth.toothNumber}
+                            </p>
+
+                            {tooth.format === 'legacy' && (
+                              <span className="text-[8px] uppercase font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                                Legacy
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-1 mt-2">
+                            {tooth.affectedSurfaces.map((surface) => (
+                              <div
+                                key={`${tooth.toothNumber}-${surface.surfaceKey}`}
+                                className="flex items-start justify-between gap-2"
+                              >
+                                <span className="text-[9px] font-bold uppercase text-slate-400">
+                                  {surface.surfaceLabel}
+                                </span>
+
+                                <span className="text-[10px] font-semibold text-slate-700 text-right">
+                                  {surface.condition}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {tooth.operation && (
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <p className="text-[9px] font-bold uppercase text-slate-400">
+                                Operation
+                              </p>
+                              <p className="text-[10px] font-semibold text-[#466460] mt-0.5">
+                                {tooth.operation}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+        </div>
 
         {/* --- Past Records History Section (Dental) --- */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#466460]/5 to-transparent">
-            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
-              <i className="fa-solid fa-clock-rotate-left"></i>Past Dental Records
-            </h4>
-            {!loadingHistory && consultationHistory.length > 0 && (
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#3b82f6]/10 to-transparent">
+            <div>
+              <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+                <i className="fa-solid fa-clock-rotate-left text-[#3b82f6]"></i>
+                Detailed Dental Visit History
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Previous dental visits, including new surface-based tooth data and older legacy records.
+              </p>
+            </div>
+
+            {!loadingHistory && (
               <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                {consultationHistory.length} record{consultationHistory.length !== 1 ? 's' : ''}
+                {filteredConsultationHistory.length} record{filteredConsultationHistory.length !== 1 ? 's' : ''}
               </span>
             )}
           </div>
 
           <div className="p-5">
+            <HistoryFilterBar
+              mode={historyFilterMode}
+              setMode={setHistoryFilterMode}
+              date={historyFilterDate}
+              setDate={setHistoryFilterDate}
+              month={historyFilterMonth}
+              setMonth={setHistoryFilterMonth}
+              total={consultationHistory.length}
+              filteredTotal={filteredConsultationHistory.length}
+              onReset={resetHistoryFilter}
+            />
+
+            <HistoryAnalytics
+              records={filteredConsultationHistory}
+              type="dental"
+            />
+
             {loadingHistory ? (
               <div className="text-center py-10 text-slate-400 text-sm">
-                <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
+                <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                Loading history...
               </div>
             ) : consultationHistory.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
                 <i className="fa-regular fa-folder-open text-2xl text-slate-300 mb-2 block"></i>
                 <p className="text-sm text-slate-400">No previous dental records found for this patient.</p>
               </div>
+            ) : filteredConsultationHistory.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-amber-200 rounded-xl bg-amber-50/50">
+                <i className="fa-solid fa-calendar-xmark text-2xl text-amber-300 mb-2 block"></i>
+                <p className="text-sm font-semibold text-amber-700">No dental visits found for this period.</p>
+                <button
+                  type="button"
+                  onClick={resetHistoryFilter}
+                  className="mt-3 px-4 py-2 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-bold"
+                >
+                  Show all visits
+                </button>
+              </div>
             ) : (
               <div className="relative pl-6">
                 <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
                 <div className="space-y-4">
-                  {consultationHistory.map((consult, idx) => {
-                    const parseJson = (str, fallback = {}) => {
-                      if (!str) return fallback;
-                      if (typeof str === 'object') return str;
-                      try { return JSON.parse(str); } catch { return fallback; }
-                    };
-                    const formatFullDate = (dateStr) => {
-                      if (!dateStr) return '—';
-                      const d = new Date(dateStr);
-                      if (isNaN(d.getTime())) return dateStr;
-                      return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) +
-                        ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                    };
-                    const dateTime = formatFullDate(consult.exam_date || consult.created_at);
-                    const cIntraoral = parseJson(consult.intraoral, {});
-                    const cToothData = parseJson(consult.tooth_data, {});
-                    const cDentalHistory = parseJson(consult.dental_history, {});
-
-                    return (
-                      <div key={consult.id || idx} className="relative">
-                        <div className="absolute -left-[27px] top-4 w-3 h-3 rounded-full bg-[#466460] ring-4 ring-white"></div>
-                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                          <div className="px-4 py-3 bg-slate-50 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">{dateTime}</p>
-                                <p className="text-xs text-slate-500">
-                                  Examined by: <span className="font-medium text-slate-600">{consult.examined_by || '—'}</span>
-                                </p>
-                              </div>
-                            </div>
-                            <StatusBadge status={consult.status} />
-                          </div>
-
-                          <div className="p-4 space-y-4">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="bg-slate-50 rounded-lg px-3 py-2">
-                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Upper Teeth</p>
-                                <p className="text-sm font-mono text-slate-700">{consult.teeth_upper || '—'}</p>
-                              </div>
-                              <div className="bg-slate-50 rounded-lg px-3 py-2">
-                                <p className="text-[10px] font-semibold text-slate-400 uppercase">Lower Teeth</p>
-                                <p className="text-sm font-mono text-slate-700">{consult.teeth_lower || '—'}</p>
-                              </div>
-                            </div>
-
-                            {cIntraoral && Object.keys(cIntraoral).some(k => cIntraoral[k]) && (
-                              <div>
-                                <SectionLabel icon="fa-teeth" color="text-[#466460]">Intraoral Examination</SectionLabel>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                                  {Object.entries(cIntraoral).filter(([k, v]) => v && k !== 'tmjExam').map(([key, val]) => (
-                                    <div key={key} className="bg-slate-50 rounded-lg px-3 py-2">
-                                      <p className="text-[10px] text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                                      <p className="text-xs font-semibold text-slate-700">{String(val)}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {cToothData && Object.keys(cToothData).length > 0 && (
-                              <div>
-                                <SectionLabel icon="fa-teeth-open" color="text-[#466460]">Tooth Conditions Chart</SectionLabel>
-                                <div className="flex gap-2 my-2 text-xs">
-                                  {(() => {
-                                    // FIX: was comparing conditions.hasOwnProperty(d.condition) directly
-                                    // against the raw stored condition string (e.g. "Filled (●)"),
-                                    // which never matched any of the lowercase keys below and so
-                                    // "Filled" never got counted here either. Route through
-                                    // getConditionAbbrFromFull for consistency with the main chart above.
-                                    const conditions = { caries: 0, filled: 0, extracted: 0 };
-                                    Object.values(cToothData).forEach(d => {
-                                      const condAbbr = getConditionAbbrFromFull(d.condition);
-                                      if (condAbbr && conditions.hasOwnProperty(condAbbr)) conditions[condAbbr]++;
-                                    });
-                                    return (
-                                      <>
-                                        <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Caries: {conditions.caries}</span>
-                                        <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">Filled: {conditions.filled}</span>
-                                        <span className="bg-pink-50 text-pink-700 px-2 py-1 rounded border border-pink-200">Extracted: {conditions.extracted}</span>
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                                <div className="grid grid-cols-4 gap-2">
-                                  {Object.entries(cToothData).map(([tooth, data]) => {
-                                    const condAbbr = getConditionAbbrFromFull(data.condition);
-                                    const conditionColors = {
-                                      'caries': 'bg-red-100 text-red-700 border-red-300',
-                                      'filled': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-                                      'extracted': 'bg-pink-100 text-pink-700 border-pink-300',
-                                      'missing': 'bg-slate-100 text-slate-600 border-slate-300',
-                                      'improved': 'bg-blue-100 text-blue-700 border-blue-300',
-                                    };
-                                    return (
-                                      <div key={tooth} className={`p-2 rounded border text-center ${conditionColors[condAbbr] || 'bg-slate-100 text-slate-600 border-slate-300'}`}>
-                                        <span className="block font-bold text-xs">#{tooth}</span>
-                                        <span className="block text-[10px] capitalize">{data.condition || '—'}</span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {cDentalHistory && Object.keys(cDentalHistory).some(k => cDentalHistory[k] === 'Yes') && (
-                              <div>
-                                <SectionLabel icon="fa-clipboard-list" color="text-[#466460]">Procedures Done</SectionLabel>
-                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                  {Object.entries(cDentalHistory).filter(([key, val]) => val === 'Yes' && !key.startsWith('d')).map(([key]) => (
-                                    <span key={key} className="text-[10px] px-2 py-1 bg-emerald-100 text-[#466460] rounded-full font-semibold">{key}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {filteredConsultationHistory.map((consult, index) => (
+                    <PastDentalRecord
+                      key={consult.id || index}
+                      consult={consult}
+                      defaultOpen={index === 0}
+                    />
+                  ))}
                 </div>
               </div>
             )}
@@ -2240,6 +3339,34 @@ await updateRecord(recordId, {
             <div>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Examining Physician</p>
               <p className="text-base font-semibold text-slate-800">{exam.physician || '—'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Current Visit Information */}
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm relative overflow-hidden mb-4">
+          <div className="absolute left-0 top-0 w-1 h-full bg-[#466460]"></div>
+          <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <i className="fa-solid fa-clipboard-question text-[#466460]"></i>
+            Visit Information
+          </h5>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase text-slate-400">Reason / Purpose</p>
+              <p className="text-xs font-semibold text-slate-700 mt-1">{exam.visitReason || exam.reason || 'Not recorded'}</p>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase text-slate-400">Classification</p>
+              <p className="text-xs font-semibold text-slate-700 mt-1">{getVisitTypeLabel(exam.visitType)}</p>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase text-slate-400">School Year / Semester</p>
+              <p className="text-xs font-semibold text-slate-700 mt-1">
+                {[exam.schoolYear, exam.semester].filter(Boolean).join(' · ') || 'Not recorded'}
+              </p>
             </div>
           </div>
         </div>
@@ -2539,40 +3666,76 @@ await updateRecord(recordId, {
           </div>
         )}
 
-        {/* --- Past Records History Section (Medical - redesigned timeline) --- */}
+        {/* --- Past Records History Section (Medical) --- */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#466460]/5 to-transparent">
-            <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
-              <i className="fa-solid fa-clock-rotate-left"></i>
-              {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data) ? 'Past Dental Records' : 'Past Medical Records'}
-            </h4>
-            {!loadingHistory && consultationHistory.length > 0 && (
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#e07a5f]/10 to-transparent">
+            <div>
+              <h4 className="text-sm font-bold text-[#466460] uppercase tracking-wide flex items-center gap-2">
+                <i className="fa-solid fa-clock-rotate-left text-[#e07a5f]"></i>
+                Detailed Medical Visit History
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Previous visits include vitals, LMP, social history, questionnaire, checked health conditions, labs, and vaccination data.
+              </p>
+            </div>
+
+            {!loadingHistory && (
               <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                {consultationHistory.length} record{consultationHistory.length !== 1 ? 's' : ''}
+                {filteredConsultationHistory.length} record{filteredConsultationHistory.length !== 1 ? 's' : ''}
               </span>
             )}
           </div>
 
           <div className="p-5">
+            <HistoryFilterBar
+              mode={historyFilterMode}
+              setMode={setHistoryFilterMode}
+              date={historyFilterDate}
+              setDate={setHistoryFilterDate}
+              month={historyFilterMonth}
+              setMonth={setHistoryFilterMonth}
+              total={consultationHistory.length}
+              filteredTotal={filteredConsultationHistory.length}
+              onReset={resetHistoryFilter}
+            />
+
+            <HistoryAnalytics
+              records={filteredConsultationHistory}
+              type="medical"
+            />
+
             {loadingHistory ? (
               <div className="text-center py-10 text-slate-400 text-sm">
-                <i className="fa-solid fa-spinner fa-spin mr-2"></i>Loading history...
+                <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                Loading history...
               </div>
             ) : consultationHistory.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50">
                 <i className="fa-regular fa-folder-open text-2xl text-slate-300 mb-2 block"></i>
-                <p className="text-sm text-slate-400">
-                  {(selectedExam?.dentalHistory || selectedExam?.toothData || selectedExam?.dental_history || selectedExam?.tooth_data)
-                    ? 'No previous dental records found for this patient.'
-                    : 'No previous medical records found for this patient.'}
-                </p>
+                <p className="text-sm text-slate-400">No previous medical records found for this patient.</p>
+              </div>
+            ) : filteredConsultationHistory.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-amber-200 rounded-xl bg-amber-50/50">
+                <i className="fa-solid fa-calendar-xmark text-2xl text-amber-300 mb-2 block"></i>
+                <p className="text-sm font-semibold text-amber-700">No medical visits found for this period.</p>
+                <button
+                  type="button"
+                  onClick={resetHistoryFilter}
+                  className="mt-3 px-4 py-2 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-bold"
+                >
+                  Show all visits
+                </button>
               </div>
             ) : (
               <div className="relative pl-6">
                 <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200"></div>
                 <div className="space-y-4">
-                  {consultationHistory.map((consult, idx) => (
-                    <PastMedicalRecord key={consult.id || idx} consult={consult} defaultOpen={idx === 0} />
+                  {filteredConsultationHistory.map((consult, index) => (
+                    <PastMedicalRecord
+                      key={consult.id || index}
+                      consult={consult}
+                      defaultOpen={index === 0}
+                    />
                   ))}
                 </div>
               </div>
@@ -3049,18 +4212,38 @@ await updateRecord(recordId, {
                 onClick={async () => {
                   setLoading(true);
                   try {
-                    const table = examType === 'dental' ? 'dental_records' : 'medical_records';
-                    const { error } = await supabase
-                      .from(table)
-                      .update({
-                        status: editData.status,
-                        is_approved: editData.status === 'approved',
-                        approved_at: editData.status === 'approved' ? new Date().toISOString() : null,
-                        issue_cert: editData.issue_cert,
-                      })
-                      .eq('id', selectedExam.recordId || selectedExam.id);
+                    const recordId =
+                      selectedExam.recordId ||
+                      selectedExam.id;
 
-                    if (error) throw error;
+                    const updates = {
+                      status:
+                        editData.status,
+                      is_approved:
+                        editData.status ===
+                        'approved',
+                      approved_at:
+                        editData.status ===
+                        'approved'
+                          ? new Date().toISOString()
+                          : null,
+                      issue_cert:
+                        editData.issue_cert,
+                    };
+
+                    if (
+                      examType === 'dental'
+                    ) {
+                      await updateDentalExamination(
+                        recordId,
+                        updates
+                      );
+                    } else {
+                      await updateMedicalExamination(
+                        recordId,
+                        updates
+                      );
+                    }
 
                     // Update local state
                     const updatedExam = {
