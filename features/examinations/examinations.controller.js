@@ -1,6 +1,7 @@
 // C:\Users\HP\MediTrack\features\examinations\examinations.controller.js
 
 const examinationsService = require('./examinations.service');
+const { sendNotification } = require('../../utils/notifier');
 
 // ============================================================
 // HELPERS
@@ -301,87 +302,62 @@ const createExamination = async (
 // UPDATE EXAMINATION
 // ============================================================
 
-const updateExamination = async (
-  req,
-  res,
-  next
-) => {
+const updateExamination = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Examination ID is required.',
-      });
+      return res.status(400).json({ success: false, message: 'Examination ID is required.' });
     }
 
-    const result =
-      await examinationsService.updateExamination(
-        id,
-        req.body
-      );
+    const result = await examinationsService.updateExamination(id, req.body);
 
-    const examinationId =
-      resolveExaminationId(result, id);
+    const examinationId = resolveExaminationId(result, id);
+    const examinationType = resolveExaminationType(result, req.body);
+    const patientId = resolvePatientId(result, req.body);
+    const patientName = resolvePatientName(result, req.body);
+    const readableType = examinationType ? String(examinationType).replace(/_/g, ' ').trim() : 'health';
 
-    const examinationType =
-      resolveExaminationType(
-        result,
-        req.body
-      );
+    // 1. Check if this specific update is an APPROVAL
+    const isApproval = req.body?.status?.toLowerCase() === 'approved' || req.body?.is_approved === true;
 
-    const patientId =
-      resolvePatientId(
-        result,
-        req.body
-      );
-
-    const patientName =
-      resolvePatientName(
-        result,
-        req.body
-      );
-
-    const readableType =
-      examinationType
-        ? String(examinationType)
-            .replace(/_/g, ' ')
-            .trim()
-        : 'health';
-
-    let description =
-      `Updated ${readableType} examination with ID ${examinationId}`;
+    // 2. Format the exact string for your Audit Log
+    let description = isApproval
+      ? `Approved ${readableType} examination with ID ${examinationId}`
+      : `Updated ${readableType} examination with ID ${examinationId}`;
 
     if (patientName) {
       description += ` for ${patientName}`;
     }
-
     description += '.';
 
-    setAuditData(
-      res,
-      description,
-      {
-        operation: 'update_examination',
-        examinationId,
-        examinationType,
-        patientId,
-        patientName,
-        updatedFields: Object.keys(
-          req.body || {}
-        ),
-        status:
-          result?.status ||
-          req.body?.status ||
-          null,
-        updatedBy: {
-          id: resolveActorId(req),
-          email: req.user?.email || null,
-          name: resolveActorName(req),
-        },
-      }
-    );
+    // This data gets caught by the auditLog middleware in your routes!
+    setAuditData(res, description, {
+      operation: isApproval ? 'approve_examination' : 'update_examination',
+      examinationId,
+      examinationType,
+      patientId,
+      patientName,
+      updatedFields: Object.keys(req.body || {}),
+      status: result?.status || req.body?.status || null,
+      updatedBy: {
+        id: resolveActorId(req),
+        email: req.user?.email || null,
+        name: resolveActorName(req),
+      },
+    });
+
+    // 3. Send a Red Bell Notification to the Patient if it's an approval
+    if (isApproval && patientId) {
+      await sendNotification({
+        userId: patientId,
+        type: 'approval', // Matches the CheckIcon in your frontend notifications
+        title: 'Record Approved',
+        message: `Your ${readableType} examination record has been verified and approved by the clinic.`,
+        referenceId: examinationId,
+        referenceType: examinationType === 'dental' ? 'dental_record' : 'medical_record'
+      });
+    }
 
     return res.status(200).json({
       success: true,

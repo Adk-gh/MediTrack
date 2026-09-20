@@ -9,7 +9,14 @@ export const registerSchema = z.object({
   middleName: z.string().optional(),
   suffix: z.string().optional(),
   email: z.string().email("Invalid email format"),
-  universityId: z.string().min(1, "University ID is required"),
+  universityId: z
+  .string()
+  .trim()
+  .min(1, "University ID is required")
+  .regex(
+    /^(?:\d{2}-\d{5}|\d{4}-\d{4})$/,
+    "University ID must use XX-XXXXX or XXXX-XXXX format"
+  ),
   password: z.string().min(8, "Password must be at least 8 characters"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {

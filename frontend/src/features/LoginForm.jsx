@@ -39,6 +39,27 @@ const LoginForm = () => {
     setTouched(prev => ({ ...prev, [field]: true }));
   };
 
+  // Helper to make API errors more user-friendly and actionable
+  const enhanceErrorMessage = (msg) => {
+    if (!msg) return 'An unexpected error occurred. Please try again.';
+    const lowerMsg = msg.toLowerCase();
+
+    if (lowerMsg.includes('verify') || lowerMsg.includes('verified') || lowerMsg.includes('confirm')) {
+      return `${msg}. Please check your email inbox (and spam folder) for the verification link, or request a new one below.`;
+    }
+    if (lowerMsg.includes('invalid') || lowerMsg.includes('credential') || lowerMsg.includes('password') || lowerMsg.includes('match')) {
+      return 'The email or password you entered is incorrect. Please check for typos or try resetting your password.';
+    }
+    if (lowerMsg.includes('not found') || lowerMsg.includes('no account') || lowerMsg.includes('exist')) {
+      return "We couldn't find an account with that email address. Please create an account or try another email.";
+    }
+    if (lowerMsg.includes('network') || lowerMsg.includes('failed to fetch')) {
+      return "We're having trouble connecting to the server. Please check your internet connection and try again.";
+    }
+
+    return msg; // Fallback to the original message if no keywords match
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = { email, password };
@@ -50,15 +71,17 @@ const LoginForm = () => {
       return;
     }
     setError('');
+    setShowResendVerification(false);
     setLoading(true);
     showLoading('Signing in', 'light');
+
     try {
       const response = await authService.login({ email, password });
 
       if (response.needsVerification) {
         hideLoading();
         setLoading(false);
-        setError(`${response.message} You can request a new verification email below.`);
+        setError(`${response.message}. Please check your email inbox to verify your account, or request a new link below.`);
         setShowResendVerification(true);
         return;
       }
@@ -82,11 +105,20 @@ const LoginForm = () => {
           navigate('/student/meditrack');
         }
       } else {
-        setError(response.message || 'Login failed');
+        const enhancedError = enhanceErrorMessage(response.message || 'Login failed');
+        setError(enhancedError);
+        // Automatically show the resend button if the error mentions verifying/confirming
+        if (enhancedError.toLowerCase().includes('verify') || enhancedError.toLowerCase().includes('confirm')) {
+          setShowResendVerification(true);
+        }
       }
     } catch (err) {
       hideLoading();
-      setError(err.message || 'Invalid email or password');
+      const enhancedError = enhanceErrorMessage(err.message || 'Invalid email or password');
+      setError(enhancedError);
+      if (enhancedError.toLowerCase().includes('verify') || enhancedError.toLowerCase().includes('confirm')) {
+        setShowResendVerification(true);
+      }
     } finally {
       setLoading(false);
     }

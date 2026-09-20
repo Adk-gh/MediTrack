@@ -205,6 +205,32 @@ const normalizePatient = (uid, d = {}) => {
       d.dentalHistory ||
       d.dental_history ||
       {},
+
+    appointmentId:
+      d.appointmentId ||
+      d.appointment_id ||
+      '',
+
+    appointmentReason:
+      d.appointmentReason ||
+      d.appointment_reason ||
+      d.visitReason ||
+      d.visit_reason ||
+      d.reason ||
+      '',
+
+    visitReason:
+      d.visitReason ||
+      d.visit_reason ||
+      d.appointmentReason ||
+      d.appointment_reason ||
+      d.reason ||
+      '',
+
+    visitType:
+      d.visitType ||
+      d.visit_type ||
+      '',
   };
 };
 
@@ -215,6 +241,15 @@ export const Examinations = ({
   const navigate = useNavigate();
 
   const patientId = searchParams.get('patientId');
+  const appointmentId = searchParams.get('appointmentId') || '';
+  const visitReasonParam =
+    searchParams.get('visitReason') ||
+    searchParams.get('reason') ||
+    '';
+  const requestedExamType =
+    searchParams.get('examType') ||
+    searchParams.get('type') ||
+    '';
 
   /**
    * Determine which examination tabs the current role can access.
@@ -285,6 +320,13 @@ export const Examinations = ({
       setExamTab(availableTabs[0].key);
     }
   }, [availableTabs, examTab]);
+
+  useEffect(() => {
+    const requestedTab = String(requestedExamType || '').toLowerCase();
+    if (availableTabs.some(tab => tab.key === requestedTab)) {
+      setExamTab(requestedTab);
+    }
+  }, [requestedExamType, availableTabs]);
 
   /**
    * Fetch the selected patient.
@@ -376,7 +418,12 @@ export const Examinations = ({
           setSelectedPatient(
             normalizePatient(
               patient.id || patientId,
-              patient
+              {
+                ...patient,
+                appointmentId,
+                visitReason: visitReasonParam || patient.visit_reason || '',
+                visitType: patient.visit_type || '',
+              }
             )
           );
 
@@ -452,7 +499,35 @@ export const Examinations = ({
                   parsed?.uid ||
                     patientData?.id ||
                     patientId,
-                  patientData
+                  {
+                    ...patientData,
+                    appointmentId:
+                      appointmentId ||
+                      parsed?.appointmentId ||
+                      parsed?.appointment_id ||
+                      patientData?.appointmentId ||
+                      patientData?.appointment_id ||
+                      '',
+                    visitReason:
+                      visitReasonParam ||
+                      parsed?.visitReason ||
+                      parsed?.visit_reason ||
+                      parsed?.appointmentReason ||
+                      parsed?.appointment_reason ||
+                      parsed?.reason ||
+                      patientData?.visitReason ||
+                      patientData?.visit_reason ||
+                      patientData?.appointmentReason ||
+                      patientData?.appointment_reason ||
+                      patientData?.reason ||
+                      '',
+                    visitType:
+                      parsed?.visitType ||
+                      parsed?.visit_type ||
+                      patientData?.visitType ||
+                      patientData?.visit_type ||
+                      '',
+                  }
                 )
               );
 
@@ -495,7 +570,7 @@ export const Examinations = ({
     return () => {
       cancelled = true;
     };
-  }, [patientId]);
+  }, [patientId, appointmentId, visitReasonParam]);
 
   /**
    * Show toast message.

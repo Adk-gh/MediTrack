@@ -1,5 +1,3 @@
-// frontend/src/features/SignupForm.jsx
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
@@ -172,8 +170,8 @@ const getPasswordRequirements = (rules) => {
 };
 
 const validatePassword = (password, rules) => {
-  if (!rules) return { valid: false, message: 'Password requirements are still loading. Please try again.' };
-  const requirements = getPasswordRequirements(rules);
+  const activeRules = rules || DEFAULT_PASSWORD_RULES;
+  const requirements = getPasswordRequirements(activeRules);
   const failedRequirements = requirements.filter((r) => !r.test(password));
   if (failedRequirements.length > 0) {
     return {
@@ -187,10 +185,8 @@ const validatePassword = (password, rules) => {
 
 // Password requirements checklist component
 const PasswordRequirements = ({ password, rules, mobile = false }) => {
-  if (!rules) {
-    return <div className={mobile ? 'm-password-loading' : 'lf-password-loading'}>Loading password requirements…</div>;
-  }
-  const requirements = getPasswordRequirements(rules);
+  const activeRules = rules || DEFAULT_PASSWORD_RULES;
+  const requirements = getPasswordRequirements(activeRules);
   if (requirements.length === 0) return null;
 
   return (
@@ -242,24 +238,34 @@ const SignupForm = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Dynamic password rules (from system config)
-  const [passwordRules, setPasswordRules] = useState(null);
-  const [passwordRulesLoading, setPasswordRulesLoading] = useState(true);
-  const [passwordRulesError, setPasswordRulesError] = useState(false);
+  // Start with safe local rules so signup keeps working while the database
+  // configuration loads or when the request is unavailable.
+  const [passwordRules, setPasswordRules] = useState(DEFAULT_PASSWORD_RULES);
 
-  const normalizeRules = (raw) => ({
-    minLength: Number(raw.minLength),
-    requireUppercase: raw.requireUppercase === true,
-    requireLowercase: raw.requireLowercase === true,
-    requireNumber: raw.requireNumber === true,
-    requireSpecialCharacter: raw.requireSpecialCharacter === true,
+  const normalizeRules = (raw = {}) => ({
+    minLength: Number(raw.minLength ?? DEFAULT_PASSWORD_RULES.minLength),
+    requireUppercase:
+      raw.requireUppercase === true || raw.requireUppercase === 'true',
+    requireLowercase:
+      raw.requireLowercase === true || raw.requireLowercase === 'true',
+    requireNumber:
+      raw.requireNumber === true || raw.requireNumber === 'true',
+    requireSpecialCharacter:
+      raw.requireSpecialCharacter === true ||
+      raw.requireSpecialCharacter === 'true',
   });
 
   const fetchPasswordRules = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
-      setPasswordRulesLoading(true);
-      setPasswordRulesError(false);
-      const response = await fetch(`${API_URL}/system-config`, { method: 'GET', headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`Failed to fetch system configuration (${response.status})`);
+      const response = await fetch(`${API_URL}/system-config/password-rules`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Failed to fetch password rules (${response.status})`);
       const result = await response.json();
       if (!result.success || !result.data || !result.data.password_rules) {
         throw new Error('Password rules were not returned by the server.');
@@ -271,10 +277,10 @@ const SignupForm = () => {
       setPasswordRules(normalizedRules);
     } catch (err) {
       console.error('[Signup] Failed to fetch password rules:', err);
-      setPasswordRules(null);
-      setPasswordRulesError(true);
+      // Keep signup available with the local fallback requirements.
+      setPasswordRules({ ...DEFAULT_PASSWORD_RULES });
     } finally {
-      setPasswordRulesLoading(false);
+      clearTimeout(timeoutId);
     }
   };
 
@@ -326,8 +332,11 @@ const SignupForm = () => {
     setTouched((prev) => ({ ...prev, [field]: true }));
 
     // Specific check for password rules on blur
-    if (field === 'password' && passwordRules) {
-      const pwCheck = validatePassword(formData.password, passwordRules);
+    if (field === 'password') {
+      const pwCheck = validatePassword(
+        formData.password,
+        passwordRules || DEFAULT_PASSWORD_RULES
+      );
       if (!pwCheck.valid && formData.password.length > 0) {
         setFieldErrors(prev => ({ ...prev, password: pwCheck.message }));
       }
@@ -365,25 +374,8 @@ const SignupForm = () => {
     setError('');
     setSuccess('');
 
-    let activePasswordRules = passwordRules;
-
-    // Attempt to fetch rules one last time if they failed initially
-    if (!activePasswordRules) {
-      try {
-        setPasswordRulesLoading(true);
-        const response = await fetch(`${API_URL}/system-config`, { method: 'GET', headers: { Accept: 'application/json' } });
-        const result = await response.json();
-        activePasswordRules = normalizeRules(result.data.password_rules);
-        setPasswordRules(activePasswordRules);
-        setPasswordRulesError(false);
-      } catch (err) {
-        setError('Unable to load the current password requirements. Please try again.');
-        setPasswordRulesLoading(false);
-        return;
-      } finally {
-        setPasswordRulesLoading(false);
-      }
-    }
+    // Never block signup solely because system configuration is unavailable.
+    const activePasswordRules = passwordRules || DEFAULT_PASSWORD_RULES;
 
     // --- Unified Error Checking ---
     const newErrors = {};
@@ -789,9 +781,9 @@ const SignupForm = () => {
 
             {/* Actions */}
             <div className="lf-desktop-actions">
-              <button type="submit" disabled={loading || passwordRulesLoading} className="lf-btn-primary-desktop">
+              <button type="submit" disabled={loading} className="lf-btn-primary-desktop">
                 {loading && <span className="lf-spinner" />}
-                {loading ? 'Processing…' : passwordRulesLoading ? 'Loading requirements…' : 'Create Account'}
+                {loading ? 'Processing…' : 'Create Account'}
               </button>
               <div className="lf-desktop-link">Already have an account? <Link to="/login">Sign in</Link></div>
             </div>
@@ -923,9 +915,9 @@ const SignupForm = () => {
               {hasError('idPhoto') && <span className="m-field-error">{fieldErrors.idPhoto}</span>}
             </div>
 
-            <button type="submit" disabled={loading || passwordRulesLoading} className="m-btn-primary">
+            <button type="submit" disabled={loading} className="m-btn-primary">
               {loading && <span className="lf-spinner" />}
-              {loading ? 'Creating account…' : passwordRulesLoading ? 'Loading requirements…' : 'Sign up'}
+              {loading ? 'Creating account…' : 'Sign up'}
             </button>
 
             <p className="m-footer">Already have an account? <Link to="/login">Sign in</Link></p>

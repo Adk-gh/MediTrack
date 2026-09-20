@@ -1,5 +1,3 @@
-// C:\Users\HP\MediTrack\routes\systemConfig.route.js
-
 const express = require('express');
 
 const router = express.Router();
@@ -15,6 +13,18 @@ const {
 const {
   auditLog,
 } = require('../middleware/auditLogger');
+
+// ============================================================
+// GET PUBLIC PASSWORD RULES (UNAUTHENTICATED)
+// ============================================================
+//
+// Accessible by public users during signup.
+//
+
+router.get(
+  '/password-rules',
+  systemConfigController.getPublicPasswordRules
+);
 
 // ============================================================
 // GET SYSTEM CONFIGURATION

@@ -5,7 +5,8 @@ const multer = require('multer');
 
 const router = express.Router();
 
-const announcementsController = require('./announcements.controller');
+const announcementsController =
+  require('./announcements.controller');
 
 const {
   authorized,
@@ -15,7 +16,8 @@ const {
   getSystemConfig,
 } = require('../../services/systemConfig.service');
 
-const validateData = require('../../validation/validate-data');
+const validateData =
+  require('../../validation/validate-data');
 
 const {
   createAnnouncementSchema,
@@ -89,9 +91,8 @@ const allowDynamicClinicStaffs = async (
   next
 ) => {
   try {
-    const userRole = normalizeRole(
-      req.user?.role
-    );
+    const userRole =
+      normalizeRole(req.user?.role);
 
     if (!userRole) {
       return res.status(403).json({
@@ -101,7 +102,8 @@ const allowDynamicClinicStaffs = async (
       });
     }
 
-    const config = await getSystemConfig();
+    const config =
+      await getSystemConfig();
 
     const clinicRoles =
       normalizeConfiguredRoles(
@@ -124,7 +126,9 @@ const allowDynamicClinicStaffs = async (
       ]),
     ];
 
-    if (allowedRoles.includes(userRole)) {
+    if (
+      allowedRoles.includes(userRole)
+    ) {
       return next();
     }
 
@@ -157,6 +161,17 @@ router.get(
   announcementsController.getAllAnnouncements
 );
 
+// =========================================================
+// PUBLIC SOCIAL SHARE PAGE
+// =========================================================
+
+// IMPORTANT:
+// This must appear before "/:id".
+router.get(
+  '/share/:id',
+  announcementsController.getAnnouncementSharePage
+);
+
 // Anyone can view a specific announcement.
 router.get(
   '/:id',
@@ -176,7 +191,9 @@ router.post(
   // so multipart fields are available in req.body.
   upload.single('image'),
 
-  validateData(createAnnouncementSchema),
+  validateData(
+    createAnnouncementSchema
+  ),
 
   auditLog(
     'Create Announcement',
@@ -202,10 +219,11 @@ router.put(
   '/:id',
   authorized,
   allowDynamicClinicStaffs,
-
   upload.single('image'),
 
-  validateData(updateAnnouncementSchema),
+  validateData(
+    updateAnnouncementSchema
+  ),
 
   auditLog(
     'Update Announcement',
@@ -226,7 +244,6 @@ router.patch(
   '/:id',
   authorized,
   allowDynamicClinicStaffs,
-
   upload.single('image'),
 
   auditLog(
@@ -270,22 +287,32 @@ router.delete(
 // MULTER ERROR HANDLER
 // =========================================================
 
-// Handles invalid file type and file-size errors cleanly.
 router.use((error, req, res, next) => {
-  if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Announcement image must not exceed 20 MB.',
-      });
+  if (
+    error instanceof
+    multer.MulterError
+  ) {
+    if (
+      error.code ===
+      'LIMIT_FILE_SIZE'
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message:
+            'Announcement image must not exceed 20 MB.',
+        });
     }
 
-    return res.status(400).json({
-      success: false,
-      message:
-        error.message || 'File upload failed.',
-    });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message:
+          error.message ||
+          'File upload failed.',
+      });
   }
 
   if (
@@ -293,10 +320,12 @@ router.use((error, req, res, next) => {
       'Invalid image type'
     )
   ) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: error.message,
+      });
   }
 
   return next(error);

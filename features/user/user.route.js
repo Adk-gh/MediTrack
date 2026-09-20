@@ -26,6 +26,22 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+// Separate uploader so registration can continue accepting ID images.
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 10,
+  },
+  fileFilter: (req, file, callback) => {
+    if (!/\.(xlsx|xls)$/i.test(file.originalname)) {
+      return callback(new Error('Only XLSX or XLS files are allowed.'));
+    }
+
+    callback(null, true);
+  },
+});
+
 // =========================================================
 // HELPERS
 // =========================================================
@@ -240,6 +256,20 @@ const allowDynamicAdmin = async (
   }
 };
 
+// Allows the System Administrator only.
+const allowSysadmin = (req, res, next) => {
+  const userRole = String(req.user?.role || '').trim().toLowerCase();
+
+  if (userRole !== 'sysadmin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Only the System Administrator can import university IDs.',
+    });
+  }
+
+  next();
+};
+
 // =========================================================
 // PUBLIC ROUTES
 // =========================================================
@@ -429,6 +459,21 @@ router.put(
 // =========================================================
 // USER MANAGEMENT
 // =========================================================
+
+router.post(
+  '/university-ids/import',
+  authorized,
+  allowSysadmin,
+  excelUpload.array('files', 10),
+  auditLog(
+    'Import University IDs',
+    'USER MANAGEMENT',
+    (req, res) =>
+      res.locals.auditDescription ||
+      'System Administrator imported university IDs from Excel.'
+  ),
+  userController.importUniversityIds
+);
 
 const getAllUsers = async (
   req,

@@ -1,5 +1,3 @@
-// C:\Users\HP\MediTrack\controllers\systemConfig.controller.js
-
 const systemConfigService = require('../services/systemConfig.service');
 const notificationsService =
   require('../features/notifications/notifications.service');
@@ -243,31 +241,31 @@ const updateSystemConfig = async (
     // true  -> false = keep version
     // false -> false = keep version
     // ---------------------------------------------------------
-// Read the current value before updating so we can detect false -> true.
-const previousConfig =
-  await systemConfigService.getSystemConfig(true);
+    // Read the current value before updating so we can detect false -> true.
+    const previousConfig =
+      await systemConfigService.getSystemConfig(true);
 
-const wasAcademicPromptEnabled = Boolean(
-  previousConfig?.prompt_student_academic_update
-);
+    const wasAcademicPromptEnabled = Boolean(
+      previousConfig?.prompt_student_academic_update
+    );
 
     const updatedConfig =
       await systemConfigService.updateSystemConfig(
         configData
       );
 
-      const isAcademicPromptEnabled = Boolean(
-  updatedConfig?.prompt_student_academic_update
-);
+    const isAcademicPromptEnabled = Boolean(
+      updatedConfig?.prompt_student_academic_update
+    );
 
-const academicPromptWasNewlyEnabled =
-  Object.prototype.hasOwnProperty.call(
-    configData,
-    'prompt_student_academic_update'
-  ) &&
-  configData.prompt_student_academic_update === true &&
-  !wasAcademicPromptEnabled &&
-  isAcademicPromptEnabled;
+    const academicPromptWasNewlyEnabled =
+      Object.prototype.hasOwnProperty.call(
+        configData,
+        'prompt_student_academic_update'
+      ) &&
+      configData.prompt_student_academic_update === true &&
+      !wasAcademicPromptEnabled &&
+      isAcademicPromptEnabled;
 
     const changedFields =
       Object.keys(configData);
@@ -284,38 +282,38 @@ const academicPromptWasNewlyEnabled =
         'password_rules'
       );
 
-      if (academicPromptWasNewlyEnabled) {
-  const academicVersion = Number(
-    updatedConfig?.academic_update_version || 1
-  );
+    if (academicPromptWasNewlyEnabled) {
+      const academicVersion = Number(
+        updatedConfig?.academic_update_version || 1
+      );
 
-  try {
-    await notificationsService.notifyRoles(
-      ['student'],
-      {
-        type: 'academic_info_update',
-        title: 'Academic Information Update Required',
-        message:
-          `Please review and update your current year level, section, ` +
-          `program, and academic information. Academic update version ${academicVersion} is now active.`,
-        referenceId: null,
-        referenceType: 'student_profile',
+      try {
+        await notificationsService.notifyRoles(
+          ['student'],
+          {
+            type: 'academic_info_update',
+            title: 'Academic Information Update Required',
+            message:
+              `Please review and update your current year level, section, ` +
+              `program, and academic information. Academic update version ${academicVersion} is now active.`,
+            referenceId: null,
+            referenceType: 'student_profile',
+          }
+        );
+
+        console.log(
+          `[SystemConfig] Academic update notifications sent for version ${academicVersion}.`
+        );
+      } catch (notificationError) {
+        console.error(
+          '[SystemConfig] Failed to notify students about academic update:',
+          notificationError
+        );
+
+        // The system configuration remains successfully updated even if
+        // notification creation fails.
       }
-    );
-
-    console.log(
-      `[SystemConfig] Academic update notifications sent for version ${academicVersion}.`
-    );
-  } catch (notificationError) {
-    console.error(
-      '[SystemConfig] Failed to notify students about academic update:',
-      notificationError
-    );
-
-    // The system configuration remains successfully updated even if
-    // notification creation fails.
-  }
-}
+    }
 
     setAuditData(
       res,
@@ -385,10 +383,50 @@ const academicPromptWasNewlyEnabled =
 };
 
 // ============================================================
+// GET PUBLIC PASSWORD RULES
+// ============================================================
+
+/**
+ * GET /api/system-config/password-rules
+ *
+ * Public endpoint that returns only the password rules for signup validation.
+ * Bypasses authentication but prevents leaking other system configurations.
+ */
+const getPublicPasswordRules = async (req, res) => {
+  try {
+    const config = await systemConfigService.getSystemConfig();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        password_rules: config?.password_rules || null
+      },
+    });
+  } catch (error) {
+    console.error(
+      '[SystemConfig Controller] Error fetching public password rules:',
+      error
+    );
+
+    return res.status(
+      error.statusCode ||
+      error.status ||
+      500
+    ).json({
+      success: false,
+      message:
+        error.message ||
+        'Failed to fetch password rules.',
+    });
+  }
+};
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
   getSystemConfig,
   updateSystemConfig,
+  getPublicPasswordRules,
 };

@@ -97,6 +97,67 @@ const healthConditions = [
   'Stroke', 'Kidney Disease', 'Thyroid Problem', 'Hepatitis',
 ];
 
+// Each visit reason has a default classification. Clinic staff can correct the
+// classification before saving if the actual encounter differs from its purpose.
+const visitReasonGroups = [
+  {
+    label: 'Patient Visit — Consultation / Treatment',
+    options: [
+      'General Consultation',
+      'Fever / Flu-like Symptoms',
+      'Headache / Dizziness',
+      'Injury / Accident',
+      'Pain / Discomfort',
+      'Emergency',
+      'Follow-up Consultation',
+      'Other Health Concern',
+    ],
+    type: 'patient',
+  },
+  {
+    label: 'Non-Patient Visit — Clearance / Requirement',
+    options: [
+      'Medical Clearance',
+      'School Requirement',
+      'OJT / Internship Requirement',
+      'Employment Requirement',
+      'Medical Certificate / Documentation',
+      'Physical Examination',
+      'Other Requirement',
+    ],
+    type: 'non_patient',
+  },
+];
+
+const visitReasonOptions = visitReasonGroups.flatMap(group =>
+  group.options.map(label => ({ label, type: group.type }))
+);
+
+const getSuggestedVisitType = (reason) => {
+  const normalizedReason = String(reason || '').trim().toLowerCase();
+  if (!normalizedReason) return '';
+
+  const exactMatch = visitReasonOptions.find(
+    option => option.label.toLowerCase() === normalizedReason
+  );
+  if (exactMatch) return exactMatch.type;
+
+  const nonPatientKeywords = [
+    'clearance', 'requirement', 'ojt', 'internship', 'employment',
+    'documentation', 'physical examination', 'medical certificate',
+  ];
+
+  return nonPatientKeywords.some(keyword => normalizedReason.includes(keyword))
+    ? 'non_patient'
+    : 'patient';
+};
+
+const getVisitTypeLabel = (type) => {
+  if (type === 'patient') return 'Patient Visit';
+  if (type === 'non_patient') return 'Non-Patient Visit';
+  return 'Unclassified';
+};
+
 // ─── Academic School Year Generator ────────────────────────────────────────────
 const generateSchoolYears = () => {
   const years = [];
@@ -334,6 +395,7 @@ const MedicalVisitCard = ({ record, defaultOpen = false }) => {
   const hasHistory = history.medical.length > 0 || history.family.length > 0 || history.health.length > 0;
   const hasRemarks = record.finding1 || record.remarks;
   const hasOtherHistory = record.other_medical_history || record.other_family_history;
+  const hasVisitInfo = record.visit_reason || record.visit_type;
 
   return (
     <div className="relative">
@@ -354,11 +416,37 @@ const MedicalVisitCard = ({ record, defaultOpen = false }) => {
               </p>
             </div>
           </div>
-          <HistoryStatusBadge status={record.status} />
+          <div className="flex items-center gap-2">
+            {record.visit_type && (
+              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                record.visit_type === 'patient'
+                  ? 'bg-rose-100 text-rose-700 border-rose-200'
+                  : 'bg-sky-100 text-sky-700 border-sky-200'
+              }`}>
+                {getVisitTypeLabel(record.visit_type)}
+              </span>
+            )}
+            <HistoryStatusBadge status={record.status} />
+          </div>
         </button>
 
         {open && (
           <div className="p-4 space-y-4 border-t border-slate-100">
+            {hasVisitInfo && (
+              <div>
+                <HistorySectionLabel icon="fa-clipboard-question" color="text-[#466460]">Visit Information</HistorySectionLabel>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Reason for Visit</p>
+                    <p className="text-sm font-bold text-slate-800">{record.visit_reason || 'Not provided'}</p>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Classification</p>
+                    <p className="text-sm font-bold text-slate-800">{getVisitTypeLabel(record.visit_type)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
             {hasVitals && (
               <div>
                 <HistorySectionLabel icon="fa-heart-pulse" color="text-rose-500">Vital Signs</HistorySectionLabel>
@@ -407,7 +495,7 @@ const MedicalVisitCard = ({ record, defaultOpen = false }) => {
               </div>
             )}
 
-            {!hasVitals && !hasHistory && !hasOtherHistory && !hasRemarks && (
+            {!hasVisitInfo && !hasVitals && !hasHistory && !hasOtherHistory && !hasRemarks && (
               <p className="text-xs text-slate-400 italic">No additional details recorded for this visit.</p>
             )}
           </div>
@@ -508,6 +596,19 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
 
   const record = p?.existingRecord || existingRecord || null;
 
+  const initialVisitReason =
+    record?.visit_reason ||
+    p?.visit_reason ||
+    p?.appointment_reason ||
+    p?.reason ||
+    p?.appointment?.reason ||
+    '';
+
+  const initialVisitType =
+    record?.visit_type ||
+    p?.visit_type ||
+    getSuggestedVisitType(initialVisitReason);
+
   const patientInfo = record?.patient_info || {};
   const labResults = record?.laboratory_results || {};
 
@@ -545,6 +646,8 @@ const buildInitialForm = (p, existingRecord = null, defaultSchoolYear = '', defa
     recordId:      record?.id || null,
     schoolYear:    record?.school_year || defaultSchoolYear,
     semester:      record?.semester || defaultSemester || '1st Semester',
+    visitReason:   initialVisitReason,
+    visitType:     initialVisitType,
     studentId:     u.university_id || u.universityId || u.student_id || '',
     course:        u.program || u.course || '',
     department:    u.department || '',
@@ -811,6 +914,21 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
     setFormData(prev => ({ ...prev, [id || name]: value }));
   };
 
+  const handleVisitReasonChange = (e) => {
+    if (readOnly) return;
+    const value = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      visitReason: value,
+      visitType: getSuggestedVisitType(value),
+    }));
+    setValidationErrors(prev => ({
+      ...prev,
+      visitReason: undefined,
+      visitType: undefined,
+    }));
+  };
+
   const handleDateChange = (field, val) => {
     if (readOnly) return;
     setFormData(prev => ({ ...prev, [field]: val }));
@@ -846,6 +964,9 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
     // Validate required fields
     const errors = {};
 
+    if (!formData.visitReason?.trim()) errors.visitReason = 'Reason for Visit is required';
+    if (!formData.visitType?.trim()) errors.visitType = 'Visit Classification is required';
+
     // Validate vital signs (at least one should be filled)
     if (!vitalRecords.bp?.trim()) errors.bp = 'Blood Pressure is required';
     if (!vitalRecords.pr?.trim()) errors.pr = 'Pulse Rate is required';
@@ -862,7 +983,7 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
       setAlertModal({
         open: true,
         title: 'Missing Required Fields',
-        message: 'Please fill in all required fields:\n\n• Blood Pressure (BP)\n• Pulse Rate (PR)\n• Temperature\n• Examining Physician\n• Examination Date'
+        message: 'Please fill in all required fields:\n\n• Reason for Visit\n• Visit Classification\n• Blood Pressure (BP)\n• Pulse Rate (PR)\n• Temperature\n• Examining Physician\n• Examination Date'
       });
       return;
     }
@@ -931,6 +1052,8 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
         university_id: formData.studentId,
         school_year: formData.schoolYear,
         semester: formData.semester,
+        visit_reason: formData.visitReason.trim(),
+        visit_type: formData.visitType,
         last_name: formData.lastName,
         first_name: formData.firstName,
         middle_name: formData.middleName,
@@ -1186,6 +1309,68 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
         ) : (
         <>
         {/* ════ EXAMINATION TAB ════ */}
+
+          <div className={sectionClass}>Visit Information</div>
+          <div className="grid grid-cols-12 gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50/50 mb-4">
+            <div className="col-span-12 md:col-span-8">
+              <label className={requiredLabelClass}>
+                Reason / Purpose of Visit <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="visitReason"
+                type="text"
+                list="medical-visit-reasons"
+                className={`${inputClass} ${validationErrors.visitReason ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+                placeholder="Select or type the reason for this visit"
+                value={formData.visitReason}
+                disabled={readOnly}
+                onChange={handleVisitReasonChange}
+              />
+              <datalist id="medical-visit-reasons">
+                {visitReasonGroups.map(group => (
+                  <React.Fragment key={group.label}>
+                    {group.options.map(option => (
+                      <option key={option} value={option}>{group.label}</option>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </datalist>
+              <p className="text-[10px] text-slate-400 mt-1.5">
+                Choose a common reason or type a specific reason from the appointment or walk-in encounter.
+              </p>
+            </div>
+
+            <div className="col-span-12 md:col-span-4">
+              <label className={requiredLabelClass}>
+                Visit Classification <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="visitType"
+                className={`${inputClass} font-semibold ${validationErrors.visitType ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+                value={formData.visitType}
+                disabled={readOnly || !formData.visitReason.trim()}
+                onChange={handleChange}
+              >
+                <option value="">Select classification</option>
+                <option value="patient">Patient Visit</option>
+                <option value="non_patient">Non-Patient Visit</option>
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1.5">
+                Suggested automatically from the reason. Clinic staff may correct it when needed.
+              </p>
+            </div>
+
+            {formData.visitType && (
+              <div className={`col-span-12 px-3 py-2 rounded-lg border text-xs font-semibold ${
+                formData.visitType === 'patient'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' // Changed from rose to emerald
+                  : 'bg-sky-50 text-sky-700 border-sky-200'
+              }`}>
+                <i className={`fa-solid ${formData.visitType === 'patient' ? 'fa-stethoscope' : 'fa-file-circle-check'} mr-2`}></i>
+                This encounter will be counted as a {getVisitTypeLabel(formData.visitType)} on the dashboard.
+              </div>
+            )}
+          </div>
 
           <div className={sectionClass}>Past Medical History</div>
           <p className="text-xs text-slate-500 mb-3">Check all that apply:</p>
@@ -1507,6 +1692,13 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
               </div>
             </div>
             <div className="overflow-y-auto flex-1 px-7 py-5">
+              <SumSection icon="fa-clipboard-question" title="Visit Information">
+                <div className="grid grid-cols-2 gap-2">
+                  <SumItem label="Reason for Visit" value={formData.visitReason} />
+                  <SumItem label="Visit Classification" value={getVisitTypeLabel(formData.visitType)} />
+                </div>
+              </SumSection>
+
               <SumSection icon="fa-user" title="Patient Demographics">
                 <div className="grid grid-cols-3 gap-2">
                   <SumItem label="Last Name"      value={formData.lastName} />

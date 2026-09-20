@@ -770,6 +770,7 @@ export const UserManagement = () => {
   };
 
   const deptAbbrToFull = configData?.departments ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.full])) : {};
+  const programsByDeptAbbr = configData?.departments ? Object.fromEntries(configData.departments.map(d => [d.abbr, d.programs])) : {};
 
   // ── Build cascading options ──
   const departmentOptions = useMemo(() => {
@@ -863,9 +864,12 @@ export const UserManagement = () => {
 
     // Additional Filters
     if (profileFilter !== 'all') {
+      const hasName = Boolean((user.first_name || '').trim() || (user.last_name || '').trim());
       const isComplete = !!user.profile_complete;
-      if (profileFilter === 'active' && !isComplete) return false;
-      if (profileFilter === 'pending' && isComplete) return false;
+
+      if (profileFilter === 'complete' && (!isComplete || !hasName)) return false;
+      if (profileFilter === 'pending' && (isComplete || !hasName)) return false;
+      if (profileFilter === 'unregistered' && hasName) return false;
     }
 
     if (verifyFilter !== 'all') {
@@ -1023,10 +1027,12 @@ export const UserManagement = () => {
       }
 
       const { password, first_name, middle_name, last_name, ...payloadWithoutPassword } = editForm;
-      const payload = {
+const payload = {
         ...payloadWithoutPassword,
         first_name: normalizeName(first_name), middle_name: normalizeName(middle_name),
-        last_name: normalizeName(last_name), age: editForm.age === '' ? null : Number(editForm.age),
+        last_name: normalizeName(last_name),
+        age: editForm.age === '' ? null : Number(editForm.age),
+        birthday: editForm.birthday === '' ? null : editForm.birthday, // <-- Add this line
         updated_at: new Date().toISOString(),
         ...(editForm.password ? { newPassword: editForm.password } : {})
       };
@@ -1177,8 +1183,9 @@ export const UserManagement = () => {
 
             <select value={profileFilter} onChange={e => setProfileFilter(e.target.value)} className={compactSelectCls}>
               <option value="all">All Profile Status</option>
-              <option value="active">Active</option>
+              <option value="complete">Complete</option>
               <option value="pending">Pending Setup</option>
+              <option value="unregistered">Unregistered ID</option>
             </select>
 
             <select value={verifyFilter} onChange={e => setVerifyFilter(e.target.value)} className={compactSelectCls}>
@@ -1277,6 +1284,7 @@ export const UserManagement = () => {
               ) : paginatedUsers.map((user, idx) => {
                 const uDept = getUserDepartment(user) || '—';
                 const uProg = getUserProgram(user) || '';
+                const hasName = Boolean((user.first_name || '').trim() || (user.last_name || '').trim());
 
                 return (
                 <tr key={user.id} className={`border-b border-slate-100 hover:bg-[#e0eceb]/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
@@ -1331,9 +1339,11 @@ export const UserManagement = () => {
                     }
                   </td>
                   <td className="p-3 whitespace-nowrap">
-                    {user.profile_complete
-                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Active</span>
-                      : <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-700">Pending Setup</span>
+                    {!hasName
+                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Unregistered ID</span>
+                      : user.profile_complete
+                        ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Complete</span>
+                        : <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-700">Pending Setup</span>
                     }
                   </td>
                   <td className="p-3 pr-6 whitespace-nowrap">

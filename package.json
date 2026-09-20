@@ -35,6 +35,7 @@
     "nodemailer": "^9.0.3",
     "resend": "^4.8.0",
     "svix": "^1.99.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {

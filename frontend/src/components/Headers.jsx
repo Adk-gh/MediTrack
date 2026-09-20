@@ -7,7 +7,6 @@ import DatePicker from './Datepicker.jsx';
 import AddressModal from './AddressModal.jsx';
 import { NotificationBell, NotificationPanel } from './Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
-import Settings from './Settings.jsx';
 import { supabase } from '../supabase';
 import logo from '../assets/logo.jpg';
 import logo1 from '../assets/logo1.png';
@@ -243,12 +242,12 @@ const withProfileDefaults = (p = {}) => {
 
 // ─── Profile Drawer ───────────────────────────────────────────────────────────
 export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBottomSheet = false, onProfileUpdate }) {
+  const navigate = useNavigate();
   const [isMounted, setIsMounted] = React.useState(false);
   const [editingSection, setEditingSection] = React.useState(null);
   const [editData, setEditData] = React.useState({});
   const [isSaving, setIsSaving] = React.useState(false);
   const [formData, setFormData] = React.useState({});
-  const [showSettings, setShowSettings] = React.useState(false);
   const [vaccinationsDeclined, setVaccinationsDeclined] = React.useState({ dose1: false, dose2: false, booster1: false, booster2: false, history: false });
   const [dentalDeclined, setDentalDeclined] = React.useState(false);
   const [surgicalDeclined, setSurgicalDeclined] = React.useState(false);
@@ -1176,7 +1175,10 @@ const saveProfileEdits = async () => {
             </div>
 
             <button
-              onClick={() => setShowSettings(true)}
+              onClick={() => {
+                onClose?.();
+                navigate('/student/settings');
+              }}
               className="w-full py-3 mb-3 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl font-bold text-sm cursor-pointer transition-all hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
             >
               <i className="fa-solid fa-gear"></i>
@@ -1758,13 +1760,6 @@ const saveProfileEdits = async () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Settings Overlay */}
-      {showSettings && (
-        <div className="fixed inset-0 z-[3000]">
-          <Settings onLogout={onLogout} onClose={() => setShowSettings(false)} />
         </div>
       )}
 

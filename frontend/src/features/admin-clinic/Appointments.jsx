@@ -31,8 +31,18 @@ const HOUR_SLOTS = Array.from({ length: 10 }, (_, i) => {
   };
 });
 
-// Recommended capacity per 1-hour slot
-const RECOMMENDED_SLOT_CAPACITY = 10;
+// Specific capacities requested for the clinic slots (50 total slots per day)
+const AUTO_SCHEDULE_CAPACITY = [
+  { time: "08:00", capacity: 6, hour: 8 },
+  { time: "09:00", capacity: 6, hour: 9 },
+  { time: "10:00", capacity: 6, hour: 10 },
+  { time: "11:00", capacity: 5, hour: 11 },
+  { time: "12:00", capacity: 5, hour: 12 },
+  { time: "13:00", capacity: 6, hour: 13 },
+  { time: "14:00", capacity: 6, hour: 14 },
+  { time: "15:00", capacity: 5, hour: 15 },
+  { time: "16:00", capacity: 5, hour: 16 }
+];
 
 // Purpose options offered when staff create an appointment directly.
 // Staff-created appointments are always face-to-face, so both may be selected.
@@ -55,9 +65,9 @@ const fmtTime = (t) => {
 
 // ── Normalize Patient Data for Examination Modal ──────────────────────────────
 const normalizePatientData = (uid, d) => {
-  const firstName     = d.firstName    || d.first_name     || '';
-  const lastName      = d.lastName     || d.last_name      || '';
-  const middleName    = d.middleName   || d.middle_name    || '';
+  const firstName     = d.firstName    || d.first_name      || '';
+  const lastName      = d.lastName     || d.last_name       || '';
+  const middleName    = d.middleName   || d.middle_name     || '';
   const suffix        = d.suffix       || '';
   const universityId  = d.universityId || d.university_id || d.studentId || d.student_id || '';
 
@@ -364,6 +374,64 @@ const groupByBatch = (list) => {
   });
   return result;
 };
+
+// ── Auto Scheduling Core Logic ───────────────────────────────────────────────
+const generateAutoSchedule = (selectedItems, scheduledAppts) => {
+  // Sort oldest requested first for FCFS
+  const sortedSelected = [...selectedItems].sort((a, b) => new Date(a.bookedAt || a.created_at) - new Date(b.bookedAt || b.created_at));
+
+  let now = new Date();
+  let currentDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const assignments = [];
+
+  const getUsage = (y, m, d, timeStr) => {
+    const existing = scheduledAppts.filter(a => Number(a.year) === y && Number(a.month) === m && Number(a.day) === d && a.time === timeStr).length;
+    const newlyAssigned = assignments.filter(a => a.year === y && a.month === m && a.day === d && a.time === timeStr).length;
+    return existing + newlyAssigned;
+  };
+
+  for (const appt of sortedSelected) {
+    let assigned = false;
+    while (!assigned) {
+      // skip weekends (0 = Sunday, 6 = Saturday)
+      if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+
+      const y = currentDate.getFullYear();
+      const m = currentDate.getMonth() + 1;
+      const d = currentDate.getDate();
+      const isToday = (y === now.getFullYear() && m === (now.getMonth() + 1) && d === now.getDate());
+
+      for (const slot of AUTO_SCHEDULE_CAPACITY) {
+        // If scheduling for today, do not schedule in past slots
+        if (isToday && now.getHours() >= slot.hour) {
+          continue;
+        }
+
+        if (getUsage(y, m, d, slot.time) < slot.capacity) {
+          assignments.push({
+            ...appt,
+            year: y,
+            month: m,
+            day: d,
+            time: slot.time
+          });
+          assigned = true;
+          break;
+        }
+      }
+
+      if (!assigned) {
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    }
+  }
+  return assignments;
+};
+
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 const Snackbar = ({ message, type, visible }) => (
@@ -1015,8 +1083,8 @@ const CreateAppointmentModal = ({
               {normalizedStaffRole === 'dentist'
                 ? 'Dentist accounts may schedule dental appointments only.'
                 : normalizedStaffRole === 'doctor' ||
-                    normalizedStaffRole === 'physician' ||
-                    normalizedStaffRole === 'nurse'
+                  normalizedStaffRole === 'physician' ||
+                  normalizedStaffRole === 'nurse'
                   ? 'Doctor and nurse accounts may schedule medical appointments only.'
                   : 'Select the appropriate appointment type.'}
             </p>
@@ -1327,12 +1395,9 @@ export const Appointments = () => {
     return userDataMap[userId] || { university_id: appt.idno || '', department: appt.dept || '', program: appt.prog || '', section: appt.section || '' };
   };
 
-  // ── Batch scheduling modal state ──
-  const [batchModal,         setBatchModal]         = useState(false);
-  const [batchDate,          setBatchDate]          = useState('');
-  const [batchSlot,          setBatchSlot]          = useState('08:00');
-  const [autoStagger,        setAutoStagger]        = useState(false);
-  const [staggerCapacity,    setStaggerCapacity]    = useState(RECOMMENDED_SLOT_CAPACITY);
+  // ── Batch Auto Scheduling state ──
+  const [batchModal,             setBatchModal]             = useState(false);
+  const [autoScheduleAssignments, setAutoScheduleAssignments] = useState([]);
 
   // ── Decline confirmation modal ──
   const [declineModal, setDeclineModal] = useState({ open: false, ids: [] });
@@ -1491,22 +1556,6 @@ export const Appointments = () => {
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
   const selectedItems   = pendingRequests.filter(r => selectedIds.has(r.id));
-  const chosenSlotLabel = HOUR_SLOTS.find(s => s.value === batchSlot)?.label ?? '';
-
-  // ── Compute Stagger Distribution Preview ──
-  const staggerPlan = useMemo(() => {
-    if (!autoStagger || selectedItems.length === 0) return null;
-    const startIdx = HOUR_SLOTS.findIndex(s => s.value === batchSlot);
-    const validStart = startIdx === -1 ? 0 : startIdx;
-    const chunks = [];
-    for (let i = 0; i < selectedItems.length; i += staggerCapacity) {
-      const slotIndex = Math.min(validStart + chunks.length, HOUR_SLOTS.length - 1);
-      const slot = HOUR_SLOTS[slotIndex];
-      const itemsInSlot = selectedItems.slice(i, i + staggerCapacity);
-      chunks.push({ slot, items: itemsInSlot });
-    }
-    return chunks;
-  }, [autoStagger, selectedItems, batchSlot, staggerCapacity]);
 
   // ── Selection helpers ──
   const toggleSelect = (id) => {
@@ -1519,130 +1568,124 @@ export const Appointments = () => {
   const selectAll = () => setSelectedIds(new Set(filteredPending.map(r => r.id)));
   const clearAll  = () => setSelectedIds(new Set());
 
-// ── Optimized Batch Approve With Notifications ──
+  // ── Generate Auto Schedule Preview ──
+  const handleOpenAutoSchedule = () => {
+    const assignments = generateAutoSchedule(selectedItems, scheduledAppts);
+    setAutoScheduleAssignments(assignments);
+    setBatchModal(true);
+  };
+
+  // ── Optimized Auto Approve With Notifications ──
   const handleBatchApprove = async () => {
-    if (!batchDate) { showSnackbar('Please select a date', 'error'); return; }
-    const [y, m, d] = batchDate.split('-').map(Number);
-    const ids = Array.from(selectedIds);
+    if (autoScheduleAssignments.length === 0) {
+      showSnackbar('No appointments to schedule', 'error');
+      return;
+    }
 
     try {
-      if (autoStagger && staggerPlan) {
-        await Promise.all(
-          staggerPlan.map(({ slot, items }) => {
-            const chunkIds = items.map(x => x.id);
-            return supabase
-              .from('appointments')
-              .update({ year: y, month: m, day: d, time: slot.value, status: 'approved', updated_at: new Date().toISOString() })
-              .in('id', chunkIds);
-          })
-        );
-      } else {
-        const { error } = await supabase
-          .from('appointments')
-          .update({ year: y, month: m, day: d, time: batchSlot, status: 'approved', updated_at: new Date().toISOString() })
-          .in('id', ids);
-
-        if (error) throw error;
-      }
+      await Promise.all(
+        autoScheduleAssignments.map(assignment => {
+          return supabase
+            .from('appointments')
+            .update({
+              year: assignment.year,
+              month: assignment.month,
+              day: assignment.day,
+              time: assignment.time,
+              status: 'approved',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', assignment.id);
+        })
+      );
 
       // ── Dispatch notifications to approved patients ──
-      const patientNotifications = selectedItems
+      const patientNotifications = autoScheduleAssignments
         .filter(item => Boolean(item.user_id))
         .map(item => ({
           user_id: item.user_id,
           type: 'appointment_status',
           title: 'Appointment Approved!',
-          message: `Your appointment has been approved for ${batchDate} (${batchSlot}).`,
+          message: `Your appointment has been approved for ${item.year}-${String(item.month).padStart(2,'0')}-${String(item.day).padStart(2,'0')} (${item.time}).`,
           reference_id: item.id,
           reference_type: 'appointment',
           is_read: false,
           created_at: new Date().toISOString(),
         }));
 
-if (patientNotifications.length > 0) {
-  const { error: patientNotifyError } = await supabase
-    .from('notifications')
-    .insert(patientNotifications);
+      if (patientNotifications.length > 0) {
+        const { error: patientNotifyError } = await supabase
+          .from('notifications')
+          .insert(patientNotifications);
 
-  if (patientNotifyError) {
-    console.error(
-      '[handleBatchApprove] Failed to notify patients:',
-      patientNotifyError
-    );
-  }
-}
-// ── Notify each bulk appointment requester once ──
-const requesterGroups = new Map();
-
-selectedItems.forEach((item) => {
-  if (!item.booked_by_id) return;
-
-  const groupKey =
-    item.batch_id ||
-    `${item.booked_by_id}-${item.booked_by || 'Requester'}`;
-
-  if (!requesterGroups.has(groupKey)) {
-    requesterGroups.set(groupKey, {
-      batchId: item.batch_id || null,
-      requesterId: item.booked_by_id,
-      requesterName: item.booked_by || 'Requester',
-      count: 0,
-    });
-  }
-
-  requesterGroups.get(groupKey).count += 1;
-});
-
-const requesterNotifications = Array.from(
-  requesterGroups.values()
-).map((group) => ({
-  // Recipient comes from appointments.booked_by_id
-  user_id: group.requesterId,
-
-  type: 'bulk_appointment_approved',
-  title: 'Bulk Appointment Request Approved',
-
-  // Display name comes from appointments.booked_by
-  message:
-    `${group.requesterName}, your bulk appointment request for ` +
-    `${group.count} student${group.count === 1 ? '' : 's'} ` +
-    `has been approved and scheduled for ${batchDate}.`,
-
-  reference_id: group.batchId,
-  reference_type: 'appointment_batch',
-  is_read: false,
-  created_at: new Date().toISOString(),
-}));
-
-if (requesterNotifications.length > 0) {
-  const { error: requesterNotifyError } = await supabase
-    .from('notifications')
-    .insert(requesterNotifications);
-
-  if (requesterNotifyError) {
-    console.error(
-      '[handleBatchApprove] Failed to notify booked_by requester:',
-      requesterNotifyError
-    );
-  }
-}
-
-      if (approveAppointment) {
-        if (autoStagger && staggerPlan) {
-          staggerPlan.forEach(({ slot, items }) => {
-            items.forEach(item => approveAppointment(item.id, { year: y, month: m, day: d, time: slot.value }));
-          });
-        } else {
-          selectedItems.forEach(item => approveAppointment(item.id, { year: y, month: m, day: d, time: batchSlot }));
+        if (patientNotifyError) {
+          console.error(
+            '[handleBatchApprove] Failed to notify patients:',
+            patientNotifyError
+          );
         }
       }
 
-      showSnackbar(`${selectedIds.size} appointment${selectedIds.size > 1 ? 's' : ''} approved`);
+      // ── Notify each bulk appointment requester once ──
+      const requesterGroups = new Map();
+
+      autoScheduleAssignments.forEach((item) => {
+        if (!item.booked_by_id) return;
+
+        const groupKey =
+          item.batch_id ||
+          `${item.booked_by_id}-${item.booked_by || 'Requester'}`;
+
+        if (!requesterGroups.has(groupKey)) {
+          requesterGroups.set(groupKey, {
+            batchId: item.batch_id || null,
+            requesterId: item.booked_by_id,
+            requesterName: item.booked_by || 'Requester',
+            count: 0,
+          });
+        }
+
+        requesterGroups.get(groupKey).count += 1;
+      });
+
+      const requesterNotifications = Array.from(
+        requesterGroups.values()
+      ).map((group) => ({
+        user_id: group.requesterId,
+        type: 'bulk_appointment_approved',
+        title: 'Bulk Appointment Request Approved',
+        message:
+          `${group.requesterName}, your bulk appointment request for ` +
+          `${group.count} student${group.count === 1 ? '' : 's'} ` +
+          `has been approved and automatically scheduled.`,
+        reference_id: group.batchId,
+        reference_type: 'appointment_batch',
+        is_read: false,
+        created_at: new Date().toISOString(),
+      }));
+
+      if (requesterNotifications.length > 0) {
+        const { error: requesterNotifyError } = await supabase
+          .from('notifications')
+          .insert(requesterNotifications);
+
+        if (requesterNotifyError) {
+          console.error(
+            '[handleBatchApprove] Failed to notify booked_by requester:',
+            requesterNotifyError
+          );
+        }
+      }
+
+      if (approveAppointment) {
+        autoScheduleAssignments.forEach(item => {
+          approveAppointment(item.id, { year: item.year, month: item.month, day: item.day, time: item.time });
+        });
+      }
+
+      showSnackbar(`${autoScheduleAssignments.length} appointment${autoScheduleAssignments.length > 1 ? 's' : ''} scheduled & approved`);
       setBatchModal(false);
       setSelectedIds(new Set());
-      setSelectedDay(null);
-      setCalYear(y); setCalMonth(m);
-      setTimeout(() => setSelectedDay(d), 0);
     } catch (err) {
       console.error('Batch approve error:', err);
       showSnackbar('Failed to approve appointments', 'error');
@@ -1955,29 +1998,14 @@ const handleAppointmentCreated = (createdAppt) => {
 
       {selectedIds.size > 0 && (
         <div className="shrink-0 border-t-2 border-[#e0eceb] bg-[#f8fdfc] px-4 py-4 flex flex-col gap-3">
-          {!selectedDay && (
-            <div className="text-[12.5px] text-[#854F0B] bg-[#FAEEDA] px-3 py-[8px] rounded-[6px] border border-[#f0c070] flex items-center justify-center gap-[6px]">
-              <IconCircleInfo size={14} />
-              Select a date on the calendar to schedule
-            </div>
-          )}
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                if (!selectedDay) return;
-                const formattedDate = `${calYear}-${String(calMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
-                setBatchDate(formattedDate);
-                setAutoStagger(selectedIds.size > RECOMMENDED_SLOT_CAPACITY);
-                setBatchModal(true);
-              }}
-              disabled={!selectedDay}
+              onClick={handleOpenAutoSchedule}
               className={`flex-1 py-[10px] border-none rounded-[8px] text-[14px] font-semibold flex items-center justify-center gap-[6px] transition-all
-                ${selectedDay
-                  ? 'bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white cursor-pointer hover:opacity-90'
-                  : 'bg-[#e2e8f0] text-[#94a3b8] cursor-not-allowed'}`}
+                bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white cursor-pointer hover:opacity-90`}
             >
               <IconCalendarCheck size={14} />
-              Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
+              Auto Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
             </button>
             <button
               onClick={handleDeclineClick}
@@ -2332,7 +2360,7 @@ const handleAppointmentCreated = (createdAppt) => {
             <div key={d} className="text-center text-[12px] font-semibold text-[#94a3b8] py-[3px]">{d}</div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-[4px]">
+<div className="grid grid-cols-7 gap-[4px]">
           {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
           {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
             const isToday = today.getFullYear() === calYear
@@ -2340,8 +2368,12 @@ const handleAppointmentCreated = (createdAppt) => {
               && today.getDate() === day;
             const isSel = selectedDay === day;
 
+            // Determine if the current day is a weekend (0 = Sunday, 6 = Saturday)
+            const cellDate = new Date(calYear, calMonth - 1, day);
+            const dayOfWeek = cellDate.getDay();
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
             const isPast = (() => {
-              const cellDate      = new Date(calYear, calMonth - 1, day);
               const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
               return cellDate < todayMidnight;
             })();
@@ -2353,24 +2385,32 @@ const handleAppointmentCreated = (createdAppt) => {
             return (
               <div
                 key={day}
-                onClick={() => setSelectedDay(day)}
-                className={`min-h-[44px] sm:min-h-[50px] border px-2 py-1.5 rounded-[8px] transition-all cursor-pointer
-                  ${isSel
-                    ? 'bg-[#466460] border-[#466460]'
-                    : isToday
-                      ? 'border-[#466460] hover:bg-[#E1F5EE]'
-                      : isPast
-                        ? 'border-transparent hover:bg-[#f1f5f9]'
-                        : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB]'}`}
+                onClick={() => {
+                  if (!isWeekend) {
+                    setSelectedDay(isSel ? null : day);
+                  }
+                }}
+                className={`min-h-[44px] sm:min-h-[50px] border px-2 py-1.5 rounded-[8px] transition-all
+                  ${isWeekend
+                    ? 'bg-[#f8fafc] border-[#f1f5f9] cursor-not-allowed opacity-60'
+                    : isSel
+                      ? 'bg-[#466460] border-[#466460] cursor-pointer'
+                      : isToday
+                        ? 'border-[#466460] hover:bg-[#E1F5EE] cursor-pointer'
+                        : isPast
+                          ? 'border-transparent hover:bg-[#f1f5f9] cursor-pointer'
+                          : 'border-transparent hover:bg-[#E1F5EE] hover:border-[#9FE1CB] cursor-pointer'}`}
               >
                 <div className={`text-[13px] font-bold
-                  ${isSel
-                    ? 'text-white'
-                    : isToday
-                      ? 'text-[#0F6E56]'
-                      : isPast
-                        ? 'text-[#8aa8a4]'
-                        : 'text-[#475569]'}`}>
+                  ${isWeekend
+                    ? 'text-[#cbd5e1]'
+                    : isSel
+                      ? 'text-white'
+                      : isToday
+                        ? 'text-[#0F6E56]'
+                        : isPast
+                          ? 'text-[#8aa8a4]'
+                          : 'text-[#475569]'}`}>
                   {day}
                 </div>
                 <div className="flex gap-[3px] flex-wrap mt-[3px]">
@@ -2439,11 +2479,7 @@ const handleAppointmentCreated = (createdAppt) => {
                     <div className="flex items-center gap-3">
                       <IconClock size={15} className="text-[#466460]" style={{ color: '#466460' }} />
                       <span className="text-[14px] font-bold text-[#1e293b]">{slotLabel}</span>
-                      <span className={`text-[12px] border px-2.5 py-[3px] rounded-full font-bold shadow-sm ${
-                        appts.length > RECOMMENDED_SLOT_CAPACITY
-                          ? 'bg-[#fef3c7] text-[#92400e] border-[#fde68a]'
-                          : 'bg-white text-[#64748b] border-[#e2e8f0]'
-                      }`}>
+                      <span className={`text-[12px] border px-2.5 py-[3px] rounded-full font-bold shadow-sm bg-white text-[#64748b] border-[#e2e8f0]`}>
                         {appts.length} appt{appts.length !== 1 ? 's' : ''}
                       </span>
                     </div>
@@ -2702,179 +2738,88 @@ const handleAppointmentCreated = (createdAppt) => {
         currentStaffRole={currentUserRole}
       />
 
-      {/* ── BATCH SCHEDULING MODAL ── */}
+      {/* ── BATCH AUTO-SCHEDULING PREVIEW MODAL ── */}
       {batchModal && createPortal(
         <ModalOverlay onClose={() => setBatchModal(false)}>
           <div className="bg-white w-full sm:max-w-[480px] sm:mx-4 sm:rounded-[16px] rounded-t-[20px]
-            max-h-[92vh] overflow-y-auto animate-[fadeIn_0.25s_ease-out]
+            max-h-[92vh] flex flex-col animate-[fadeIn_0.25s_ease-out]
             [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#c7d7d4] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
 
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
             </div>
 
-            <div className="px-6 pt-5 pb-4 border-b border-[#eef2f6]">
+            <div className="px-6 pt-5 pb-4 border-b border-[#eef2f6] shrink-0">
               <div className="text-[18px] font-bold text-[#1e293b] flex items-center gap-2">
                 <IconCalendarCheck size={18} style={{ color: '#0F6E56' }} />
-                Schedule {selectedIds.size} Patient{selectedIds.size > 1 ? 's' : ''}
+                Auto-Schedule Preview
               </div>
               <div className="text-[13px] text-[#64748b] mt-[4px]">
-                Configure the schedule date and time distribution for this batch.
+                {autoScheduleAssignments.length} patient{autoScheduleAssignments.length !== 1 ? 's' : ''} have been automatically distributed into available clinic slots.
               </div>
             </div>
 
-            <div className="px-6 py-5 flex flex-col gap-5">
-              <div>
-                <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
-                  Appointment Date *
-                </label>
-                <Datepicker
-                  value={batchDate}
-                  onChange={setBatchDate}
-                  disablePastDates={selectedIds.size > 0}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em] mb-2">
-                  {autoStagger ? 'Start Time Slot' : 'Time Slot (1-hour window)'}
-                </label>
-                <div className="relative">
-                  <select
-                    value={batchSlot}
-                    onChange={e => setBatchSlot(e.target.value)}
-                    className="w-full appearance-none px-[12px] py-[10px] border border-[#e2e8f0] rounded-[8px] text-[15px]
-                      bg-white text-[#1e293b] outline-none focus:border-[#466460] transition-colors cursor-pointer"
-                  >
-                    {HOUR_SLOTS.map(slot => (
-                      <option key={slot.value} value={slot.value}>{slot.label}</option>
-                    ))}
-                  </select>
-                  <IconChevronDown size={12} className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94a3b8' }} />
-                </div>
-              </div>
-
-              {selectedIds.size > 5 && (
-                <div className="border border-[#e2e8f0] rounded-[10px] p-3.5 bg-[#f8fafc]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[13px] font-bold text-[#1e293b]">Distribute Across Consecutive Slots</div>
-                      <div className="text-[12px] text-[#64748b] mt-0.5">
-                        Prevent clinic bottlenecks by spreading patients into multiple hours.
+            <div className="px-6 py-5 flex flex-col gap-5 overflow-y-auto flex-1 min-h-0">
+              {autoScheduleAssignments.length > 0 ? (
+                Object.entries(
+                  autoScheduleAssignments.reduce((acc, curr) => {
+                    const dateStr = `${curr.year}-${String(curr.month).padStart(2, '0')}-${String(curr.day).padStart(2, '0')}`;
+                    if (!acc[dateStr]) acc[dateStr] = [];
+                    acc[dateStr].push(curr);
+                    return acc;
+                  }, {})
+                ).map(([date, items]) => (
+                  <div key={date} className="flex flex-col gap-2 p-4 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
+                    <div className="flex items-start gap-2 text-[13px] text-[#3B6D11]">
+                      <IconCalendar size={15} style={{ color: '#3B6D11', marginTop: 2, flexShrink: 0 }} />
+                      <div>
+                        <span className="font-bold">
+                          {new Date(date + 'T00:00:00').toLocaleDateString('en-PH', {
+                            weekday: 'long', month: 'short', day: 'numeric', year: 'numeric'
+                          })}
+                        </span>
                       </div>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer ml-3">
-                      <input
-                        type="checkbox"
-                        checked={autoStagger}
-                        onChange={e => setAutoStagger(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#466460]"></div>
-                    </label>
-                  </div>
 
-                  {autoStagger && (
-                    <div className="mt-3 pt-3 border-t border-[#e2e8f0] flex items-center justify-between">
-                      <span className="text-[12px] font-medium text-[#475569]">Max patients per 1-hour slot:</span>
-                      <select
-                        value={staggerCapacity}
-                        onChange={e => setStaggerCapacity(Number(e.target.value))}
-                        className="px-2.5 py-1 text-[13px] font-bold rounded-md border border-[#cbd5e1] bg-white text-[#1e293b] outline-none"
-                      >
-                        <option value={5}>5 patients / hr</option>
-                        <option value={10}>10 patients / hr (Recommended)</option>
-                        <option value={15}>15 patients / hr</option>
-                        <option value={20}>20 patients / hr</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!autoStagger && selectedIds.size > RECOMMENDED_SLOT_CAPACITY && (
-                <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-[8px] bg-[#fffbeb] border border-[#fde68a]">
-                  <IconCircleExclamation size={16} color="#b45309" className="shrink-0 mt-0.5" />
-                  <div className="text-[12.5px] text-[#92400e] leading-[1.5]">
-                    <span className="font-bold">Capacity Notice:</span> Scheduling {selectedIds.size} students in a single 1-hour slot may cause heavy clinic queueing. Consider enabling distribution.
-                  </div>
-                </div>
-              )}
-
-              {batchDate && (
-                <div className="flex flex-col gap-2 p-4 rounded-[10px] bg-[#EAF3DE] border border-[#c6e4a0]">
-                  <div className="flex items-start gap-2 text-[13px] text-[#3B6D11]">
-                    <IconCircleInfo size={15} style={{ color: '#3B6D11', marginTop: 2, flexShrink: 0 }} />
-                    <div>
-                      <span className="font-bold">{selectedIds.size} patient{selectedIds.size > 1 ? 's' : ''}</span>
-                      {' '}on{' '}
-                      <span className="font-bold">
-                        {new Date(batchDate + 'T00:00:00').toLocaleDateString('en-PH', {
-                          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
-                        })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {autoStagger && staggerPlan ? (
-                    <div className="mt-1 flex flex-col gap-1 pl-6">
-                      {staggerPlan.map(({ slot, items }, idx) => (
-                        <div key={idx} className="text-[12px] text-[#2d520e] flex justify-between font-medium">
-                          <span>{slot.label}:</span>
-                          <span className="font-bold">{items.length} students</span>
+                    <div className="mt-2 flex flex-col gap-1.5 pl-6">
+                      {Object.entries(
+                        items.reduce((acc, curr) => {
+                          if (!acc[curr.time]) acc[curr.time] = [];
+                          acc[curr.time].push(curr);
+                          return acc;
+                        }, {})
+                      )
+                      .sort(([timeA], [timeB]) => timeA.localeCompare(timeB))
+                      .map(([time, slotItems]) => (
+                        <div key={time} className="text-[12px] text-[#2d520e] flex flex-col gap-1 border-l-2 border-[#9fcb71] pl-2 mb-1">
+                          <div className="flex justify-between font-bold">
+                            <span>{time}</span>
+                            <span>{slotItems.length} patient{slotItems.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="text-[11px] font-normal opacity-90 leading-tight">
+                            {slotItems.map(si => si.name).join(', ')}
+                          </div>
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="text-[12px] text-[#2d520e] pl-6">
-                      Assigned to <span className="font-bold">{chosenSlotLabel}</span>.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedItems.length > 0 && (
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[12px] font-bold text-[#475569] uppercase tracking-[0.06em]">
-                      Selected Patients ({selectedItems.length})
-                    </span>
-                    {selectedItems.length > 10 && (
-                      <span className="text-[11px] text-[#94a3b8]">Scroll to see all</span>
-                    )}
                   </div>
-                  <div className="border border-[#e2e8f0] rounded-[10px] overflow-hidden max-h-48 overflow-y-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#cbd5e1] [&::-webkit-scrollbar-thumb]:rounded-[4px]">
-                    {selectedItems.map((item, i) => (
-                      <div key={item.id}
-                        className={`flex items-center gap-3 px-3 py-[8px] text-[13px]
-                          ${i < selectedItems.length - 1 ? 'border-b border-[#f1f5f9]' : ''}
-                          ${i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}`}>
-                        <span className="font-['DM_Mono',monospace] text-[11px] font-bold text-white
-                          bg-[#466460] rounded-[4px] px-[6px] py-[2px] min-w-[24px] text-center shrink-0">
-                          #{pendingRequests.findIndex(x => x.id === item.id) + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-[#1e293b] truncate text-[13px]">{item.name}</div>
-                          <div className="text-[11px] text-[#64748b] truncate">{getUserData(item).university_id} &middot; {item.reason}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                ))
+              ) : (
+                <div className="text-center text-[#64748b] text-[13px] py-4">No valid schedules generated.</div>
               )}
             </div>
 
-            <div className="flex gap-3 px-6 py-5 border-t border-[#eef2f6] bg-white sticky bottom-0">
+            <div className="flex gap-3 px-6 py-5 border-t border-[#eef2f6] bg-white shrink-0 rounded-b-[16px]">
               <button
                 onClick={handleBatchApprove}
-                disabled={!batchDate}
+                disabled={autoScheduleAssignments.length === 0}
                 className="flex-1 py-[12px] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
                   border-none rounded-[10px] text-[15px] font-semibold cursor-pointer
                   transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
                   flex items-center justify-center gap-2"
               >
                 <IconCircleCheck size={16} color="white" />
-                Confirm &amp; Approve All
+                Confirm &amp; Approve
               </button>
               <button
                 onClick={() => setBatchModal(false)}

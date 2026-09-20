@@ -846,8 +846,14 @@ export const Records = () => {
     }
   });
 
-  const isEligible = (doc) => {
+const isEligible = (doc) => {
     if (doc.is_archived === true || doc.is_archived === 'true') return false;
+
+    // Check if the user has a valid first or last name
+    const fName = (doc.first_name || doc.firstName || '').trim();
+    const lName = (doc.last_name || doc.lastName || '').trim();
+    if (!fName && !lName) return false;
+
     const role = String(doc.role || doc.type || '').toLowerCase().trim();
     return role !== 'sysadmin' && role !== 'administrator' && role !== 'admin';
   };

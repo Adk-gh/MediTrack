@@ -8,6 +8,7 @@ import StorageManager from './admin/storageManager';
 import OcrSettings from '../features/admin-clinic/OcrSettings';
 import DoctorSettings from './admin/DoctorSettings';
 import DentistSettings from './admin/DentistSettings';
+import UniversityIdImport from './admin/UniversityIdImport';
 
 // ─── Imported Shared Components ───────────────────────────────────────────────
 import GeneralSettings from './clinic/generalSettings';
@@ -100,6 +101,15 @@ const StorageIcon = () => (
   </svg>
 );
 
+const ImportIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 21h14a2 2 0 0 0 2-2v-3" />
+    <path d="M3 16v3a2 2 0 0 0 2 2" />
+  </svg>
+);
+
 
 // ─── Main Settings Component ──────────────────────────────────────────────────
 export default function Settings({ onLogout, onClose, userRole: propRole }) {
@@ -109,7 +119,9 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
   const rawUser = localStorage.getItem('user');
   const currentUser = rawUser ? JSON.parse(rawUser) : null;
   const activeRole = currentUser?.role || propRole || 'student';
-  const isStaffOrAdmin = ['sysadmin', 'administrator', 'nurse', 'doctor', 'dentist', 'staff', 'registrar'].includes(activeRole.toLowerCase());
+  const normalizedActiveRole = activeRole.toLowerCase();
+  const settingsStorageKey = `meditrack.settings.activeSection.${normalizedActiveRole}`;
+  const isStaffOrAdmin = ['sysadmin', 'administrator', 'nurse', 'doctor', 'dentist', 'staff', 'registrar'].includes(normalizedActiveRole);
 
   const getSectionsByRole = (role = '') => {
     const normalizedRole = role.toLowerCase();
@@ -121,6 +133,9 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
         { id: 'ocr', label: 'OCR Settings', icon: OcrIcon },
         { id: 'doctor', label: 'Doctor Settings', icon: DoctorIcon },
         { id: 'dentist', label: 'Dentist Settings', icon: DentistIcon },
+        ...(normalizedRole === 'sysadmin'
+          ? [{ id: 'university-ids', label: 'University ID Import', icon: ImportIcon }]
+          : []),
         { id: 'storage', label: 'Storage Manager', icon: StorageIcon },
         { id: 'system', label: 'System Config', icon: SystemIcon },
         { id: 'about', label: 'About', icon: InfoIcon },
@@ -155,18 +170,70 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
 
   const sections = getSectionsByRole(activeRole);
 
-  const initialTab = sections.some(s => s.id === location.state?.activeTab)
-    ? location.state.activeTab
-    : sections[0].id;
+  const getRequestedSection = () => {
+    const querySection = new URLSearchParams(location.search).get('section');
+    const stateSection = location.state?.activeTab;
+    const savedSection = localStorage.getItem(settingsStorageKey);
 
-  const [activeSection, setActiveSection] = useState(initialTab);
+    return [querySection, stateSection, savedSection].find(sectionId =>
+      sections.some(section => section.id === sectionId)
+    ) || sections[0].id;
+  };
+
+  const [activeSection, setActiveSection] = useState(getRequestedSection);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    if (location.state?.activeTab && sections.some(s => s.id === location.state.activeTab)) {
-      setActiveSection(location.state.activeTab);
+    const querySection = new URLSearchParams(location.search).get('section');
+    const stateSection = location.state?.activeTab;
+    const requestedSection = [querySection, stateSection].find(sectionId =>
+      sections.some(section => section.id === sectionId)
+    );
+
+    if (requestedSection && requestedSection !== activeSection) {
+      setActiveSection(requestedSection);
+      localStorage.setItem(settingsStorageKey, requestedSection);
     }
-  }, [location.state, sections]);
+  }, [location.search, location.state?.activeTab, normalizedActiveRole]);
+
+  useEffect(() => {
+    localStorage.setItem(settingsStorageKey, activeSection);
+
+    const searchParams = new URLSearchParams(location.search);
+    if (!sections.some(section => section.id === searchParams.get('section'))) {
+      searchParams.set('section', activeSection);
+      navigate(
+        {
+          pathname: location.pathname,
+          search: `?${searchParams.toString()}`,
+        },
+        {
+          replace: true,
+          state: location.state,
+        }
+      );
+    }
+  }, []);
+
+  const handleSectionChange = (sectionId) => {
+    if (!sections.some(section => section.id === sectionId)) return;
+
+    setActiveSection(sectionId);
+    localStorage.setItem(settingsStorageKey, sectionId);
+
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.set('section', sectionId);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: `?${searchParams.toString()}`,
+      },
+      {
+        replace: true,
+        state: location.state,
+      }
+    );
+  };
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
@@ -192,6 +259,8 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
         return <DoctorSettings />;
       case 'dentist':
         return <DentistSettings />;
+      case 'university-ids':
+        return <UniversityIdImport />;
       case 'storage':
         return <StorageManager />;
       case 'system':
@@ -216,7 +285,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
   // ── Mobile layout ────────────────────────────────────────────────────────
   if (isMobile) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f4f8f6', overflow: 'hidden',  paddingTop: 'env(safe-area-inset-top, 0px)',boxSizing: 'border-box', }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: '100vh', background: '#f4f8f6', overflow: 'hidden', paddingTop: 'env(safe-area-inset-top, 0px)', boxSizing: 'border-box' }}>
         <div style={{ background: '#466460', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, height: 56, boxShadow: '0 2px 12px rgba(70,100,96,0.18)' }}>
           <button onClick={handleBack} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <BackIcon />
@@ -230,7 +299,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
             return (
               <button
                 key={id}
-                onClick={() => setActiveSection(id)}
+                onClick={() => handleSectionChange(id)}
                 style={{ flex: '1 0 auto', minWidth: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 4px 10px', background: 'none', border: 'none', cursor: 'pointer', borderBottom: isActive ? `2.5px solid #466460` : '2.5px solid transparent', color: isActive ? '#466460' : '#94a3b8', transition: 'all 0.15s' }}
               >
                 <div style={{ width: 20, height: 20 }}><IconComponent /></div>
@@ -249,7 +318,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
 
   // ── Desktop layout ───────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f4f8f6', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: '100vh', width: '100%', background: '#f4f8f6', overflow: 'hidden', boxSizing: 'border-box' }}>
       <div style={{ background: '#466460', padding: '0 24px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, height: 60, boxShadow: '0 2px 16px rgba(70,100,96,0.2)' }}>
         <button
           onClick={handleBack}
@@ -269,7 +338,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
             return (
               <button
                 key={id}
-                onClick={() => setActiveSection(id)}
+                onClick={() => handleSectionChange(id)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 12, background: isActive ? '#466460' : 'transparent', color: isActive ? '#fff' : '#6b8577', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 14, fontWeight: 600, transition: 'all 0.15s' }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#edf4f2'; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}

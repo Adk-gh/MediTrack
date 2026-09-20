@@ -1,8 +1,9 @@
-// C:\Users\HP\MediTrack\services\user.service.js
+// C:\Users\HP\MediTrack\features\user\user.service.js
 
 const supabase = require('../../configs/database');
 const axios = require('axios');
 const FormData = require('form-data');
+const XLSX = require('xlsx');
 const { getSystemConfig } = require('../../services/systemConfig.service');
 const notificationsService = require('../notifications/notifications.service');
 
@@ -29,9 +30,9 @@ const getChangedFieldsText = (oldData, newUpdates) => {
   return [...new Set(changed)].join(', ');
 };
 
-const normalizeName = (name) => { const t = String(name).trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : ''; };
+const normalizeName = (name) => { const t = String(name || '').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : ''; };
 const normalizePreferences = (prefs) => (!prefs || typeof prefs !== 'object' || Array.isArray(prefs)) ? { ...DEFAULT_USER_PREFERENCES } : { ...DEFAULT_USER_PREFERENCES, ...prefs };
-const normalizeDocuments = (docs) => Array.isArray(docs) ? docs : (typeof docs === 'string' ? (() => { try { const p = JSON.parse(docs); return Array.isArray(p) ? p : []; } catch { console.error('[Documents] Failed to parse documents:', e); return []; } })() : []);
+const normalizeDocuments = (docs) => Array.isArray(docs) ? docs : (typeof docs === 'string' ? (() => { try { const p = JSON.parse(docs); return Array.isArray(p) ? p : []; } catch (error) { console.error('[Documents] Failed to parse documents:', error); return []; } })() : []);
 
 const formatUserResponse = (data) => ({
   id: data.id,          // <-- ADD THIS
@@ -156,12 +157,32 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
   console.log(`>>> [ID] Input: "${universityId}" | OCR detected: "${ocrId}"\n>>> [ID] Normalized input: "${normalizedInputId}" | Normalized OCR: "${normalizeId(ocrId)}"`);
   if (!ocrId || normalizedInputId !== normalizeId(ocrId)) throwError(`Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.`, 400);
 
-  const role = resolveRole(parsed?.role, raw_text);
-  console.log(`>>> [Role] Final role saved to DB: "${role}"`);
+  // The ID must exist in the list uploaded by the System Administrator.
+  const canonicalUniversityId = String(universityId).trim();
+  const { data: universityUser, error: universityIdError } = await supabase
+    .from('users')
+    .select('id, uid, email, university_id, role, is_archived')
+    .eq('university_id', canonicalUniversityId)
+    .maybeSingle();
 
-  const { data: existingUsers, error: existingIdError } = await supabase.from('users').select('uid, is_archived').eq('university_id', ocrId);
-  if (existingIdError) { console.error('>>> [DB] University ID check failed:', existingIdError); throw new Error(existingIdError.message); }
-  if (existingUsers && existingUsers.length > 0) throwError(existingUsers.find(u => !u.is_archived) ? 'This University ID is already registered.' : 'This University ID belongs to an archived account and cannot be registered again.', 400);
+  if (universityIdError) {
+    console.error('>>> [DB] University ID check failed:', universityIdError);
+    throw new Error(universityIdError.message);
+  }
+  if (!universityUser) throwError('Registration failed. This University ID is not recognized.', 400);
+  if (universityUser.is_archived) throwError('This University ID belongs to an archived account and cannot be registered again.', 400);
+
+  // Imported authorization rows can receive a generated uid from a database
+  // default, so uid alone cannot tell us whether signup was completed. An
+  // activated account always has an email because registration fills it in.
+  if (String(universityUser.email || '').trim()) {
+    throwError('This University ID is already registered.', 400);
+  }
+
+  // Imported rows contain only university_id, so fall back to OCR role
+  // detection when no role was assigned to the placeholder row.
+  const role = universityUser.role || resolveRole(parsed?.role, raw_text);
+  console.log(`>>> [Role] Final role saved to DB: "${role}"`);
 
   let userResponse;
   try {
@@ -177,21 +198,161 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
   console.log('>>> [Auth] userResponse:', JSON.stringify(userResponse), '\n>>> [Auth] user.id:', user?.id);
   if (!user?.id) throw new Error('Failed to create user account: No user/ID returned from Supabase Auth');
 
-  const newUser = {
+  const activatedUser = {
     uid: user.id, first_name: normalizeName(firstName), last_name: normalizeName(lastName), middle_name: normalizeName(middleName), suffix: suffix || '', email: normalizedEmail,
-    university_id: ocrId, is_verified: false, role, is_profile_setup: false, profile_complete: false, student_classification: role === 'student' ? 'Regular' : '',
-    preferences: { ...DEFAULT_USER_PREFERENCES }, created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    is_verified: false, role, is_profile_setup: false, profile_complete: false, student_classification: role === 'student' ? 'Regular' : '',
+    preferences: { ...DEFAULT_USER_PREFERENCES }, updated_at: new Date().toISOString()
   };
 
-  const { data: insertData, error: insertError } = await supabase.from('users').insert(newUser).select().single();
-  if (insertError) {
-    console.error('>>> [DB] Insert error:', insertError);
+  let activationQuery = supabase
+    .from('users')
+    .update(activatedUser)
+    .eq('id', universityUser.id);
+
+  // Claim the still-unused placeholder atomically. Use email instead of uid
+  // because some database schemas generate uid values for imported rows.
+  activationQuery = universityUser.email == null
+    ? activationQuery.is('email', null)
+    : activationQuery.eq('email', universityUser.email);
+
+  const { data: updatedUser, error: updateError } = await activationQuery
+    .select()
+    .maybeSingle();
+
+  if (updateError || !updatedUser) {
+    console.error('>>> [DB] Account activation error:', updateError);
     try { await supabase.auth.admin.deleteUser(user.id); } catch (rollbackError) { console.error('>>> [Auth] Failed to roll back Auth user:', rollbackError); }
-    throw new Error('Failed to save user profile: ' + insertError.message);
+    if (!updatedUser && !updateError) throwError('This University ID was already activated by another registration request.', 409);
+    throw new Error('Failed to activate user profile: ' + updateError.message);
   }
 
-  console.log(`>>> [DB] User saved with role: "${role}", UID: ${insertData?.uid}`);
-  return formatUserResponse(insertData);
+  console.log(`>>> [DB] User activated with role: "${role}", UID: ${updatedUser?.uid}`);
+  return formatUserResponse(updatedUser);
+};
+
+// ============================================================
+// IMPORT UNIVERSITY IDS FROM XLSX / XLS (SYSADMIN)
+// ============================================================
+exports.importUniversityIds = async (files = []) => {
+  if (!Array.isArray(files) || files.length === 0) throwError('Please upload at least one XLSX or XLS file.', 400);
+
+  const idsByKey = new Map();
+
+  for (const file of files) {
+    let workbook;
+    try {
+      workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    } catch (error) {
+      console.error(`[University ID Import] Could not read ${file.originalname}:`, error);
+      throwError(`Unable to read ${file.originalname}. Make sure it is a valid Excel file.`, 400);
+    }
+
+    for (const sheetName of workbook.SheetNames) {
+      // Read the worksheet as rows instead of depending on any header name.
+      // Only valid University ID values in column A are imported. Therefore,
+      // headers such as student_id, employee id, id, or no header all work.
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+        header: 1,
+        defval: '',
+        raw: false,
+      });
+
+      for (const row of rows) {
+        const firstCell = Array.isArray(row) ? row[0] : null;
+        if (firstCell === null || firstCell === undefined) continue;
+
+        const cleanId = String(firstCell)
+          .trim()
+          .replace(/[‐‑‒–—−]/g, '-')
+          .replace(/\s*-\s*/g, '-');
+
+        if (!cleanId) continue;
+
+        // Accepted formats:
+        //   XX-XXXXX   example: 23-10831
+        //   XXXX-XXXX  example: 2023-1234
+        // Any header or unrelated cell is ignored automatically.
+        const isUniversityId = /^(?:\d{2}-\d{5}|\d{4}-\d{4})$/.test(cleanId);
+        if (!isUniversityId) continue;
+
+        const key = cleanId.toLowerCase();
+        if (!idsByKey.has(key)) idsByKey.set(key, cleanId);
+      }
+    }
+  }
+
+  const uniqueIds = [...idsByKey.values()];
+  if (uniqueIds.length === 0) {
+    throwError('No valid University IDs were found in column A. Accepted formats are XX-XXXXX and XXXX-XXXX.', 400);
+  }
+
+  const existingIds = new Set();
+  const batchSize = 500;
+
+  for (let index = 0; index < uniqueIds.length; index += batchSize) {
+    const batch = uniqueIds.slice(index, index + batchSize);
+    const { data, error } = await supabase.from('users').select('university_id').in('university_id', batch);
+    if (error) {
+      console.error('[University ID Import] Existing-ID lookup failed:', error);
+      throw new Error(error.message);
+    }
+    for (const row of data || []) {
+      if (row.university_id) existingIds.add(String(row.university_id).trim().toLowerCase());
+    }
+  }
+
+  const duplicateIds = uniqueIds.filter((id) => existingIds.has(id.toLowerCase()));
+  const duplicateKeys = new Set(duplicateIds.map((id) => id.toLowerCase()));
+  const newIds = uniqueIds.filter((id) => !existingIds.has(id.toLowerCase()));
+  const insertedIds = [];
+
+  // Only university_id is supplied. Other nullable columns remain NULL.
+  // ignoreDuplicates requires a UNIQUE constraint/index on university_id.
+  // It prevents one duplicate from cancelling the rest of the batch, even if
+  // another import inserts the same ID after our lookup above.
+  for (let index = 0; index < newIds.length; index += batchSize) {
+    const batch = newIds.slice(index, index + batchSize);
+    const { data, error } = await supabase
+      .from('users')
+      .upsert(
+        batch.map((universityId) => ({ university_id: universityId })),
+        {
+          onConflict: 'university_id',
+          ignoreDuplicates: true,
+        }
+      )
+      .select('university_id');
+
+    if (error) {
+      console.error('[University ID Import] Insert failed:', error);
+      throw new Error(error.message);
+    }
+    const insertedBatchIds = (data || []).map((row) => row.university_id);
+    const insertedBatchKeys = new Set(
+      insertedBatchIds.map((id) => String(id).trim().toLowerCase())
+    );
+
+    insertedIds.push(...insertedBatchIds);
+
+    // IDs not returned by an ignore-duplicates upsert were rejected as
+    // duplicates. Record them without stopping the remaining inserts.
+    for (const id of batch) {
+      const key = id.toLowerCase();
+      if (!insertedBatchKeys.has(key) && !duplicateKeys.has(key)) {
+        duplicateKeys.add(key);
+        duplicateIds.push(id);
+      }
+    }
+  }
+
+  return {
+    filesProcessed: files.length,
+    totalProcessed: uniqueIds.length,
+    inserted: insertedIds.length,
+    duplicates: duplicateIds.length,
+    insertedIds,
+    duplicateIds,
+  };
 };
 
 // ============================================================
@@ -199,7 +360,40 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 // ============================================================
 exports.loginUser = async ({ email, password }) => {
   const normalizedEmail = String(email).trim().toLowerCase();
-  const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+  let { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+
+  // Repair accounts verified by the custom MediTrack verification link before
+  // Supabase Auth confirmation was synchronized. This is limited to profiles
+  // already marked is_verified=true in public.users.
+  if (error?.message?.toLowerCase().includes('email not confirmed')) {
+    const { data: verifiedProfile, error: profileCheckError } = await supabase
+      .from('users')
+      .select('uid, is_verified')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (profileCheckError) {
+      console.error('>>> [Auth] Verification sync lookup failed:', profileCheckError);
+      throwError(profileCheckError.message, 500);
+    }
+
+    if (verifiedProfile?.uid && verifiedProfile.is_verified === true) {
+      const { error: confirmError } = await supabase.auth.admin.updateUserById(
+        verifiedProfile.uid,
+        { email_confirm: true }
+      );
+
+      if (confirmError) {
+        console.error('>>> [Auth] Failed to synchronize email confirmation:', confirmError);
+        throwError('Your email is verified, but authentication confirmation could not be synchronized.', 500);
+      }
+
+      ({ data, error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      }));
+    }
+  }
 
   if (error) { console.error('>>> [Auth] signInWithPassword error:', error.message); throwError(error.message, 401); }
   const { user, session } = data;
@@ -277,9 +471,25 @@ exports.deleteUser = async (userId, deletedByName) => {
 };
 
 exports.checkUniversityId = async (universityId) => {
-  const { data, error } = await supabase.from('users').select('uid').eq('university_id', universityId).eq('is_archived', false);
-  if (error) throw new Error(error.message);
-  return data && data.length > 0;
+  const normalizedUniversityId = String(universityId || '').trim();
+
+  if (!normalizedUniversityId) return false;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('uid, email, is_archived')
+    .eq('university_id', normalizedUniversityId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[University ID Check]', error);
+    throw new Error(error.message);
+  }
+
+  // Imported placeholders have no email and remain eligible even when the
+  // database automatically generated a uid for their row. Registration fills
+  // the email field, which makes it the reliable account-activation marker.
+  return Boolean(String(data?.email || '').trim());
 };
 
 exports.toggleProfileComplete = async (userId, profileComplete) => {

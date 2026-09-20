@@ -408,7 +408,23 @@ exports.verifyEmail = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Verification token has expired' });
     }
 
-    // 3. Mark user as verified and clear the token
+    // 3. Confirm the email in Supabase Auth as well. Updating only
+    // public.users.is_verified leaves Auth's email_confirmed_at empty and
+    // signInWithPassword will still return "Email not confirmed".
+    const { error: authConfirmError } = await supabase.auth.admin.updateUserById(
+      user.uid,
+      { email_confirm: true }
+    );
+
+    if (authConfirmError) {
+      console.error('Supabase Auth email confirmation error:', authConfirmError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to confirm email in the authentication service'
+      });
+    }
+
+    // 4. Mark the public user row as verified and clear the token
     const { error: updateError } = await supabase
       .from('users')
       .update({

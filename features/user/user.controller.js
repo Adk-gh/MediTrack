@@ -620,11 +620,70 @@ const adminUpdateUser = async (
 };
 
 // ============================================================
+// IMPORT UNIVERSITY IDS FROM EXCEL (SYSADMIN)
+// ============================================================
+
+const importUniversityIds = async (req, res, next) => {
+  try {
+    const files = req.files || [];
+
+    if (!files.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload at least one XLSX or XLS file.',
+      });
+    }
+
+    const result = await userService.importUniversityIds(files);
+
+    setAuditData(
+      res,
+      `Imported ${result.inserted} university ID(s); skipped ${result.duplicates} duplicate(s).`,
+      {
+        operation: 'import_university_ids',
+        inserted: result.inserted,
+        duplicates: result.duplicates,
+        totalProcessed: result.totalProcessed,
+        files: files.map((file) => ({
+          name: file.originalname,
+          size: file.size,
+        })),
+        updatedBy: {
+          id: req.user?.uid || req.user?.id || null,
+          email: req.user?.email || null,
+          name: resolveActorName(req),
+        },
+      }
+    );
+
+    let responseMessage;
+
+    if (result.duplicates > 0 && result.inserted > 0) {
+      responseMessage = `${result.inserted} university ID(s) imported; ${result.duplicates} duplicate ID(s) skipped.`;
+    } else if (result.duplicates > 0) {
+      responseMessage = `No new university IDs were imported; all ${result.duplicates} ID(s) already exist.`;
+    } else {
+      responseMessage = `${result.inserted} university ID(s) imported successfully.`;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: responseMessage,
+      data: result,
+    });
+  } catch (error) {
+    console.error('[University ID Import Controller]', error);
+    next(error);
+  }
+};
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
   register,
+  importUniversityIds,
   login,
   getProfile,
   setupProfile,

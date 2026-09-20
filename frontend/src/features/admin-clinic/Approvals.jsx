@@ -3121,6 +3121,7 @@ await updateRecord(recordId, {
                 examination={selectedExam}
                 onSubmit={handleSaveDentalReport}
                 readOnly={selectedExam.issue_cert}
+                onEdit={handleEdit}
               />
             </div>
           </div>
@@ -3157,7 +3158,7 @@ await updateRecord(recordId, {
 
       {/* --- FULL EXAMINATION MODAL (Unified - like Records.jsx) --- */}
       {showFullExamModal && examRecordData && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); setNormalizedPatient(null); }}></div>
 

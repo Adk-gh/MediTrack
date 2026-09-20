@@ -30,6 +30,7 @@ const TYPE_COLORS = {
 };
 
 const RECORD_COLORS = ['#466460', '#e07a5f'];
+const VISIT_COLORS = ['#e07a5f', '#3b82f6', '#cbd5e1'];
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -154,6 +155,28 @@ const findAppointmentUser = (users, appointment) => {
   });
 };
 
+const findRecordUser = (users, record) => {
+  const recordIds = [
+    record?.userId,
+    record?.user_id,
+    record?.uid,
+    record?.universityId,
+    record?.university_id,
+  ].map(normalizeValue).filter(Boolean);
+
+  return users.find(user => {
+    const userIds = [user?.id, user?.uid, user?.universityId]
+      .map(normalizeValue)
+      .filter(Boolean);
+    return userIds.some(id => recordIds.includes(id));
+  });
+};
+
+const normalizeVisitType = (value) => {
+  const type = String(value || '').trim().toLowerCase();
+  return type === 'patient' || type === 'non_patient' ? type : 'unclassified';
+};
+
 // ============================================================
 // DASHBOARD CONTENT
 // ============================================================
@@ -167,7 +190,6 @@ function DashboardContent() {
 
   // ── State ─────────────────────────────────────────────────
   const [users,          setUsers]          = useState([]);
-  const [clinicStaffCount, setClinicStaffCount] = useState(0);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [dentalRecords,  setDentalRecords]  = useState([]);
   const [loading,        setLoading]        = useState(true);
@@ -204,8 +226,6 @@ function DashboardContent() {
 
         // Separate patients from clinic staff.
         const patients = activeRaw.filter((u) => !isClinicStaff(u.role));
-        const clinicStaff = activeRaw.filter((u) => isClinicStaff(u.role));
-
         setUsers(
           patients.map((u) => ({
             // Preserve both IDs from the users table.
@@ -229,8 +249,6 @@ function DashboardContent() {
             createdAt: u.created_at || u.createdAt || '',
           }))
         );
-
-        setClinicStaffCount(clinicStaff.length);
       }
 
       // ── Medical Records ──────────────────────────────────
@@ -255,8 +273,11 @@ function DashboardContent() {
           ? new Date(r.exam_date || r.examDate || r.created_at || r.createdAt)
           : new Date(),
         userId:     r.user_id, // Explicitly mapped to 'user_id' from records
+        universityId: r.university_id || r.universityId || '',
         schoolYear: r.school_year || r.schoolYear || '',
         semester:   r.semester || '',
+        visitReason: r.visit_reason || r.visitReason || '',
+        visitType: normalizeVisitType(r.visit_type || r.visitType),
       })));
 
       // ── Dental Records ────────────────────────────────────
@@ -281,8 +302,11 @@ function DashboardContent() {
           ? new Date(r.created_at || r.createdAt || r.exam_date || r.examDate)
           : new Date(),
         userId:     r.user_id, // Explicitly mapped to 'user_id' from records
+        universityId: r.university_id || r.universityId || '',
         schoolYear: r.school_year || r.schoolYear || '',
         semester:   r.semester || '',
+        visitReason: r.visit_reason || r.visitReason || '',
+        visitType: normalizeVisitType(r.visit_type || r.visitType),
       })));
 
     } catch (err) {
@@ -319,21 +343,6 @@ function DashboardContent() {
     });
   }, [appointments]);
 
-  const todayAppts = useMemo(() => {
-    return scheduledAppointments.filter(a => {
-      const dateString = a?.date || a?.bookedAt || a?.created_at || a?.createdAt;
-
-      if (a?.year && a?.month && a?.day) {
-        const d = new Date(a.year, a.month - 1, a.day);
-        return d.toDateString() === today.toDateString();
-      } else if (dateString) {
-        const d = new Date(dateString);
-        return d.toDateString() === today.toDateString();
-      }
-      return false;
-    });
-  }, [scheduledAppointments]);
-
   const weekFromNow = new Date(today);
   weekFromNow.setDate(today.getDate() + 7);
 
@@ -351,19 +360,34 @@ function DashboardContent() {
     [...medicalRecords, ...dentalRecords].sort((a, b) => b.dateObj - a.dateObj),
   [medicalRecords, dentalRecords]);
 
-  // ── Filtered records by school year and semester ─────────────────────
+  // ── Filtered encounters by school year, semester, and user type ──────
   const filteredAllRecords = useMemo(() => {
     return allRecords.filter(r => {
       const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
       const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
-      return matchesSchoolYear && matchesSemester;
+      const recordUser = findRecordUser(users, r);
+      const matchesUserType = filter === 'all' || recordUser?.type === filter;
+      return matchesSchoolYear && matchesSemester && matchesUserType;
     });
-  }, [allRecords, schoolYearFilter, semesterFilter]);
+  }, [allRecords, schoolYearFilter, semesterFilter, filter, users]);
 
-  // ── Filtered users ────────────────────────────────────────
-  const filteredUsers = useMemo(() =>
-    filter === 'all' ? users : users.filter(u => u.type === filter),
-  [users, filter]);
+  const visitStats = useMemo(() => {
+    const patient = filteredAllRecords.filter(r => r.visitType === 'patient').length;
+    const nonPatient = filteredAllRecords.filter(r => r.visitType === 'non_patient').length;
+    const unclassified = filteredAllRecords.filter(r => r.visitType === 'unclassified').length;
+
+    return {
+      total: filteredAllRecords.length,
+      patient,
+      nonPatient,
+      unclassified,
+      medical: filteredAllRecords.filter(r => r.kind === 'Medical').length,
+      dental: filteredAllRecords.filter(r => r.kind === 'Dental').length,
+    };
+  }, [filteredAllRecords]);
+
+  const percentageOfVisits = (count) =>
+    visitStats.total > 0 ? ((count / visitStats.total) * 100).toFixed(1) : '0.0';
 
   // ── Available school years from records ─────────────────────
   const availableSchoolYears = useMemo(() => {
@@ -373,11 +397,7 @@ function DashboardContent() {
 
   // ── Line Chart: visits over time ──────────────────────────
   const trendData = useMemo(() => {
-    const filteredRecords = allRecords.filter(r => {
-      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
-      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
-      return matchesSchoolYear && matchesSemester;
-    });
+    const filteredRecords = filteredAllRecords;
 
     let labels = [];
     let ymTargets = [];
@@ -403,56 +423,49 @@ function DashboardContent() {
       labels = MONTHS.map(m => `${m} ${y}`);
     }
 
-    const types = filter === 'all' ? ['student', 'teaching', 'non_teaching'] : [filter];
-    const borderDashes = { student: [], teaching: [6, 3], non_teaching: [2, 3] };
+    const recordsWithMonth = filteredRecords.map(r => ({
+      visitType: r.visitType,
+      ymString: r.dateObj
+        ? `${r.dateObj.getFullYear()}-${String(r.dateObj.getMonth()).padStart(2, '0')}`
+        : null,
+    }));
 
-    const recordsWithTypes = filteredRecords.map(r => {
-      // Clean, exact ID match based on your schema
-      const user = users.find(u => r.userId && String(u.uid) === String(r.userId));
-      return {
-        uType: user?.type || 'student',
-        ymString: r.dateObj ? `${r.dateObj.getFullYear()}-${String(r.dateObj.getMonth()).padStart(2, '0')}` : null,
-      };
-    });
-
-    const datasets = types.map(t => {
-      let labelText = '';
-      if (t === 'student') labelText = 'Students';
-      else if (t === 'teaching') labelText = 'Teaching';
-      else if (t === 'non_teaching') labelText = 'Non-Teaching';
-      else labelText = t.charAt(0).toUpperCase() + t.slice(1);
-
-      return {
-        label:            labelText,
-        data:             ymTargets.map(ymTarget => {
-          return recordsWithTypes.filter(r => r.uType === t && r.ymString === ymTarget).length;
-        }),
-        borderColor:      TYPE_COLORS[t],
-        backgroundColor:  TYPE_COLORS[t] + '18',
-        borderWidth:      2,
-        pointRadius:      3,
-        pointHoverRadius: 5,
-        tension:          0.35,
-        fill:             false,
-        borderDash:       borderDashes[t],
-      };
-    });
+    const datasets = [
+      {
+        label: 'Patient Visits',
+        visitType: 'patient',
+        borderColor: '#e07a5f',
+        backgroundColor: '#e07a5f18',
+        borderDash: [],
+      },
+      {
+        label: 'Non-Patient Visits',
+        visitType: 'non_patient',
+        borderColor: '#3b82f6',
+        backgroundColor: '#3b82f618',
+        borderDash: [6, 3],
+      },
+    ].map(dataset => ({
+      ...dataset,
+      data: ymTargets.map(ymTarget =>
+        recordsWithMonth.filter(r =>
+          r.visitType === dataset.visitType && r.ymString === ymTarget
+        ).length
+      ),
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      tension: 0.35,
+      fill: false,
+    }));
 
     return { labels, datasets };
-  }, [filter, schoolYearFilter, semesterFilter, allRecords, users]);
+  }, [filteredAllRecords]);
 
   // ── Doughnut: record type distribution ───────────────────
   const recordsChartData = useMemo(() => {
-    const filteredMedical = medicalRecords.filter(r => {
-      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
-      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
-      return matchesSchoolYear && matchesSemester;
-    });
-    const filteredDental = dentalRecords.filter(r => {
-      const matchesSchoolYear = schoolYearFilter === 'all' || r.schoolYear === schoolYearFilter;
-      const matchesSemester = semesterFilter === 'all' || r.semester === semesterFilter;
-      return matchesSchoolYear && matchesSemester;
-    });
+    const filteredMedical = filteredAllRecords.filter(r => r.kind === 'Medical');
+    const filteredDental = filteredAllRecords.filter(r => r.kind === 'Dental');
 
     return {
       config: {
@@ -464,12 +477,28 @@ function DashboardContent() {
         }],
       },
     };
-  }, [medicalRecords, dentalRecords, schoolYearFilter, semesterFilter]);
+  }, [filteredAllRecords]);
 
-  // ── Bar: patient type breakdown ───────────────────────────
+  const visitClassificationChartData = useMemo(() => ({
+    labels: ['Patient Visits', 'Non-Patient Visits', 'Unclassified'],
+    datasets: [{
+      data: [visitStats.patient, visitStats.nonPatient, visitStats.unclassified],
+      backgroundColor: VISIT_COLORS,
+      borderWidth: 0,
+    }],
+  }), [visitStats]);
+
+  // ── Bar: classification of people who produced encounters ─
   const typeChartData = useMemo(() => {
-    const counts = {};
-    filteredUsers.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
+    const order = ['student', 'teaching', 'non_teaching'];
+    const counts = { student: 0, teaching: 0, non_teaching: 0 };
+
+    filteredAllRecords.forEach(record => {
+      const recordUser = findRecordUser(users, record);
+      if (recordUser?.type && Object.hasOwn(counts, recordUser.type)) {
+        counts[recordUser.type] += 1;
+      }
+    });
 
     const labelsMap = {
       student: 'Students',
@@ -479,15 +508,15 @@ function DashboardContent() {
     };
 
     return {
-      labels:   Object.keys(counts).map(k => labelsMap[k] || k),
+      labels:   order.map(k => labelsMap[k]),
       datasets: [{
-        label:           'Count',
-        data:            Object.values(counts),
-        backgroundColor: Object.keys(counts).map(t => TYPE_COLORS[t] || '#466460'),
+        label:           'Visits',
+        data:            order.map(k => counts[k]),
+        backgroundColor: order.map(t => TYPE_COLORS[t] || '#466460'),
         borderRadius:    4,
       }],
     };
-  }, [filteredUsers]);
+  }, [filteredAllRecords, users]);
 
   // ── Alerts ────────────────────────────────────────────────
   const alerts = useMemo(() => [
@@ -525,35 +554,37 @@ function DashboardContent() {
         {loading ? [1,2,3,4,5].map(i => <StatSkeleton key={i} />) : (
           <>
             <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Patients</p>
-              <h4 className="text-3xl font-bold text-slate-800">{users.length}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Students + Teaching + Non-Teaching</p>
-            </GlassCard>
-
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Clinic Staff</p>
-              <h4 className="text-3xl font-bold text-slate-800">{clinicStaffCount}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Doctor + Nurse + Dentist</p>
-            </GlassCard>
-
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Today's Appts</p>
-              <h4 className="text-3xl font-bold text-slate-800">{todayAppts.length}</h4>
-              <p className={`text-xs mt-1 ${pendingCount > 0 ? 'text-amber-500' : 'text-slate-400'}`}>
-                {pendingCount > 0 ? `${pendingCount} request${pendingCount > 1 ? 's' : ''} pending` : 'none pending'}
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Visits</p>
+              <h4 className="text-3xl font-bold text-slate-800">{visitStats.total}</h4>
+              <p className={`text-xs mt-1 ${visitStats.unclassified > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {visitStats.unclassified > 0
+                  ? `${visitStats.unclassified} old record${visitStats.unclassified !== 1 ? 's' : ''} unclassified`
+                  : 'All visits classified'}
               </p>
             </GlassCard>
 
             <GlassCard className="p-5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Patient Visits</p>
+              <h4 className="text-3xl font-bold text-[#e07a5f]">{visitStats.patient}</h4>
+              <p className="text-xs text-slate-500 mt-1">{percentageOfVisits(visitStats.patient)}% of total visits</p>
+            </GlassCard>
+
+            <GlassCard className="p-5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Non-Patient Visits</p>
+              <h4 className="text-3xl font-bold text-[#3b82f6]">{visitStats.nonPatient}</h4>
+              <p className="text-xs text-slate-500 mt-1">{percentageOfVisits(visitStats.nonPatient)}% of total visits</p>
+            </GlassCard>
+
+            <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Medical</p>
-              <h4 className="text-3xl font-bold text-slate-800">{filteredAllRecords.filter(r => r.kind === 'Medical').length}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Exams recorded</p>
+              <h4 className="text-3xl font-bold text-slate-800">{visitStats.medical}</h4>
+              <p className="text-xs text-emerald-500 mt-1">Medical encounters</p>
             </GlassCard>
 
             <GlassCard className="p-5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Dental</p>
-              <h4 className="text-3xl font-bold text-slate-800">{filteredAllRecords.filter(r => r.kind === 'Dental').length}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Exams recorded</p>
+              <h4 className="text-3xl font-bold text-slate-800">{visitStats.dental}</h4>
+              <p className="text-xs text-emerald-500 mt-1">Dental encounters</p>
             </GlassCard>
           </>
         )}
@@ -586,7 +617,7 @@ function DashboardContent() {
         {/* Line Chart */}
         <div className="mb-5">
           <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-            <SectionLabel icon="fa-chart-line">Patient Visits Over Time</SectionLabel>
+            <SectionLabel icon="fa-chart-line">Clinic Visits Over Time</SectionLabel>
             <div className="flex gap-2 flex-wrap items-center">
               {/* Semester Filter */}
               <select
@@ -616,22 +647,12 @@ function DashboardContent() {
           </div>
 
           <div className="flex gap-4 mb-3 flex-wrap">
-            {(filter === 'all' || filter === 'student') && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
-                <span className="w-7 h-[3px] rounded bg-[#466460]"></span>Students
-              </div>
-            )}
-            {(filter === 'all' || filter === 'teaching') && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
-                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#e07a5f 0,#e07a5f 6px,transparent 6px,transparent 10px)' }}></span>Teaching
-              </div>
-            )}
-            {(filter === 'all' || filter === 'non_teaching') && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
-                <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#81b29a 0,#81b29a 2px,transparent 2px,transparent 5px)' }}></span>Non-Teaching
-              </div>
-            )}
-
+            <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
+              <span className="w-7 h-[3px] rounded bg-[#e07a5f]"></span>Patient Visits
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-[#475569]">
+              <span className="w-7 h-[3px] rounded" style={{ background: 'repeating-linear-gradient(90deg,#3b82f6 0,#3b82f6 6px,transparent 6px,transparent 10px)' }}></span>Non-Patient Visits
+            </div>
           </div>
 
           <div className="w-full h-[30vh] min-h-[220px] relative">
@@ -661,13 +682,33 @@ function DashboardContent() {
 
         <hr className="border-slate-100 mb-5" />
 
-        {/* Doughnut + Bar */}
-        <div className="grid grid-cols-2 gap-5">
+        {/* Visit classification + service + user classification */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div>
-            <SectionLabel icon="fa-file-medical">Record Type Distribution</SectionLabel>
+            <SectionLabel icon="fa-clipboard-check">Visit Classification</SectionLabel>
             <div className="h-[180px] flex justify-center items-center">
               {loading ? <ChartSkeleton h="180px" /> : (
-                medicalRecords.length === 0 && dentalRecords.length === 0 ? (
+                visitStats.total === 0 ? (
+                  <p className="text-xs text-slate-400">No visits found</p>
+                ) : (
+                  <Doughnut
+                    data={visitClassificationChartData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } },
+                    }}
+                  />
+                )
+              )}
+            </div>
+          </div>
+
+          <div>
+            <SectionLabel icon="fa-file-medical">Service Type</SectionLabel>
+            <div className="h-[180px] flex justify-center items-center">
+              {loading ? <ChartSkeleton h="180px" /> : (
+                visitStats.total === 0 ? (
                   <p className="text-xs text-slate-400">No records found</p>
                 ) : (
                   <Doughnut
@@ -684,7 +725,7 @@ function DashboardContent() {
           </div>
 
           <div>
-            <SectionLabel icon="fa-users">Patient Type Breakdown</SectionLabel>
+            <SectionLabel icon="fa-users">User Classification</SectionLabel>
             <div className="h-[180px]">
               {loading ? <ChartSkeleton h="180px" /> : (
                 <Bar
@@ -764,16 +805,7 @@ function DashboardContent() {
       minute: '2-digit',
     });
 
-const appointmentUserId =
-  appt?.user_id ||
-  appt?.userId ||
-  appt?.patient_id ||
-  appt?.patientId ||
-  appt?.student_id;
-
-const matchedUser = users.find(
-  (user) => String(user.id) === String(appointmentUserId)
-);
+const matchedUser = findAppointmentUser(users, appt);
 
 const patientName =
   matchedUser?.name ||
@@ -868,8 +900,7 @@ const patientProg =
               ) : (
                 <div className="space-y-2">
                   {filteredAllRecords.slice(0, 6).map((rec, i) => {
-                    // Exact match lookup
-                    const user = users.find(u => rec.userId && String(u.uid) === String(rec.userId)) || {};
+                    const user = findRecordUser(users, rec) || {};
                     const isMed = rec.kind === 'Medical';
                     return (
                       <div key={rec.id || i} className="flex items-center gap-3 p-2.5 bg-white border border-slate-100 rounded-lg">
@@ -884,6 +915,19 @@ const patientProg =
                           </p>
                           <p className="text-[10px] text-slate-500 truncate">
                             {user.name || rec.userId || 'ID Missing'}
+                          </p>
+                          <p className={`text-[9px] font-semibold mt-0.5 ${
+                            rec.visitType === 'patient'
+                              ? 'text-[#e07a5f]'
+                              : rec.visitType === 'non_patient'
+                                ? 'text-[#3b82f6]'
+                                : 'text-amber-500'
+                          }`}>
+                            {rec.visitType === 'patient'
+                              ? 'Patient Visit'
+                              : rec.visitType === 'non_patient'
+                                ? 'Non-Patient Visit'
+                                : 'Unclassified'}
                           </p>
                         </div>
                         <div className="text-right shrink-0">
