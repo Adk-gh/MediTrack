@@ -205,8 +205,10 @@ const getAnnouncementSharePage = async (req, res, next) => {
     const formattedDate =
       formatAnnouncementDate(createdAt);
 
-    const publicAnnouncementUrl =
-      `${frontendBaseUrl}/announcements/${announcementId}`;
+const publicAnnouncementUrl =
+  `${frontendBaseUrl}/login?redirect=${encodeURIComponent(
+    `/announcements/${announcementId}`
+  )}`;
 
     const sharePageUrl =
       `${backendBaseUrl}/api/announcements/share/${announcementId}`;
