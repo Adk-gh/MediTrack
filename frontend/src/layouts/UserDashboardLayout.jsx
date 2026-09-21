@@ -858,7 +858,7 @@ function DesktopShell({
         <img
           src={logo}
           alt="MediTrack Logo"
-          className="h-10 object-contain rounded-xl"
+          className="h-16 w-auto object-contain"
         />
 
         <div className="flex items-center gap-1 sm:gap-2">

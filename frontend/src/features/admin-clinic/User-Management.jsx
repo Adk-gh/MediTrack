@@ -168,10 +168,10 @@ const capitalizeWords = (str) => {
 };
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
-const inputCls  = "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] bg-white";
-const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-const compactSelectCls = `${filterSelectCls} w-full sm:w-auto min-w-[150px] max-w-[200px] truncate`;
-const compactDeptSelectCls = `${filterSelectCls} w-full sm:w-auto min-w-[210px] max-w-[300px] bg-slate-100/50 truncate disabled:opacity-60 disabled:cursor-not-allowed`;
+const inputCls  = "w-full min-h-11 px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] bg-white";
+const filterSelectCls = "w-full min-h-11 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+const compactSelectCls = `${filterSelectCls} xl:w-auto xl:min-w-[150px] xl:max-w-[200px] truncate`;
+const compactDeptSelectCls = `${filterSelectCls} xl:w-auto xl:min-w-[210px] xl:max-w-[300px] bg-slate-100/50 truncate disabled:opacity-60 disabled:cursor-not-allowed`;
 const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tracking-wide";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,8 +180,8 @@ const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tra
 const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
   if (!isOpen) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onCancel}>
+      <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-2xl p-5 sm:p-6 max-w-sm w-full pb-[calc(1.25rem+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-amber-600">
@@ -191,11 +191,11 @@ const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
           <h3 className="text-lg font-bold text-slate-800">Unsaved Changes</h3>
         </div>
         <p className="text-sm text-slate-600 mb-6">You have unsaved changes. Are you sure you want to discard them? Any edits you made will be lost.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
+        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
+          <button onClick={onCancel} className="min-h-11 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
             Keep Editing
           </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
+          <button onClick={onConfirm} className="min-h-11 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
             Discard
           </button>
         </div>
@@ -278,7 +278,7 @@ const CustomSelect = ({ value, onChange, options, placeholder = "— Select —"
   return (
     <div className={`relative ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`} ref={ref}>
       <div
-        className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm flex items-center justify-between transition-colors focus:ring-2 focus:ring-[#e0eceb] ${disabled ? 'bg-slate-50 text-slate-500' : 'bg-white cursor-pointer hover:border-[#466460]'}`}
+        className={`w-full min-h-11 px-3 py-2.5 border border-slate-300 rounded-xl text-sm flex items-center justify-between transition-colors focus:ring-2 focus:ring-[#e0eceb] ${disabled ? 'bg-slate-50 text-slate-500' : 'bg-white cursor-pointer hover:border-[#466460]'}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
          <span className={`truncate pr-2 ${!value ? 'text-slate-400' : 'text-slate-800'}`}>
@@ -488,9 +488,9 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
 
   return createPortal(
     <>
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && handleCloseRequest()}>
-        <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
-          <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[9999] p-0 sm:p-4" onClick={e => e.target === e.currentTarget && handleCloseRequest()}>
+        <div className="bg-white rounded-t-[28px] sm:rounded-2xl w-full max-w-2xl overflow-hidden max-h-[94dvh] sm:max-h-[92vh] flex flex-col shadow-2xl">
+          <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-4 sm:px-6 py-4 text-white shrink-0 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
@@ -500,12 +500,12 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
               <h3 className="text-base font-bold">Create New User</h3>
               <p className="text-xs text-white/70 mt-0.5">Fill in the details below</p>
             </div>
-            <button onClick={handleCloseRequest} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
+            <button onClick={handleCloseRequest} className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             <form onSubmit={handleSubmit} id="create-form">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                 <div className={secHead}>Account</div>
@@ -618,9 +618,9 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
             </form>
           </div>
 
-          <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-            <button type="button" onClick={handleCloseRequest} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-            <button type="submit" form="create-form" disabled={loading} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 bg-slate-50 shrink-0">
+            <button type="button" onClick={handleCloseRequest} className="min-h-11 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
+            <button type="submit" form="create-form" disabled={loading} className="min-h-11 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
               {loading && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
               {loading ? 'Creating…' : '✓ Create User'}
             </button>
@@ -1143,9 +1143,9 @@ export const UserManagement = () => {
   }
 
   return (
-    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
+    <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 shrink-0">
+      <div className="grid grid-cols-2 min-[390px]:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
         {[
           { label: 'Total', count: statTotal, color: 'text-slate-800' },
           { label: 'Clinic', count: statClinicStaff, color: 'text-blue-600' },
@@ -1153,7 +1153,7 @@ export const UserManagement = () => {
           { label: 'Teaching', count: statTeaching, color: 'text-emerald-600' },
           { label: 'Non-Teaching', count: statNonTeaching, color: 'text-amber-600' },
         ].map(s => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl px-2 py-3 sm:p-3.5 flex flex-col min-[390px]:flex-row items-center justify-center gap-0.5 min-[390px]:gap-2 shadow-sm min-w-0">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
             <span className="text-[11px] font-medium text-slate-500 leading-tight text-center">{s.label}</span>
           </div>
@@ -1165,53 +1165,53 @@ export const UserManagement = () => {
         <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
 
           {/* Top Controls: Search, Filter Toggle, and Actions */}
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+          <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 items-start lg:items-center justify-between">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 w-full lg:w-auto lg:flex-1">
               {/* Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full lg:max-w-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
                 <input type="text" placeholder="Search by name, email, or ID..." value={searchInput}
                   onChange={e => setSearchInput(e.target.value)}
-                  className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
+                  className="pl-9 pr-4 py-2.5 min-h-11 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
               </div>
 
               {/* Mobile Filter Toggle Button */}
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                className="xl:hidden min-h-11 flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
                 title="Toggle Filters"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+                <span className="hidden min-[390px]:inline">{isFiltersOpen ? 'Hide' : 'Filters'}</span>
               </button>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
+            <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
               <button onClick={() => setShowCreateWizard(true)}
-                className="bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+                className="min-h-11 bg-white hover:bg-slate-100 text-[#466460] border border-slate-200 px-3 py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
-                <span className="hidden sm:inline">Add User</span>
+                <span>Add User</span>
               </button>
 
               <button onClick={fetchUsers}
-                className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+                className="min-h-11 bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span className="hidden sm:inline">Refresh</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
           {/* Expandable Filters Container */}
-          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
+          <div className={`grid grid-cols-1 min-[390px]:grid-cols-2 xl:flex xl:flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'grid' : 'hidden xl:flex'}`}>
             <select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}
               className={compactSelectCls}>
               <option value="all">All Personnel</option>
@@ -1276,7 +1276,48 @@ export const UserManagement = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto bg-white [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+        <div className="lg:hidden flex-1 overflow-y-auto bg-slate-50/70 p-3 space-y-3">
+          {loading ? (
+            <div className="min-h-40 flex items-center justify-center gap-2 text-sm text-slate-400">
+              <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+              Loading users...
+            </div>
+          ) : paginatedUsers.length === 0 ? (
+            <div className="min-h-40 flex items-center justify-center text-sm text-slate-400">No users found</div>
+          ) : paginatedUsers.map((user) => {
+            const uDept = getUserDepartment(user) || 'No office or department';
+            const uProg = getUserProgram(user) || '';
+            const hasName = Boolean((user.first_name || '').trim() || (user.last_name || '').trim());
+            return (
+              <article key={user.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm min-w-0">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] shrink-0">{getInitials(user)}</div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-800 truncate">{getFullName(user)}</h3>
+                    <p className="text-xs text-slate-500 truncate">{user.email || 'No email'}</p>
+                    <p className="text-xs font-mono text-slate-400 mt-0.5">{user.university_id || 'No university ID'}</p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0" style={getRoleBadgeStyle(user.role)}>{getRoleLabel(user.role)}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-4 text-xs">
+                  <div className="min-w-0"><p className="font-bold uppercase tracking-wide text-[9px] text-slate-400">Office / Department</p><p className="mt-1 font-medium text-slate-700 break-words">{uDept}</p>{uProg && <p className="text-slate-500 break-words">{uProg}</p>}</div>
+                  <div><p className="font-bold uppercase tracking-wide text-[9px] text-slate-400">Sex</p><p className="mt-1 font-medium text-slate-700">{user.sex || '—'}</p></div>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${user.is_verified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{user.is_verified ? 'Verified' : 'Unverified'}</span>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${!hasName ? 'bg-slate-100 text-slate-500 border border-slate-200' : user.profile_complete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{!hasName ? 'Unregistered ID' : user.profile_complete ? 'Profile Complete' : 'Pending Setup'}</span>
+                </div>
+                <div className={`grid ${user.is_verified ? 'grid-cols-2' : 'grid-cols-3'} gap-2 mt-4`}>
+                  {!user.is_verified && <button onClick={() => resendVerificationEmail(user)} disabled={resendingId === (user.uid || user.id)} className="min-h-11 rounded-xl border border-slate-200 bg-white text-xs font-bold text-[#466460] disabled:opacity-50">{resendingId === (user.uid || user.id) ? 'Sending…' : 'Resend'}</button>}
+                  <button onClick={() => openEditModal(user)} className="min-h-11 rounded-xl bg-[#e0eceb] text-sm font-bold text-[#466460]">Edit</button>
+                  <button onClick={() => openDeleteModal(user)} className="min-h-11 rounded-xl bg-red-50 text-sm font-bold text-red-600">Archive</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden lg:block flex-1 overflow-auto bg-white [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -1392,15 +1433,15 @@ export const UserManagement = () => {
         </div>
 
         {totalPages > 1 && (
-          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
-            <div>
+          <div className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-600">
+            <div className="text-center sm:text-left">
               Showing <span className="font-semibold">{filteredUsers.length === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)}</span> of <span className="font-semibold">{filteredUsers.length}</span> records
             </div>
             <div className="flex items-center gap-2">
               <button
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage(p => p - 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-4 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Previous
               </button>
@@ -1410,7 +1451,7 @@ export const UserManagement = () => {
               <button
                 disabled={currentPage === totalPages || totalPages === 0}
                 onClick={() => setCurrentPage(p => p + 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-4 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Next
               </button>
@@ -1431,20 +1472,20 @@ export const UserManagement = () => {
 
       {showEditModal && editTarget && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[9999] p-4 pt-4 md:pt-10" onClick={e => e.target === e.currentTarget && handleEditCloseRequest()}>
-            <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col shadow-2xl">
-              <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-6 py-4 text-white shrink-0 flex items-center gap-3">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[9999] p-0 sm:p-4" onClick={e => e.target === e.currentTarget && handleEditCloseRequest()}>
+            <div className="bg-white rounded-t-[28px] sm:rounded-2xl w-full max-w-3xl overflow-hidden max-h-[94dvh] sm:max-h-[92vh] flex flex-col shadow-2xl">
+              <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-4 sm:px-6 py-4 text-white shrink-0 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
                 <div className="overflow-hidden">
                   <h3 className="text-base font-bold truncate">Edit User — {getFullName(editTarget)}</h3>
                   <p className="text-xs text-white/70 mt-0.5 truncate">{editTarget.email}</p>
                 </div>
-                <button onClick={handleEditCloseRequest} className="ml-auto w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
+                <button onClick={handleEditCloseRequest} className="ml-auto w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                 <form onSubmit={saveEdit} id="edit-form">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
 
@@ -1621,9 +1662,9 @@ export const UserManagement = () => {
                 </form>
               </div>
 
-              <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-                <button type="button" onClick={handleEditCloseRequest} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-                <button type="submit" form="edit-form" disabled={editSaving} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+              <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 bg-slate-50 shrink-0">
+                <button type="button" onClick={handleEditCloseRequest} className="min-h-11 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
+                <button type="submit" form="edit-form" disabled={editSaving} className="min-h-11 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
                    {editSaving && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
                    {editSaving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -1660,11 +1701,11 @@ export const UserManagement = () => {
 
       {showDeleteModal && deleteTarget && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center"
           onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-5 sm:p-6 max-w-md w-full sm:mx-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -1686,11 +1727,11 @@ export const UserManagement = () => {
               </p>
             </div>
 
-            <div className="flex gap-3">
-              <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all">
+            <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
+              <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }} className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all">
                 Cancel
               </button>
-              <button onClick={confirmDelete} className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
+              <button onClick={confirmDelete} className="min-h-11 px-4 py-2.5 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
                 </svg>
@@ -1703,7 +1744,7 @@ export const UserManagement = () => {
       )}
 
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl ${
+        <div className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-2 text-center shadow-xl ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success'

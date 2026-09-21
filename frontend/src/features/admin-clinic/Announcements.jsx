@@ -124,7 +124,7 @@ const formatDeptDisplay = (deptValue, deptOptions) => {
 // ============================================================
 const Snackbar = ({ message, type, visible }) => (
   <div
-    className={`fixed bottom-8 left-1/2 z-[9999] flex w-[90%] sm:w-auto max-w-md items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400 ${
+    className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[9999] flex w-[calc(100%-1.5rem)] sm:w-auto max-w-md items-center gap-2.5 px-4 sm:px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400 ${
       visible
         ? '-translate-x-1/2 translate-y-0'
         : '-translate-x-1/2 translate-y-24 opacity-0'
@@ -142,7 +142,7 @@ const Snackbar = ({ message, type, visible }) => (
       }`}
     />
 
-    <span className="truncate">{message}</span>
+    <span className="min-w-0 break-words text-center">{message}</span>
   </div>
 );
 
@@ -247,6 +247,7 @@ export const Announcements = () => {
   const [filterDate, setFilterDate] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -1170,7 +1171,7 @@ export const Announcements = () => {
   // ============================================================
   if (!configData && loading) {
     return (
-      <div className="flex h-[calc(100vh-120px)] items-center justify-center bg-slate-50">
+      <div className="flex h-full min-h-[320px] items-center justify-center bg-slate-50 px-4">
         <div className="flex items-center gap-3 text-slate-500 font-semibold">
           <svg
             className="animate-spin w-5 h-5 text-[#466460]"
@@ -1202,7 +1203,7 @@ export const Announcements = () => {
   }
 
   return (
-    <div className="bg-white h-[calc(100vh-120px)] flex flex-col animate-[fadeInSlide_0.4s_ease-out_forwards]">
+    <div className="bg-white h-full min-h-0 min-w-0 flex flex-col overflow-hidden animate-[fadeInSlide_0.4s_ease-out_forwards]">
       <style>{`
         @keyframes slideUp {
           from {
@@ -1221,9 +1222,10 @@ export const Announcements = () => {
       {/* ===================================================== */}
       {/* HEADER */}
       {/* ===================================================== */}
-      <div className="shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-6 pt-6 pb-5 border-b-2 border-[#e0eceb] bg-white z-10">
-        <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none sm:w-64">
+      <div className="shrink-0 flex flex-col xl:flex-row xl:items-center gap-3 px-3 sm:px-5 lg:px-6 py-3 sm:py-4 border-b-2 border-[#e0eceb] bg-white z-10">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 min-w-0 flex-1">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 xl:block xl:w-64">
+            <div className="relative min-w-0">
             <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
 
             <input
@@ -1235,11 +1237,22 @@ export const Announcements = () => {
                 )
               }
               placeholder="Search announcements..."
-              className="w-full h-[34px] xl:h-[42px] text-sm border border-[#e2e8f0] rounded-full pl-11 pr-4 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
+              className="w-full min-h-11 text-sm border border-[#e2e8f0] rounded-xl xl:rounded-full pl-11 pr-4 outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600"
             />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsFiltersOpen((open) => !open)}
+              className="xl:hidden min-h-11 px-3 rounded-xl border border-[#d7e3e2] bg-[#f2f7f6] text-[#466460] text-xs font-bold flex items-center justify-center gap-2"
+              aria-expanded={isFiltersOpen}
+            >
+              <i className="fa-solid fa-sliders" />
+              {isFiltersOpen ? 'Hide' : 'Filters'}
+            </button>
           </div>
 
-          <div className="flex gap-2 w-full xl:w-auto flex-wrap xl:flex-nowrap bg-slate-50 border border-[#e2e8f0] rounded-xl sm:rounded-full p-1">
+          <div className={`${isFiltersOpen ? 'grid' : 'hidden'} xl:flex grid-cols-1 min-[390px]:grid-cols-2 gap-2 w-full xl:w-auto bg-slate-50 border border-[#e2e8f0] rounded-xl xl:rounded-full p-2 xl:p-1`}>
             <select
               value={
                 filterCategory
@@ -1249,7 +1262,7 @@ export const Announcements = () => {
                   e.target.value
                 )
               }
-              className="flex-1 xl:flex-none xl:w-[130px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
+              className="w-full xl:w-[130px] min-h-11 xl:min-h-0 xl:h-[34px] text-xs font-medium border border-slate-200 xl:border-none rounded-xl xl:rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">
                 All Categories
@@ -1276,7 +1289,7 @@ export const Announcements = () => {
                   e.target.value
                 )
               }
-              className="flex-1 xl:flex-none xl:w-[110px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
+              className="w-full xl:w-[110px] min-h-11 xl:min-h-0 xl:h-[34px] text-xs font-medium border border-slate-200 xl:border-none rounded-xl xl:rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">
                 All Priorities
@@ -1302,7 +1315,7 @@ export const Announcements = () => {
                   e.target.value
                 )
               }
-              className="flex-1 xl:flex-none xl:w-[130px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
+              className="w-full xl:w-[130px] min-h-11 xl:min-h-0 xl:h-[34px] text-xs font-medium border border-slate-200 xl:border-none rounded-xl xl:rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="All">
                 All Depts
@@ -1322,14 +1335,14 @@ export const Announcements = () => {
               )}
             </select>
 
-            <div className="relative flex-1 xl:flex-none xl:w-[130px] h-[34px]">
+            <div className="relative w-full xl:w-[130px] min-h-11 xl:min-h-0 xl:h-[34px]">
               <DatePicker
                 value={filterDate}
                 onChange={
                   setFilterDate
                 }
                 placeholder="All Dates"
-                className="w-full h-full text-xs font-medium border-none rounded-full px-3 pr-8 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
+                className="w-full min-h-11 xl:min-h-0 h-full text-xs font-medium border border-slate-200 xl:border-none rounded-xl xl:rounded-full px-3 pr-11 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer"
               />
 
               {filterDate && (
@@ -1339,7 +1352,7 @@ export const Announcements = () => {
                       ''
                     )
                   }
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-300 hover:bg-slate-500 text-white flex items-center justify-center transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"
                   title="Clear date filter"
                 >
                   <i className="fa-solid fa-xmark text-[10px]" />
@@ -1354,7 +1367,7 @@ export const Announcements = () => {
                   e.target.value
                 )
               }
-              className="flex-1 xl:flex-none xl:w-[120px] h-[34px] text-xs font-medium border-none rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
+              className="w-full xl:w-[120px] min-h-11 xl:min-h-0 xl:h-[34px] text-xs font-medium border border-slate-200 xl:border-none rounded-xl xl:rounded-full px-3 outline-none focus:ring-2 focus:ring-[#e0eceb] transition-all bg-white text-slate-600 cursor-pointer truncate"
             >
               <option value="desc">
                 Newest First
@@ -1372,7 +1385,7 @@ export const Announcements = () => {
             onClick={() =>
               handleOpenForm()
             }
-            className="w-full sm:w-auto h-[42px] bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-6 rounded-full font-bold text-sm cursor-pointer hover:shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 shrink-0"
+            className="w-full xl:w-auto min-h-11 bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white px-6 rounded-xl xl:rounded-full font-bold text-sm cursor-pointer hover:shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 shrink-0"
           >
             <i className="fa-solid fa-plus text-sm" />
             New Post
@@ -1383,7 +1396,7 @@ export const Announcements = () => {
       {/* ===================================================== */}
       {/* ANNOUNCEMENT LIST */}
       {/* ===================================================== */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-3 overscroll-contain [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
         {loading ? (
           <div className="text-center py-12 text-slate-400 text-sm">
             <i className="fa-solid fa-spinner fa-spin mr-2" />
@@ -1417,14 +1430,14 @@ export const Announcements = () => {
                     item
                   )
                 }
-                className="bg-white rounded-xl border border-[#e2e8f0] relative cursor-pointer hover:shadow-md hover:border-[#8aacaa] transition-all overflow-hidden flex flex-row items-stretch"
+                className="bg-white rounded-xl border border-[#e2e8f0] relative cursor-pointer hover:shadow-md hover:border-[#8aacaa] transition-all overflow-hidden flex flex-col sm:flex-row items-stretch"
               >
                 <div
                   className={`absolute left-0 top-0 bottom-0 w-[3px] ${pri.color} pointer-events-none z-10`}
                 />
 
                 {item.image_url && (
-                  <div className="ml-[3px] shrink-0 w-28 h-28 sm:w-36 sm:h-36 overflow-hidden bg-slate-100 border-r border-[#e2e8f0]">
+                  <div className="ml-[3px] shrink-0 w-[calc(100%-3px)] h-40 sm:w-36 sm:h-36 overflow-hidden bg-slate-100 border-b sm:border-b-0 sm:border-r border-[#e2e8f0]">
                     <img
                       src={
                         item.image_url
@@ -1462,7 +1475,8 @@ export const Announcements = () => {
                               : item.id
                           )
                         }
-                        className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm"
+                        className="text-slate-400 hover:text-slate-700 w-11 h-11 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors text-sm"
+                        aria-label="Announcement actions"
                       >
                         <span className="text-lg font-bold leading-none mb-1">
                           &#8942;
@@ -1471,14 +1485,14 @@ export const Announcements = () => {
 
                       {activeMenuId ===
                         item.id && (
-                        <div className="absolute right-0 top-9 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-28 py-1">
+                        <div className="absolute right-0 top-11 bg-white border border-[#e2e8f0] shadow-xl rounded-lg overflow-hidden z-20 w-36 py-1">
                           <button
                             onClick={() =>
                               handleOpenForm(
                                 item.id
                               )
                             }
-                            className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#e0eceb] text-slate-700 flex items-center gap-2"
+                            className="w-full min-h-11 text-left px-4 py-2 text-xs hover:bg-[#e0eceb] text-slate-700 flex items-center gap-2"
                           >
                             <i className="fa-solid fa-pen-to-square text-[10px]" />
                             Edit
@@ -1490,7 +1504,7 @@ export const Announcements = () => {
                                 item
                               )
                             }
-                            className="w-full text-left px-4 py-2 text-[11px] hover:bg-red-50 text-red-600 flex items-center gap-2"
+                            className="w-full min-h-11 text-left px-4 py-2 text-xs hover:bg-red-50 text-red-600 flex items-center gap-2"
                           >
                             <i className="fa-solid fa-trash-can text-[10px]" />
                             Delete
@@ -1574,7 +1588,7 @@ export const Announcements = () => {
                     })()}
                   </div>
 
-                  <h3 className="text-[#466460] font-bold text-[15px] sm:text-base mb-1.5 pr-8 leading-snug truncate sm:whitespace-normal sm:line-clamp-2">
+                  <h3 className="text-[#466460] font-bold text-[15px] sm:text-base mb-1.5 pr-8 leading-snug line-clamp-2 break-words">
                     {item.title}
                   </h3>
 
@@ -1587,7 +1601,7 @@ export const Announcements = () => {
                     </span>
 
                     {item.location && (
-                      <span className="truncate">
+                      <span className="min-w-0 break-words">
                         <i className="fa-solid fa-location-dot mr-1" />
                         {
                           item.location
@@ -1596,7 +1610,7 @@ export const Announcements = () => {
                     )}
 
                     {item.contact_person && (
-                      <span className="truncate">
+                      <span className="min-w-0 break-words">
                         <i className="fa-solid fa-user mr-1" />
                         {
                           item.contact_person
@@ -1605,7 +1619,7 @@ export const Announcements = () => {
                     )}
 
                     {item.contact_email && (
-                      <span>
+                      <span className="min-w-0 break-all">
                         <i className="fa-solid fa-envelope mr-1" />
                         {
                           item.contact_email
@@ -1629,7 +1643,7 @@ export const Announcements = () => {
       {/* ===================================================== */}
       {isFormModalOpen &&
         createPortal(
-          <div className="fixed inset-0 z-[99999] flex items-start justify-center pt-0 sm:pt-8">
+          <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-6">
             <div
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() =>
@@ -1643,13 +1657,13 @@ export const Announcements = () => {
               ref={
                 formDrawer.sheetRef
               }
-              className="relative bg-white w-full sm:max-w-5xl mx-4 my-4 flex flex-col shadow-2xl overflow-hidden rounded-2xl max-h-[92vh] animate-[fadeInSlide_0.3s_ease-out_forwards]"
+              className="relative bg-white w-full sm:max-w-5xl flex flex-col shadow-2xl overflow-hidden rounded-t-[28px] sm:rounded-2xl max-h-[94dvh] sm:max-h-[90dvh] animate-slideUp sm:animate-[fadeInSlide_0.3s_ease-out_forwards]"
               onClick={(e) =>
                 e.stopPropagation()
               }
             >
               <div
-                className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between"
+                className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3"
                 onTouchStart={
                   formDrawer.handleTouchStart
                 }
@@ -1686,7 +1700,7 @@ export const Announcements = () => {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-50 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6 bg-slate-50 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
                 <div className="p-4 sm:p-6 lg:p-8 bg-white rounded-xl shadow-sm">
                   <label
                     className={
@@ -2177,14 +2191,14 @@ export const Announcements = () => {
                 </div>
               </div>
 
-              <div className="shrink-0 bg-white border-t border-[#d1e7e5] px-6 py-4 flex items-center justify-end gap-3">
+              <div className="shrink-0 bg-white border-t border-[#d1e7e5] px-4 sm:px-6 pt-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-3">
                 <button
                   onClick={() =>
                     setIsFormModalOpen(
                       false
                     )
                   }
-                  className="px-6 py-2.5 rounded-xl font-semibold text-sm text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="w-full sm:w-auto min-h-11 px-4 sm:px-6 py-2.5 rounded-xl font-semibold text-sm text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   Cancel
                 </button>
@@ -2196,7 +2210,7 @@ export const Announcements = () => {
                   disabled={
                     formSaving
                   }
-                  className="px-6 py-2.5 bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                  className="w-full sm:w-auto min-h-11 px-4 sm:px-6 py-2.5 bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {formSaving ? (
                     <>
@@ -2253,7 +2267,7 @@ export const Announcements = () => {
               ref={
                 viewDrawer.sheetRef
               }
-              className="relative bg-white w-full sm:max-w-lg flex flex-col shadow-2xl overflow-hidden rounded-t-[28px] sm:rounded-[24px] max-h-[92vh] sm:max-h-[90vh] animate-slideUp sm:animate-[fadeInSlide_0.2s_ease-out_forwards]"
+              className="relative bg-white w-full sm:max-w-lg flex flex-col shadow-2xl overflow-hidden rounded-t-[28px] sm:rounded-[24px] max-h-[94dvh] sm:max-h-[90dvh] animate-slideUp sm:animate-[fadeInSlide_0.2s_ease-out_forwards]"
               style={{
                 transform:
                   viewDrawer.isDragging &&
@@ -2669,7 +2683,7 @@ export const Announcements = () => {
       {showDeleteModal &&
         createPortal(
           <div
-            className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+            className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-6"
             onClick={() => {
               setShowDeleteModal(
                 false
@@ -2681,7 +2695,7 @@ export const Announcements = () => {
             }}
           >
             <div
-              className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+              className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] max-w-md w-full max-h-[90dvh] overflow-y-auto"
               onClick={(e) =>
                 e.stopPropagation()
               }
@@ -2718,7 +2732,7 @@ export const Announcements = () => {
                 </p>
               </div>
 
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => {
                     setShowDeleteModal(
@@ -2729,7 +2743,7 @@ export const Announcements = () => {
                       null
                     );
                   }}
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                  className="min-h-11 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
                   disabled={deleting}
                 >
                   Cancel
@@ -2739,7 +2753,7 @@ export const Announcements = () => {
                   onClick={
                     handleDeleteConfirm
                   }
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+                  className="min-h-11 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
                   disabled={deleting}
                 >
                   {deleting ? (

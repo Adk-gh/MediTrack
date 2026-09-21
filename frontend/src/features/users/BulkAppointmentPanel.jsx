@@ -7,13 +7,13 @@ import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Bulk requests are always face-to-face (the whole class visits the clinic
-// together), so only the two checkup types are offered here — both can be
-// selected at once. The actual occasion (educational tour, group screening,
-// etc.) is captured separately as free text since it varies per request.
+// Bulk requests are always face-to-face and are intended for class clearance
+// requirements. Both clearance types can be selected at once. The actual
+// occasion (educational tour, internship requirement, school activity, etc.)
+// is captured separately as free text since it varies per request.
 const BULK_PURPOSES_OPTS = [
-  { value: 'Medical Check-up', key: 'medicalCheckup' },
-  { value: 'Dental Check-up', key: 'dentalCheckup' },
+  { value: 'Medical Clearance', key: 'medicalClearance' },
+  { value: 'Dental Clearance', key: 'dentalClearance' },
 ];
 
 const STATUS_STYLES = {
@@ -217,19 +217,18 @@ const handleSubmit = async () => {
   setSubmitError('');
   setResult(null);
 
-  const isDental = selectedPurposes.some((purpose) => {
-    const normalizedPurpose = purpose.toLowerCase();
+  const hasMedicalClearance = selectedPurposes.includes('Medical Clearance');
+  const hasDentalClearance = selectedPurposes.includes('Dental Clearance');
 
-    return (
-      normalizedPurpose.includes('dent') ||
-      normalizedPurpose.includes('oral') ||
-      normalizedPurpose.includes('tooth')
-    );
-  });
+  let resolvedServiceType = 'Medical Clearance';
 
-  const resolvedServiceType = isDental
-    ? 'Dental Examination'
-    : selectedPurposes.join(', ') || 'Medical Examination';
+  if (hasMedicalClearance && hasDentalClearance) {
+    resolvedServiceType = 'Medical and Dental Clearance';
+  } else if (hasDentalClearance) {
+    resolvedServiceType = 'Dental Clearance';
+  } else if (hasMedicalClearance) {
+    resolvedServiceType = 'Medical Clearance';
+  }
 
   try {
     const payload = {
@@ -340,14 +339,14 @@ const handleSubmit = async () => {
                 )}
               </div>
 
-              {/* ── PURPOSE: face-to-face checkup type(s) ── */}
+              {/* ── PURPOSE: face-to-face clearance type(s) ── */}
               <div className="flex flex-col gap-2 mt-2">
                 <label className="text-[12px] font-bold text-[#466460] uppercase tracking-widest">
                   {t('appointments.purpose', 'Purpose')} <span className="normal-case font-medium text-[#9bb5a5]">{t('appointments.selectAllThatApply', '* select all that apply')}</span>
                 </label>
                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#6b8577] uppercase tracking-wider">
                   <i className="fa-solid fa-hospital text-[10px]"></i>
-                  {t('bulk.f2fOnlyLabel', 'Face-to-face — class visits the clinic together')}
+                  {t('bulk.f2fOnlyLabel', 'Face-to-face — clearance request for the class')}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {BULK_PURPOSES_OPTS.map((p) => {
@@ -368,7 +367,7 @@ const handleSubmit = async () => {
               {/* ── OCCASION: free text for the actual reason (educational tour, screening, etc.) ── */}
               <div className="flex flex-col gap-2">
                 <label className="text-[12px] font-bold text-[#466460] uppercase tracking-widest">
-                  {t('bulk.occasion', 'Occasion / Reason')} <span className="normal-case font-medium text-[#9bb5a5]">{t('bulk.occasionHint', '* e.g. Educational Tour, Group Health Screening')}</span>
+                  {t('bulk.occasion', 'Occasion / Reason')} <span className="normal-case font-medium text-[#9bb5a5]">{t('bulk.occasionHint', '* e.g. Educational Tour, Internship Requirement')}</span>
                 </label>
                 <textarea
                   placeholder={t('bulk.occasionPlaceholder', 'Describe the occasion for this class request...')}
@@ -394,14 +393,48 @@ const handleSubmit = async () => {
               )}
 
               {result && (
-                <div className="flex flex-col gap-2 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl px-5 py-4 text-[13px] text-[#3B6D11]">
+                <div className="flex flex-col gap-3 bg-[#EAF3DE] border border-[#a3c77a] rounded-2xl px-5 py-4 text-[13px] text-[#3B6D11]">
                   <div className="font-bold flex items-center gap-2">
                     <i className="fa-solid fa-circle-check text-[16px]"></i>
                     {t('bulk.appointmentsCreated', '{{count}} appointment(s) created.', { count: result.created?.length || 0 })}
                   </div>
+
+                  {result.alreadyHasActiveAppointment?.length > 0 && (
+                    <div className="rounded-xl bg-[#fff8e8] border border-[#f0c070] px-3.5 py-3 text-[#854F0B]">
+                      <div className="text-[12px] font-bold flex items-center gap-2 mb-2">
+                        <i className="fa-solid fa-triangle-exclamation"></i>
+                        {t(
+                          'bulk.activeAppointmentsSkipped',
+                          '{{count}} student(s) skipped because they already have an active appointment.',
+                          { count: result.alreadyHasActiveAppointment.length }
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {result.alreadyHasActiveAppointment.map((entry) => (
+                          <span
+                            key={`${entry.universityId}-${entry.appointmentId}`}
+                            className="inline-flex items-center gap-1.5 bg-white border border-[#f0c070] rounded-lg px-2.5 py-1.5 text-[11px] font-bold"
+                            title={`${entry.serviceType || 'Appointment'} - ${entry.status || 'active'}`}
+                          >
+                            {entry.universityId}
+                            <span className="font-medium opacity-70">
+                              ({String(entry.status || 'active').toUpperCase()})
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {result.notFoundIds?.length > 0 && (
-                    <div className="text-[12px] font-medium text-[#854F0B]">
-                      {t('bulk.idsNotFound', '{{count}} ID(s) not found:', { count: result.notFoundIds.length })} {result.notFoundIds.join(', ')}
+                    <div className="rounded-xl bg-[#fff8e8] border border-[#f0c070] px-3.5 py-3 text-[#854F0B]">
+                      <div className="text-[12px] font-bold">
+                        {t('bulk.idsNotFound', '{{count}} ID(s) not found:', { count: result.notFoundIds.length })}
+                      </div>
+                      <div className="text-[11px] font-medium mt-1">
+                        {result.notFoundIds.join(', ')}
+                      </div>
                     </div>
                   )}
                 </div>

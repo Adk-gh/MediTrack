@@ -621,7 +621,7 @@ export const Examinations = ({
    */
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-140px)] bg-white">
+      <div className="flex items-center justify-center h-full min-h-0 bg-white p-4">
         <div className="text-center text-slate-400">
           <i className="fa-solid fa-spinner fa-spin text-2xl mb-3 block text-[#466460]"></i>
 
@@ -640,7 +640,7 @@ export const Examinations = ({
    */
   if (!selectedPatient) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-140px)] bg-white gap-4">
+      <div className="flex flex-col items-center justify-center h-full min-h-0 bg-white gap-4 p-4 text-center">
         <i className="fa-regular fa-user-circle text-slate-200 text-6xl"></i>
 
         <p className="text-slate-400 text-sm">
@@ -649,7 +649,7 @@ export const Examinations = ({
 
         <button
           onClick={() => navigate('/records')}
-          className="bg-[#466460] text-white px-5 py-2 rounded-full text-xs font-bold hover:opacity-90 transition"
+          className="min-h-11 bg-[#466460] text-white px-5 py-2.5 rounded-full text-xs font-bold hover:opacity-90 transition"
         >
           ← Back to Records
         </button>
@@ -664,16 +664,16 @@ export const Examinations = ({
    */
   if (!examStarted) {
     return (
-      <div className="bg-white min-h-[calc(100vh-140px)] p-6 md:p-8">
+      <div className="bg-white h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8">
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
+        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 mb-6 border-b-2 border-slate-200">
           {availableTabs.map(
             ({ key, icon, label }) => (
               <button
                 key={key}
                 onClick={() => setExamTab(key)}
-                className={`px-5 py-2.5 text-sm font-semibold relative ${
+                className={`min-h-11 px-4 sm:px-5 py-2.5 text-sm font-semibold relative ${
                   examTab === key
                     ? 'text-[#466460]'
                     : 'text-slate-500'
@@ -694,7 +694,7 @@ export const Examinations = ({
         </div>
 
         {/* Blank prompt */}
-        <div className="flex flex-col items-center justify-center py-24 gap-5">
+        <div className="flex flex-col items-center justify-center py-16 sm:py-24 gap-5">
 
           <div className="w-20 h-20 rounded-full bg-[#e0eceb] flex items-center justify-center">
             <i
@@ -739,22 +739,22 @@ export const Examinations = ({
    * -----------------------------------------
    */
   return (
-    <div className="bg-white min-h-[calc(100vh-140px)] p-6 md:p-8">
+    <div className="bg-white h-full min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 lg:p-8">
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-start sm:items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
 
         {/* Back button */}
         <button
           onClick={handleBack}
           title="Back to Records"
-          className="flex items-center justify-center w-9 h-9 rounded-full text-slate-500 hover:text-[#466460] hover:bg-[#e0eceb] transition-colors shrink-0"
+          className="flex items-center justify-center w-11 h-11 rounded-full text-slate-500 hover:text-[#466460] hover:bg-[#e0eceb] transition-colors shrink-0"
         >
           <i className="fa-solid fa-arrow-left text-lg"></i>
         </button>
 
         {/* Patient banner */}
-        <div className="flex-1 bg-gradient-to-r from-[#e0eceb] to-white rounded-xl px-4 py-2 border border-[#d1e7e5] flex items-center gap-3">
+        <div className="min-w-0 flex-1 bg-gradient-to-r from-[#e0eceb] to-white rounded-xl px-3 sm:px-4 py-2.5 border border-[#d1e7e5] flex items-center gap-2 sm:gap-3">
 
           <div className="w-9 h-9 rounded-full bg-[#466460] flex items-center justify-center shrink-0">
             <i className="fa-solid fa-user text-white text-sm"></i>
@@ -783,7 +783,7 @@ export const Examinations = ({
             </p>
           </div>
 
-          <div className="ml-auto flex flex-col items-end gap-0.5 shrink-0">
+          <div className="hidden min-[390px]:flex ml-auto flex-col items-end gap-0.5 shrink-0">
 
             <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#466460] text-white capitalize">
               {selectedPatient.role || 'student'}
@@ -800,13 +800,13 @@ export const Examinations = ({
       </div>
 
       {/* Examination tabs */}
-      <div className="flex gap-2 mb-6 border-b-2 border-slate-200">
+      <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 mb-4 sm:mb-6 border-b-2 border-slate-200">
         {availableTabs.map(
           ({ key, icon, label }) => (
             <button
               key={key}
               onClick={() => handleTabChange(key)}
-              className={`px-5 py-2.5 text-sm font-semibold relative ${
+              className={`min-h-11 px-4 sm:px-5 py-2.5 text-sm font-semibold relative ${
                 examTab === key
                   ? 'text-[#466460]'
                   : 'text-slate-500'
@@ -846,7 +846,7 @@ export const Examinations = ({
 
       {/* Toast */}
       {message && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-xl shadow-lg font-bold animate-[fadeIn_0.3s_ease-out] z-50">
+        <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] sm:w-auto sm:left-auto sm:right-6 sm:translate-x-0 bg-emerald-600 text-white px-4 sm:px-6 py-4 rounded-xl shadow-lg font-bold text-center animate-[fadeIn_0.3s_ease-out] z-50">
           <i className="fa-solid fa-circle-check mr-2"></i>
 
           {message}

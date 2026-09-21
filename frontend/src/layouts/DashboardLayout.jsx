@@ -1,10 +1,12 @@
 // frontend/src/layouts/DashboardLayout.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   DesktopHeader,
   DesktopNav,
   MobileHeader,
   ProfileDrawer,
+  ROLE_NAV_CONFIG,
 } from '../components/Headers.jsx';
 import { NotificationPanel } from '../components/Notifications.jsx';
 import notificationsService from '../services/notifications.service.js';
@@ -31,7 +33,11 @@ const getStoredUserRole = () => {
           return 'doctor';
         } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
           return 'nurse';
-        } else if (classification === 'System Administrator') {
+        } else if (
+          classification === 'system administrator' ||
+          classification === 'sysadmin' ||
+          classification === 'administrator'
+        ) {
           return 'sysadmin';
         }
       }
@@ -169,111 +175,57 @@ const NavApprovalMgmtIcon = ({ active }) => (
   </svg>
 );
 
-// ─── Role-based mobile nav items ──────────────────────────────────────────────
-const ROLE_MOBILE_NAV = {
-  sysadmin: [
-    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
-    { id: 'recordManagement', label: 'Records', Icon: NavRecordsIcon },
-    { id: 'auditLogs', label: 'Audit', Icon: NavAnnounceIcon },
-    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
-    { id: 'consultationManagement', label: 'Consultations', Icon: NavConsultMgmtIcon },
-    { id: 'appointmentManagement', label: 'Appointments', Icon: NavApptMgmtIcon },
-    { id: 'users', label: 'Users', Icon: NavUsersIcon },
-    { id: 'ocrSettings', label: 'OCR Settings', Icon: NavOcrIcon },
-    { id: 'reports', label: 'Reports', Icon: NavReportsIcon },
-    { id: 'archives', label: 'Archives', Icon: NavArchiveIcon },
-  ],
-  doctor: [
-    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
-    { id: 'records', label: 'Records', Icon: NavRecordsIcon },
-    { id: 'appointments', label: 'Appointments', Icon: NavScheduleIcon },
-    { id: 'approvals', label: 'Approval', Icon: NavApprovalIcon },
-    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
-    { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
-  ],
-  dentist: [
-    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
-    { id: 'records', label: 'Records', Icon: NavRecordsIcon },
-    { id: 'appointments', label: 'Appointments', Icon: NavScheduleIcon },
-    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
-    { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
-  ],
-  nurse: [
-    { id: 'dashboard', label: 'Home', Icon: NavHomeIcon },
-    { id: 'records', label: 'Records', Icon: NavRecordsIcon },
-    { id: 'appointments', label: 'Appointments', Icon: NavScheduleIcon },
-    { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
-    { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
-  ],
+// The mobile drawer is generated from the same configuration used by DesktopNav.
+// This keeps the labels, order, role permissions, and destinations identical.
+const NAV_ICON_BY_ROUTE = {
+  '/dashboard': NavHomeIcon,
+  '/appointments': NavScheduleIcon,
+  '/appointment-management': NavApptMgmtIcon,
+  '/records': NavRecordsIcon,
+  '/record-management': NavRecordsIcon,
+  '/approvals': NavApprovalIcon,
+  '/consultations': NavConsultIcon,
+  '/consultation-management': NavConsultMgmtIcon,
+  '/users': NavUsersIcon,
+  '/announcements': NavAnnounceIcon,
+  '/reports': NavReportsIcon,
+  '/notifications-management': NavAnnounceIcon,
+  '/archives': NavArchiveIcon,
+  '/audit-logs': NavRecordsIcon,
 };
 
-// ─── Default mobile nav items ─────────────────────────────────────────────────
-const DEFAULT_MOBILE_NAV = [
-  { id: 'dashboard',     label: 'Home',          Icon: NavHomeIcon },
-  { id: 'records',       label: 'Records',       Icon: NavRecordsIcon },
-  { id: 'appointments',  label: 'Appointments',  Icon: NavScheduleIcon },
-  { id: 'examinations',  label: 'Exam',          Icon: NavExamIcon },
-  { id: 'approvals',     label: 'Approval',      Icon: NavApprovalIcon },
-  { id: 'consultations', label: 'Consultations', Icon: NavConsultIcon },
-  { id: 'announcements', label: 'Announcements', Icon: NavAnnounceIcon },
-  { id: 'users',         label: 'Users',         Icon: NavUsersIcon },
-  { id: 'reports',       label: 'Reports',       Icon: NavReportsIcon },
-];
+const NAV_ID_BY_ROUTE = {
+  '/dashboard': 'dashboard',
+  '/appointments': 'appointments',
+  '/appointment-management': 'appointmentManagement',
+  '/records': 'records',
+  '/record-management': 'recordManagement',
+  '/approvals': 'approvals',
+  '/consultations': 'consultations',
+  '/consultation-management': 'consultationManagement',
+  '/users': 'users',
+  '/announcements': 'announcements',
+  '/reports': 'reports',
+  '/notifications-management': 'notificationsManagement',
+  '/archives': 'archives',
+  '/audit-logs': 'auditLogs',
+};
 
-// ─── Floating Hamburger Button ────────────────────────────────────────────────
-function HamburgerButton({ isOpen, onClick }) {
-  return (
-    <button
-      id="mobile-hamburger-btn"
-      data-hamburger="true"
-      onClick={onClick}
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 20,
-        zIndex: 50,
-        width: 52,
-        height: 52,
-        borderRadius: '50%',
-        background: isOpen
-          ? 'rgba(26, 46, 34, 0.92)'
-          : 'rgba(5, 150, 105, 0.88)',
-        backdropFilter: 'blur(16px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-        border: isOpen
-          ? '1.5px solid rgba(255,255,255,0.12)'
-          : '1.5px solid rgba(255,255,255,0.22)',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: isOpen
-          ? '0 8px 32px rgba(26,46,34,0.5), 0 0 0 4px rgba(26,46,34,0.12)'
-          : '0 8px 32px rgba(5,150,105,0.4), 0 0 0 4px rgba(5,150,105,0.12)',
-        transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        transform: isOpen ? 'rotate(45deg) scale(1.06)' : 'scale(1)',
-      }}
-      aria-label={isOpen ? 'Close menu' : 'Open menu'}
-    >
-      {isOpen ? (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      ) : (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      )}
-    </button>
-  );
-}
+const getMobileNavItems = (role) => {
+  const desktopItems = ROLE_NAV_CONFIG[role] || ROLE_NAV_CONFIG.sysadmin;
 
-// ─── Floating Drawer Nav — glassmorphism style ────────────────────────────────
+  return desktopItems.map((item) => ({
+    ...item,
+    id: NAV_ID_BY_ROUTE[item.to] || item.to,
+    Icon: NAV_ICON_BY_ROUTE[item.to] || NavRecordsIcon,
+  }));
+};
+
+// ─── Mobile left-side navigation drawer ──────────────────────────────────────
 function HamburgerDrawerNav({ isOpen, activeTab, onTabChange, items, onClose }) {
   const drawerRef = useRef(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -291,8 +243,32 @@ function HamburgerDrawerNav({ isOpen, activeTab, onTabChange, items, onClose }) 
     };
   }, [isOpen, onClose]);
 
-  const handleSelect = (id) => {
-    onTabChange(id);
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  const handleSelect = (item) => {
+    if (typeof onTabChange === 'function') {
+      onTabChange(item.id);
+    }
+
+    if (item.to && location.pathname !== item.to) {
+      navigate(item.to);
+    }
+
     onClose();
   };
 
@@ -304,12 +280,10 @@ function HamburgerDrawerNav({ isOpen, activeTab, onTabChange, items, onClose }) 
           position: 'fixed',
           inset: 0,
           zIndex: 44,
-          background: 'rgba(8, 18, 12, 0.25)',
-          backdropFilter: isOpen ? 'blur(4px)' : 'blur(0px)',
-          WebkitBackdropFilter: isOpen ? 'blur(4px)' : 'blur(0px)',
+          background: 'rgba(8, 18, 12, 0.42)',
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? 'auto' : 'none',
-          transition: 'opacity 0.3s ease, backdrop-filter 0.3s ease',
+          transition: 'opacity 0.25s ease',
         }}
       />
 
@@ -317,59 +291,76 @@ function HamburgerDrawerNav({ isOpen, activeTab, onTabChange, items, onClose }) 
         ref={drawerRef}
         style={{
           position: 'fixed',
-          bottom: 88,
-          right: 16,
+          top: 0,
+          bottom: 0,
+          left: 0,
           zIndex: 45,
-          width: 248,
-          background: 'rgba(255, 255, 255, 0.72)',
-          backdropFilter: 'blur(24px) saturate(200%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(200%)',
-          border: '1px solid rgba(255, 255, 255, 0.55)',
-          borderRadius: 22,
-          boxShadow: `
-            0 20px 60px rgba(0, 0, 0, 0.18),
-            0 8px 24px rgba(0, 0, 0, 0.10),
-            inset 0 1px 0 rgba(255,255,255,0.8)
-          `,
+          width: 'min(82vw, 320px)',
+          background: '#ffffff',
+          borderRight: '1px solid rgba(15, 23, 42, 0.08)',
+          borderRadius: '0 20px 20px 0',
+          boxShadow: '18px 0 50px rgba(0, 0, 0, 0.2)',
           overflow: 'hidden',
-          transformOrigin: 'bottom right',
-          transform: isOpen ? 'scale(1) translateY(0)' : 'scale(0.88) translateY(12px)',
-          opacity: isOpen ? 1 : 0,
+          display: 'flex',
+          flexDirection: 'column',
+          transform: isOpen ? 'translateX(0)' : 'translateX(-105%)',
           pointerEvents: isOpen ? 'auto' : 'none',
-          transition: 'transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease',
+          transition: 'transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
       >
         <div style={{
-          background: 'linear-gradient(135deg, rgba(5,150,105,0.85) 0%, rgba(4,120,87,0.9) 100%)',
-          backdropFilter: 'blur(8px)',
-          padding: '11px 16px',
+          background: 'linear-gradient(135deg, #466460 0%, #38524d 100%)',
+          padding: 'calc(env(safe-area-inset-top, 0px) + 17px) 18px 17px',
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          justifyContent: 'space-between',
           borderBottom: '1px solid rgba(255,255,255,0.15)',
         }}>
-          <div style={{
-            width: 5, height: 5, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.7)',
-            boxShadow: '0 0 6px rgba(255,255,255,0.6)',
-          }} />
           <span style={{
-            fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.92)',
-            letterSpacing: '0.1em', textTransform: 'uppercase',
+            fontSize: 13, fontWeight: 800, color: '#ffffff',
+            letterSpacing: '0.08em', textTransform: 'uppercase',
           }}>
             Navigation
           </span>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation menu"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'rgba(255,255,255,0.1)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
 
-        <div style={{ padding: '6px 0' }}>
-          {items.map((item, idx) => {
-            const isActive = activeTab === item.id;
+        <div style={{ padding: '10px 0 calc(env(safe-area-inset-bottom, 0px) + 12px)', overflowY: 'auto', flex: 1 }}>
+          {items.map((item) => {
+            const isActive = item.to
+              ? location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+              : activeTab === item.id;
             const Icon = item.Icon || item.icon;
 
             return (
               <button
                 key={item.id}
-                onClick={() => handleSelect(item.id)}
+                onClick={() => handleSelect(item)}
                 style={{
                   width: '100%',
                   display: 'flex',
@@ -491,7 +482,11 @@ export const DashboardLayout = ({
               role = 'doctor';
             } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
               role = 'nurse';
-            } else if (classification === 'System Administrator' || classification === 'administrator') {
+            } else if (
+              classification === 'system administrator' ||
+              classification === 'sysadmin' ||
+              classification === 'administrator'
+            ) {
               role = 'sysadmin';
             }
           }
@@ -527,7 +522,11 @@ export const DashboardLayout = ({
             setUserRole('doctor');
           } else if (classification === 'nurse' || jobTitle.includes('nurse')) {
             setUserRole('nurse');
-          } else if (classification === 'System Administrator' || classification === 'administrator') {
+          } else if (
+            classification === 'system administrator' ||
+            classification === 'sysadmin' ||
+            classification === 'administrator'
+          ) {
             setUserRole('sysadmin');
           }
         }
@@ -545,7 +544,7 @@ export const DashboardLayout = ({
 
   const mobileNavItems = propMobileNavItems && propMobileNavItems.length > 0
     ? propMobileNavItems
-    : (ROLE_MOBILE_NAV[effectiveRole] || ROLE_MOBILE_NAV.sysadmin);
+    : getMobileNavItems(effectiveRole);
 
   const handleProfileClick    = () => { setShowHamburger(false); setShowProfileDrawer(true); };
   const handleCloseProfile    = () => setShowProfileDrawer(false);
@@ -574,8 +573,6 @@ export const DashboardLayout = ({
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
-
-  const activeItem = mobileNavItems.find(i => i.id === activeTab);
 
   const childrenWithProps = React.Children.map(children, child => {
     if (React.isValidElement(child)) {
@@ -627,6 +624,8 @@ export const DashboardLayout = ({
             onNotificationClick={handleNotificationClick}
             notificationCount={notificationCount}
             simple={false}
+            onMenuClick={toggleHamburger}
+            isMenuOpen={showHamburger}
           />
         </div>
 
@@ -647,48 +646,6 @@ export const DashboardLayout = ({
             onClose={closeHamburger}
           />
 
-          <HamburgerButton
-            isOpen={showHamburger}
-            onClick={toggleHamburger}
-          />
-
-          <div
-            id="mobile-active-tab-chip"
-            style={{
-              position: 'fixed',
-              bottom: 35,
-              right: 84,
-              zIndex: 49,
-              background: 'rgba(255, 255, 255, 0.78)',
-              backdropFilter: 'blur(16px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-              border: '1px solid rgba(255,255,255,0.6)',
-              borderRadius: 999,
-              padding: '6px 14px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 7,
-              opacity: showHamburger ? 0 : 1,
-              transform: showHamburger ? 'translateX(6px) scale(0.95)' : 'translateX(0) scale(1)',
-              transition: 'all 0.22s ease',
-              pointerEvents: 'none',
-            }}
-          >
-            <div style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: '#059669',
-              boxShadow: '0 0 6px rgba(5,150,105,0.55)',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontSize: 12, fontWeight: 700,
-              color: '#1a2e22',
-              whiteSpace: 'nowrap',
-            }}>
-              {activeItem?.label || 'Menu'}
-            </span>
-          </div>
         </div>
 
         {/* ── SHARED DRAWERS ── */}

@@ -208,7 +208,7 @@ const PasswordRequirements = ({ password, rules, mobile = false }) => {
   );
 };
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 // ─────────────────────────────────────────────────────────────────────────
 // COMPONENT
@@ -745,7 +745,7 @@ const SignupForm = () => {
             <div className="lf-field">
               <label className="lf-desktop-label">University ID Photo<span className="lf-req">*</span></label>
               <div onClick={triggerFileInput} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`lf-desktop-dropzone ${isDragging ? 'dragging' : ''} ${hasError('idPhoto') ? 'is-invalid' : ''}`}>
-                <input type="file" accept="image/*" onChange={handleFileChange} ref={fileInputRef} className="hidden" />
+                <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={handleFileChange} ref={fileInputRef} className="hidden" />
                 {selectedFile ? <span>✓ {selectedFile.name}</span> : <span><span style={{ fontWeight: 700 }}>Click to upload</span> or drag &amp; drop your ID photo</span>}
               </div>
               {hasError('idPhoto') && <span className="lf-field-error">{fieldErrors.idPhoto}</span>}
@@ -898,7 +898,7 @@ const SignupForm = () => {
 
             <div className="m-field">
               <div onClick={triggerFileInput} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`m-dropzone ${isDragging ? 'dragging' : ''} ${hasError('idPhoto') ? 'is-invalid' : ''}`}>
-                <input type="file" accept="image/*" onChange={handleFileChange} ref={fileInputRef} style={{ display: 'none' }} />
+                <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={handleFileChange} ref={fileInputRef} style={{ display: 'none' }} />
                 {selectedFile ? (
                   <div className="m-file-preview">
                     <svg viewBox="0 0 20 20" fill="none" stroke="#22C77A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M4 10.5l4 4 8-8" /></svg>

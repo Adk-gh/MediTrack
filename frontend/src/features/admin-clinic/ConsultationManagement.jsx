@@ -396,7 +396,7 @@ export const ConsultationManagement = () => {
     }
   };
 
-  const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const selectCls = "w-full min-h-11 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
   const COL_COUNT = 8; // Adjust col count for new column
 
   const summaryStats = [
@@ -409,7 +409,7 @@ export const ConsultationManagement = () => {
 
   if (userRole !== 'sysadmin') {
     return (
-      <div className="flex items-center justify-center h-full text-slate-500">
+      <div className="flex items-center justify-center h-full text-slate-500 px-4 text-center">
         <div className="text-center">
           <i className="fa-solid fa-lock text-4xl text-slate-300 mb-3"></i>
           <p>Access denied. Admin only.</p>
@@ -419,10 +419,10 @@ export const ConsultationManagement = () => {
   }
 
   return (
-    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
-      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
+    <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
+      <div className="shrink-0 mb-3 sm:mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {summaryStats.map(s => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-3 shadow-sm flex flex-col min-[390px]:flex-row items-center justify-center gap-0.5 min-[390px]:gap-2 min-w-0">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
             <span className="text-xs text-slate-400 font-medium">{s.label}</span>
           </div>
@@ -432,13 +432,13 @@ export const ConsultationManagement = () => {
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Unified Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
 
           {/* Top Controls: Search, Filter Toggle, and Actions */}
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 w-full md:w-auto flex-1 min-w-0">
               {/* Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full md:max-w-64 min-w-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
@@ -447,42 +447,42 @@ export const ConsultationManagement = () => {
                   placeholder="Search patient, ID, message..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+                  className="pl-9 pr-4 min-h-11 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
                 />
               </div>
 
               {/* Mobile Filter Toggle Button */}
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                className="xl:hidden min-h-11 flex items-center justify-center gap-2 px-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
                 title="Toggle Filters"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+                <span>{isFiltersOpen ? 'Hide' : 'Filters'}</span>
               </button>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
-              <button onClick={() => fetchConsultations(true)} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm shrink-0">
+            <div className="grid grid-cols-1 gap-2 w-full md:w-auto">
+              <button onClick={() => fetchConsultations(true)} className="min-h-11 bg-[#466460] hover:bg-[#3a524f] text-white px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span className="hidden sm:inline">Refresh</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
           {/* Expandable Filters Container */}
-          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
+          <div className={`${isFiltersOpen ? 'grid' : 'hidden'} xl:flex grid-cols-1 min-[390px]:grid-cols-2 gap-2 xl:gap-3 items-center w-full transition-all duration-300`}>
             {/* Base Filters */}
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={`${selectCls} w-full sm:w-auto`}>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={`${selectCls} xl:w-auto`}>
               {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
 
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${selectCls} w-full sm:w-auto`}>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${selectCls} xl:w-auto`}>
               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
 
@@ -490,7 +490,7 @@ export const ConsultationManagement = () => {
             <select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              className={`${selectCls} w-full sm:w-auto bg-slate-100/50`}
+              className={`${selectCls} xl:w-auto bg-slate-100/50`}
             >
               <option value="all">All Personnel</option>
               <option value="student">Students</option>
@@ -503,7 +503,7 @@ export const ConsultationManagement = () => {
               value={selectedDepartment}
               onChange={(e) => setSelectedDepartment(e.target.value)}
               disabled={selectedRole === 'clinic'}
-              className={`${selectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+              className={`${selectCls} xl:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed xl:max-w-[200px] truncate`}
             >
               <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
               {departmentOptions.map((department) => (
@@ -517,7 +517,7 @@ export const ConsultationManagement = () => {
               value={selectedProgram}
               onChange={(e) => setSelectedProgram(e.target.value)}
               disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
-              className={`${selectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+              className={`${selectCls} xl:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed xl:max-w-[200px] truncate`}
             >
               <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
               {programOptions.map((program) => (
@@ -528,13 +528,60 @@ export const ConsultationManagement = () => {
             </select>
 
             {/* Sort */}
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={`${selectCls} w-full sm:w-auto`}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={`${selectCls} xl:w-auto`}>
               {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+        <div className="lg:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {loading ? (
+            <div className="py-12 text-center text-sm text-slate-400"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading consultations…</div>
+          ) : paginatedConsultations.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400"><i className="fa-regular fa-comments block text-3xl text-slate-300 mb-2" />No consultations found</div>
+          ) : paginatedConsultations.map((conv, idx) => {
+            const tab = conv.consultation_type === 'medical' ? { accent: '#1a5c3a', light: '#e8f5ee' } : { accent: '#1a4a7a', light: '#e8f0fa' };
+            const isEnded = conv.status === 'ended';
+            const uDept = getUserDepartment(conv.userProfile) || '—';
+            const uProg = getUserProgram(conv.userProfile) || '—';
+            return (
+              <article key={conv.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm min-w-0">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ backgroundColor: tab.light, color: tab.accent }}>
+                    {conv.patientName?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-slate-800 break-words">{conv.patientName}</h3>
+                        <p className="text-xs text-slate-500 break-words">{conv.patientUniversityId} • <span className="capitalize">{conv.patientRole}</span></p>
+                      </div>
+                      <span className="text-[11px] text-slate-400">#{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: tab.light, color: tab.accent }}>{conv.consultation_type === 'medical' ? 'Medical' : 'Dental'}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold ${isEnded ? 'bg-slate-100 text-slate-500' : 'bg-emerald-100 text-emerald-700'}`}>{isEnded ? 'Ended' : 'Active'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 mt-3 text-xs">
+                  <div className="rounded-lg bg-slate-50 p-2.5 min-w-0"><span className="block font-bold uppercase tracking-wide text-[10px] text-slate-400 mb-1">Department</span><span className="text-slate-700 break-words">{uDept}</span></div>
+                  <div className="rounded-lg bg-slate-50 p-2.5 min-w-0"><span className="block font-bold uppercase tracking-wide text-[10px] text-slate-400 mb-1">Program</span><span className="text-slate-700 break-words">{uProg}</span></div>
+                </div>
+                <p className="mt-3 text-sm text-slate-600 break-words line-clamp-2">{conv.lastMessage || 'No messages'}</p>
+                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col min-[390px]:flex-row min-[390px]:items-center justify-between gap-2">
+                  <span className="text-xs text-slate-500">{formatDate(conv.created_at)}</span>
+                  <div className="grid grid-cols-2 gap-2 min-[390px]:w-auto">
+                    <button onClick={() => handleEditClick(conv)} className="min-h-11 px-4 rounded-xl bg-[#eef5f4] text-[#466460] font-semibold text-xs flex items-center justify-center gap-2"><i className="fa-regular fa-pen-to-square" /> Edit</button>
+                    <button onClick={() => handleDeleteClick(conv)} className="min-h-11 px-4 rounded-xl bg-red-50 text-red-600 font-semibold text-xs flex items-center justify-center gap-2"><i className="fa-regular fa-trash-can" /> Archive</button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden lg:block flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -639,16 +686,16 @@ export const ConsultationManagement = () => {
         </div>
 
         {totalPages > 1 && (
-          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
-            <div>
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-slate-600 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="text-center sm:text-left text-xs sm:text-sm">
               Showing <span className="font-semibold">{totalRecords === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> records
             </div>
-            <div className="flex items-center gap-2">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 w-full sm:w-auto">
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
                 Previous
               </button>
               <div className="text-xs font-semibold px-2">Page {currentPage} of {Math.max(1, totalPages)}</div>
-              <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
+              <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)} className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
                 Next
               </button>
             </div>
@@ -657,8 +704,8 @@ export const ConsultationManagement = () => {
       </div>
 
       {showDeleteModal && createPortal(
-        <div className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center" onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }}>
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }}>
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] max-w-md w-full max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
@@ -672,11 +719,11 @@ export const ConsultationManagement = () => {
               <p className="text-sm text-slate-600">Are you sure you want to archive the consultation with <span className="font-semibold">{consultationToDelete?.patientName}</span>?</p>
               <p className="text-xs text-slate-400 mt-2">All messages in this conversation will be archived and can be restored later.</p>
             </div>
-            <div className="flex gap-3">
-              <button onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all" disabled={deleting}>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => { setShowDeleteModal(false); setConsultationToDelete(null); }} className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all" disabled={deleting}>
                 Cancel
               </button>
-              <button onClick={handleDeleteConfirm} className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2" disabled={deleting}>
+              <button onClick={handleDeleteConfirm} className="min-h-11 px-4 py-2.5 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2" disabled={deleting}>
                 {deleting ? <><i className="fa-solid fa-spinner fa-spin"></i> Archiving...</> : <><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" /></svg> Archive</>}
               </button>
             </div>
@@ -686,8 +733,8 @@ export const ConsultationManagement = () => {
       )}
 
       {showEditModal && createPortal(
-        <div className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center" onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }}>
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }}>
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] max-w-md w-full max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-[#e0eceb] flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#466460" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.89l10.8-10.8z" /></svg>
@@ -699,14 +746,14 @@ export const ConsultationManagement = () => {
             </div>
             <div className="bg-slate-50 rounded-lg p-4 mb-4">
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Status</label>
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setEditStatus('active')} className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all ${editStatus === 'active' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>Active</button>
-                <button type="button" onClick={() => setEditStatus('ended')} className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all ${editStatus === 'ended' ? 'bg-slate-500 border-slate-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>Ended</button>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setEditStatus('active')} className={`min-h-11 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${editStatus === 'active' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>Active</button>
+                <button type="button" onClick={() => setEditStatus('ended')} className={`min-h-11 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${editStatus === 'ended' ? 'bg-slate-500 border-slate-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>Ended</button>
               </div>
             </div>
-            <div className="flex gap-3">
-              <button onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all" disabled={savingStatus}>Cancel</button>
-              <button onClick={handleEditSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2" disabled={savingStatus || editStatus === consultationToEdit?.status}>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => { setShowEditModal(false); setConsultationToEdit(null); }} className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all" disabled={savingStatus}>Cancel</button>
+              <button onClick={handleEditSave} className="min-h-11 px-4 py-2.5 rounded-xl bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2" disabled={savingStatus || editStatus === consultationToEdit?.status}>
                 {savingStatus ? <><i className="fa-solid fa-spinner fa-spin"></i> Saving...</> : <><i className="fa-solid fa-check"></i> Save</>}
               </button>
             </div>
@@ -716,7 +763,7 @@ export const ConsultationManagement = () => {
       )}
 
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center justify-center gap-2 text-center shadow-xl ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
           {message.type === 'success' ? (
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           ) : (

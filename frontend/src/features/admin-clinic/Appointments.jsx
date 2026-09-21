@@ -435,7 +435,7 @@ const generateAutoSchedule = (selectedItems, scheduledAppts) => {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 const Snackbar = ({ message, type, visible }) => (
-  <div className={`fixed bottom-7 left-1/2 z-[9999] flex items-center gap-2.5 px-5 py-3 rounded-xl
+  <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[9999] flex w-[calc(100%-1.5rem)] sm:w-auto max-w-md items-center justify-center gap-2.5 px-4 sm:px-5 py-3 rounded-xl text-center
     text-white text-[15px] font-semibold shadow-[0_8px_24px_rgba(0,0,0,0.2)]
     transition-transform duration-400 font-['DM_Sans',sans-serif]
     ${visible ? 'translate-x-[-50%] translate-y-0' : 'translate-x-[-50%] translate-y-[80px]'}
@@ -538,9 +538,9 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
   const displayPatient = normalizedPatient || patient;
 
   return (
-    <div className="fixed inset-0 z-[40] flex items-center justify-center">
+    <div className="fixed inset-0 z-[40] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+      <div className="relative w-full h-full sm:h-[calc(100dvh-2rem)] max-w-6xl bg-white rounded-none sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
         <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
@@ -1844,7 +1844,7 @@ const handleAppointmentCreated = (createdAppt) => {
           placeholder="Search name, ID, dept..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-          className="w-full px-[11px] py-[8px] border border-[#e2e8f0] rounded-lg text-[14px] bg-[#f8fafc]
+          className="w-full min-h-11 px-[11px] py-[9px] border border-[#e2e8f0] rounded-xl text-[14px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
         {filteredPending.length > 0 && (
@@ -2109,7 +2109,7 @@ const handleAppointmentCreated = (createdAppt) => {
           placeholder="Search name, ID, dept, reason..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-          className="w-full px-[11px] py-[8px] border border-[#e2e8f0] rounded-lg text-[14px] bg-[#f8fafc]
+          className="w-full min-h-11 px-[11px] py-[9px] border border-[#e2e8f0] rounded-xl text-[14px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
         <div className="flex gap-2">
@@ -2266,7 +2266,7 @@ const handleAppointmentCreated = (createdAppt) => {
           placeholder="Search name, ID, dept..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value.toLowerCase())}
-          className="w-full px-[11px] py-[8px] border border-[#e2e8f0] rounded-lg text-[14px] bg-[#f8fafc]
+          className="w-full min-h-11 px-[11px] py-[9px] border border-[#e2e8f0] rounded-xl text-[14px] bg-[#f8fafc]
             text-[#1e293b] outline-none focus:border-[#466460] focus:bg-white transition-colors"
         />
       </div>
@@ -2566,7 +2566,7 @@ const handleAppointmentCreated = (createdAppt) => {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white w-full h-[calc(100vh-134px)] md:h-[calc(100vh-116px)] flex flex-col overflow-hidden relative">
+    <div className="font-['DM_Sans',sans-serif] text-[#2d3748] bg-white w-full h-full min-h-0 min-w-0 flex flex-col overflow-hidden relative">
 
       {/* ── MOBILE ── */}
       <div className="flex flex-col md:hidden flex-1 min-h-0 w-full h-full">
@@ -2721,12 +2721,14 @@ const handleAppointmentCreated = (createdAppt) => {
       {/* ── FLOATING "CREATE APPOINTMENT" BUTTON (staff-booked, e.g. follow-ups) ── */}
       <button
         onClick={() => setCreateApptModal(true)}
-        className="fixed bottom-6 right-6 z-[9000] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
-          rounded-full shadow-lg px-5 py-3.5 flex items-center gap-2 font-bold text-[13px]
+        aria-label="Create new appointment"
+        title="Create new appointment"
+        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-3 sm:right-6 z-[9000] bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white
+          min-h-12 rounded-full shadow-lg px-4 sm:px-5 py-3 flex items-center gap-2 font-bold text-[13px]
           hover:opacity-90 transition-all"
       >
         <IconPlus size={14} />
-        New Appointment
+        <span className="hidden min-[390px]:inline">New Appointment</span>
       </button>
 
       {/* ── CREATE APPOINTMENT MODAL ── */}

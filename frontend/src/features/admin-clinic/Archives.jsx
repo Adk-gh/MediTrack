@@ -363,13 +363,13 @@ export default function Archives() {
   const totalPages = Math.ceil(filteredArchives.length / ITEMS_PER_PAGE);
   const paginatedArchives = filteredArchives.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-  const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const filterSelectCls = "w-full min-h-11 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
   const COL_COUNT = 7;
 
   return (
-    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
+    <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
 
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4 shrink-0">
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
         {[
           { label: 'Total', count: stats.total, color: 'text-slate-800' },
           { label: 'Records', count: stats.records, color: 'text-blue-600' },
@@ -379,7 +379,7 @@ export default function Archives() {
           { label: 'Users', count: stats.users, color: 'text-purple-600' },
           { label: 'Notifications', count: stats.notifications, color: 'text-indigo-600' },
         ].map(s => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-2.5 sm:p-3.5 flex flex-col min-[390px]:flex-row items-center justify-center gap-0.5 min-[390px]:gap-2 shadow-sm min-w-0">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
             <span className="text-sm font-medium text-slate-500">{s.label}</span>
           </div>
@@ -390,14 +390,14 @@ export default function Archives() {
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Unified Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
 
           {/* Top Controls: Search, Filter Toggle, and Actions */}
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
 
-            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 w-full md:w-auto flex-1 min-w-0">
               {/* Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full md:max-w-64 min-w-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
@@ -406,13 +406,13 @@ export default function Archives() {
                   placeholder="Search archives..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="pl-9 pr-8 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+                  className="pl-9 pr-11 min-h-11 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
                 />
                 {searchInput && (
                   <button
                     type="button"
                     onClick={() => setSearchInput('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"
                     title="Clear search"
                   >
                     <i className="fa-solid fa-times text-xs"></i>
@@ -423,43 +423,43 @@ export default function Archives() {
               {/* Mobile Filter Toggle Button */}
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                className="xl:hidden min-h-11 flex items-center justify-center gap-2 px-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
                 title="Toggle Filters"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+                <span>{isFiltersOpen ? 'Hide' : 'Filters'}</span>
               </button>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
+            <div className="grid grid-cols-1 gap-2 w-full md:w-auto">
               <button
                 onClick={fetchArchives}
-                className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm shrink-0"
+                className="min-h-11 bg-[#466460] hover:bg-[#3a524f] text-white px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm shrink-0"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span className="hidden sm:inline">Refresh</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
           {/* Expandable Filters Container */}
-          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
+          <div className={`${isFiltersOpen ? 'grid' : 'hidden'} xl:flex grid-cols-1 min-[390px]:grid-cols-2 gap-2 xl:gap-3 items-center w-full transition-all duration-300`}>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-40`}
+              className={`${filterSelectCls} xl:w-40`}
             >
               {Object.entries(ARCHIVE_TYPE_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
 
-            <div className="relative w-full sm:w-40">
+            <div className="relative w-full xl:w-40">
               <DatePicker
                 value={filterDate}
                 onChange={setFilterDate}
@@ -469,7 +469,7 @@ export default function Archives() {
               {filterDate && (
                 <button
                   onClick={() => setFilterDate('')}
-                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full text-slate-400 hover:text-slate-700 flex items-center justify-center z-10 transition-colors"
                   title="Clear date filter"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
@@ -482,7 +482,7 @@ export default function Archives() {
             <select
               value={sortOrder}
               onChange={e => setSortOrder(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-36`}
+              className={`${filterSelectCls} xl:w-36`}
             >
               {SORT_OPTIONS.map(s => (
                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -491,8 +491,57 @@ export default function Archives() {
           </div>
         </div>
 
-        {/* Archives Table */}
-        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+        {/* Mobile and tablet archive cards */}
+        <div className="lg:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {loading ? (
+            <div className="py-12 text-center text-sm text-slate-400">
+              <i className="fa-solid fa-spinner fa-spin mr-2" />Loading archives...
+            </div>
+          ) : paginatedArchives.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400">
+              <i className="fa-solid fa-box-archive block text-3xl text-slate-300 mb-2" />
+              No archived items found
+            </div>
+          ) : paginatedArchives.map((archive, idx) => (
+            <article key={`${archive.table}-${archive.id}`} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="text-xs font-semibold text-slate-400">#{(page - 1) * ITEMS_PER_PAGE + idx + 1}</span>
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                      archive.archiveType === 'medical_record' ? 'bg-blue-100 text-blue-700' :
+                      archive.archiveType === 'dental_record' ? 'bg-cyan-100 text-cyan-700' :
+                      archive.archiveType === 'announcement' ? 'bg-green-100 text-green-700' :
+                      archive.archiveType === 'user' ? 'bg-purple-100 text-purple-700' :
+                      archive.archiveType === 'consultation' ? 'bg-orange-100 text-orange-700' :
+                      archive.archiveType === 'appointment' ? 'bg-pink-100 text-pink-700' :
+                      archive.archiveType === 'notification' ? 'bg-indigo-100 text-indigo-700' :
+                      'bg-slate-100 text-slate-700'
+                    }`}>{ARCHIVE_TYPE_LABELS[archive.archiveType] || archive.archiveType}</span>
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 break-words">{archive.displayName}</h3>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-500 text-right">{formatDate(archive.updated_at || archive.created_at)}</span>
+              </div>
+              <p className="mt-2 text-sm text-slate-600 break-words line-clamp-3">{archive.detail}</p>
+              <p className="mt-2 text-xs text-slate-500">Archived by <span className="font-semibold text-slate-700">{archive.deletedBy}</span></p>
+              <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
+                <button onClick={() => handleView(archive)} className="min-h-11 rounded-xl bg-slate-50 text-[#466460] font-semibold text-xs flex items-center justify-center gap-1.5">
+                  <i className="fa-regular fa-eye" /> View
+                </button>
+                <button onClick={() => handleRestoreClick(archive)} className="min-h-11 rounded-xl bg-emerald-50 text-emerald-700 font-semibold text-xs flex items-center justify-center gap-1.5">
+                  <i className="fa-solid fa-rotate-left" /> Restore
+                </button>
+                <button onClick={() => handlePermanentDelete(archive)} className="min-h-11 rounded-xl bg-red-50 text-red-600 font-semibold text-xs flex items-center justify-center gap-1.5">
+                  <i className="fa-regular fa-trash-can" /> Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {/* Desktop archives table */}
+        <div className="hidden lg:block flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -610,15 +659,15 @@ export default function Archives() {
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
-            <div>
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-slate-600 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="text-center sm:text-left text-xs sm:text-sm">
               Showing <span className="font-semibold">{filteredArchives.length === 0 ? 0 : ((page - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(page * ITEMS_PER_PAGE, filteredArchives.length)}</span> of <span className="font-semibold">{filteredArchives.length}</span> items
             </div>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 w-full sm:w-auto">
               <button
                 disabled={page === 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Previous
               </button>
@@ -628,7 +677,7 @@ export default function Archives() {
               <button
                 disabled={page === totalPages || totalPages === 0}
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Next
               </button>
@@ -641,14 +690,14 @@ export default function Archives() {
       {/* View Modal */}
       {showViewModal && selectedArchive && createPortal(
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:p-4"
           onClick={() => setShowViewModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-auto"
+            className="bg-white rounded-t-[28px] sm:rounded-2xl shadow-xl max-w-lg w-full max-h-[92dvh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 border-b border-slate-100">
+            <div className="p-4 sm:p-6 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                   selectedArchive.archiveType === 'medical_record' ? 'bg-blue-100 text-blue-700' :
@@ -665,9 +714,9 @@ export default function Archives() {
                 <h2 className="text-xl font-bold text-[#1a2e22]">Archive Details</h2>
               </div>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-4">
               {/* Key Info - Different based on type */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase">Name/Title</label>
                   <p className="text-sm font-medium text-slate-700">{selectedArchive.displayName}</p>
@@ -678,7 +727,7 @@ export default function Archives() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase">Deleted By</label>
                   <p className="text-sm text-slate-700">{selectedArchive.deletedBy}</p>
@@ -720,7 +769,7 @@ export default function Archives() {
   </div>
 </details>
             </div>
-            <div className="p-6 border-t border-slate-100 flex gap-3">
+            <div className="p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100 grid grid-cols-2 gap-3">
               <button
                 onClick={() => setShowViewModal(false)}
                 className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition"
@@ -746,11 +795,11 @@ export default function Archives() {
       {/* Restore Confirmation Modal Using Portal */}
       {showRestoreModal && selectedArchive && createPortal(
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:p-4"
           onClick={() => setShowRestoreModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full"
+            className="bg-white rounded-t-[28px] sm:rounded-2xl shadow-xl max-w-md w-full"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
@@ -765,7 +814,7 @@ export default function Archives() {
                 It will be restored and visible in its original location.
               </p>
             </div>
-            <div className="p-6 pt-0 flex gap-3">
+            <div className="p-4 sm:p-6 sm:pt-0 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-2 gap-3">
               <button
                 onClick={() => setShowRestoreModal(false)}
                 className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition"
@@ -788,11 +837,11 @@ export default function Archives() {
       {/* Delete Confirmation Modal Using Portal */}
       {showDeleteModal && selectedArchive && createPortal(
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4"
+          className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:p-4"
           onClick={() => { setShowDeleteModal(false); setSelectedArchive(null); }}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full"
+            className="bg-white rounded-t-[28px] sm:rounded-2xl shadow-xl max-w-md w-full"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
@@ -807,7 +856,7 @@ export default function Archives() {
                 This action cannot be undone.
               </p>
             </div>
-            <div className="p-6 pt-0 flex gap-3">
+            <div className="p-4 sm:p-6 sm:pt-0 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setSelectedArchive(null); }}
                 className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition"
@@ -829,7 +878,7 @@ export default function Archives() {
 
       {/* Snackbar Notification */}
       {snackbar && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl ${
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-2 text-center shadow-xl ${
           snackbar.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {snackbar.type === 'success' ? (

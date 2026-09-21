@@ -71,8 +71,8 @@ const getAuthHeaders = () => {
 };
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
-const StatSkeleton = () => (
-  <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 md:p-5 animate-pulse">
+const StatSkeleton = ({ className = '' }) => (
+  <div className={`bg-white rounded-xl border border-slate-100 shadow-sm p-4 md:p-5 animate-pulse ${className}`}>
     <div className="h-2.5 w-24 bg-slate-200 rounded mb-3" />
     <div className="h-8 w-16 bg-slate-200 rounded mb-2" />
     <div className="h-2 w-20 bg-slate-100 rounded" />
@@ -87,14 +87,14 @@ const ChartSkeleton = ({ h = '220px' }) => (
 
 // ─── GlassCard ────────────────────────────────────────────────────────────────
 const GlassCard = ({ children, className = '' }) => (
-  <div className={`bg-white rounded-xl border border-[#e2e8f0] shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all duration-300 ${className}`}>
+  <div className={`min-w-0 max-w-full bg-white rounded-xl border border-[#e2e8f0] shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all duration-300 ${className}`}>
     {children}
   </div>
 );
 
 // ─── Section header ───────────────────────────────────────────────────────────
 const SectionLabel = ({ icon, children }) => (
-  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-3">
+  <p className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-3 break-words">
     <i className={`fa-solid ${icon} mr-1.5 text-[#466460]`}></i>{children}
   </p>
 );
@@ -197,6 +197,26 @@ function DashboardContent() {
   const [filter,         setFilter]         = useState('all');
   const [schoolYearFilter, setSchoolYearFilter] = useState('all');
   const [semesterFilter,  setSemesterFilter]  = useState('all');
+  const [pendingExpanded, setPendingExpanded] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  );
+  const [recentExpanded, setRecentExpanded] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  );
+
+  // Keep panels compact on phones and open by default on tablets/desktops.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const tabletQuery = window.matchMedia('(min-width: 768px)');
+    const syncPanelState = (event) => {
+      setPendingExpanded(event.matches);
+      setRecentExpanded(event.matches);
+    };
+
+    tabletQuery.addEventListener?.('change', syncPanelState);
+    return () => tabletQuery.removeEventListener?.('change', syncPanelState);
+  }, []);
 
   // ── Fetch from Supabase API ───────────────────────────────
   const fetchDashboardData = useCallback(async () => {
@@ -532,12 +552,12 @@ function DashboardContent() {
   // ── Error state ───────────────────────────────────────────
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-6">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4 sm:px-6">
         <i className="fa-solid fa-triangle-exclamation text-4xl text-amber-400"></i>
         <p className="text-sm font-bold text-slate-600 text-center">{error}</p>
         <button
           onClick={fetchDashboardData}
-          className="px-4 py-2 rounded-full bg-[#466460] text-white text-xs font-bold hover:bg-[#3a524f] transition"
+          className="min-h-11 px-5 py-2.5 rounded-full bg-[#466460] text-white text-sm font-bold hover:bg-[#3a524f] transition active:scale-[0.98]"
         >
           Retry
         </button>
@@ -547,62 +567,64 @@ function DashboardContent() {
 
   // ── Render ────────────────────────────────────────────────
   return (
-    <div className="flex-1 h-full min-h-0 overflow-y-auto bg-[#f4f7f6] px-6 py-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="flex-1 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto bg-[#f4f7f6] p-3 sm:p-4 md:p-5 lg:p-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
 
       {/* ── Stat Cards ── */}
-      <div className="grid grid-cols-5 gap-5 mb-6">
-        {loading ? [1,2,3,4,5].map(i => <StatSkeleton key={i} />) : (
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 lg:gap-5 mb-4 sm:mb-5 lg:mb-6">
+        {loading ? [1,2,3,4,5].map((i, index) => (
+          <StatSkeleton key={i} className={index === 0 ? 'col-span-2 lg:col-span-1' : ''} />
+        )) : (
           <>
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Visits</p>
-              <h4 className="text-3xl font-bold text-slate-800">{visitStats.total}</h4>
-              <p className={`text-xs mt-1 ${visitStats.unclassified > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+            <GlassCard className="col-span-2 lg:col-span-1 p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1 break-words">Total Visits</p>
+              <h4 className="text-2xl sm:text-3xl font-bold text-slate-800">{visitStats.total}</h4>
+              <p className={`text-xs mt-1 break-words ${visitStats.unclassified > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
                 {visitStats.unclassified > 0
                   ? `${visitStats.unclassified} old record${visitStats.unclassified !== 1 ? 's' : ''} unclassified`
                   : 'All visits classified'}
               </p>
             </GlassCard>
 
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Patient Visits</p>
-              <h4 className="text-3xl font-bold text-[#e07a5f]">{visitStats.patient}</h4>
-              <p className="text-xs text-slate-500 mt-1">{percentageOfVisits(visitStats.patient)}% of total visits</p>
+            <GlassCard className="p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1 break-words">Patient Visits</p>
+              <h4 className="text-2xl sm:text-3xl font-bold text-[#e07a5f]">{visitStats.patient}</h4>
+              <p className="text-xs text-slate-500 mt-1 break-words">{percentageOfVisits(visitStats.patient)}% of total visits</p>
             </GlassCard>
 
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Non-Patient Visits</p>
-              <h4 className="text-3xl font-bold text-[#3b82f6]">{visitStats.nonPatient}</h4>
-              <p className="text-xs text-slate-500 mt-1">{percentageOfVisits(visitStats.nonPatient)}% of total visits</p>
+            <GlassCard className="p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1 break-words">Non-Patient Visits</p>
+              <h4 className="text-2xl sm:text-3xl font-bold text-[#3b82f6]">{visitStats.nonPatient}</h4>
+              <p className="text-xs text-slate-500 mt-1 break-words">{percentageOfVisits(visitStats.nonPatient)}% of total visits</p>
             </GlassCard>
 
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Medical</p>
-              <h4 className="text-3xl font-bold text-slate-800">{visitStats.medical}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Medical encounters</p>
+            <GlassCard className="p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1 break-words">Total Medical</p>
+              <h4 className="text-2xl sm:text-3xl font-bold text-slate-800">{visitStats.medical}</h4>
+              <p className="text-xs text-emerald-500 mt-1 break-words">Medical encounters</p>
             </GlassCard>
 
-            <GlassCard className="p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Dental</p>
-              <h4 className="text-3xl font-bold text-slate-800">{visitStats.dental}</h4>
-              <p className="text-xs text-emerald-500 mt-1">Dental encounters</p>
+            <GlassCard className="p-4 sm:p-5 min-w-0">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1 break-words">Total Dental</p>
+              <h4 className="text-2xl sm:text-3xl font-bold text-slate-800">{visitStats.dental}</h4>
+              <p className="text-xs text-emerald-500 mt-1 break-words">Dental encounters</p>
             </GlassCard>
           </>
         )}
       </div>
 
       {/* ── Analytics Card ── */}
-      <GlassCard className="p-5 mb-6">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
-          <h3 className="font-bold text-base text-[#466460]">
+      <GlassCard className="p-3 sm:p-4 lg:p-5 mb-4 sm:mb-5 lg:mb-6 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3 min-w-0">
+          <h3 className="font-bold text-base text-[#466460] break-words">
             <i className="fa-solid fa-chart-mixed mr-2"></i>Health Analytics
             {loading && <span className="ml-2 text-[10px] font-normal text-slate-400 animate-pulse">loading…</span>}
           </h3>
-          <div className="flex gap-2 overflow-x-auto pb-1 -mb-1 [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-full sm:w-auto gap-2 overflow-x-auto overscroll-x-contain pb-1 -mb-1 [&::-webkit-scrollbar]:hidden">
             {['all', 'student', 'teaching', 'non_teaching'].map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap border transition-all duration-200
+                className={`min-h-11 px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-all duration-200
                   ${filter === f
                     ? 'bg-gradient-to-br from-[#466460] to-[#5a7a76] text-white border-transparent'
                     : 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0] hover:border-[#466460]'
@@ -616,14 +638,14 @@ function DashboardContent() {
 
         {/* Line Chart */}
         <div className="mb-5">
-          <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-3 gap-3">
             <SectionLabel icon="fa-chart-line">Clinic Visits Over Time</SectionLabel>
-            <div className="flex gap-2 flex-wrap items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full md:w-auto">
               {/* Semester Filter */}
               <select
                 value={semesterFilter}
                 onChange={(e) => setSemesterFilter(e.target.value)}
-                className="px-2.5 py-[3px] rounded-full text-[10px] font-semibold border border-[#e2e8f0] bg-white text-[#475569] focus:outline-none focus:border-[#466460]"
+                className="w-full md:w-auto min-h-11 px-3 py-2 rounded-xl text-xs font-semibold border border-[#e2e8f0] bg-white text-[#475569] focus:outline-none focus:ring-2 focus:ring-[#466460]/20 focus:border-[#466460]"
               >
                 <option value="all">All Semesters</option>
                 <option value="1st Semester">1st Semester</option>
@@ -635,7 +657,7 @@ function DashboardContent() {
               <select
                 value={schoolYearFilter}
                 onChange={(e) => setSchoolYearFilter(e.target.value)}
-                className="px-2.5 py-[3px] rounded-full text-[10px] font-semibold border border-[#e2e8f0] bg-white text-[#475569] focus:outline-none focus:border-[#466460]"
+                className="w-full md:w-auto min-h-11 px-3 py-2 rounded-xl text-xs font-semibold border border-[#e2e8f0] bg-white text-[#475569] focus:outline-none focus:ring-2 focus:ring-[#466460]/20 focus:border-[#466460]"
               >
                 {availableSchoolYears.map(sy => (
                   <option key={sy} value={sy}>
@@ -655,7 +677,7 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="w-full h-[30vh] min-h-[220px] relative">
+          <div className="w-full min-w-0 h-[260px] sm:h-[300px] lg:h-[32vh] lg:min-h-[300px] relative">
             {loading ? <ChartSkeleton h="100%" /> : (
               <Line
                 data={trendData}
@@ -665,7 +687,7 @@ function DashboardContent() {
                   plugins: { legend: { display: false } },
                   scales: {
                     x: {
-                      ticks: { font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
+                      ticks: { font: { size: 10 }, maxRotation: 45, maxTicksLimit: 8 },
                       grid:  { color: 'rgba(0,0,0,0.04)' },
                     },
                     y: {
@@ -683,11 +705,11 @@ function DashboardContent() {
         <hr className="border-slate-100 mb-5" />
 
         {/* Visit classification + service + user classification */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="min-w-0">
             <SectionLabel icon="fa-clipboard-check">Visit Classification</SectionLabel>
-            <div className="h-[180px] flex justify-center items-center">
-              {loading ? <ChartSkeleton h="180px" /> : (
+            <div className="h-[220px] sm:h-[240px] lg:h-[180px] flex justify-center items-center">
+              {loading ? <ChartSkeleton h="100%" /> : (
                 visitStats.total === 0 ? (
                   <p className="text-xs text-slate-400">No visits found</p>
                 ) : (
@@ -696,7 +718,7 @@ function DashboardContent() {
                     options={{
                       responsive: true,
                       maintainAspectRatio: false,
-                      plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } },
+                      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 14, font: { size: 11 } } } },
                     }}
                   />
                 )
@@ -704,10 +726,10 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <SectionLabel icon="fa-file-medical">Service Type</SectionLabel>
-            <div className="h-[180px] flex justify-center items-center">
-              {loading ? <ChartSkeleton h="180px" /> : (
+            <div className="h-[220px] sm:h-[240px] lg:h-[180px] flex justify-center items-center">
+              {loading ? <ChartSkeleton h="100%" /> : (
                 visitStats.total === 0 ? (
                   <p className="text-xs text-slate-400">No records found</p>
                 ) : (
@@ -716,7 +738,7 @@ function DashboardContent() {
                     options={{
                       responsive: true,
                       maintainAspectRatio: false,
-                      plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } },
+                      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 14, font: { size: 11 } } } },
                     }}
                   />
                 )
@@ -724,10 +746,10 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div>
+          <div className="min-w-0 md:col-span-2 lg:col-span-1">
             <SectionLabel icon="fa-users">User Classification</SectionLabel>
-            <div className="h-[180px]">
-              {loading ? <ChartSkeleton h="180px" /> : (
+            <div className="h-[220px] sm:h-[240px] lg:h-[180px]">
+              {loading ? <ChartSkeleton h="100%" /> : (
                 <Bar
                   data={typeChartData}
                   options={{
@@ -747,30 +769,44 @@ function DashboardContent() {
       </GlassCard>
 
       {/* ── Pending Appointments + Recent Records + Alerts ── */}
-      <div className="grid grid-cols-3 gap-5 pb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
 
         {/* Pending Appointments (spans 2 cols) */}
-        <GlassCard className="p-0 overflow-hidden col-span-2 flex flex-col h-[400px]">
-          <div className="p-5 border-b border-[#eef2f6] shrink-0 bg-white flex justify-between items-center">
-            <h3 className="font-bold text-sm text-[#466460] flex items-center">
-              <i className="fa-regular fa-calendar-clock mr-2"></i>Action Required: Pending Appointments
+        <GlassCard className={`p-0 overflow-hidden lg:col-span-2 flex flex-col ${pendingExpanded ? 'min-h-[420px] sm:h-[400px]' : 'h-auto'}`}>
+          <div className="p-4 sm:p-5 border-b border-[#eef2f6] shrink-0 bg-white flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <h3 className="font-bold text-sm text-[#466460] flex flex-wrap items-center min-w-0 break-words">
+              <i className="fa-regular fa-calendar-clock mr-2"></i><span>Action Required: Pending Appointments</span>
               {pendingAppointments.length > 0 && (
-                <span className="ml-3 text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-full">
+                <span className="ml-2 mt-1 sm:mt-0 text-[11px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-1 rounded-full">
                   {pendingAppointments.length} Pending
                 </span>
               )}
             </h3>
-            {pendingAppointments.length > 0 && (
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
+              {pendingAppointments.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => navigate(userRole === 'sysadmin' ? '/appointment-management' : '/appointments')}
+                  className="min-h-11 w-full sm:w-auto px-4 py-2 rounded-xl bg-[#466460]/10 text-sm font-bold text-[#466460] hover:bg-[#466460]/15 flex items-center justify-center gap-2 active:scale-[0.98]"
+                >
+                  View All <i className="fa-solid fa-arrow-right"></i>
+                </button>
+              )}
               <button
-                onClick={() => navigate(userRole === 'sysadmin' ? '/appointment-management' : '/appointments')}
-                className="text-xs font-bold text-[#466460] hover:underline flex items-center gap-1"
+                type="button"
+                onClick={() => setPendingExpanded((current) => !current)}
+                className="min-h-11 w-full sm:w-auto px-4 py-2 rounded-xl border border-[#cbd5d1] bg-white text-sm font-bold text-[#466460] hover:bg-slate-50 flex items-center justify-center gap-2 active:scale-[0.98]"
+                aria-expanded={pendingExpanded}
+                aria-controls="pending-appointments-content"
               >
-                View All <i className="fa-solid fa-arrow-right"></i>
+                {pendingExpanded ? 'Hide' : 'Show'}
+                <i className={`fa-solid fa-chevron-down text-xs transition-transform ${pendingExpanded ? 'rotate-180' : ''}`}></i>
               </button>
-            )}
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 bg-[#f8fafc] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+          {pendingExpanded && (
+          <div id="pending-appointments-content" className="flex-1 overflow-y-auto p-3 sm:p-4 bg-[#f8fafc] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
             {loading ? (
               <div className="space-y-3">
                 {[1,2,3].map(i => (
@@ -832,34 +868,34 @@ const patientProg =
     return (
       <div
         key={appt?.id || i}
-        className="grid grid-cols-12 items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-[#8aacaa] hover:shadow-sm transition-all group"
+        className="flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2.5 sm:gap-3 p-3.5 sm:p-3 bg-white border border-slate-100 rounded-xl hover:border-[#8aacaa] hover:shadow-sm transition-all group min-w-0"
       >
         {/* Grid Column 1: Number and patient name */}
-        <div className="col-span-5 flex items-center gap-3 min-w-0">
-          <div className="font-['DM_Mono',monospace] text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-1.5 py-0.5 shrink-0">
+        <div className="sm:col-span-5 flex items-center gap-3 min-w-0">
+          <div className="font-['DM_Mono',monospace] text-[11px] font-bold text-[#854F0B] bg-[#FAEEDA] rounded-md px-2 py-1 shrink-0">
             #{i + 1}
           </div>
 
-          <div className="text-[12px] font-bold text-[#1e293b] truncate group-hover:text-[#466460] transition-colors">
+          <div className="text-sm sm:text-[12px] font-bold text-[#1e293b] break-words sm:truncate group-hover:text-[#466460] transition-colors min-w-0">
             {patientName}
           </div>
         </div>
 
         {/* Grid Column 2: University ID and program */}
-        <div className="col-span-3 text-[10px] text-[#64748b] truncate">
+        <div className="sm:col-span-3 text-xs sm:text-[10px] text-[#64748b] break-words sm:truncate pl-9 sm:pl-0">
           {patientId} &middot; {patientProg}
         </div>
 
         {/* Grid Column 3: Consultation reason */}
-        <div className="col-span-2 truncate">
-          <span className="text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2 py-0.5 rounded-full inline-block font-medium truncate max-w-full">
+        <div className="sm:col-span-2 min-w-0 pl-9 sm:pl-0">
+          <span className="text-[11px] sm:text-[10px] text-[#6d28d9] bg-[#ede9fe] px-2.5 py-1 rounded-full inline-block font-medium break-words max-w-full">
             {reason}
           </span>
         </div>
 
         {/* Grid Column 4: Date and time */}
-        <div className="col-span-2 text-right shrink-0">
-          <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
+        <div className="sm:col-span-2 text-left sm:text-right shrink-0 pl-9 sm:pl-0">
+          <div className="text-[11px] sm:text-[10px] text-slate-400 flex items-center gap-1 sm:justify-end">
             <i className="fa-regular fa-clock"></i>
             {bTime.split(',')[0]}
           </div>
@@ -870,19 +906,31 @@ const patientProg =
 </div>
             )}
           </div>
+          )}
         </GlassCard>
 
         {/* Right column: Recent Records + Alerts */}
-        <div className="flex flex-col gap-5 h-[400px]">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:flex lg:flex-col gap-4 lg:gap-5 lg:h-[400px] min-w-0">
 
           {/* Recent Records */}
-          <GlassCard className="flex flex-col flex-1 min-h-0 overflow-hidden">
-            <div className="p-4 border-b border-[#eef2f6] shrink-0 bg-white">
+          <GlassCard className={`flex flex-col lg:flex-1 overflow-hidden ${recentExpanded ? 'min-h-[300px] lg:min-h-0' : 'min-h-0'}`}>
+            <div className="p-4 border-b border-[#eef2f6] shrink-0 bg-white flex items-center justify-between gap-3">
               <h3 className="font-bold text-sm text-[#466460]">
                 <i className="fa-solid fa-folder-plus mr-2"></i>Recent Records
               </h3>
+              <button
+                type="button"
+                onClick={() => setRecentExpanded((current) => !current)}
+                className="min-h-11 px-3 py-2 rounded-xl border border-[#cbd5d1] bg-white text-xs font-bold text-[#466460] hover:bg-slate-50 flex items-center justify-center gap-2 shrink-0 active:scale-[0.98]"
+                aria-expanded={recentExpanded}
+                aria-controls="recent-records-content"
+              >
+                {recentExpanded ? 'Hide' : 'Show'}
+                <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${recentExpanded ? 'rotate-180' : ''}`}></i>
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 bg-[#f8fafc] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+            {recentExpanded && (
+            <div id="recent-records-content" className="flex-1 overflow-y-auto p-3 bg-[#f8fafc] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
               {loading ? (
                 <div className="space-y-2">
                   {[1,2,3].map(i => (
@@ -910,13 +958,13 @@ const patientProg =
                           <i className={`fa-solid ${isMed ? 'fa-stethoscope' : 'fa-tooth'} text-xs`}></i>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-slate-700 truncate">
+                          <p className="text-xs font-bold text-slate-700 break-words sm:truncate">
                             {isMed ? 'Medical Exam' : 'Dental Exam'}
                           </p>
-                          <p className="text-[10px] text-slate-500 truncate">
+                          <p className="text-[11px] text-slate-500 break-words sm:truncate">
                             {user.name || rec.userId || 'ID Missing'}
                           </p>
-                          <p className={`text-[9px] font-semibold mt-0.5 ${
+                          <p className={`text-[11px] sm:text-[9px] font-semibold mt-0.5 ${
                             rec.visitType === 'patient'
                               ? 'text-[#e07a5f]'
                               : rec.visitType === 'non_patient'
@@ -931,7 +979,7 @@ const patientProg =
                           </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-[9px] text-slate-400">
+                          <p className="text-[11px] sm:text-[9px] text-slate-400">
                             {rec.dateObj?.toLocaleDateString([], { month: 'short', day: 'numeric' }) || ''}
                           </p>
                         </div>
@@ -941,10 +989,11 @@ const patientProg =
                 </div>
               )}
             </div>
+            )}
           </GlassCard>
 
           {/* Alerts */}
-          <GlassCard className="flex flex-col shrink-0">
+          <GlassCard className="flex flex-col shrink-0 min-w-0">
             <div className="p-4 border-b border-[#eef2f6] bg-white rounded-t-xl">
               <h3 className="font-bold text-sm text-[#466460]">
                 <i className="fa-solid fa-bell mr-2"></i>Alerts
@@ -969,9 +1018,9 @@ const patientProg =
                     return (
                       <div key={idx} className={`flex items-start gap-3 p-2.5 bg-white border border-slate-100 rounded-lg border-l-4 ${isWarning ? 'border-l-amber-500' : 'border-l-[#466460]'}`}>
                         <i className={`fa-solid ${alert.icon} text-sm mt-0.5 ${isWarning ? 'text-amber-500' : 'text-[#466460]'}`}></i>
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-[11px] font-bold text-slate-700">{isWarning ? 'Action Required' : 'System Update'}</p>
-                          <p className="text-[10px] font-medium text-slate-500 leading-tight mt-0.5">{alert.text}</p>
+                          <p className="text-[11px] font-medium text-slate-500 leading-snug mt-0.5 break-words">{alert.text}</p>
                         </div>
                       </div>
                     );

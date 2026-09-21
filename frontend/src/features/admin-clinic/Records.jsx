@@ -13,7 +13,7 @@ const PAGE_SIZE = 50;
 // SNACKBAR
 // ============================================================
 const Snackbar = ({ message, type, visible }) => (
-  <div className={`fixed bottom-8 left-1/2 z-[9999] flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
+  <div className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-[9999] w-[calc(100%-2rem)] sm:w-auto max-w-md flex items-center justify-center gap-2.5 px-4 sm:px-6 py-3.5 rounded-xl text-center text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
     ${visible ? '-translate-x-1/2 translate-y-0 opacity-100' : '-translate-x-1/2 translate-y-32 opacity-0 pointer-events-none'}
     ${type === 'success' ? 'bg-gradient-to-r from-[#166534] to-[#15803d]' : 'bg-gradient-to-r from-[#991b1b] to-[#dc2626]'}`}>
     <i className={`fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
@@ -27,8 +27,8 @@ const Snackbar = ({ message, type, visible }) => (
 const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
   if (!isOpen) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onCancel}>
+      <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-2xl p-5 sm:p-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] max-w-sm w-full" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-amber-600">
@@ -38,11 +38,11 @@ const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
           <h3 className="text-lg font-bold text-slate-800">Unsaved Changes</h3>
         </div>
         <p className="text-sm text-slate-600 mb-6">You have unsaved changes. Are you sure you want to discard them? Any edits you made will be lost.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
+        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
+          <button onClick={onCancel} className="min-h-11 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
             Keep Editing
           </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
+          <button onClick={onConfirm} className="min-h-11 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
             Discard
           </button>
         </div>
@@ -101,13 +101,13 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
   const isImage = doc.type?.startsWith('image/') || ['jpg', 'jpeg', 'png'].some(ext => doc.name?.toLowerCase().endsWith(`.${ext}`));
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
       <div
-        className="relative w-full max-w-4xl h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]"
+        className="relative w-full max-w-4xl h-[94dvh] sm:h-[85vh] bg-white rounded-t-[28px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-4 flex items-center justify-between">
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[#466460] flex items-center justify-center text-white shrink-0">
               <i className={isPdf ? 'fa-solid fa-file-pdf' : 'fa-solid fa-file-image'}></i>
@@ -129,14 +129,14 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
                 download={doc.name}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-white border border-[#c8ddd8] text-[#466460] hover:bg-[#e0eceb] text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl bg-white border border-[#c8ddd8] text-[#466460] hover:bg-[#e0eceb] text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
               >
                 <i className="fa-solid fa-download"></i> Download
               </a>
             )}
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors flex items-center justify-center"
+              className="w-11 h-11 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors flex items-center justify-center"
             >
               <i className="fa-solid fa-xmark text-lg"></i>
             </button>
@@ -683,25 +683,25 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
 
   return (
     <>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleCloseRequest}></div>
 
-        <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
-          <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
+        <div className="relative w-full h-[96dvh] sm:h-[calc(100%-2rem)] max-w-6xl sm:mx-4 sm:my-4 bg-white rounded-t-[28px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+          <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-4 sm:px-6 py-3 sm:py-5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
               <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
                 <i className="fa-solid fa-user text-white text-lg"></i>
               </div>
-              <div>
-                <h3 className="font-bold text-lg text-slate-800">{displayPatient.name}</h3>
-                <p className="text-sm text-slate-500 mt-0.5">
+              <div className="min-w-0">
+                <h3 className="font-bold text-base sm:text-lg text-slate-800 truncate">{displayPatient.name}</h3>
+                <p className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate">
                   {displayPatient.id} • {displayPatient.department || ''} {displayPatient.prog ? `• ${displayPatient.prog}` : ''}
                 </p>
               </div>
             </div>
             <button
               onClick={handleCloseRequest}
-              className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+              className="w-11 h-11 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
                 <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
@@ -709,13 +709,13 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
             </button>
           </div>
 
-          <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
-            <div className="flex gap-2">
+          <div className="shrink-0 flex flex-col lg:flex-row gap-3 px-4 sm:px-6 py-3 border-b border-slate-200 bg-slate-50 lg:items-center">
+            <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2">
               {availableTabs.map(({ key, icon, label }) => (
                 <button
                   key={key}
                   onClick={() => setExamType(key)}
-                  className={`px-6 py-3 text-base font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                  className={`min-h-11 px-4 sm:px-6 py-2.5 text-sm sm:text-base font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
                     examType === key
                       ? 'bg-[#466460] text-white shadow-md'
                       : 'text-slate-600 hover:bg-white hover:shadow-sm'
@@ -726,15 +726,15 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
                 </button>
               ))}
             </div>
-            <div className="ml-auto flex items-center gap-3">
-              <span className="text-xs font-semibold text-slate-500">School Year:</span>
+            <div className="lg:ml-auto grid grid-cols-2 gap-2 lg:flex lg:items-center lg:gap-3">
+              <span className="hidden lg:inline text-xs font-semibold text-slate-500">School Year:</span>
               <select
                 value={schoolYear}
                 onChange={(e) => {
                   setSchoolYear(e.target.value);
                   setHasUnsavedChanges(true);
                 }}
-                className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+                className="min-w-0 w-full min-h-11 px-3 sm:px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
               >
                 {schoolYearOptions.map(year => (
                   <option key={year} value={year}>{year}</option>
@@ -746,7 +746,7 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
                   setSemester(e.target.value);
                   setHasUnsavedChanges(true);
                 }}
-                className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+                className="min-w-0 w-full min-h-11 px-3 sm:px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
               >
                 <option value="1st Semester">1st Semester</option>
                 <option value="2nd Semester">2nd Semester</option>
@@ -755,7 +755,7 @@ const ExaminationModal = ({ isOpen, onClose, patient, examType, setExamType, onE
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 p-3 sm:p-4 md:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             {loading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center text-slate-400">
@@ -1071,13 +1071,13 @@ const isEligible = (doc) => {
 
   const FilterSelects = ({ size = 'sm' }) => {
     const base = size === 'sm'
-      ? 'px-2 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate'
+      ? 'w-full min-h-11 px-2 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-[11px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate'
       : 'px-1 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-[10px] outline-none focus:border-[#466460] transition-all text-slate-600 min-w-0 truncate';
-    const roleCls = `${base} flex-1 min-w-[70px] max-w-[100px]`;
-    const deptCls = `${base} flex-1 min-w-[80px] max-w-[120px]`;
-    const progCls = `${base} flex-1 min-w-[100px] max-w-[200px]`;
-    const yearCls = `${base} flex-1 min-w-[60px] max-w-[90px]`;
-    const secCls = `${base} flex-1 min-w-[60px] max-w-[90px]`;
+    const roleCls = size === 'sm' ? base : `${base} flex-1 min-w-[70px] max-w-[100px]`;
+    const deptCls = size === 'sm' ? base : `${base} flex-1 min-w-[80px] max-w-[120px]`;
+    const progCls = size === 'sm' ? `${base} col-span-2 min-[390px]:col-span-1` : `${base} flex-1 min-w-[100px] max-w-[200px]`;
+    const yearCls = size === 'sm' ? base : `${base} flex-1 min-w-[60px] max-w-[90px]`;
+    const secCls = size === 'sm' ? base : `${base} flex-1 min-w-[60px] max-w-[90px]`;
 
     return (
       <>
@@ -1119,7 +1119,7 @@ const isEligible = (doc) => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white overflow-hidden">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-white overflow-hidden">
       <div className="flex-1 min-h-0 overflow-hidden">
         {/* MOBILE VIEW */}
         <div className="flex flex-col lg:hidden h-full bg-white overflow-hidden">
@@ -1200,7 +1200,7 @@ const isEligible = (doc) => {
                   <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                 </svg>
               </span>
-              <div className="flex flex-1 gap-1.5 min-w-0 overflow-hidden">
+              <div className="grid grid-cols-2 min-[390px]:grid-cols-3 gap-2 flex-1 min-w-0">
                 <FilterSelects size="sm" />
               </div>
             </div>
@@ -1248,7 +1248,7 @@ const isEligible = (doc) => {
           {profileOpen && (
             <div className="fixed inset-0 bg-black/30 z-40 lg:hidden" onClick={() => setProfileOpen(false)} />
           )}
-          <div className={`fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out lg:hidden max-h-[85vh] flex flex-col ${profileOpen ? 'translate-y-0' : 'translate-y-full'}`}>
+          <div className={`fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-[28px] shadow-2xl transition-transform duration-300 ease-out lg:hidden max-h-[92dvh] flex flex-col pb-[env(safe-area-inset-bottom)] ${profileOpen ? 'translate-y-0' : 'translate-y-full'}`}>
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-slate-200"></div>
             </div>

@@ -10,7 +10,7 @@ import notificationsService from '../services/notifications.service.js';
 import { supabase } from '../supabase';
 import logo from '../assets/logo.jpg';
 import logo1 from '../assets/logo1.png';
-import { useDocumentManager } from '../hooks/useDocumentManager'; // <-- Imported hook
+import { useDocumentManager } from '../hooks/useDocumentManager';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -322,9 +322,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       }
     });
 
-    if (rejected.length) alert(`Some files were not added:
-
-${rejected.join('\n')}`);
+    if (rejected.length) alert(`Some files were not added:\n\n${rejected.join('\n')}`);
     return accepted;
   };
 
@@ -670,7 +668,7 @@ ${rejected.join('\n')}`);
     });
   };
 
-const saveProfileEdits = async () => {
+  const saveProfileEdits = async () => {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('token');
@@ -812,7 +810,7 @@ const saveProfileEdits = async () => {
 
         {/* Header */}
         <div
-          className="bg-gradient-to-br from-[#466460] to-[#38524d] px-5 sm:px-6 py-6 sm:py-8 text-white relative flex-shrink-0"
+          className="bg-gradient-to-br from-[#466460] to-[#38524d] px-5 sm:px-6 pb-6 pt-[calc(max(env(safe-area-inset-top),24px)+16px)] sm:pt-8 sm:pb-8 text-white relative flex-shrink-0"
           onTouchStart={isBottomSheet ? handleTouchStart : undefined}
           onTouchMove={isBottomSheet ? handleTouchMove : undefined}
           onTouchEnd={isBottomSheet ? handleTouchEnd : undefined}
@@ -820,7 +818,8 @@ const saveProfileEdits = async () => {
         >
           <button
             onClick={onClose}
-            className="sm:hidden absolute top-3 left-4 bg-white/10 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm flex items-center justify-center hover:bg-white/20 transition-all"
+            className="sm:hidden absolute left-4 bg-white/10 border-none text-white w-8 h-8 rounded-full cursor-pointer text-sm flex items-center justify-center hover:bg-white/20 transition-all"
+            style={{ top: 'calc(max(env(safe-area-inset-top), 24px) + 8px)' }}
           >
             <i className="fa-solid fa-chevron-down"></i>
           </button>
@@ -832,7 +831,7 @@ const saveProfileEdits = async () => {
             <i className="fa-solid fa-xmark"></i>
           </button>
 
-          <div className="flex items-center gap-4 mt-4 sm:mt-0">
+          <div className="flex items-center gap-4 mt-8 sm:mt-0">
             <div className="w-[60px] h-[60px] sm:w-[70px] sm:h-[70px] rounded-full border-2 border-white/40 overflow-hidden bg-white/10 flex-shrink-0">
               <img
                 src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=ffffff&color=466460&size=70`}
@@ -1385,17 +1384,15 @@ const saveProfileEdits = async () => {
         </div>
       )}
 
-{/* Edit Profile Modal */}
+      {/* Edit Profile Modal */}
       {editingSection && (
         <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-4 py-8">
-          {/* Changed max-w-md to max-w-3xl and removed max-h-[85vh] and overflow-hidden to let it size naturally without internal scrolling */}
           <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col shadow-2xl">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <span className="text-base font-extrabold text-[#466460] capitalize">Edit {editingSection} Info</span>
               <button onClick={closeEdit} className="bg-none border-none text-slate-400 cursor-pointer text-lg flex items-center justify-center hover:text-slate-600">✕</button>
             </div>
 
-            {/* Removed overflow-y-auto and flex-1 to remove the scrollable function inside the modal body */}
             <div className="px-6 py-5">
               {editingSection === 'personal' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1575,7 +1572,6 @@ const saveProfileEdits = async () => {
                 </div>
               )}
 
-              {/* Keep Medical/Surgical/Vaccine layouts intact with gap styles if needed */}
               {editingSection === 'vaccinations' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {VACCINE_DOSE_KEYS.map(({ key, label }) => {
@@ -2001,7 +1997,7 @@ export const DesktopHeader = ({ onOpenQR }) => {
 };
 
 // ─── Role-based Navigation Configuration ─────────────────────────────────────
-const ROLE_NAV_CONFIG = {
+export const ROLE_NAV_CONFIG = {
   sysadmin: [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/appointment-management', label: 'Appointments' },
@@ -2122,7 +2118,17 @@ export const DesktopNav = () => {
 };
 
 // ─── Mobile Header ────────────────────────────────────────────────────────────
-export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simple = false, onProfileClick, onNotificationClick, notificationCount = 0 }) => {
+export const MobileHeader = ({
+  userName = 'User',
+  userId = 'N/A',
+  onLogout,
+  simple = false,
+  onProfileClick,
+  onNotificationClick,
+  notificationCount = 0,
+  onMenuClick,
+  isMenuOpen = false,
+}) => {
   if (simple) {
     return (
       <header className="
@@ -2130,9 +2136,9 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
         bg-white
         flex items-center justify-center
         shadow-sm border-b border-slate-100
-        px-4 pt-[env(safe-area-inset-top,12px)] pb-3
-        min-h-[64px]
-        sm:px-6 sm:min-h-[70px]
+        px-4 pt-[max(env(safe-area-inset-top),24px)] pb-3
+        min-h-[76px]
+        sm:px-6 sm:min-h-[82px]
       ">
         <img
           src={logo}
@@ -2150,17 +2156,42 @@ export const MobileHeader = ({ userName = 'User', userId = 'N/A', onLogout, simp
       bg-gradient-to-br from-[#466460] to-[#38524d]
       flex items-center justify-between
       shadow-lg border-b border-white/10
-      px-4 pt-[env(safe-area-inset-top,12px)] pb-3
-      min-h-[64px]
-      sm:px-6 sm:min-h-[70px]
+      px-4 pt-[max(env(safe-area-inset-top),24px)] pb-3
+      min-h-[76px]
+      sm:px-6 sm:min-h-[82px]
     ">
-      <img
-        src={logo1}
-        alt="MediTrack Logo"
-        className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
-        style={{ mixBlendMode: 'multiply' }}
-        onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
-      />
+      {onMenuClick ? (
+        <button
+          type="button"
+          data-hamburger="true"
+          onClick={onMenuClick}
+          className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white flex-shrink-0"
+          aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={isMenuOpen}
+        >
+          <svg
+            width="23"
+            height="23"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          >
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
+        </button>
+      ) : (
+        <img
+          src={logo1}
+          alt="MediTrack Logo"
+          className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
+          style={{ mixBlendMode: 'multiply' }}
+          onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
+        />
+      )}
 
       <div className="flex items-center gap-2 sm:gap-3">
         {onNotificationClick && (
@@ -2312,6 +2343,90 @@ export const MobileNav = ({
   );
 };
 
+// ─── Mobile Navigation Drawer ─────────────────────────────────────────────────
+export const MobileNavigationDrawer = ({ isOpen, onClose, activeTab, onTabChange }) => {
+  const [userRole, setUserRole] = useState('sysadmin');
+
+  useEffect(() => {
+    const role = getStoredUserRole();
+    if (role) setUserRole(role);
+  }, []);
+
+  const navItems = ROLE_MOBILE_NAV_CONFIG[userRole] || ROLE_MOBILE_NAV_CONFIG.sysadmin;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 z-[4500] transition-opacity duration-300"
+        style={{
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? 'auto' : 'none',
+        }}
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div
+        className="fixed top-0 left-0 bottom-0 w-[80%] max-w-[320px] bg-[#f8faf9] z-[4501] flex flex-col rounded-r-[24px] shadow-2xl transition-transform duration-300 ease-in-out"
+        style={{
+          transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+        }}
+      >
+        {/* Drawer Header with Status Bar Padding */}
+        <div className="bg-[#466460] pt-[calc(max(env(safe-area-inset-top),24px)+16px)] pb-5 px-5 flex items-center justify-between rounded-tr-[24px] flex-shrink-0">
+          <h2 className="text-white font-extrabold tracking-widest uppercase text-[13px]">Navigation</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg bg-white/10 text-white flex items-center justify-center border border-white/20 hover:bg-white/20 transition-colors active:scale-95"
+          >
+            <i className="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        {/* Scrollable Navigation Links */}
+        <div className="flex-1 overflow-y-auto py-4 px-3 scrollbar-none">
+          <div className="flex flex-col gap-1.5">
+            {navItems.map((item) => {
+              const IconComponent = item.icon || DefaultIcon;
+              const isActive = activeTab === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    if (onTabChange) onTabChange(item.id);
+                    onClose();
+                  }}
+                  className={`flex items-center gap-4 w-full p-3 rounded-xl transition-all ${
+                    isActive
+                      ? 'bg-gradient-to-r from-[#e8f5ee] to-transparent text-[#1a5c3a] border-l-[3px] border-[#466460]'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-100 border-l-[3px] border-transparent'
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    isActive ? 'bg-[#466460] text-white shadow-sm' : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    <div className="w-4 h-4 flex items-center justify-center">
+                      <IconComponent />
+                    </div>
+                  </div>
+                  <span className={`text-[13px] text-left flex-1 ${isActive ? 'font-bold' : 'font-semibold'}`}>
+                    {item.label}
+                  </span>
+                  {isActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#466460] mr-2 shrink-0"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
 // ─── Full Mobile Layout ───────────────────────────────────────────────────────
 export const MobileLayout = ({
   children,
@@ -2322,8 +2437,11 @@ export const MobileLayout = ({
   bottomNavItems,
   onLogout,
   onProfileClick,
+  notificationCount = 0,
+  onNotificationClick
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isNavOpen, setIsNavOpen] = useState(false);
 
   const handleLogoutRequest = () => setShowLogoutConfirm(true);
   const handleConfirm = () => { setShowLogoutConfirm(false); onLogout?.(); };
@@ -2349,8 +2467,12 @@ export const MobileLayout = ({
           userId={userId}
           onProfileClick={onProfileClick}
           onLogout={onLogout ? handleLogoutRequest : undefined}
+          onMenuClick={() => setIsNavOpen(true)}
+          isMenuOpen={isNavOpen}
+          notificationCount={notificationCount}
+          onNotificationClick={onNotificationClick}
         />
-        <div className="flex-1 overflow-y-auto pt-[64px] pb-[70px] scrollbar-none">
+        <div className="flex-1 overflow-y-auto pt-[calc(max(env(safe-area-inset-top),24px)+52px)] pb-[70px] scrollbar-none">
           {children}
         </div>
         <MobileNav active={activeTab} onSwitch={onTabChange} items={bottomNavItems} />
@@ -2375,13 +2497,25 @@ export const MobileLayout = ({
             userId={userId}
             onLogout={onLogout ? handleLogoutRequest : undefined}
             onProfileClick={onProfileClick}
+            onMenuClick={() => setIsNavOpen(true)}
+            isMenuOpen={isNavOpen}
+            notificationCount={notificationCount}
+            onNotificationClick={onNotificationClick}
           />
-          <div className="h-full overflow-y-auto pt-[64px] pb-[80px] scrollbar-none">
+          <div className="h-full overflow-y-auto pt-[calc(max(env(safe-area-inset-top),24px)+52px)] pb-[80px] scrollbar-none">
             {children}
           </div>
           <MobileNav active={activeTab} onSwitch={onTabChange} items={bottomNavItems} />
         </div>
       </div>
+
+      {/* Overlays */}
+      <MobileNavigationDrawer
+        isOpen={isNavOpen}
+        onClose={() => setIsNavOpen(false)}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+      />
 
       <LogoutConfirmModal
         isOpen={showLogoutConfirm}
@@ -2392,4 +2526,4 @@ export const MobileLayout = ({
   );
 };
 
-export default { DesktopHeader, DesktopNav, MobileHeader, MobileNav, MobileLayout };
+export default { DesktopHeader, DesktopNav, MobileHeader, MobileNav, MobileNavigationDrawer, MobileLayout };

@@ -209,6 +209,41 @@ const RecordRow = ({ index, record, onEdit, onDelete }) => {
   );
 };
 
+const RecordCard = ({ index, record, onEdit, onDelete }) => {
+  const isMedical = record._kind === 'medical';
+  const name = getFullName(record._user || record);
+  const uDept = getUserDepartment(record._user) || '—';
+  const uProg = getUserProgram(record._user) || '—';
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm min-w-0">
+      <div className="flex items-start gap-3">
+        <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${isMedical ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>{getInitials(name)}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0"><h3 className="text-sm font-bold text-slate-800 break-words">{name}</h3><p className="text-xs text-slate-500 break-words">{record.university_id || record._user?.university_id || '—'}</p></div>
+            <span className="text-[11px] font-semibold text-slate-400">#{index}</span>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${isMedical ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}><i className={`fa-solid ${isMedical ? 'fa-stethoscope' : 'fa-tooth'} text-[9px]`} />{isMedical ? 'Medical' : 'Dental'}</span>
+            <StatusPill status={record.status} />
+            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${record.issue_cert ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>{record.issue_cert ? 'Certificate Issued' : 'Not Issued'}</span>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 mt-3 text-xs">
+        <div className="rounded-lg bg-slate-50 p-2.5"><span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Department</span><span className="text-slate-700 break-words">{uDept}</span></div>
+        <div className="rounded-lg bg-slate-50 p-2.5"><span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Program</span><span className="text-slate-700 break-words">{uProg}</span></div>
+        <div className="rounded-lg bg-slate-50 p-2.5"><span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Exam Date</span><span className="text-slate-700">{formatDate(record.exam_date || record.created_at)}</span></div>
+        <div className="rounded-lg bg-slate-50 p-2.5"><span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Examined By</span><span className="text-slate-700 break-words">{isMedical ? (record.physician || record.nurse_on_duty || '—') : (record.examined_by || '—')}</span></div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+        <button onClick={() => onEdit(record)} className="min-h-11 rounded-xl bg-[#eef5f4] text-[#466460] font-semibold text-xs flex items-center justify-center gap-2"><i className="fa-regular fa-pen-to-square" /> Edit</button>
+        <button onClick={() => onDelete(record)} className="min-h-11 rounded-xl bg-red-50 text-red-600 font-semibold text-xs flex items-center justify-center gap-2"><i className="fa-regular fa-trash-can" /> Archive</button>
+      </div>
+    </article>
+  );
+};
+
 // ── Main component ─────────────────────────────────────────────────────────
 export const RecordManagement = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -518,9 +553,9 @@ export const RecordManagement = () => {
     }
   };
 
-  const selectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
-  const compactSelectCls = `${selectCls} w-full sm:w-auto max-w-[160px] truncate`;
-  const compactFilterCls = `${selectCls} w-full sm:w-auto max-w-[180px] bg-slate-100/50 truncate disabled:opacity-60 disabled:cursor-not-allowed`;
+  const selectCls = "w-full min-h-11 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const compactSelectCls = `${selectCls} xl:w-auto xl:max-w-[160px] truncate`;
+  const compactFilterCls = `${selectCls} xl:w-auto xl:max-w-[180px] bg-slate-100/50 truncate disabled:opacity-60 disabled:cursor-not-allowed`;
   const COL_COUNT = 9;
 
   const summaryStats = [
@@ -534,11 +569,11 @@ export const RecordManagement = () => {
   ];
 
   return (
-    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
+    <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
       {/* Summary stats */}
-      <div className="shrink-0 mb-4 flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-[4px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="shrink-0 mb-3 sm:mb-4 grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2">
         {summaryStats.map(s => (
-          <div key={s.label} className="flex-1 min-w-[110px] bg-white border border-slate-200 rounded-lg px-2 py-3 shadow-sm flex flex-col items-center justify-center">
+          <div key={s.label} className="min-w-0 bg-white border border-slate-200 rounded-xl px-2 py-2.5 sm:py-3 shadow-sm flex flex-col items-center justify-center">
             <span className={`text-xl font-bold leading-none mb-1.5 ${s.color}`}>{s.count}</span>
             <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider whitespace-nowrap">{s.label}</span>
           </div>
@@ -549,13 +584,13 @@ export const RecordManagement = () => {
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Combined Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
 
           {/* Top Controls: Search, Filter Toggle, and Actions */}
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 w-full md:w-auto flex-1 min-w-0">
               {/* Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full md:max-w-64 min-w-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
@@ -564,39 +599,39 @@ export const RecordManagement = () => {
                   placeholder="Search name, ID, email…"
                   value={searchInput}
                   onChange={e => setSearchInput(e.target.value)}
-                  className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+                  className="pl-9 pr-4 min-h-11 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
                 />
               </div>
 
               {/* Mobile Filter Toggle Button */}
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                className="xl:hidden min-h-11 flex items-center justify-center gap-2 px-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
                 title="Toggle Filters"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+                <span>{isFiltersOpen ? 'Hide' : 'Filters'}</span>
               </button>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
+            <div className="grid grid-cols-1 gap-2 w-full md:w-auto">
               <button
                 onClick={fetchAllRecords}
-                className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm shrink-0"
+                className="min-h-11 bg-[#466460] hover:bg-[#3a524f] text-white px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm shrink-0"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span className="hidden sm:inline">Refresh</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
           {/* Expandable Filters Container */}
-          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
+          <div className={`${isFiltersOpen ? 'grid' : 'hidden'} xl:flex grid-cols-1 min-[390px]:grid-cols-2 gap-2 xl:gap-3 items-center w-full transition-all duration-300`}>
             {/* Base Filters */}
             <select value={filterType} onChange={e => setFilterType(e.target.value)} className={compactSelectCls}>
               <option value="all">All Types</option>
@@ -619,7 +654,7 @@ export const RecordManagement = () => {
               ))}
             </select>
 
-            <div className="relative w-full sm:w-36">
+            <div className="relative w-full xl:w-36">
               <DatePicker
                 value={filterDate}
                 onChange={setFilterDate}
@@ -629,7 +664,7 @@ export const RecordManagement = () => {
               {filterDate && (
                 <button
                   onClick={() => setFilterDate('')}
-                  className="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full text-slate-400 hover:text-slate-700 flex items-center justify-center z-10 transition-colors"
                   title="Clear date filter"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
@@ -688,13 +723,24 @@ export const RecordManagement = () => {
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
               </svg>
-              <span className="hidden sm:inline">{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
+              <span>{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
             </button>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+        {/* Mobile and tablet record cards */}
+        <div className="lg:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {loading ? (
+            <div className="py-12 text-center text-sm text-slate-400"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading records…</div>
+          ) : paginatedRecords.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400"><i className="fa-regular fa-folder-open block text-3xl text-slate-300 mb-2" />No records found</div>
+          ) : paginatedRecords.map((record, index) => (
+            <RecordCard key={`${record._kind}-${record._id}`} index={(currentPage - 1) * ITEMS_PER_PAGE + index + 1} record={record} onEdit={openEditModal} onDelete={openDeleteModal} />
+          ))}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden lg:block flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -744,15 +790,15 @@ export const RecordManagement = () => {
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
-            <div>
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-slate-600 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="text-center sm:text-left text-xs sm:text-sm">
               Showing <span className="font-semibold">{((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</span> of <span className="font-semibold">{filtered.length}</span> records
             </div>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 w-full sm:w-auto">
               <button
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage(p => p - 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Previous
               </button>
@@ -762,7 +808,7 @@ export const RecordManagement = () => {
               <button
                 disabled={currentPage === totalPages}
                 onClick={() => setCurrentPage(p => p + 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Next
               </button>
@@ -774,11 +820,11 @@ export const RecordManagement = () => {
       {/* Edit Modal using Portal */}
       {showEditModal && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={closeEditModal}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] max-w-md w-full max-h-[92dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -799,7 +845,7 @@ export const RecordManagement = () => {
               {/* Status Toggle */}
               <div>
                 <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {EDIT_STATUS_OPTIONS.map(s => {
                     const style = getStatusStyle(s);
                     const isSelected = editStatus === s;
@@ -807,7 +853,7 @@ export const RecordManagement = () => {
                       <button
                         key={s}
                         onClick={() => setEditStatus(s)}
-                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold capitalize transition ${
+                        className={`min-h-11 py-2 px-3 rounded-xl text-xs font-bold capitalize transition ${
                           isSelected
                             ? `${style.bg}${style.text} border-2 border-current`
                             : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
@@ -825,10 +871,10 @@ export const RecordManagement = () => {
                 <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
                   {editRecord?._kind === 'dental' ? 'Dental Report Sent' : 'Certificate Issued'}
                 </label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setEditIssueCert(false)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                    className={`min-h-11 py-2 px-3 rounded-xl text-xs font-bold transition ${
                       !editIssueCert
                         ? 'bg-red-100 text-red-700 border-2 border-red-400'
                         : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
@@ -838,7 +884,7 @@ export const RecordManagement = () => {
                   </button>
                   <button
                     onClick={() => setEditIssueCert(true)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition ${
+                    className={`min-h-11 py-2 px-3 rounded-xl text-xs font-bold transition ${
                       editIssueCert
                         ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
                         : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
@@ -850,10 +896,10 @@ export const RecordManagement = () => {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="grid grid-cols-2 gap-3 mt-6">
               <button
                 onClick={closeEditModal}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
                 disabled={savingEdit}
               >
                 Cancel
@@ -861,7 +907,7 @@ export const RecordManagement = () => {
               <button
                 onClick={handleEditSave}
                 disabled={savingEdit || !editRecord}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="min-h-11 px-4 py-2.5 rounded-xl bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {savingEdit ? (
                   <>
@@ -884,11 +930,11 @@ export const RecordManagement = () => {
       {/* Delete Confirmation Modal using Portal */}
       {showDeleteModal && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => { setShowDeleteModal(false); setRecordToDelete(null); }}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] max-w-md w-full max-h-[92dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -910,17 +956,17 @@ export const RecordManagement = () => {
               </p>
             </div>
 
-            <div className="flex gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setRecordToDelete(null); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
                 disabled={deleting}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+                className="min-h-11 px-4 py-2.5 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
                 disabled={deleting}
               >
                 {deleting ? (
@@ -945,7 +991,7 @@ export const RecordManagement = () => {
 
       {/* Snackbar */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center gap-2 whitespace-nowrap shadow-xl transition-all ${
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-50 flex items-center justify-center gap-2 text-center shadow-xl transition-all ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success'

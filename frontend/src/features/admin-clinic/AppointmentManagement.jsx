@@ -708,12 +708,12 @@ export const AppointmentManagement = () => {
     return apt.patientName || apt.patient_name || apt.name || 'Unknown';
   };
 
-  const filterSelectCls = "px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
+  const filterSelectCls = "w-full min-h-11 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm";
   const COL_COUNT = 7;
 
   if (userRole !== 'sysadmin') {
     return (
-      <div className="flex items-center justify-center h-full text-slate-500">
+      <div className="flex items-center justify-center h-full text-slate-500 px-4">
         <div className="text-center">
           <i className="fa-solid fa-lock text-4xl text-slate-300 mb-3"></i>
           <p>Access denied. Admin only.</p>
@@ -723,9 +723,9 @@ export const AppointmentManagement = () => {
   }
 
   return (
-    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
+    <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3 mb-3 sm:mb-4 shrink-0">
         {[
           { label: 'Total', count: stats.total, color: 'text-slate-800' },
           { label: 'Pending', count: stats.pending, color: 'text-amber-600' },
@@ -734,9 +734,9 @@ export const AppointmentManagement = () => {
           { label: 'Missed', count: stats.missed, color: 'text-orange-600' },
           { label: 'Rejected', count: stats.rejected, color: 'text-red-600' },
         ].map(s => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center justify-center gap-2 shadow-sm">
-            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
-            <span className="text-sm font-medium text-slate-500">{s.label}</span>
+          <div key={s.label} className="min-w-0 bg-white border border-slate-200 rounded-xl p-3 sm:p-3.5 flex flex-col min-[360px]:flex-row items-center justify-center gap-0.5 min-[360px]:gap-2 shadow-sm">
+            <span className={`text-xl font-bold ${s.color}`}>{s.count}</span>
+            <span className="text-xs sm:text-sm font-medium text-slate-500 break-words text-center">{s.label}</span>
           </div>
         ))}
       </div>
@@ -744,13 +744,13 @@ export const AppointmentManagement = () => {
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Unified Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+        <div className="shrink-0 p-3 sm:p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3 sm:gap-4">
 
           {/* Top Controls: Search, Filter Toggle, and Actions */}
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4 items-start md:items-center justify-between">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 w-full md:w-auto md:flex md:flex-1">
               {/* Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full md:w-64 min-w-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
@@ -759,53 +759,53 @@ export const AppointmentManagement = () => {
                   placeholder="Search patient, date..."
                   value={searchInput}
                   onChange={handleSearchChange}
-                  className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
+                  className="min-h-11 pl-9 pr-4 py-2.5 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm"
                 />
               </div>
 
               {/* Mobile Filter Toggle Button */}
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                className="xl:hidden min-h-11 flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
                 title="Toggle Filters"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+                <span>{isFiltersOpen ? 'Hide' : 'Filters'}</span>
               </button>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
-              <button onClick={handleBulkClick} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm ml-1" title="Move all appointments from one date to another">
+            <div className="grid grid-cols-2 gap-2 items-center w-full md:w-auto">
+              <button onClick={handleBulkClick} className="min-h-11 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm" title="Move all appointments from one date to another">
                 <i className="fa-solid fa-calendar-days text-slate-400"></i>
-                <span className="hidden sm:inline">Reschedule</span>
+                <span>Reschedule</span>
               </button>
-              <button onClick={() => fetchAppointments(true)} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm">
+              <button onClick={() => fetchAppointments(true)} className="min-h-11 bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span className="hidden sm:inline">Refresh</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
           {/* Expandable Filters Container */}
-          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
+          <div className={`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:flex gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'grid' : 'hidden xl:flex'}`}>
             <select
               value={reasonFilter}
               onChange={e => setReasonFilter(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-auto max-w-[160px] truncate`}
+              className={`${filterSelectCls} xl:w-auto xl:max-w-[180px] truncate`}
             >
               {reasonOptions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
 
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${filterSelectCls} xl:w-auto`}>
               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
 
-            <div className="relative w-full sm:w-40">
+            <div className="relative w-full xl:w-44">
               <DatePicker
                 value={dateFilter}
                 onChange={setDateFilter}
@@ -829,7 +829,7 @@ export const AppointmentManagement = () => {
             <select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              className={`${filterSelectCls} w-full sm:w-auto bg-slate-100/50`}
+              className={`${filterSelectCls} xl:w-auto bg-slate-100/50`}
             >
               <option value="all">All Personnel</option>
               <option value="student">Students</option>
@@ -842,7 +842,7 @@ export const AppointmentManagement = () => {
               value={selectedDepartment}
               onChange={(e) => setSelectedDepartment(e.target.value)}
               disabled={selectedRole === 'clinic'}
-              className={`${filterSelectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+              className={`${filterSelectCls} xl:w-auto xl:max-w-[220px] bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed truncate`}
             >
               <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
               {departmentOptions.map((department) => (
@@ -856,7 +856,7 @@ export const AppointmentManagement = () => {
               value={selectedProgram}
               onChange={(e) => setSelectedProgram(e.target.value)}
               disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
-              className={`${filterSelectCls} w-full sm:w-auto bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed max-w-[200px] truncate`}
+              className={`${filterSelectCls} xl:w-auto xl:max-w-[220px] bg-slate-100/50 disabled:opacity-60 disabled:cursor-not-allowed truncate`}
             >
               <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
               {programOptions.map((program) => (
@@ -866,14 +866,113 @@ export const AppointmentManagement = () => {
               ))}
             </select>
 
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={`${filterSelectCls} w-full sm:w-auto`}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={`${filterSelectCls} xl:w-auto`}>
               {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+        {/* Mobile and tablet appointment cards */}
+        <div className="lg:hidden flex-1 overflow-y-auto bg-slate-50 p-3 sm:p-4 overscroll-contain [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="bg-white border border-slate-200 rounded-2xl p-4 animate-pulse">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-11 h-11 rounded-full bg-slate-200 shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-slate-200 rounded w-1/2" />
+                      <div className="h-2.5 bg-slate-100 rounded w-1/3" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="h-12 bg-slate-100 rounded-xl" />
+                    <div className="h-12 bg-slate-100 rounded-xl" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : paginatedAppointments.length === 0 ? (
+            <div className="min-h-[240px] flex flex-col items-center justify-center gap-2 text-center text-slate-400 px-4">
+              <i className="fa-regular fa-calendar-check text-4xl text-slate-300"></i>
+              <p className="text-sm font-semibold text-slate-500">No appointments found</p>
+              <p className="text-xs">Try adjusting your filters</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {paginatedAppointments.map((apt, idx) => {
+                const statusStyle = getStatusColor(apt.status);
+                const uDept = getUserDepartment(apt.userProfile) || '—';
+                const uProg = getUserProgram(apt.userProfile) || '—';
+
+                return (
+                  <article key={apt.id} className="min-w-0 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-base text-[#466460] shrink-0">
+                          {apt.patientName?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-slate-800 break-words">{apt.patientName}</h3>
+                          <p className="text-xs text-slate-500 break-words mt-0.5">
+                            {apt.patientUniversityId || 'No ID'} · <span className="capitalize">{apt.patientRole || 'Patient'}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-semibold capitalize ${statusStyle.bg} ${statusStyle.text}`}>
+                          {apt.status || 'Pending'}
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-400">
+                          #{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}
+                        </span>
+                      </div>
+                    </div>
+
+                    <dl className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 text-sm">
+                      <div className="min-w-0 rounded-xl bg-slate-50 p-3">
+                        <dt className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Department</dt>
+                        <dd className="text-sm font-semibold text-slate-700 break-words">{uDept}</dd>
+                        <dd className="text-xs text-slate-500 break-words mt-0.5">{uProg}</dd>
+                      </div>
+                      <div className="min-w-0 rounded-xl bg-slate-50 p-3">
+                        <dt className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Schedule</dt>
+                        <dd className="text-sm font-semibold text-slate-700">{formatDate(apt.year, apt.month, apt.day)}</dd>
+                        <dd className="text-xs text-slate-500 mt-0.5">{apt.time ? formatTime(apt.time) : '—'}</dd>
+                      </div>
+                      <div className="min-w-0 min-[390px]:col-span-2 rounded-xl bg-slate-50 p-3">
+                        <dt className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Reason</dt>
+                        <dd className="text-sm text-slate-700 break-words">{apt.reason || '—'}</dd>
+                      </div>
+                    </dl>
+
+                    <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => handleEditClick(apt)}
+                        className="min-h-11 px-4 py-2.5 rounded-xl bg-[#e0eceb] text-[#466460] font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98]"
+                      >
+                        <i className="fa-solid fa-pen-to-square"></i>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteClick(apt)}
+                        className="min-h-11 px-4 py-2.5 rounded-xl bg-red-50 text-red-600 font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98]"
+                      >
+                        <i className="fa-solid fa-box-archive"></i>
+                        Archive
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden lg:block flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -979,15 +1078,15 @@ export const AppointmentManagement = () => {
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
-            <div>
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-slate-600 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+            <div className="text-center sm:text-left text-xs sm:text-sm">
               Showing <span className="font-semibold">{totalRecords === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> records
             </div>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 w-full sm:w-auto">
               <button
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage(p => p - 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Previous
               </button>
@@ -997,7 +1096,7 @@ export const AppointmentManagement = () => {
               <button
                 disabled={currentPage === totalPages || totalPages === 0}
                 onClick={() => setCurrentPage(p => p + 1)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 Next
               </button>
@@ -1010,11 +1109,11 @@ export const AppointmentManagement = () => {
       {/* Edit Modal Using Portal */}
       {showEditModal && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => { setShowEditModal(false); setAppointmentToEdit(null); }}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))] max-h-[92dvh] overflow-y-auto overscroll-contain sm:max-w-md w-full sm:mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -1047,7 +1146,7 @@ export const AppointmentManagement = () => {
                         : {}),
                     }));
                   }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
+                  className="w-full min-h-11 px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
                 >
                   {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => (
                     <option key={s.value} value={s.value}>{s.label}</option>
@@ -1076,7 +1175,7 @@ export const AppointmentManagement = () => {
                 <select
                   value={editForm.time || ''}
                   onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
+                  className="w-full min-h-11 px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb]"
                   disabled={LOCKED_STATUSES.includes(editForm.status) || editForm.status === 'pending'}
                 >
                   <option value="" disabled>Select time</option>
@@ -1087,17 +1186,17 @@ export const AppointmentManagement = () => {
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setShowEditModal(false); setAppointmentToEdit(null); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
                 disabled={saving}
               >
                 Cancel
               </button>
               <button
                 onClick={handleEditSave}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2"
+                className="min-h-11 px-4 py-2.5 rounded-xl bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2"
                 disabled={saving}
               >
                 {saving ? (
@@ -1121,11 +1220,11 @@ export const AppointmentManagement = () => {
       {/* Bulk Reschedule Modal Using Portal */}
       {showBulkModal && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => { setShowBulkModal(false); setBulkFromDate(''); setBulkToDate(''); setBulkMatches([]); setBulkTargetMatches([]); }}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))] max-h-[92dvh] overflow-y-auto overscroll-contain sm:max-w-md w-full sm:mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -1245,17 +1344,17 @@ export const AppointmentManagement = () => {
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setShowBulkModal(false); setBulkFromDate(''); setBulkToDate(''); setBulkMatches([]); setBulkTargetMatches([]); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
                 disabled={bulkSaving}
               >
                 Cancel
               </button>
               <button
                 onClick={handleBulkReschedule}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-11 px-4 py-2.5 rounded-xl bg-[#466460] text-white font-semibold hover:bg-[#3a524f] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={bulkSaving || bulkChecking || bulkMatches.length === 0 || !bulkToDate}
               >
                 {bulkSaving ? (
@@ -1279,11 +1378,11 @@ export const AppointmentManagement = () => {
       {/* Delete Confirmation Modal Using Portal */}
       {showDeleteModal && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-[99999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => { setShowDeleteModal(false); setAppointmentToDelete(null); }}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4"
+            className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))] max-h-[92dvh] overflow-y-auto overscroll-contain sm:max-w-md w-full sm:mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -1305,17 +1404,17 @@ export const AppointmentManagement = () => {
               </p>
             </div>
 
-            <div className="flex gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setAppointmentToDelete(null); }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
                 disabled={deleting}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+                className="min-h-11 px-4 py-2.5 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
                 disabled={deleting}
               >
                 {deleting ? (
@@ -1340,7 +1439,7 @@ export const AppointmentManagement = () => {
 
       {/* Snackbar */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-2 whitespace-nowrap shadow-xl transition-all ${
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-2 text-center shadow-xl transition-all ${
           message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {message.type === 'success' ? (

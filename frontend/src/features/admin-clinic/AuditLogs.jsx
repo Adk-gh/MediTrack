@@ -189,9 +189,9 @@ const StatusPill = ({ isArchived }) => (
 );
 
 // ─── Shared Styles ───────────────────────────────────────────────────────────
-const selectCls = 'px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm';
-const compactSelectCls = `${selectCls} w-full sm:w-auto max-w-[160px] truncate`;
-const compactWideSelectCls = `${selectCls} w-full sm:w-auto max-w-[180px] truncate`;
+const selectCls = 'w-full min-h-11 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] font-medium text-slate-600 shadow-sm';
+const compactSelectCls = `${selectCls} xl:w-auto xl:max-w-[160px] truncate`;
+const compactWideSelectCls = `${selectCls} xl:w-auto xl:max-w-[180px] truncate`;
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export const AuditLogs = () => {
@@ -449,10 +449,10 @@ export const AuditLogs = () => {
   ];
 
   return (
-    <div className="bg-slate-50 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col p-4 md:p-6 overflow-hidden">
-      <div className="shrink-0 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+    <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
+      <div className="shrink-0 mb-3 sm:mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
         {summaryStats.map((s) => (
-          <div key={s.label} className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm flex items-center justify-center gap-2">
+          <div key={s.label} className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-3 shadow-sm flex flex-col min-[390px]:flex-row items-center justify-center gap-0.5 min-[390px]:gap-2 min-w-0">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
             <span className="text-xs text-slate-400 font-medium">{s.label}</span>
           </div>
@@ -462,54 +462,54 @@ export const AuditLogs = () => {
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0">
 
         {/* Unified Inline Toolbar */}
-        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
+        <div className="shrink-0 p-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
 
           {/* Top Controls: Search, Filter Toggle, and Actions */}
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 w-full md:w-auto flex-1 min-w-0">
               {/* Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full md:max-w-64 min-w-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
-                <input type="text" placeholder="Search user, action, details..." value={searchInput} onChange={handleSearchChange} className="pl-9 pr-4 py-2 w-full border border-slate-200 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
+                <input type="text" placeholder="Search user, action, details..." value={searchInput} onChange={handleSearchChange} className="pl-9 pr-4 min-h-11 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
               </div>
 
               {/* Mobile Filter Toggle Button */}
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className="xl:hidden flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
+                className="xl:hidden min-h-11 flex items-center justify-center gap-2 px-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 shrink-0"
                 title="Toggle Filters"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden sm:inline">{isFiltersOpen ? 'Hide Filters' : 'Filters'}</span>
+                <span>{isFiltersOpen ? 'Hide' : 'Filters'}</span>
               </button>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 flex-wrap items-center justify-end w-full md:w-auto">
-              <button onClick={handleArchiveClick} disabled={archiving || viewMode === 'archived'} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title={`Move logs older than ${RETENTION_DAYS} days to the archive now`}>
+            <div className="grid grid-cols-3 gap-2 w-full md:w-auto">
+              <button onClick={handleArchiveClick} disabled={archiving || viewMode === 'archived'} className="min-h-11 flex items-center justify-center gap-1.5 px-2 sm:px-3 border border-slate-200 rounded-xl bg-white text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title={`Move logs older than ${RETENTION_DAYS} days to the archive now`}>
                 <i className={`fa-solid ${archiving ? 'fa-spinner fa-spin' : 'fa-box-archive'} text-slate-400`}></i>
-                <span className="hidden sm:inline">{archiving ? 'Archiving…' : 'Archive'}</span>
+                <span>{archiving ? 'Archiving…' : 'Archive'}</span>
               </button>
-              <button onClick={handleExportClick} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm" title="Export all matching audit logs">
+              <button onClick={handleExportClick} className="min-h-11 flex items-center justify-center gap-1.5 px-2 sm:px-3 border border-slate-200 rounded-xl bg-white text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-50 transition shadow-sm" title="Export all matching audit logs">
                 <i className="fa-solid fa-file-export text-slate-400"></i>
-                <span className="hidden sm:inline">Export</span>
+                <span>Export</span>
               </button>
-              <button onClick={() => fetchLogs()} className="bg-[#466460] hover:bg-[#3a524f] text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 shadow-sm">
+              <button onClick={() => fetchLogs()} className="min-h-11 bg-[#466460] hover:bg-[#3a524f] text-white px-2 sm:px-3 rounded-xl text-xs sm:text-sm font-medium transition flex items-center justify-center gap-1.5 shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span className="hidden sm:inline">Refresh</span>
+                <span>Refresh</span>
               </button>
             </div>
           </div>
 
           {/* Expandable Filters Container */}
-          <div className={`flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'flex' : 'hidden xl:flex'}`}>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className={`${isFiltersOpen ? 'grid' : 'hidden'} xl:flex grid-cols-1 min-[390px]:grid-cols-2 gap-2 xl:gap-3 items-center w-full transition-all duration-300`}>
+            <div className="flex items-center gap-2 w-full xl:w-auto min-w-0">
               <div className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 transition-colors shadow-sm ${isArchived ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`} title={isArchived ? 'Viewing Archived Logs' : 'Viewing Live Logs'}>
                 <i className={`fa-solid ${isArchived ? 'fa-box-archive' : 'fa-bolt'}`}></i>
               </div>
@@ -523,17 +523,17 @@ export const AuditLogs = () => {
               {ACTIVITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
 
-            <div className="relative w-full sm:w-40">
+            <div className="relative w-full xl:w-40">
               <DatePicker
                 value={dateFilter}
                 onChange={setDateFilter}
                 placeholder="All Dates"
-                className={`${selectCls} w-full pr-8 max-w-[160px] truncate`}
+                className={`${selectCls} pr-11 xl:max-w-[160px] truncate`}
               />
               {dateFilter && (
                 <button
                   onClick={() => setDateFilter('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-400 hover:bg-slate-600 text-white flex items-center justify-center shadow-md z-10 transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full text-slate-400 hover:text-slate-700 flex items-center justify-center z-10 transition-colors"
                   title="Clear date filter"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
@@ -545,7 +545,46 @@ export const AuditLogs = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
+        <div className="lg:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {loading ? (
+            <div className="py-12 text-center text-sm text-slate-400"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading audit logs…</div>
+          ) : logs.length === 0 ? (
+            <div className="py-12 text-center text-sm text-slate-400"><i className="fa-solid fa-clipboard-list block text-3xl text-slate-300 mb-2" />No {isArchived ? 'archived ' : ''}audit logs found</div>
+          ) : logs.map((log, index) => (
+            <article key={log.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm min-w-0">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] text-xs shrink-0">
+                  {getInitials(log.userName || log.userEmail || log.userId || '?')}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold text-slate-800 break-words">{log.userName || 'System'}</h3>
+                      <p className="text-xs text-slate-500 break-all">{log.userEmail || log.userId || '—'}</p>
+                    </div>
+                    <span className="text-[11px] text-slate-400 text-right shrink-0">#{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <ActionPill action={log.action} />
+                    <TypePill type={log.type} />
+                    <StatusPill isArchived={isArchived} />
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-slate-600 break-words line-clamp-3">
+                {log.description ? (typeof log.description === 'object' ? JSON.stringify(log.description) : log.description) : 'No description'}
+              </p>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                <span className="text-xs text-slate-500">{formatDate(log.created_at || log.timestamp)}</span>
+                <button onClick={() => { setSelectedLog(log); setShowViewModal(true); }} className="min-h-11 px-4 rounded-xl bg-[#eef5f4] text-[#466460] font-semibold text-xs flex items-center justify-center gap-2">
+                  <i className="fa-regular fa-eye" /> View details
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="hidden lg:block flex-1 overflow-auto [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar]:h-[4px]">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -632,30 +671,30 @@ export const AuditLogs = () => {
         </div>
 
         {totalPages > 1 && (
-          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
-            <div>
+          <div className="shrink-0 p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-slate-600 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="text-center sm:text-left text-xs sm:text-sm">
               Showing <span className="font-semibold">{totalRecords === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)}</span> of <span className="font-semibold">{totalRecords}</span> records
             </div>
-            <div className="flex items-center gap-2">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">Previous</button>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 w-full sm:w-auto">
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">Previous</button>
               <div className="text-xs font-semibold px-2">Page {currentPage} of {Math.max(1, totalPages)}</div>
-              <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">Next</button>
+              <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)} className="min-h-11 px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">Next</button>
             </div>
           </div>
         )}
       </div>
 
       {showViewModal && selectedLog && createPortal(
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] p-4" onClick={() => setShowViewModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-100">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:p-4" onClick={() => setShowViewModal(false)}>
+          <div className="bg-white rounded-t-[28px] sm:rounded-2xl shadow-xl max-w-lg w-full max-h-[92dvh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 sm:p-6 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <TypePill type={selectedLog.type} />
                 <h2 className="text-xl font-bold text-[#1a2e22]">Audit Log Details</h2>
               </div>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase">User / Performer</label>
                   <p className="text-sm font-medium text-slate-700">{selectedLog.userName || 'System'}</p>
@@ -666,7 +705,7 @@ export const AuditLogs = () => {
                   <div className="mt-1"><ActionPill action={selectedLog.action} /></div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase">Timestamp</label>
                   <p className="text-sm text-slate-700">{formatDate(selectedLog.created_at || selectedLog.timestamp)}</p>
@@ -728,8 +767,8 @@ export const AuditLogs = () => {
   </div>
 </details>
             </div>
-            <div className="p-6 border-t border-slate-100 flex gap-3">
-              <button onClick={() => setShowViewModal(false)} className="w-full px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition">Close</button>
+            <div className="p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100">
+              <button onClick={() => setShowViewModal(false)} className="w-full min-h-11 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition">Close</button>
             </div>
           </div>
         </div>,
@@ -737,8 +776,8 @@ export const AuditLogs = () => {
       )}
 
       {confirmAction && createPortal(
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] px-4" onClick={() => setConfirmAction(null)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:p-4" onClick={() => setConfirmAction(null)}>
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] max-w-md w-full max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-5">
               <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${confirmAction === 'archive' ? 'bg-amber-100' : 'bg-blue-100'}`}>
                 <i className={`fa-solid ${confirmAction === 'archive' ? 'fa-box-archive text-amber-600' : 'fa-file-export text-blue-600'} text-lg`}></i>
@@ -789,9 +828,9 @@ export const AuditLogs = () => {
               </>
             )}
 
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmAction(null)} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all">Cancel</button>
-              <button onClick={handleConfirm} className={`flex-1 px-4 py-2.5 rounded-lg text-white font-semibold text-sm transition-all ${confirmAction === 'archive' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-[#466460] hover:bg-[#3a524f]'}`}>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setConfirmAction(null)} className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all">Cancel</button>
+              <button onClick={handleConfirm} className={`min-h-11 px-4 py-2.5 rounded-xl text-white font-semibold text-sm transition-all ${confirmAction === 'archive' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-[#466460] hover:bg-[#3a524f]'}`}>
                 {confirmAction === 'archive' ? 'Archive Now' : `Export ${exportFormat === 'xlsx' ? 'Excel' : 'CSV'}`}
               </button>
             </div>
@@ -801,7 +840,7 @@ export const AuditLogs = () => {
       )}
 
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-3 shadow-xl transition-all ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-3 text-center shadow-xl transition-all ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
           <span className="shrink-0">
             {message.type === 'success' ? (
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">

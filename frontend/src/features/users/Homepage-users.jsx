@@ -1,5 +1,5 @@
 // C:\Users\HP\MediTrack\frontend\src\features\users\Homepage-users.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -7,7 +7,7 @@ import authService from '../../services/auth.service.js';
 import * as announcementsService from '../../services/announcements.service.js';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh.js';
 import { supabase } from '../../supabase.js';
-import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
+import { useTranslation } from 'react-i18next';
 
 // API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -19,6 +19,7 @@ import {
   MapPin,
   User,
   Megaphone,
+  ChevronLeft,
   ChevronRight,
   CalendarX,
   BellRing,
@@ -32,6 +33,7 @@ import {
   ArrowRight,
   Sparkles,
   HeartPulse,
+  Filter,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -237,6 +239,14 @@ const microAnimStyles = `
   [data-spin="true"]  [data-ptr-spin] { display: block; }
   [data-spin="false"] [data-ptr-icon] { display: block; }
   [data-spin="false"] [data-ptr-spin] { display: none;  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
 `;
 
 // ── Pull-to-Refresh Indicator ──────────────────────────────────────────────
@@ -328,7 +338,7 @@ const AnnouncementModal = ({ item, onClose, preferences }) => {
           <div className="w-10 h-1 rounded-full bg-slate-200"></div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-5 flex flex-col">
+        <div className="flex-1 overflow-y-auto pb-5 flex flex-col hide-scrollbar">
           {item.image_url && (
             <div className="h-44 w-full overflow-hidden bg-slate-100 flex-shrink-0">
               <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
@@ -755,13 +765,135 @@ const HomePageUsers = () => {
   const [tipIndex]                        = useState(() => Math.floor(Math.random() * HEALTH_TIPS_KEYS.length));
   const [isRefreshing, setIsRefreshing]   = useState(false);
 
+  // Filter and Sort states
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' | 'oldest'
+  const [priorityFilter, setPriorityFilter] = useState('all'); // 'all' | 'urgent' | 'high' | 'normal'
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Derived filtered & sorted array
+  const filteredAnnouncements = useMemo(() => {
+    let filtered = [...announcements];
+
+    if (priorityFilter !== 'all') {
+      filtered = filtered.filter((a) => (a.priority || 'normal') === priorityFilter);
+    }
+
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+
+    return filtered;
+  }, [announcements, priorityFilter, sortOrder]);
+
+  // ── Announcement horizontal scrolling ─────────────────────────────────────
+  const announcementsScrollRef = useRef(null);
+  const isDraggingAnnouncements = useRef(false);
+  const announcementDragStartX = useRef(0);
+  const announcementDragStartScrollLeft = useRef(0);
+  const announcementDragged = useRef(false);
+
+  const [canScrollAnnouncementsLeft, setCanScrollAnnouncementsLeft] = useState(false);
+  const [canScrollAnnouncementsRight, setCanScrollAnnouncementsRight] = useState(false);
+
+  const updateAnnouncementScrollButtons = useCallback(() => {
+    const el = announcementsScrollRef.current;
+    if (!el) return;
+
+    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    setCanScrollAnnouncementsLeft(el.scrollLeft > 5);
+    setCanScrollAnnouncementsRight(el.scrollLeft < maxScrollLeft - 5);
+  }, []);
+
+  const scrollAnnouncements = useCallback((direction) => {
+    const el = announcementsScrollRef.current;
+    if (!el) return;
+
+    const amount = Math.max(240, Math.min(el.clientWidth * 0.8, 500));
+    el.scrollBy({
+      left: direction === 'left' ? -amount : amount,
+      behavior: 'smooth',
+    });
+  }, []);
+
+  const handleAnnouncementMouseDown = (e) => {
+    if (e.button !== 0) return;
+
+    const el = announcementsScrollRef.current;
+    if (!el) return;
+
+    isDraggingAnnouncements.current = true;
+    announcementDragged.current = false;
+    announcementDragStartX.current = e.pageX;
+    announcementDragStartScrollLeft.current = el.scrollLeft;
+
+    el.style.cursor = 'grabbing';
+    el.style.userSelect = 'none';
+  };
+
+  const handleAnnouncementMouseMove = (e) => {
+    if (!isDraggingAnnouncements.current) return;
+
+    const el = announcementsScrollRef.current;
+    if (!el) return;
+
+    const distance = e.pageX - announcementDragStartX.current;
+
+    if (Math.abs(distance) > 5) {
+      announcementDragged.current = true;
+    }
+
+    el.scrollLeft = announcementDragStartScrollLeft.current - distance;
+  };
+
+  const stopAnnouncementDragging = () => {
+    const el = announcementsScrollRef.current;
+
+    if (el) {
+      el.style.cursor = '';
+      el.style.userSelect = '';
+    }
+
+    isDraggingAnnouncements.current = false;
+    updateAnnouncementScrollButtons();
+
+    // Keep the dragged flag alive until the click generated after mouseup has
+    // been handled, then clear it for the user's next normal click.
+    window.setTimeout(() => {
+      announcementDragged.current = false;
+    }, 0);
+  };
+
+  const handleAnnouncementClickCapture = (e) => {
+    if (!announcementDragged.current) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    announcementDragged.current = false;
+  };
+
+  useEffect(() => {
+    const el = announcementsScrollRef.current;
+    if (!el) return;
+
+    const update = () => updateAnnouncementScrollButtons();
+
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [filteredAnnouncements, updateAnnouncementScrollButtons]); // Updated dependency to filtered list
+
   const loadAnnouncements = useCallback(async () => {
     try {
       const data = await announcementsService.getAllAnnouncements();
-      const sorted = (data || [])
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, 10);
-      setAnnouncements(sorted);
+      // Store raw fetched data directly so filtering works across the whole dataset
+      setAnnouncements(data || []);
     } catch (err) {
       console.error('Failed to load announcements:', err);
     } finally {
@@ -786,8 +918,12 @@ const HomePageUsers = () => {
   const approvedAppts = studentAppointments.filter(a => a.status?.toLowerCase() === 'approved');
 
   const tipDef    = HEALTH_TIPS_KEYS[tipIndex];
+
+  // The pinned announcement logic should remain tied to the raw announcements array
+  // to prevent it from changing when the user modifies horizontal list filters.
+  const sortedForNotice = [...announcements].sort((a, b) => new Date(b.date) - new Date(a.date));
   const urgentAnn = announcements.find(a => a.priority === 'urgent');
-  const latestAnn = announcements[0];
+  const latestAnn = sortedForNotice[0];
   const pinnedAnn = urgentAnn || latestAnn;
 
   return (
@@ -804,7 +940,7 @@ const HomePageUsers = () => {
       {/* ── Scrollable body ── */}
       <div
         ref={scrollElRef}
-        className="flex-1 overflow-y-auto p-4 flex flex-col gap-4"
+        className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 hide-scrollbar"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -998,25 +1134,139 @@ const HomePageUsers = () => {
         </div>
 
         {/* ── All Announcements Scroll ── */}
-        {!loadingAnn && announcements.length > 1 && (
+        {!loadingAnn && announcements.length > 0 && (
           <div className="animate-[slideUp_0.5s_ease_both]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">{t('homepage.allAnnouncements', 'All Announcements')}</span>
-              <span className="text-[10px] text-[#98a8a5]">{announcements.length} {t('homepage.posts', 'posts')}</span>
+              <span className="text-[11px] font-bold text-[#697d7a] uppercase tracking-wide">
+                {t('homepage.allAnnouncements', 'All Announcements')}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[#98a8a5]">
+                  {filteredAnnouncements.length} {t('homepage.posts', 'posts')}
+                </span>
+
+                {/* Filter Toggle */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowFilters(!showFilters)}
+                    title="Filter & Sort Announcements"
+                    className={`w-7 h-7 flex items-center justify-center rounded-full border transition-all ${
+                      showFilters || priorityFilter !== 'all' || sortOrder !== 'newest'
+                        ? 'border-[#466460] bg-[#eef2f1] text-[#466460]'
+                        : 'border-[#dfe6e5] bg-white text-[#466460] hover:bg-[#eef2f1]'
+                    }`}
+                  >
+                    <Filter size={14} strokeWidth={2.3} />
+                  </button>
+
+                  {/* Filter Dropdown */}
+                  {showFilters && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowFilters(false)}
+                      ></div>
+                      <div className="absolute right-0 mt-2 w-44 bg-white border border-[#dfe6e5] rounded-xl shadow-lg z-50 p-3 flex flex-col gap-3 animate-[slideUp_0.15s_ease_both]">
+                        <div>
+                          <label className="text-[10px] font-bold text-[#98a8a5] uppercase mb-1 block">Sort By Date</label>
+                          <select
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value)}
+                            className="w-full text-xs font-medium bg-[#f7faf8] border border-[#dfe6e5] rounded-lg px-2 py-1.5 text-[#1f2d2b] focus:outline-none focus:border-[#466460]"
+                          >
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-[#98a8a5] uppercase mb-1 block">Priority</label>
+                          <select
+                            value={priorityFilter}
+                            onChange={(e) => setPriorityFilter(e.target.value)}
+                            className="w-full text-xs font-medium bg-[#f7faf8] border border-[#dfe6e5] rounded-lg px-2 py-1.5 text-[#1f2d2b] focus:outline-none focus:border-[#466460]"
+                          >
+                            <option value="all">All Priorities</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="high">High</option>
+                            <option value="normal">Normal</option>
+                          </select>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Desktop arrow controls. Mobile continues to use touch swipe. */}
+                <div className="hidden md:flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollAnnouncements('left')}
+                    disabled={!canScrollAnnouncementsLeft}
+                    aria-label="Previous announcements"
+                    title="Previous announcements"
+                    className={`w-7 h-7 flex items-center justify-center rounded-full border border-[#dfe6e5] bg-white text-[#466460] transition-all ${
+                      canScrollAnnouncementsLeft
+                        ? 'hover:bg-[#eef2f1] hover:border-[#466460] cursor-pointer shadow-sm'
+                        : 'opacity-30 cursor-not-allowed'
+                    }`}
+                  >
+                    <ChevronLeft size={15} strokeWidth={2.3} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => scrollAnnouncements('right')}
+                    disabled={!canScrollAnnouncementsRight}
+                    aria-label="Next announcements"
+                    title="Next announcements"
+                    className={`w-7 h-7 flex items-center justify-center rounded-full border border-[#dfe6e5] bg-white text-[#466460] transition-all ${
+                      canScrollAnnouncementsRight
+                        ? 'hover:bg-[#eef2f1] hover:border-[#466460] cursor-pointer shadow-sm'
+                        : 'opacity-30 cursor-not-allowed'
+                    }`}
+                  >
+                    <ChevronRight size={15} strokeWidth={2.3} />
+                  </button>
+                </div>
+              </div>
             </div>
-            <div
-              className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {announcements.map((item, i) => (
-                <AnnouncementCard
-                  key={item.id}
-                  item={item}
-                  onClick={setSelectedAnn}
-                  index={i}
-                  preferences={preferences}
-                />
-              ))}
+
+            {filteredAnnouncements.length > 0 ? (
+              <div
+                ref={announcementsScrollRef}
+                onMouseDown={handleAnnouncementMouseDown}
+                onMouseMove={handleAnnouncementMouseMove}
+                onMouseUp={stopAnnouncementDragging}
+                onMouseLeave={stopAnnouncementDragging}
+                onClickCapture={handleAnnouncementClickCapture}
+                onDragStart={(e) => e.preventDefault()}
+                className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scroll-smooth md:cursor-grab hide-scrollbar"
+                style={{
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
+                {filteredAnnouncements.map((item, i) => (
+                  <AnnouncementCard
+                    key={item.id}
+                    item={item}
+                    onClick={setSelectedAnn}
+                    index={i}
+                    preferences={preferences}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-[#eef2f1] border border-[#cdd6d5] rounded-2xl p-4 text-center text-[#98a8a5] text-xs">
+                No announcements match your current filter.
+              </div>
+            )}
+
+            <div className="hidden md:flex items-center justify-center mt-1">
+              <span className="text-[9px] text-[#a6b5b2] select-none">
+                Drag horizontally or use the arrows to view more
+              </span>
             </div>
           </div>
         )}

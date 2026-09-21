@@ -266,7 +266,7 @@ const fetchNurses = async () => {
   }
 };
 
-const inputClass   = "w-full p-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed";
+const inputClass   = "w-full min-h-11 p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#466460]/10 transition-all bg-white disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed";
 const labelClass   = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1";
 const requiredLabelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1";
 const sectionClass = "bg-slate-50 border-l-4 border-[#466460] px-4 py-2 text-xs font-bold uppercase my-4 flex justify-between items-center text-slate-700";
@@ -2128,25 +2128,25 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
   return (
     <>
       {/* Tabs - Outside the form so they remain clickable in read-only mode */}
-      <div className="flex gap-2 mb-4">
+      <div className="grid grid-cols-1 min-[390px]:grid-cols-3 gap-2 mb-4">
         <button
           type="button"
           onClick={() => setActiveTab('patientProfile')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          className={`min-h-11 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'patientProfile' ? 'bg-[#3b82f6] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
           <i className="fa-solid fa-user mr-1"></i> Patient Profile
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('examination')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          className={`min-h-11 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'examination' ? 'bg-[#466460] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
           <i className="fa-solid fa-clipboard-list mr-1"></i> Examination
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('visitHistory')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          className={`min-h-11 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'visitHistory' ? 'bg-[#7c3aed] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
           <i className="fa-solid fa-clock-rotate-left mr-1"></i> Visit History
         </button>
@@ -2160,7 +2160,14 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
 
       <form
         onSubmit={e => { e.preventDefault(); if (!readOnly) handleOpenSummary(); }}
-        className={`overflow-y-auto h-[calc(100vh-320px)] pr-4 pb-12
+        className={`min-w-0 overflow-y-visible lg:overflow-y-auto overflow-x-hidden h-auto lg:h-[calc(100vh-320px)] pr-0 lg:pr-4 pb-12
+          [&_.grid-cols-12]:grid-cols-1 md:[&_.grid-cols-12]:grid-cols-12
+          [&_.col-span-2]:col-span-1 md:[&_.col-span-2]:col-span-2
+          [&_.col-span-3]:col-span-1 md:[&_.col-span-3]:col-span-3
+          [&_.col-span-4]:col-span-1 md:[&_.col-span-4]:col-span-4
+          [&_.col-span-5]:col-span-1 md:[&_.col-span-5]:col-span-5
+          [&_.col-span-6]:col-span-1 md:[&_.col-span-6]:col-span-6
+          [&_.col-span-12]:col-span-1 md:[&_.col-span-12]:col-span-12
           [&::-webkit-scrollbar]:w-[5px]
           [&::-webkit-scrollbar-thumb]:bg-gradient-to-b
           [&::-webkit-scrollbar-thumb]:from-[#466460]
@@ -2620,15 +2627,15 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
 
       {/* ═══ SUMMARY MODAL ══════════════════════════════════════════════════ */}
       {showSummary && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-[740px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-7 py-5 text-white shrink-0 relative">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-[28px] sm:rounded-2xl w-full max-w-[740px] max-h-[94dvh] sm:max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-4 sm:px-7 py-4 sm:py-5 text-white shrink-0 relative">
               <button
                 type="button"
                 onClick={() => !isSubmitting && setShowSummary(false)}
                 disabled={isSubmitting}
                 title="Close"
-                className="absolute top-4 right-5 w-8 h-8 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="absolute top-3 right-3 sm:top-4 sm:right-5 w-11 h-11 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <i className="fa-solid fa-xmark text-lg"></i>
               </button>
@@ -2654,7 +2661,7 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
                 </div>
               </div>
             </div>
-            <div className="overflow-y-auto flex-1 px-7 py-5">
+            <div className="overflow-y-auto overflow-x-hidden flex-1 px-4 sm:px-7 py-5 pb-[calc(1rem+env(safe-area-inset-bottom))] [&_.grid-cols-2]:grid-cols-1 min-[390px]:[&_.grid-cols-2]:grid-cols-2 [&_.grid-cols-3]:grid-cols-1 min-[390px]:[&_.grid-cols-3]:grid-cols-2 sm:[&_.grid-cols-3]:grid-cols-3">
               <SumSection icon="fa-clipboard-question" title="Visit Information">
                 <div className="grid grid-cols-2 gap-2">
                   <SumItem label="Reason for Visit" value={formData.visitReason} />
@@ -2843,8 +2850,8 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
 
       {/* ═══ ALERT MODAL ══════════════════════════════════════════════════════ */}
       {alertModal.open && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-[110] p-0 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-t-[28px] sm:rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out] pb-[env(safe-area-inset-bottom)]">
             <div className="p-6 text-center">
               <div className="w-14 h-14 bg-[#e0eceb] rounded-full flex items-center justify-center mx-auto mb-4">
                 <i className="fa-solid fa-clipboard-list text-2xl text-[#466460]"></i>
@@ -2857,7 +2864,7 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-center">
               <button
                 onClick={() => setAlertModal({ open: false, title: '', message: '' })}
-                className="w-full bg-[#466460] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#3a524f] transition-colors"
+                className="w-full min-h-11 bg-[#466460] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#3a524f] transition-colors"
               >
                 Got it
               </button>

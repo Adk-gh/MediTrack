@@ -365,12 +365,23 @@ const createBulkAppointment = async (req, res, next) => {
 
     const appointments =
       result?.appointments ||
+      result?.created ||
       result?.data ||
       (Array.isArray(result) ? result : []);
 
     const createdCount = Array.isArray(appointments)
       ? appointments.length
       : result?.count || 0;
+
+    const skippedActiveCount = Array.isArray(
+      result?.alreadyHasActiveAppointment
+    )
+      ? result.alreadyHasActiveAppointment.length
+      : 0;
+
+    const notFoundCount = Array.isArray(result?.notFoundIds)
+      ? result.notFoundIds.length
+      : 0;
 
     setAuditData(
       res,
@@ -380,6 +391,8 @@ const createBulkAppointment = async (req, res, next) => {
       {
         operation: 'create_bulk_appointments',
         createdCount,
+        skippedActiveCount,
+        notFoundCount,
         userId: authUid,
         appointmentIds: Array.isArray(appointments)
           ? appointments

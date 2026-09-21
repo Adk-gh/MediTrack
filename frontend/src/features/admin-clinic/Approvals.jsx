@@ -206,7 +206,7 @@ const HEALTH_HISTORY_QUESTIONS = [
 // ============================================================
 const Snackbar = ({ message, type, visible }) => (
   <div
-    className={`fixed bottom-8 left-1/2 z-[9999] flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
+    className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-[9999] w-[calc(100%-2rem)] sm:w-auto max-w-md flex items-center justify-center gap-2.5 px-4 sm:px-6 py-3.5 rounded-xl text-center text-white text-[13px] font-semibold shadow-2xl transition-all duration-400
       ${visible ? '-translate-x-1/2 translate-y-0 opacity-100' : '-translate-x-1/2 translate-y-32 opacity-0 pointer-events-none'}
       ${type === 'success' ? 'bg-gradient-to-r from-[#166534] to-[#15803d]' : 'bg-gradient-to-r from-[#991b1b] to-[#dc2626]'}`}
   >
@@ -3747,12 +3747,12 @@ const handleSubmitCertificate = async (data) => {
   };
 
   return (
-    <div className="flex h-full min-h-[calc(100vh-140px)] bg-[#f8fafc]">
+    <div className="flex flex-col lg:flex-row h-full min-h-0 min-w-0 bg-[#f8fafc] overflow-hidden">
       {/* Left Column - Examination List */}
-      <div className="w-1/3 border-r border-slate-200 flex flex-col bg-white shadow-sm z-10">
+      <div className="w-full lg:w-1/3 h-[48dvh] min-h-[320px] lg:h-auto lg:min-h-0 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col bg-white shadow-sm z-10 shrink-0">
 
         {/* TABS HEADER */}
-        <div className="p-4 border-b border-slate-200">
+        <div className="p-3 sm:p-4 border-b border-slate-200">
           {/* Exam Type Tabs - Medical/Dental - Show based on role */}
           {/* Dentists see only Dental, Doctors/Nurses see only Medical, Admins see both */}
           <div className="flex mb-4 border-b border-slate-100">
@@ -3760,7 +3760,7 @@ const handleSubmitCertificate = async (data) => {
             {(isDoctor || isAdmin) && (
               <button
                 onClick={() => { setExamType('medical'); setSelectedExam(null); }}
-                className={`mr-4 pb-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 relative ${
+                className={`min-h-11 mr-2 sm:mr-4 px-2 pb-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 relative ${
                   examType === 'medical' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
@@ -3772,7 +3772,7 @@ const handleSubmitCertificate = async (data) => {
             {(isDentist || isAdmin) && (
               <button
                 onClick={() => { setExamType('dental'); setSelectedExam(null); }}
-                className={`pb-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 relative ${
+                className={`min-h-11 px-2 pb-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 relative ${
                   examType === 'dental' ? 'text-[#466460]' : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
@@ -3841,17 +3841,17 @@ const handleSubmitCertificate = async (data) => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search name or ID..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 pl-9 pr-3 text-xs outline-none focus:border-[#466460] focus:bg-white transition"
+              className="w-full min-h-11 bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-9 pr-3 text-xs outline-none focus:border-[#466460] focus:bg-white transition"
             />
           </div>
 
           {/* DYNAMIC FILTER ROW */}
           <div className="flex flex-col mt-3 border-t border-slate-100 pt-3">
-            <div className="flex w-full gap-1.5">
+            <div className="grid grid-cols-1 min-[390px]:grid-cols-3 w-full gap-2">
               <select
                 value={filterRole}
                 onChange={e => setFilterRole(e.target.value)}
-                className="flex-1 min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
+                className="w-full min-h-11 min-w-0 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
               >
                 {uniqueRoles.map(r => (
                   <option key={r} value={r}>{r === 'All' ? 'All Roles' : r.charAt(0).toUpperCase() + r.slice(1)}</option>
@@ -3860,7 +3860,7 @@ const handleSubmitCertificate = async (data) => {
               <select
                 value={filterDept}
                 onChange={e => { setFilterDept(e.target.value); setFilterProgram('All'); }}
-                className="flex-[1.5] min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
+                className="w-full min-h-11 min-w-0 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
               >
                 {uniqueDepts.map(d => (
                   <option key={d} value={d}>{d === 'All' ? 'All Depts' : d}</option>
@@ -3869,18 +3869,18 @@ const handleSubmitCertificate = async (data) => {
               <select
                 value={filterProgram}
                 onChange={e => setFilterProgram(e.target.value)}
-                className="flex-[1.5] min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
+                className="w-full min-h-11 min-w-0 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
               >
                 {uniquePrograms.map(p => (
                   <option key={p} value={p}>{p === 'All' ? 'All Programs' : p}</option>
                 ))}
               </select>
             </div>
-            <div className="flex w-full gap-1.5 mt-1.5">
+            <div className="grid grid-cols-1 min-[390px]:grid-cols-2 w-full gap-2 mt-2">
               <select
                 value={filterIssueCert}
                 onChange={e => setFilterIssueCert(e.target.value)}
-                className="w-full min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
+                className="w-full min-h-11 min-w-0 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
               >
                 <option value="All">{examType === 'dental' ? 'All Reports' : 'All Certificates'}</option>
                 <option value="Issued">{examType === 'dental' ? 'Report Sent' : 'Cert Issued'}</option>
@@ -3889,7 +3889,7 @@ const handleSubmitCertificate = async (data) => {
               <select
                 value={filterRequested}
                 onChange={e => setFilterRequested(e.target.value)}
-                className="w-full min-w-0 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate mt-1.5"
+                className="w-full min-h-11 min-w-0 px-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] outline-none focus:border-[#466460] text-slate-600 cursor-pointer truncate"
               >
                 <option value="All">All Requests</option>
                 <option value="Requested">Patient Requested</option>
@@ -3925,14 +3925,14 @@ const handleSubmitCertificate = async (data) => {
       </div>
 
       {/* Right Column - Examination Detail */}
-      <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+      <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-slate-50 overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-white">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <h3 className="font-bold text-[11px] uppercase text-[#466460]">
               {examType === 'dental' ? 'Dental Examination Details' : 'Examination Details'}
             </h3>
             {selectedExam && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
 
 
                 {/* Dental Actions */}
@@ -4045,13 +4045,13 @@ const handleSubmitCertificate = async (data) => {
 
       {/* --- APPROVAL OPTIONS MODAL --- */}
       {showApproveModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-xl shadow-2xl w-[420px] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-2xl w-full sm:w-[420px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-[#466460] text-sm flex items-center gap-2">
                 <i className="fa-solid fa-clipboard-check"></i> Approve Examination
               </h3>
-              <button onClick={() => setShowApproveModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setShowApproveModal(false)} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-4 h-4 fill-current">
                   <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
                 </svg>
@@ -4084,10 +4084,10 @@ const handleSubmitCertificate = async (data) => {
                 </>
               )}
             </div>
-            <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
+            <div className="p-4 bg-slate-50 grid grid-cols-1 min-[390px]:grid-cols-3 gap-2 border-t border-slate-100">
               <button
                 onClick={() => setShowApproveModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-200 rounded-lg transition"
+                className="min-h-11 px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-200 rounded-xl transition"
               >
                 Cancel
               </button>
@@ -4100,7 +4100,7 @@ const handleSubmitCertificate = async (data) => {
                     handleApprove(selectedExam);
                   }
                 }}
-                className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-[#466460] rounded-lg transition shadow-sm"
+                className="min-h-11 px-4 py-2 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-[#466460] rounded-xl transition shadow-sm"
               >
                 No, Approve Only
               </button>
@@ -4113,7 +4113,7 @@ const handleSubmitCertificate = async (data) => {
                     setShowCertForm(true);
                   }
                 }}
-                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white hover:opacity-90 rounded-lg transition shadow-sm flex items-center gap-1.5"
+                className="min-h-11 px-4 py-2 text-xs font-bold bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white hover:opacity-90 rounded-xl transition shadow-sm flex items-center justify-center gap-1.5"
               >
                 {examType === 'dental' ? (
                   <>
@@ -4132,19 +4132,19 @@ const handleSubmitCertificate = async (data) => {
 
       {/* --- EDIT RECORD MODAL --- */}
       {showEditModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-xl shadow-2xl w-[420px] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-2xl w-full sm:w-[420px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-[#466460] text-sm flex items-center gap-2">
                 <i className="fa-solid fa-pen-to-square"></i> Edit Record
               </h3>
-              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setShowEditModal(false)} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-4 h-4 fill-current">
                   <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
                 </svg>
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-4">
               {/* Status Toggle */}
               <div>
                 <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Status</label>
@@ -4201,10 +4201,10 @@ const handleSubmitCertificate = async (data) => {
                 </div>
               </div>
             </div>
-            <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
+            <div className="p-4 bg-slate-50 grid grid-cols-2 gap-2 border-t border-slate-100">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-200 rounded-lg transition"
+                className="min-h-11 px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-200 rounded-xl transition"
               >
                 Cancel
               </button>
@@ -4275,7 +4275,7 @@ const handleSubmitCertificate = async (data) => {
                   }
                 }}
                 disabled={loading}
-                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white hover:opacity-90 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                className="min-h-11 px-4 py-2 text-xs font-bold bg-gradient-to-r from-[#466460] to-[#5a7a76] text-white hover:opacity-90 rounded-xl transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
                 Save Changes
@@ -4287,8 +4287,8 @@ const handleSubmitCertificate = async (data) => {
 
       {/* --- DENTAL REPORT MODAL --- */}
       {showReportForm && selectedExam && examType === 'dental' && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-2xl w-full max-w-3xl max-h-[95dvh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-[#f0f7f6] to-white">
               <h3 className="font-bold text-[#466460] text-sm flex items-center gap-2">
                 <i className="fa-solid fa-tooth"></i> Dental Examination Report
@@ -4299,7 +4299,7 @@ const handleSubmitCertificate = async (data) => {
                 </svg>
               </button>
             </div>
-            <div className="overflow-y-auto custom-scrollbar p-6 bg-[#f8fafc] flex-1">
+            <div className="overflow-y-auto custom-scrollbar p-3 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-[#f8fafc] flex-1">
               <DentalExaminationReport
                 examination={selectedExam}
                 onSubmit={handleSaveDentalReport}
@@ -4314,8 +4314,8 @@ const handleSubmitCertificate = async (data) => {
 
       {/* --- MEDICAL CERTIFICATE MODAL --- */}
       {showCertForm && selectedExam && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-t-[28px] sm:rounded-xl shadow-2xl w-full max-w-3xl max-h-[95dvh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <h3 className="font-bold text-[#466460] text-sm flex items-center gap-2">
                 <i className="fa-solid fa-file-medical"></i> {activeTab === 'approved' && selectedExam.issue_cert ? 'Edit/View Medical Certificate' : 'Issue Medical Certificate'}
@@ -4326,7 +4326,7 @@ const handleSubmitCertificate = async (data) => {
                 </svg>
               </button>
             </div>
-            <div className="overflow-y-auto custom-scrollbar p-6 bg-[#f8fafc] flex-1">
+            <div className="overflow-y-auto custom-scrollbar p-3 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-[#f8fafc] flex-1">
               <MedicalCertificate
                 examination={selectedExam}
                 onSubmit={handleSubmitCertificate}
@@ -4341,23 +4341,23 @@ const handleSubmitCertificate = async (data) => {
 
       {/* --- FULL EXAMINATION MODAL (Unified - like Records.jsx) --- */}
       {showFullExamModal && examRecordData && createPortal(
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center">
+        <div className="fixed inset-0 z-[999999] flex items-end sm:items-center justify-center">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowFullExamModal(false); setExamRecordData(null); setNormalizedPatient(null); }}></div>
 
           {/* Modal Content */}
-          <div className="relative w-full h-full max-w-6xl mx-4 my-4 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
+          <div className="relative w-full h-[96dvh] sm:h-[calc(100%-2rem)] max-w-6xl sm:mx-4 sm:my-4 bg-white rounded-t-[28px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
             {/* Header */}
-            <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-4 sm:px-6 py-3 sm:py-5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                 <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center">
                   <i className="fa-solid fa-user text-white text-lg"></i>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-base sm:text-lg text-slate-800 truncate">
                     {normalizedPatient?.name || examRecordData.name || 'Patient Examination'}
                   </h3>
-                  <p className="text-sm text-slate-500 mt-0.5">
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate">
                     {normalizedPatient?.id || examRecordData.id || examRecordData.university_id || ''} •
                     {normalizedPatient?.department || examRecordData.department || ''}
                     {normalizedPatient?.prog || examRecordData.program ? ` • ${normalizedPatient?.prog || examRecordData.program}` : ''}
@@ -4366,7 +4366,7 @@ const handleSubmitCertificate = async (data) => {
               </div>
               <button
                 onClick={() => { setShowFullExamModal(false); setExamRecordData(null); setNormalizedPatient(null); }}
-                className="w-10 h-10 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center"
+                className="w-11 h-11 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" className="w-5 h-5 fill-current">
                   <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256l105.4-105.4c12.5-12.5 12.5-32.8 0-45.3z"/>
@@ -4375,7 +4375,7 @@ const handleSubmitCertificate = async (data) => {
             </div>
 
             {/* Tabs and School Year */}
-            <div className="shrink-0 flex gap-2 px-6 py-3 border-b border-slate-200 bg-slate-50 items-center">
+            <div className="shrink-0 flex flex-col lg:flex-row gap-3 px-4 sm:px-6 py-3 border-b border-slate-200 bg-slate-50 lg:items-center">
               <div className="flex gap-2">
               {examType === 'medical' ? (
                 <div className="px-6 py-3 text-base font-semibold rounded-lg bg-[#466460] text-white shadow-md flex items-center gap-2">
@@ -4389,11 +4389,11 @@ const handleSubmitCertificate = async (data) => {
                 </div>
               )}
               </div>
-              <div className="ml-auto flex items-center gap-3">
-                <span className="text-xs font-semibold text-slate-500">School Year:</span>
+              <div className="lg:ml-auto grid grid-cols-2 gap-2 lg:flex lg:items-center lg:gap-3">
+                <span className="hidden lg:inline text-xs font-semibold text-slate-500">School Year:</span>
                 <select
                   value={examRecordData.schoolYear || examRecordData.school_year || ''}
-                  className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+                  className="min-w-0 w-full min-h-11 px-3 sm:px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
                 >
                   <option value="">Select</option>
                   {Array.from({ length: 10 }, (_, i) => {
@@ -4403,7 +4403,7 @@ const handleSubmitCertificate = async (data) => {
                 </select>
                 <select
                   value={examRecordData.semester || '1st Semester'}
-                  className="px-4 py-2.5 text-sm font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
+                  className="min-w-0 w-full min-h-11 px-3 sm:px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#466460] focus:border-transparent shadow-sm cursor-pointer"
                 >
                   <option value="1st Semester">1st Semester</option>
                   <option value="2nd Semester">2nd Semester</option>
@@ -4413,7 +4413,7 @@ const handleSubmitCertificate = async (data) => {
             </div>
 
             {/* Form Content */}
-            <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 p-3 sm:p-4 md:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {modalLoading ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="text-center text-slate-400">

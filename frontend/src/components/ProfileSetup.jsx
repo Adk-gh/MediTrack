@@ -61,7 +61,7 @@ function isValidAge(age) {
 
 // Shared styling constants for the custom dropdown trigger (desktop/modal variant), mirrored
 // from the plain <select> styling below so swapping components doesn't change how anything looks.
-const CUSTOM_SELECT_TRIGGER_CLS = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] bg-white outline-none focus:border-[#4a635d] transition-colors flex items-center justify-between gap-2 text-left";
+const CUSTOM_SELECT_TRIGGER_CLS = "w-full min-h-11 px-[14px] py-[11px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] bg-white outline-none focus:border-[#4a635d] focus:ring-2 focus:ring-[#4a635d]/10 transition-colors flex items-center justify-between gap-2 text-left";
 
 const ChevronIcon = ({ open, color = '#6b8577', size = 10 }) => (
   <svg
@@ -258,8 +258,37 @@ const ProfileSetup = ({ user, onComplete }) => {
   // Fetch System Configurations on Mount
   useEffect(() => {
     const fetchSystemConfig = async () => {
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        console.error('[ProfileSetup] No authentication token found.');
+        setIsConfigLoading(false);
+        navigate('/login');
+        return;
+      }
+
       try {
-        const response = await fetch(`${API_URL}/system-config`);
+        const response = await fetch(`${API_URL}/system-config`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.status === 401) {
+          console.error('[ProfileSetup] Unauthorized system-config request.');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          navigate('/login');
+          return;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`System config request failed: ${response.status} ${errorText}`);
+        }
+
         const result = await response.json();
 
         if (result.success) {
@@ -268,19 +297,21 @@ const ProfileSetup = ({ user, onComplete }) => {
           // Pre-fill default classification and job title based on user role from DB data
           setFormData(prev => ({
             ...prev,
-            classification: result.data.classifications[userRole] || '',
-            jobTitle: result.data.job_titles[userRole] || ''
+            classification: result.data?.classifications?.[userRole] || '',
+            jobTitle: result.data?.job_titles?.[userRole] || ''
           }));
+        } else {
+          console.error('[ProfileSetup] Failed to load system configuration:', result.message);
         }
       } catch (error) {
-        console.error('Failed to fetch system configuration:', error);
+        console.error('[ProfileSetup] Failed to fetch system configuration:', error);
       } finally {
         setIsConfigLoading(false);
       }
     };
 
     fetchSystemConfig();
-  }, [userRole]);
+  }, [userRole, navigate]);
 
   // Fetch latest profile from DB to merge with passed-down props
   useEffect(() => {
@@ -745,6 +776,7 @@ const ProfileSetup = ({ user, onComplete }) => {
   };
 
   const STEP_LABELS = ['Personal', userRole === 'student' ? 'Academic' : 'Work', 'Contact & Emergency'];
+  const MOBILE_STEP_LABELS = ['Personal', userRole === 'student' ? 'Academic' : 'Work', 'Contact'];
   const STEP_EYEBROWS = ['Tell us about you', userRole === 'student' ? 'Your academic info' : 'Your work info', 'How to reach you'];
   const STEP_SUBTITLES = [
     'A few basic details to get your health record started.',
@@ -761,7 +793,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         : 'text-[#9bb5a5] hover:text-[#6b8577] after:bg-[#e2f0ea]'
     }`;
 
-  const inputCls  = "w-full px-[14px] py-[10px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] outline-none focus:border-[#4a635d] bg-white transition-colors";
+  const inputCls  = "w-full min-h-11 px-[14px] py-[11px] border-[1.5px] border-[#cbd5d1] rounded-[13px] text-[13px] outline-none focus:border-[#4a635d] focus:ring-2 focus:ring-[#4a635d]/10 bg-white transition-colors";
   const labelCls  = "block text-[11px] font-bold text-[#64748b] uppercase mb-[4px] ml-[2px]";
 
   const fieldError = (field) => errors[field] ? (
@@ -807,6 +839,7 @@ const ProfileSetup = ({ user, onComplete }) => {
           inset: 0;
           z-index: 100;
           width: 100%;
+          height: 100dvh;
           min-height: 100dvh;
           flex-direction: column;
           background: #F2F4F3;
@@ -814,13 +847,16 @@ const ProfileSetup = ({ user, onComplete }) => {
           padding-top: env(safe-area-inset-top);
           padding-bottom: env(safe-area-inset-bottom);
           overflow-y: auto;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+          scroll-padding-bottom: 120px;
         }
 
-        .psm-topbar { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 0; flex-shrink: 0; animation: psm-fadeIn 0.4s ease both; box-sizing: border-box; }
+        .psm-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 18px 0; flex-shrink: 0; animation: psm-fadeIn 0.4s ease both; box-sizing: border-box; }
         .psm-logo-name { font-size: 17px; font-weight: 700; color: #2D4744; letter-spacing: -0.3px; }
         .psm-step-badge { background: #E4EFED; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: #3D7A6F; }
 
-        .psm-hero { padding: 24px 28px 16px; flex-shrink: 0; animation: psm-fadeUp 0.5s ease 0.1s both; }
+        .psm-hero { padding: 20px 18px 14px; flex-shrink: 0; animation: psm-fadeUp 0.5s ease 0.1s both; }
         .psm-eyebrow { font-size: 12px; font-weight: 600; color: #4A8C82; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 6px; }
         .psm-title { font-size: 26px; font-weight: 800; color: #1A2E2B; line-height: 1.15; letter-spacing: -0.6px; margin-bottom: 6px; }
         .psm-subtitle { font-size: 13.5px; color: #6B8580; line-height: 1.4; }
@@ -839,7 +875,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         .psm-card {
           background: #fff;
           border-radius: 28px 28px 0 0;
-          padding: 28px 24px calc(40px + env(safe-area-inset-bottom));
+          padding: 24px 18px calc(32px + env(safe-area-inset-bottom));
           box-shadow: 0 -2px 24px rgba(42,72,68,0.08);
           animation: psm-fadeUp 0.5s ease 0.2s both;
           margin-top: 10px;
@@ -859,7 +895,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         .psm-req { color: #dc2626; font-weight: 700; margin-left: 2px; }
         .psm-hint { font-size: 11px; color: #8AA09C; margin-top: 6px; margin-left: 6px; line-height: 1.3; }
 
-        .psm-input-pill { display: flex; align-items: center; background: #F4F7F6; border-radius: 14px; border: 1.5px solid transparent; transition: border-color 0.2s, background 0.2s, box-shadow 0.2s; overflow: hidden; min-width: 0; }
+        .psm-input-pill { display: flex; align-items: center; min-height: 46px; background: #F4F7F6; border-radius: 14px; border: 1.5px solid transparent; transition: border-color 0.2s, background 0.2s, box-shadow 0.2s; overflow: hidden; min-width: 0; }
         .psm-input-pill:focus-within { border-color: #3D7A6F; background: #fff; box-shadow: 0 0 0 4px rgba(61,122,111,0.1); }
         .psm-input-pill.is-invalid { border-color: #ef4444; background: #fef2f2; }
         .psm-input-pill.is-invalid:focus-within { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1); }
@@ -879,7 +915,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         .psm-select-value { display: flex; align-items: center; padding: 13px 0 13px 14px; color: #1A2E2B; font-size: 15px; }
         .psm-select-value.placeholder { color: #B5C8C5; }
         .psm-select-menu { position: absolute; left: 0; right: 0; min-width: 130px; background: #fff; border: 1.5px solid #E3ECEA; border-radius: 14px; box-shadow: 0 10px 28px rgba(42,72,68,0.14); overflow: hidden; z-index: 50; max-height: 220px; overflow-y: auto; }
-        .psm-select-option { display: block; width: 100%; text-align: left; padding: 11px 16px; font-size: 14px; font-weight: 500; border: none; cursor: pointer; background: transparent; color: #1A2E2B; }
+        .psm-select-option { display: block; width: 100%; min-height: 44px; text-align: left; padding: 11px 16px; font-size: 14px; font-weight: 500; border: none; cursor: pointer; background: transparent; color: #1A2E2B; }
         .psm-select-option:hover { background: #F4F8F7; }
         .psm-select-option.active { background: #EAF5F1; color: #2D5C52; font-weight: 700; }
 
@@ -891,15 +927,34 @@ const ProfileSetup = ({ user, onComplete }) => {
         .psm-emergency-title { font-size: 11px; font-weight: 800; color: #1a5c3a; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px; }
 
         .psm-actions { display: flex; gap: 10px; margin-top: 22px; }
-        .psm-btn-back { flex: 1; padding: 15px; border-radius: 18px; border: 1.5px solid #cbd5d1; background: #fff; color: #6b8577; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
-        .psm-btn-primary { flex: 1; padding: 15px; border-radius: 18px; border: none; background: #2D5C52; color: #fff; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer; letter-spacing: 0.1px; transition: transform 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .psm-btn-back { flex: 1; min-height: 48px; padding: 14px; border-radius: 18px; border: 1.5px solid #cbd5d1; background: #fff; color: #6b8577; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
+        .psm-btn-primary { flex: 1; min-height: 48px; padding: 14px; border-radius: 18px; border: none; background: #2D5C52; color: #fff; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer; letter-spacing: 0.1px; transition: transform 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .psm-btn-primary:active:not(:disabled) { transform: scale(0.97); }
         .psm-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        @media (max-width: 359px) {
+          .psm-topbar { padding-left: 14px; padding-right: 14px; }
+          .psm-hero { padding-left: 14px; padding-right: 14px; }
+          .psm-title { font-size: 24px; }
+          .psm-card { padding-left: 14px; padding-right: 14px; border-radius: 22px 22px 0 0; }
+          .psm-row { flex-direction: column; gap: 0; }
+          .psm-classification-row { flex-wrap: wrap; }
+          .psm-classification-chip { min-width: calc(50% - 4px); min-height: 44px; }
+          .psm-actions { flex-direction: column-reverse; }
+          .psm-actions > button { width: 100%; flex: none; }
+        }
+
+        @media (max-width: 640px) and (max-height: 700px) {
+          .psm-topbar { padding-top: 12px; }
+          .psm-hero { padding-top: 12px; padding-bottom: 10px; }
+          .psm-title br { display: none; }
+          .psm-card { margin-top: 4px; }
+        }
       `}</style>
 
       {/* ═══════════════════ DESKTOP / MODAL ═══════════════════ */}
-      <div className="ps-desktop-wrapper fixed inset-0 z-[100] items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[520px] p-8 overflow-hidden">
+      <div className="ps-desktop-wrapper fixed inset-0 z-[100] items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto overscroll-contain">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-[520px] max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] p-4 sm:p-6 md:p-8 overflow-x-hidden overflow-y-auto overscroll-contain">
 
           <div className="mb-5 text-center">
             <h1 className="text-2xl font-black text-[#1a2e22]">Complete Your Profile</h1>
@@ -1345,7 +1400,7 @@ const ProfileSetup = ({ user, onComplete }) => {
             <div className="psm-progress-fill" style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
           </div>
           <div className="psm-tabs">
-            {STEP_LABELS.map((label, i) => (
+            {MOBILE_STEP_LABELS.map((label, i) => (
               <div key={label} className={tabClassMobile(i + 1)} onClick={() => setStep(i + 1)}>{label}</div>
             ))}
           </div>

@@ -276,12 +276,12 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
   const isImage = doc.type?.startsWith('image/') || ['jpg', 'jpeg', 'png'].some(ext => doc.name?.toLowerCase().endsWith(`.${ext}`));
 
   return createPortal(
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+    <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
       <div
-        className="relative w-full max-w-4xl h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]"
+        className="relative w-full max-w-4xl h-[94dvh] sm:h-[85vh] bg-white rounded-t-[28px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-6 py-4 flex items-center justify-between">
+        <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-4 sm:px-6 py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[#466460] flex items-center justify-center text-white shrink-0">
               <i className={isPdf ? 'fa-solid fa-file-pdf' : 'fa-solid fa-file-image'}></i>
@@ -303,21 +303,21 @@ const DocViewerModal = ({ isOpen, onClose, doc }) => {
                 download={doc.name}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-white border border-[#c8ddd8] text-[#466460] hover:bg-[#e0eceb] text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                className="min-h-11 min-w-11 px-3 rounded-xl bg-white border border-[#c8ddd8] text-[#466460] hover:bg-[#e0eceb] text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
               >
-                <i className="fa-solid fa-download"></i> Download
+                <i className="fa-solid fa-download"></i><span className="hidden sm:inline">Download</span>
               </a>
             )}
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors flex items-center justify-center"
+              className="w-11 h-11 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors flex items-center justify-center"
             >
               <i className="fa-solid fa-xmark text-lg"></i>
             </button>
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 bg-slate-100 flex items-center justify-center p-4 overflow-auto">
+        <div className="flex-1 min-h-0 bg-slate-100 flex items-center justify-center p-2 sm:p-4 overflow-auto overscroll-contain">
           {loading ? (
             <div className="text-center text-slate-500">
               <i className="fa-solid fa-spinner fa-spin text-3xl mb-3 text-[#466460]"></i>
@@ -2297,12 +2297,12 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
 
   return (
     <>
-      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
 
-        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[650px] flex flex-col overflow-hidden">
+        <div className="relative bg-white rounded-t-[28px] sm:rounded-2xl shadow-2xl w-full max-w-3xl h-[94dvh] sm:h-[min(650px,90dvh)] flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-5 py-4 flex items-center gap-3">
+          <div className="shrink-0 bg-gradient-to-r from-[#e0eceb] to-white border-b border-[#d1e7e5] px-4 sm:px-5 py-4 flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-[#466460] flex items-center justify-center text-white font-bold text-lg shrink-0">
               {initials}
             </div>
@@ -2318,7 +2318,7 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
             </div>
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
+              className="w-11 h-11 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
                 <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
@@ -2327,12 +2327,12 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
           </div>
 
           {/* Tabs */}
-          <div className="shrink-0 flex gap-2 px-5 py-3 border-b border-slate-200 bg-slate-50">
+          <div className="shrink-0 flex gap-2 px-3 sm:px-5 py-3 border-b border-slate-200 bg-slate-50 overflow-x-auto overscroll-x-contain">
             {visibleTabs.map(({ key, label, icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`px-3.5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                className={`min-h-11 px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shrink-0 ${
                   activeTab === key ? 'bg-[#466460] text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:shadow-sm'
                 }`}
               >
@@ -2349,7 +2349,7 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-5 bg-slate-50/40 min-h-0 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-slate-50/40 min-h-0 [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
             {loading ? (
               <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
                 <i className="fa-solid fa-circle-notch fa-spin text-xl mr-2"></i> Loading records…
@@ -2361,7 +2361,7 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
                   <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
                     <i className="fa-solid fa-id-card"></i> Personal Information
                   </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-1 min-[390px]:grid-cols-2 md:grid-cols-4 gap-2.5">
                     <MiniStat label="Age" value={p.age} />
                     <MiniStat label="Gender" value={p.sex || p.gender} />
                     <MiniStat label="Birthdate" value={p.birthday} />
@@ -2378,7 +2378,7 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
                   <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
                     <i className="fa-solid fa-graduation-cap"></i> {isStudent ? 'Academic' : 'Work'} Information
                   </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-1 min-[390px]:grid-cols-2 md:grid-cols-4 gap-2.5">
                     {isStudent ? (
                       <>
                         <MiniStat label="Program" value={p.program} />
@@ -2401,7 +2401,7 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
                   <p className="text-xs font-bold text-[#466460] uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
                     <i className="fa-solid fa-phone"></i> Contact Information
                   </p>
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2.5">
                     <MiniStat label="Email" value={p.email} />
                     <MiniStat label="Phone" value={p.phone_number} />
                   </div>
@@ -2412,7 +2412,7 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
                   <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
                     <i className="fa-solid fa-triangle-exclamation"></i> Emergency Contact
                   </p>
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2.5">
                     <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
                       <p className="text-[10px] text-red-400 uppercase font-semibold">Name</p>
                       <p className="text-sm font-semibold text-slate-700">
@@ -2432,7 +2432,27 @@ const PatientRecordsModal = ({ patientId, patientName, patientRole, consultation
                     <i className="fa-solid fa-syringe"></i> COVID-19 Vaccination History
                   </p>
                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                    <table className="w-full text-left border-collapse">
+                    <div className="sm:hidden divide-y divide-slate-100">
+                      {doseRows.map(({ key, label }) => {
+                        const dose = vaxData[key] || {};
+                        const isDeclined = !!declined[key];
+                        return (
+                          <div key={key} className="p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-800">{label}</span>
+                              {isDeclined && <span className="text-[10px] px-2 py-1 rounded-md bg-amber-50 text-amber-700 font-semibold border border-amber-200">N/A (Skipped)</span>}
+                            </div>
+                            {!isDeclined && (
+                              <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 mt-2 text-xs">
+                                <div className="rounded-lg bg-slate-50 p-2.5"><span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Vaccine</span><span className="text-slate-700 break-words">{dose.vaccineName || '—'}</span></div>
+                                <div className="rounded-lg bg-slate-50 p-2.5"><span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Date</span><span className="text-slate-700">{dose.date || '—'}</span></div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <table className="hidden sm:table w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-[#f8fafc] border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                           <th className="py-2.5 px-4">Dose</th>
@@ -3555,7 +3575,7 @@ const data =
   });
 
   return (
-    <div className="flex h-full bg-white overflow-hidden relative">
+    <div className="flex h-full min-h-0 min-w-0 bg-white overflow-hidden relative">
       {selectedConvId && (
         <style>{`
           @media (max-width: 768px) {
@@ -3581,10 +3601,10 @@ const data =
       )}
 
       {/* ── Left: Sidebar ── */}
-      <div className={`w-full md:w-1/3 border-r border-slate-200 flex-col flex-shrink-0 ${
+      <div className={`w-full md:w-[38%] lg:w-1/3 min-w-0 border-r border-slate-200 flex-col flex-shrink-0 ${
         selectedConvId ? 'hidden md:flex' : 'flex'
       }`}>
-        <div className="p-4 border-b border-slate-200 bg-white">
+        <div className="px-4 py-3 sm:py-4 border-b border-slate-200 bg-white">
           <h3 className="font-extrabold text-[#466460] text-lg">
             <i className="fa-regular fa-comment-dots mr-2"></i>Consultations
           </h3>
@@ -3607,7 +3627,7 @@ const data =
                   setActiveTab(tab.key);
                   if (selectedConv && selectedConv.consultation_type !== tab.key) setSelectedConvId(null);
                 }}
-                className="flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 text-sm font-bold transition-all relative"
+                className="flex-1 min-h-12 flex flex-col items-center justify-center gap-0.5 py-2.5 px-2 text-sm font-bold transition-all relative"
                 style={{ color: isActive ? tab.accent : '#94a3b8', backgroundColor: isActive ? tab.light : 'transparent' }}
               >
                 <div className="flex items-center gap-1.5">
@@ -3631,7 +3651,7 @@ const data =
         </div>
 
         {/* Search and Filter */}
-        <div className="px-4 pt-3 pb-2 border-b border-slate-100 bg-white">
+        <div className="px-3 sm:px-4 pt-3 pb-2 border-b border-slate-100 bg-white">
           <div className="flex gap-2 mb-2">
             <div className="relative flex-1">
               <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
@@ -3640,13 +3660,13 @@ const data =
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search name, ID, or program..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#466460] focus:bg-white transition"
+                className="w-full min-h-11 bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#466460] focus:bg-white transition"
               />
             </div>
             <button
               onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
               title={sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center text-sm font-bold"
+              className="w-11 h-11 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 hover:border-[#466460] hover:text-[#466460] hover:bg-[#e0eceb] transition-all flex items-center justify-center text-sm font-bold shrink-0"
             >
               {sortOrder === 'desc' ? (
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -3663,7 +3683,7 @@ const data =
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="flex-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm outline-none focus:border-[#466460] text-slate-600 cursor-pointer"
+              className="flex-1 min-h-11 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] text-slate-600 cursor-pointer"
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
@@ -3700,7 +3720,7 @@ const data =
                   <div
                     key={conv.id}
                     onClick={() => setSelectedConvId(conv.id)}
-                    className={`flex items-center gap-3 p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
+                    className={`flex items-center gap-3 p-3.5 sm:p-4 border-b border-slate-100 cursor-pointer transition-all hover:bg-[#f0f7f6] ${
                       isActive ? 'md:bg-gradient-to-r md:from-[#e0eceb] md:to-white md:border-l-4 md:border-l-[#466460]' : ''
                     } ${hasUnread ? 'bg-yellow-50' : ''} ${isEnded ? 'opacity-70' : ''}`}
                   >
@@ -3775,10 +3795,10 @@ const data =
         <div className="flex-1 flex flex-col min-w-0">
 
           {/* Chat Header */}
-          <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 bg-white flex items-center gap-2 md:gap-3 flex-shrink-0">
+          <div className="px-3 md:px-5 py-2.5 md:py-4 border-b border-slate-200 bg-white flex flex-wrap sm:flex-nowrap items-center gap-2 md:gap-3 flex-shrink-0">
             <button
               onClick={() => { setSelectedConvId(null); setShowPatientModal(false); }}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
+              className="w-11 h-11 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-[#466460] transition-colors flex-shrink-0 border border-slate-200"
               title="Back to conversations"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -3814,7 +3834,7 @@ const data =
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-base text-slate-800 truncate">{patientName}</p>
                     {getGenderIcon(patientProfile.sex)}
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patient_role)}`}>
+                    <span className={`hidden min-[390px]:inline-flex text-xs px-2 py-0.5 rounded-full font-semibold ${getRoleClass(patientProfile.role || selectedConv?.patient_role)}`}>
                       {patientProfile.role || selectedConv?.patient_role || 'patient'}
                     </span>
                   </div>
@@ -3833,24 +3853,24 @@ const data =
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                <div className="order-last sm:order-none w-full sm:w-auto grid grid-cols-2 sm:flex items-center gap-2 flex-shrink-0">
                   {!isConvEnded && (
                     <button
                       onClick={handleEndConsultation}
                       title="End Consultation"
-                      className="flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-xs font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm"
+                      className="min-h-11 w-full sm:w-11 md:w-auto md:px-3 rounded-xl sm:rounded-full text-xs font-bold bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all border border-red-100 hover:border-red-500 shadow-sm flex items-center justify-center gap-1.5"
                     >
                       <i className="fa-solid fa-check-double text-sm md:text-xs"></i>
-                      <span className="hidden md:inline">End Consult</span>
+                      <span className="sm:hidden md:inline">End Consult</span>
                     </button>
                   )}
                   <button
                     onClick={() => setShowPatientModal(true)}
                     title="View Records"
-                    className="flex items-center justify-center gap-1.5 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white"
+                    className="min-h-11 w-full sm:w-11 md:w-auto md:px-3 rounded-xl sm:rounded-full text-xs font-semibold transition-all shadow-sm bg-[#e0eceb] text-[#466460] hover:bg-[#466460] hover:text-white flex items-center justify-center gap-1.5"
                   >
                     <i className="fa-solid fa-address-card text-sm md:text-xs"></i>
-                    <span className="hidden md:inline">Records</span>
+                    <span className="sm:hidden md:inline">Records</span>
                   </button>
                 </div>
               </>
@@ -3863,7 +3883,7 @@ const data =
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col gap-3 bg-slate-50">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 md:p-5 flex flex-col gap-3 bg-slate-50">
             {!selectedConvId ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
                 <i className="fa-regular fa-message text-5xl text-slate-200"></i>
@@ -3908,7 +3928,7 @@ const data =
                           )}
                         </div>
                       )}
-                      <div className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 rounded-2xl text-base leading-relaxed break-words shadow-sm ${
+                      <div className={`max-w-[90%] sm:max-w-[85%] md:max-w-[72%] px-3.5 sm:px-4 py-2.5 rounded-2xl text-sm sm:text-base leading-relaxed break-words shadow-sm ${
                         isClinic
                           ? 'bg-[#466460] text-white rounded-br-sm'
                           : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
@@ -3953,12 +3973,12 @@ const data =
               onChange={e => setMessageInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
               disabled={!selectedConvId || isConvEnded || !sessionReady}
-              className="flex-1 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-base outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="flex-1 min-w-0 min-h-11 border border-slate-200 rounded-full px-4 md:px-5 py-2.5 md:py-3 text-base outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] transition-all disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendMessage}
               disabled={!selectedConvId || !messageInput.trim() || isConvEnded || !sessionReady}
-              className="w-10 h-10 md:w-11 md:h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              className="w-11 h-11 flex-shrink-0 rounded-full bg-[#466460] text-white flex items-center justify-center hover:bg-[#3a524f] transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                 <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
@@ -3982,7 +4002,7 @@ const data =
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-white text-sm font-semibold shadow-lg z-[60] flex items-center gap-2 ${
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-white text-sm font-semibold text-center shadow-lg z-[60] flex items-center justify-center gap-2 ${
           toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-600'
         }`}>
           <i className={`fa-solid ${toast.type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'}`}></i>
@@ -3993,7 +4013,7 @@ const data =
       {/* Real-time consultation alert */}
       {newConsultationAlert && (
         <div
-          className="fixed top-4 right-4 z-[70] animate-slide-in cursor-pointer"
+          className="fixed top-[max(0.75rem,env(safe-area-inset-top))] left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-[70] animate-slide-in cursor-pointer"
           onClick={() => {
             setSelectedConvId(newConsultationAlert.id);
             setNewConsultationAlert(null);
@@ -4015,7 +4035,7 @@ const data =
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); setNewConsultationAlert(null); }}
-              className="text-slate-400 hover:text-slate-600"
+              className="w-11 h-11 text-slate-400 hover:text-slate-600 flex items-center justify-center shrink-0 rounded-full hover:bg-slate-100"
             >
               <i className="fa-solid fa-xmark"></i>
             </button>

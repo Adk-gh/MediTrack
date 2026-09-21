@@ -2130,18 +2130,18 @@ const patientTypeData = useMemo(() => {
   //  Render
   // ------------------------------------------------------------------------
   return (
-    <div className="flex-1 h-full min-h-0 overflow-y-auto bg-[#f4f7f6] px-4 md:px-6 py-4 md:py-6 font-['Inter',sans-serif] text-[#2d3748] [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
+    <div className="flex-1 h-full min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-[#f4f7f6] px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-6 font-['Inter',sans-serif] text-[#2d3748] [&_button]:min-h-11 [&::-webkit-scrollbar]:w-[4px] [&::-webkit-scrollbar-thumb]:bg-[#8aacaa] [&::-webkit-scrollbar-thumb]:rounded-full">
       {/* ── Toolbar / Controls ── */}
-      <div className="flex justify-end items-center mb-6">
-        <div className="flex flex-wrap items-center justify-end gap-3 w-full">
+      <div className="mb-4 sm:mb-6">
+        <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:flex lg:flex-wrap lg:items-center lg:justify-end gap-2 sm:gap-3 w-full">
 
           {/* Role Filter */}
-          <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm">
+          <div className="min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconUsers size={16} className="text-slate-400 ml-2" />
             <select
               value={selectedRole}
               onChange={(event) => setSelectedRole(event.target.value)}
-              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer max-w-[170px]"
+              className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer lg:max-w-[170px]"
             >
               <option value="all">All Personnel</option>
               <option value="student">Students</option>
@@ -2152,13 +2152,13 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* Department / Office Filter */}
-          <div className={`flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm ${selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
+          <div className={`min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm ${selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
             <IconUsers size={16} className="text-slate-400 ml-2" />
             <select
               value={selectedDepartment}
               onChange={(event) => setSelectedDepartment(event.target.value)}
               disabled={selectedRole === 'clinic'}
-              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer disabled:cursor-not-allowed max-w-[190px]"
+              className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer disabled:cursor-not-allowed lg:max-w-[190px]"
             >
               <option value="all">
                 {selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}
@@ -2172,13 +2172,13 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* Program Filter */}
-          <div className={`flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm ${selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
+          <div className={`min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm ${selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
             <IconTable size={16} className="text-slate-400 ml-2" />
             <select
               value={selectedProgram}
               onChange={(event) => setSelectedProgram(event.target.value)}
               disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
-              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer disabled:cursor-not-allowed max-w-[190px]"
+              className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer disabled:cursor-not-allowed lg:max-w-[190px]"
             >
               <option value="all">
                 {selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}
@@ -2192,12 +2192,12 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* School Year Filter */}
-          <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm">
+          <div className="min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconCalendar size={16} className="text-slate-400 ml-2" />
             <select
               value={schoolYear}
               onChange={(e) => setSchoolYear(e.target.value)}
-              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer"
+              className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer"
             >
               <option value="all">All School Years</option>
               <option value="2026-2027">SY 2026-2027</option>
@@ -2208,12 +2208,12 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* Month Filter */}
-          <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm">
+          <div className="min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconCalendar size={16} className="text-slate-400 ml-2" />
             <select
               value={specificMonth}
               onChange={(e) => setSpecificMonth(e.target.value)}
-              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer"
+              className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer"
             >
               <option value="all">All Months</option>
               {MONTHS_FULL.map((m, i) => (
@@ -2223,12 +2223,12 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* Date Range Filter */}
-          <div className="flex items-center gap-2 bg-white rounded-lg border border-[#e2e8f0] p-1.5 shadow-sm">
+          <div className="min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconFilter size={16} className="text-slate-400 ml-2" />
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              className="text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-0.5 cursor-pointer"
+              className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer"
             >
               <option value="all">All Time</option>
               <option value="year">This Year</option>
@@ -2240,7 +2240,7 @@ const patientTypeData = useMemo(() => {
           {/* Export Button */}
           <button
             onClick={() => openExportModal('full')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#466460] text-white text-sm font-semibold rounded-lg hover:bg-[#3a524f] transition-colors shadow-sm ml-1"
+            className="min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#466460] text-white text-sm font-semibold rounded-xl hover:bg-[#3a524f] transition-colors shadow-sm lg:ml-1"
           >
             <IconFileText size={16} />
             Export
@@ -2260,8 +2260,8 @@ const patientTypeData = useMemo(() => {
       <div id="reports-content">
 
         {/* ── Top Statistics ── */}
-        <GlassCard className="mb-6 p-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+        <GlassCard className="mb-4 sm:mb-6 p-3 sm:p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 sm:gap-3">
             <StatBox title="Total Users" value={processedData.totalUsers} subtitle="System admins excluded" icon={IconUsers} color="#466460" />
             <StatBox title="Clinic Staff" value={processedData.clinicStaffCount} subtitle="Doc+Nurse+Dentist" icon={IconUsers} color="#81b29a" />
             <StatBox title="Medical" value={processedData.totalMed} subtitle="Health Records" icon={IconStethoscope} color="#3b82f6" />
@@ -2722,7 +2722,19 @@ const patientTypeData = useMemo(() => {
                 />
               </div>
 
-              <div className="overflow-x-auto rounded-lg bg-white border border-slate-200 shadow-sm">
+              <div className="sm:hidden space-y-2">
+                {appointmentDurationSummary.statusBreakdown.map((row) => (
+                  <div key={row.status} className="rounded-xl bg-white border border-slate-200 p-3 shadow-sm flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-slate-700 capitalize truncate">{row.status}</p>
+                      <p className="text-xs text-slate-500">{row.count} appointment{row.count === 1 ? '' : 's'}</p>
+                    </div>
+                    <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#e0eceb] text-xs font-bold text-[#466460]">{row.avg.toFixed(1)} hrs</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden sm:block overflow-x-auto rounded-lg bg-white border border-slate-200 shadow-sm">
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-[#f8fafc]">
@@ -2756,11 +2768,11 @@ const patientTypeData = useMemo(() => {
       {confirmExport &&
         createPortal(
           <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[99999] px-4"
+            className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:px-4"
             onClick={() => { if (!exporting) setConfirmExport(null); }}
           >
             <div
-              className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full"
+              className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-5 sm:p-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] max-w-md w-full"
               onClick={(e) => e.stopPropagation()}
             >
 
@@ -2818,18 +2830,18 @@ const patientTypeData = useMemo(() => {
                 The export includes <strong>all matching records</strong> for the current filters, not just what's visible on this page.
               </div>
 
-              <div className="flex gap-3">
+              <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
                 <button
                   onClick={() => setConfirmExport(null)}
                   disabled={exporting}
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all disabled:opacity-50"
+                  className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmExport}
                   disabled={exporting}
-                  className="flex-1 px-4 py-2.5 rounded-lg text-white font-semibold text-sm transition-all bg-[#466460] hover:bg-[#3a524f] disabled:opacity-70"
+                  className="min-h-11 px-4 py-2.5 rounded-xl text-white font-semibold text-sm transition-all bg-[#466460] hover:bg-[#3a524f] disabled:opacity-70"
                 >
                   {exporting ? 'Exporting…' : 'Export Excel'}
                 </button>
@@ -2844,7 +2856,7 @@ const patientTypeData = useMemo(() => {
           SNACKBAR NOTIFICATION
       ───────────────────────────────────────────────────────────────────── */}
       {message && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center gap-3 shadow-xl transition-all ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-3 text-center shadow-xl transition-all ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
           <span className="shrink-0">
             {message.type === 'success' ? (
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -2857,7 +2869,7 @@ const patientTypeData = useMemo(() => {
             )}
           </span>
           <span className="whitespace-normal">{message.text}</span>
-          <button onClick={() => setMessage(null)} className="shrink-0 ml-1 w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition" title="Close">
+          <button onClick={() => setMessage(null)} className="shrink-0 ml-1 w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/20 transition" title="Close">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>

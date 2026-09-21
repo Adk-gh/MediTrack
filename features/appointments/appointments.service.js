@@ -12,6 +12,31 @@ const getTargetRolesForAppointment = (serviceType, reason) => {
   return ['doctor', 'nurse', 'sysadmin'];
 };
 
+
+// A user may only have one active appointment at a time.
+// Pending and approved appointments block a new request.
+const ACTIVE_APPOINTMENT_STATUSES = new Set(['pending', 'approved']);
+
+const isActiveAppointmentStatus = (status) =>
+  ACTIVE_APPOINTMENT_STATUSES.has(String(status || '').trim().toLowerCase());
+
+const getActiveAppointmentForUser = async (userId) => {
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('id, user_id, status, service_type, reason, year, month, day, time, created_at')
+    .eq('user_id', userId)
+    .eq('is_archived', false)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).find((appointment) =>
+    isActiveAppointmentStatus(appointment.status)
+  ) || null;
+};
+
 // ============================================================
 // STATUS NOTIFICATION COPY
 // ============================================================
@@ -288,6 +313,34 @@ exports.createAppointment = async (data) => {
       'The selected patient was not found or has been archived.'
     );
     error.status = 404;
+    throw error;
+  }
+
+  // ============================================================
+  // PREVENT DUPLICATE / OVERLAPPING ACTIVE APPOINTMENTS
+  // ============================================================
+
+  const existingActiveAppointment =
+    await getActiveAppointmentForUser(patient.id);
+
+  if (existingActiveAppointment) {
+    const error = new Error(
+      'This user already has an active appointment. Please wait until the current appointment is completed, missed, rejected, or otherwise closed before creating another request.'
+    );
+
+    error.status = 409;
+    error.code = 'ACTIVE_APPOINTMENT_EXISTS';
+    error.details = {
+      appointmentId: existingActiveAppointment.id,
+      status: existingActiveAppointment.status,
+      serviceType: existingActiveAppointment.service_type,
+      reason: existingActiveAppointment.reason,
+      year: existingActiveAppointment.year,
+      month: existingActiveAppointment.month,
+      day: existingActiveAppointment.day,
+      time: existingActiveAppointment.time,
+    };
+
     throw error;
   }
 
@@ -821,10 +874,74 @@ exports.createBulkAppointments = async (data) => {
     throw err;
   }
 
+  // ============================================================
+  // CHECK EVERY MATCHED STUDENT FOR AN ACTIVE APPOINTMENT
+  // ============================================================
+
+  const matchedUserIds = matchedUsers.map((student) => student.id);
+
+  const { data: existingAppointments, error: activeLookupError } =
+    await supabase
+      .from('appointments')
+      .select('id, user_id, status, service_type, reason, year, month, day, time, created_at')
+      .in('user_id', matchedUserIds)
+      .eq('is_archived', false)
+      .order('created_at', { ascending: false });
+
+  if (activeLookupError) throw activeLookupError;
+
+  const activeByUserId = new Map();
+
+  for (const appointment of existingAppointments || []) {
+    if (
+      isActiveAppointmentStatus(appointment.status) &&
+      !activeByUserId.has(String(appointment.user_id))
+    ) {
+      activeByUserId.set(String(appointment.user_id), appointment);
+    }
+  }
+
+  const alreadyHasActiveAppointment = [];
+  const eligibleStudents = [];
+
+  for (const student of matchedUsers) {
+    const activeAppointment =
+      activeByUserId.get(String(student.id));
+
+    if (activeAppointment) {
+      alreadyHasActiveAppointment.push({
+        universityId: student.university_id,
+        userId: student.id,
+        appointmentId: activeAppointment.id,
+        status: activeAppointment.status,
+        serviceType: activeAppointment.service_type,
+        reason: activeAppointment.reason,
+        year: activeAppointment.year,
+        month: activeAppointment.month,
+        day: activeAppointment.day,
+        time: activeAppointment.time,
+      });
+      continue;
+    }
+
+    eligibleStudents.push(student);
+  }
+
+  if (eligibleStudents.length === 0) {
+    return {
+      batchId: null,
+      created: [],
+      notFoundIds: notFound,
+      alreadyHasActiveAppointment,
+      skippedCount:
+        notFound.length + alreadyHasActiveAppointment.length,
+    };
+  }
+
   const batchId = crypto.randomUUID();
   const nowIso = new Date().toISOString();
 
-  const rows = matchedUsers.map((student) => ({
+  const rows = eligibleStudents.map((student) => ({
     user_id: student.id,
     patient_name: [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(' ') || student.university_id,
     service_type: serviceType,
@@ -841,63 +958,66 @@ exports.createBulkAppointments = async (data) => {
     updated_at: nowIso,
   }));
 
-const { data: inserted, error: insertError } = await supabase
-  .from('appointments')
-  .insert(rows)
-  .select();
+  const { data: inserted, error: insertError } = await supabase
+    .from('appointments')
+    .insert(rows)
+    .select();
 
-if (insertError) {
-  console.error(
-    '>>> [DB] Bulk Appointment Insert Error:',
-    insertError.message
-  );
-  throw insertError;
-}
+  if (insertError) {
+    console.error(
+      '>>> [DB] Bulk Appointment Insert Error:',
+      insertError.message
+    );
+    throw insertError;
+  }
 
-const targetRoles = getTargetRolesForAppointment(serviceType, reason);
+  const targetRoles = getTargetRolesForAppointment(serviceType, reason);
 
-try {
-  await notificationsService.notifyRoles(targetRoles, {
-    type: 'appointment_request',
-    title: 'New Bulk Appointment Request',
-    message:
-      `${facultyName} submitted a bulk appointment request for ` +
-      `${inserted.length} student${inserted.length === 1 ? '' : 's'} ` +
-      `(${serviceType}).`,
-    referenceId: batchId,
-    referenceType: 'appointment_batch',
-  });
-} catch (notificationError) {
-  console.error(
-    '[CREATE BULK APPOINTMENTS] Staff notification failed:',
-    notificationError.message
-  );
-}
+  try {
+    await notificationsService.notifyRoles(targetRoles, {
+      type: 'appointment_request',
+      title: 'New Bulk Appointment Request',
+      message:
+        `${facultyName} submitted a bulk appointment request for ` +
+        `${inserted.length} student${inserted.length === 1 ? '' : 's'} ` +
+        `(${serviceType}).`,
+      referenceId: batchId,
+      referenceType: 'appointment_batch',
+    });
+  } catch (notificationError) {
+    console.error(
+      '[CREATE BULK APPOINTMENTS] Staff notification failed:',
+      notificationError.message
+    );
+  }
 
-try {
-  await notificationsService.createNotification({
-    userId: requester.id,
-    type: 'bulk_appointment_submitted',
-    title: 'Bulk Appointment Request Submitted',
-    message:
-      `Your bulk appointment request for ` +
-      `${inserted.length} student${inserted.length === 1 ? '' : 's'} ` +
-      `has been submitted successfully and is awaiting clinic approval.`,
-    referenceId: batchId,
-    referenceType: 'appointment_batch',
-  });
-} catch (notificationError) {
-  console.error(
-    '[CREATE BULK APPOINTMENTS] Requester notification failed:',
-    notificationError.message
-  );
-}
+  try {
+    await notificationsService.createNotification({
+      userId: requester.id,
+      type: 'bulk_appointment_submitted',
+      title: 'Bulk Appointment Request Submitted',
+      message:
+        `Your bulk appointment request for ` +
+        `${inserted.length} student${inserted.length === 1 ? '' : 's'} ` +
+        `has been submitted successfully and is awaiting clinic approval.`,
+      referenceId: batchId,
+      referenceType: 'appointment_batch',
+    });
+  } catch (notificationError) {
+    console.error(
+      '[CREATE BULK APPOINTMENTS] Requester notification failed:',
+      notificationError.message
+    );
+  }
 
-return {
-  batchId,
-  created: inserted,
-  notFoundIds: notFound,
-};
+  return {
+    batchId,
+    created: inserted,
+    notFoundIds: notFound,
+    alreadyHasActiveAppointment,
+    skippedCount:
+      notFound.length + alreadyHasActiveAppointment.length,
+  };
 };
 
 // ============================================================

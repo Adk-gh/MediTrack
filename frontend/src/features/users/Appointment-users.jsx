@@ -27,11 +27,13 @@ const STATUS_STYLES = {
   rejected: { bg: 'bg-[#fef2f2]', text: 'text-[#dc2626]', label: 'Rejected' },
 };
 
-// Simplified purpose list: two Face-to-Face options (can select both) and
-// two Online options (mutually exclusive with everything else).
+// Face-to-Face purposes can be combined with one another.
+// Online purposes remain mutually exclusive with all other purposes.
 const PURPOSES_OPTS = [
   { value: 'Medical Check-up', key: 'medicalCheckup', mode: 'f2f' },
   { value: 'Dental Check-up', key: 'dentalCheckup', mode: 'f2f' },
+  { value: 'Medical Clearance', key: 'medicalClearance', mode: 'f2f' },
+  { value: 'Dental Clearance', key: 'dentalClearance', mode: 'f2f' },
   { value: 'Online Medical Examination', key: 'onlineMedical', mode: 'online' },
   { value: 'Online Dental Examination', key: 'onlineDental', mode: 'online' },
 ];
@@ -622,21 +624,38 @@ const handleSubmit = async () => {
   setSubmitError('');
 
   try {
+    const isMedicalClearance =
+      selectedPurposes.includes('Medical Clearance');
+
+    const isDentalClearance =
+      selectedPurposes.includes('Dental Clearance');
+
     const isDentalPurpose =
       selectedPurposes.includes('Dental Check-up') ||
+      selectedPurposes.includes('Dental Clearance') ||
       selectedPurposes.includes('Online Dental Examination');
 
     const isOnlinePurpose =
       selectedPurposes.includes('Online Medical Examination') ||
       selectedPurposes.includes('Online Dental Examination');
 
-    const serviceType = isDentalPurpose
-      ? isOnlinePurpose
+    let serviceType;
+
+    if (isOnlinePurpose) {
+      serviceType = selectedPurposes.includes('Online Dental Examination')
         ? 'Online Dental Consultation'
-        : 'Dental Examination'
-      : isOnlinePurpose
-        ? 'Online Medical Consultation'
-        : 'Medical Consultation';
+        : 'Online Medical Consultation';
+    } else if (isMedicalClearance && isDentalClearance) {
+      serviceType = 'Medical and Dental Clearance';
+    } else if (isDentalClearance) {
+      serviceType = 'Dental Clearance';
+    } else if (isMedicalClearance) {
+      serviceType = 'Medical Clearance';
+    } else if (isDentalPurpose) {
+      serviceType = 'Dental Examination';
+    } else {
+      serviceType = 'Medical Consultation';
+    }
 
     const internalId =
       userProfile?.id ||
@@ -983,7 +1002,7 @@ const handleSubmit = async () => {
                     {/* Face-to-Face group */}
                     <div className="flex items-center gap-1.5 mt-1 text-[10px] font-bold text-[#6b8577] uppercase tracking-wider">
                       <i className="fa-solid fa-hospital text-[10px]"></i>
-                      {t('appointments.f2fLabel', 'Face-to-Face — can select both')}
+                      {t('appointments.f2fLabel', 'Face-to-Face — can select multiple')}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {PURPOSES_OPTS.filter(p => p.mode === 'f2f').map(p => {
