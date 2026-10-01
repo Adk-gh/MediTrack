@@ -1,5 +1,5 @@
 // frontend/src/components/AddressModal.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 // PSGC API Base URL
@@ -58,42 +58,12 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
   const [loadingCities, setLoadingCities] = useState(false);
   const [loadingBarangays, setLoadingBarangays] = useState(false);
 
-  // Fetch regions on mount
-  useEffect(() => {
-    if (isOpen && regions.length === 0) {
-      fetchRegions();
-    }
-  }, [isOpen]);
-
-  // Reset form data when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setFormData({
-        addressCountry: initialData.addressCountry || 'Philippines',
-        addressRegion: initialData.addressRegion || '',
-        addressRegionCode: initialData.addressRegionCode || '',
-        addressProvince: initialData.addressProvince || '',
-        addressProvinceCode: initialData.addressProvinceCode || '',
-        addressCity: initialData.addressCity || '',
-        addressCityCode: initialData.addressCityCode || '',
-        addressBarangay: initialData.addressBarangay || '',
-        addressBarangayCode: initialData.addressBarangayCode || '',
-        addressStreet: initialData.addressStreet || '',
-        addressZipCode: initialData.addressZipCode || '',
-      });
-      // Reset all dependent data
-      setProvinces([]);
-      setCities([]);
-      setBarangays([]);
-    }
-  }, [isOpen, initialData]);
-
+  // Define fetch functions first
   const fetchRegions = async () => {
     setLoadingRegions(true);
     try {
       const response = await fetch(`${PSGC_API}/regions`);
       const data = await response.json();
-      // Sort alphabetically
       const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
       setRegions(sorted);
     } catch (error) {
@@ -140,12 +110,58 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
       setBarangays(sorted);
     } catch (error) {
       console.error('Error fetching barangays:', error);
-      // Fallback to generic barangays
       setBarangays(GENERIC_BARANGAYS.map(name => ({ code: '', name })));
     } finally {
       setLoadingBarangays(false);
     }
   };
+
+  // Fetch regions on mount
+  useEffect(() => {
+    if (isOpen && regions.length === 0) {
+      fetchRegions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Reset form data and fetch existing lists when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        addressCountry: initialData.addressCountry || 'Philippines',
+        addressRegion: initialData.addressRegion || '',
+        addressRegionCode: initialData.addressRegionCode || '',
+        addressProvince: initialData.addressProvince || '',
+        addressProvinceCode: initialData.addressProvinceCode || '',
+        addressCity: initialData.addressCity || '',
+        addressCityCode: initialData.addressCityCode || '',
+        addressBarangay: initialData.addressBarangay || '',
+        addressBarangayCode: initialData.addressBarangayCode || '',
+        addressStreet: initialData.addressStreet || '',
+        addressZipCode: initialData.addressZipCode || '',
+      });
+
+      // Fetch dependent data if existing codes are provided
+      if (initialData.addressRegionCode) {
+        fetchProvinces(initialData.addressRegionCode);
+      } else {
+        setProvinces([]);
+      }
+
+      if (initialData.addressProvinceCode) {
+        fetchCities(initialData.addressProvinceCode);
+      } else {
+        setCities([]);
+      }
+
+      if (initialData.addressCityCode) {
+        fetchBarangays(initialData.addressCityCode);
+      } else {
+        setBarangays([]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialData]);
 
   const handleChange = (e) => {
     const { id, value } = e.target;
@@ -161,11 +177,9 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
       updatedData.addressCityCode = '';
       updatedData.addressBarangay = '';
       updatedData.addressBarangayCode = '';
-      // Reset dependent data
       setProvinces([]);
       setCities([]);
       setBarangays([]);
-      // Fetch provinces
       if (selectedRegion?.code) {
         fetchProvinces(selectedRegion.code);
       }
@@ -179,10 +193,8 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
       updatedData.addressCityCode = '';
       updatedData.addressBarangay = '';
       updatedData.addressBarangayCode = '';
-      // Reset dependent data
       setCities([]);
       setBarangays([]);
-      // Fetch cities
       if (selectedProvince?.code) {
         fetchCities(selectedProvince.code);
       }
@@ -194,9 +206,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
       updatedData.addressCityCode = selectedCity?.code || '';
       updatedData.addressBarangay = '';
       updatedData.addressBarangayCode = '';
-      // Reset dependent data
       setBarangays([]);
-      // Fetch barangays
       if (selectedCity?.code) {
         fetchBarangays(selectedCity.code);
       }
@@ -208,19 +218,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
       updatedData.addressBarangayCode = selectedBarangay?.code || '';
     }
 
-    setFormData(prev => {
-      const newData = { ...prev, ...updatedData };
-      return newData;
-    });
-  };
-
-  const handleConfirm = () => {
-    const fullAddress = buildFullAddress(formData);
-    onConfirm({
-      ...formData,
-      homeAddress: fullAddress
-    });
-    onClose();
+    setFormData(prev => ({ ...prev, ...updatedData }));
   };
 
   const buildFullAddress = (data) => {
@@ -239,6 +237,17 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
     return parts.join(', ');
   };
 
+  const handleConfirm = () => {
+    const fullAddress = buildFullAddress(formData);
+
+    // Only pass the compiled full address to match the single database column
+    onConfirm({
+      home_address: fullAddress
+    });
+
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -246,7 +255,6 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
       className="fixed inset-0 bg-black/50 flex items-center justify-center"
       style={{ zIndex }}
       onClick={(e) => {
-        // Closes the modal ONLY if the backdrop is clicked directly
         if (e.target === e.currentTarget) onClose();
       }}
     >
@@ -345,7 +353,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
             </select>
           </div>
 
-          {/* Barangay - Dropdown */}
+          {/* Barangay */}
           <div className="mb-3">
             <label className={labelCls}>Barangay</label>
             <select
@@ -362,7 +370,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
             </select>
           </div>
 
-          {/* Street / House No. - Input */}
+          {/* Street / House No. */}
           <div className="mb-3">
             <label className={labelCls}>Street / House No.</label>
             <input
@@ -376,7 +384,7 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
             />
           </div>
 
-          {/* Zip Code - Input */}
+          {/* Zip Code */}
           <div className="mb-3">
             <label className={labelCls}>Zip Code</label>
             <input
@@ -389,7 +397,6 @@ export default function AddressModal({ isOpen, onClose, onConfirm, initialData =
               onPaste={(e) => e.preventDefault()}
             />
           </div>
-
           </>
           )}
 

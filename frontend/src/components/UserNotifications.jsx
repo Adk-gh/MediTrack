@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { supabase } from '../supabase';
 import notificationsService from '../services/notifications.service.js';
-import { useTranslation } from 'react-i18next'; // <-- Imported i18next hook
+import { useTranslation } from 'react-i18next';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -251,77 +251,77 @@ export function UserNotificationPanel({ isOpen, onClose }) {
     }
   };
 
-const getNotificationTarget = (notification) => {
-  const type = String(notification.type || '').toLowerCase();
+  const getNotificationTarget = (notification) => {
+    const type = String(notification.type || '').toLowerCase();
 
-  const referenceType = String(
-    notification.referenceType ||
-    notification.reference_type ||
-    ''
-  ).toLowerCase();
+    const referenceType = String(
+      notification.referenceType ||
+      notification.reference_type ||
+      ''
+    ).toLowerCase();
 
-  const searchableText = [
-    notification.title,
-    notification.message,
-    type,
-    referenceType,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
+    const searchableText = [
+      notification.title,
+      notification.message,
+      type,
+      referenceType,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
 
-  if (
-    type.includes('appointment') ||
-    referenceType.includes('appointment') ||
-    searchableText.includes('appointment')
-  ) {
-    return 'appointments';
-  }
+    if (
+      type.includes('appointment') ||
+      referenceType.includes('appointment') ||
+      searchableText.includes('appointment')
+    ) {
+      return 'appointments';
+    }
 
-  if (
-    type.includes('medical_record') ||
-    type.includes('dental_record') ||
-    type.includes('record_added') ||
-    type.includes('record_updated') ||
-    referenceType.includes('medical_record') ||
-    referenceType.includes('dental_record') ||
-    referenceType === 'record' ||
-    searchableText.includes('medical record') ||
-    searchableText.includes('dental record')
-  ) {
-    return 'records';
-  }
+    if (
+      type.includes('medical_record') ||
+      type.includes('dental_record') ||
+      type.includes('record_added') ||
+      type.includes('record_updated') ||
+      referenceType.includes('medical_record') ||
+      referenceType.includes('dental_record') ||
+      referenceType === 'record' ||
+      searchableText.includes('medical record') ||
+      searchableText.includes('dental record')
+    ) {
+      return 'records';
+    }
 
-  if (
-    type.includes('consultation') ||
-    referenceType.includes('consultation') ||
-    searchableText.includes('consultation')
-  ) {
-    return 'consultations';
-  }
+    if (
+      type.includes('consultation') ||
+      referenceType.includes('consultation') ||
+      searchableText.includes('consultation')
+    ) {
+      return 'consultations';
+    }
 
-  if (
-    type.includes('announcement') ||
-    referenceType.includes('announcement') ||
-    searchableText.includes('announcement')
-  ) {
+    if (
+      type.includes('announcement') ||
+      referenceType.includes('announcement') ||
+      searchableText.includes('announcement')
+    ) {
+      return 'home';
+    }
+
+    if (
+      type.includes('profile') ||
+      type.includes('user') ||
+      type.includes('account') ||
+      referenceType.includes('profile') ||
+      referenceType.includes('user') ||
+      searchableText.includes('profile') ||
+      searchableText.includes('account')
+    ) {
+      return 'profile';
+    }
+
     return 'home';
-  }
-
-  if (
-    type.includes('profile') ||
-    type.includes('user') ||
-    type.includes('account') ||
-    referenceType.includes('profile') ||
-    referenceType.includes('user') ||
-    searchableText.includes('profile') ||
-    searchableText.includes('account')
-  ) {
-    return 'profile';
-  }
-
-  return 'home';
-};
+  };
 
   const handleMarkAsRead = async (notificationId) => {
     try {
@@ -335,43 +335,43 @@ const getNotificationTarget = (notification) => {
     }
   };
 
-const handleNotificationClick = async (notification) => {
-  try {
-    if (!notification.isRead) {
-      await notificationsService.markAsRead(notification.id);
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification.isRead) {
+        await notificationsService.markAsRead(notification.id);
 
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notification.id
-            ? { ...n, isRead: true }
-            : n
-        )
-      );
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id
+              ? { ...n, isRead: true }
+              : n
+          )
+        );
 
-      setUnreadCount(prev => Math.max(0, prev - 1));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error(err);
     }
-  } catch (err) {
-    console.error(err);
-  }
 
-  const tab = getNotificationTarget(notification);
+    const tab = getNotificationTarget(notification);
 
-  onClose();
+    onClose();
 
-  // If already inside MediTrack
-  window.dispatchEvent(
-    new CustomEvent("meditrack:navigate", {
-      detail: { to: tab }
-    })
-  );
+    // If already inside MediTrack
+    window.dispatchEvent(
+      new CustomEvent("meditrack:navigate", {
+        detail: { to: tab }
+      })
+    );
 
-  // If coming from another route
-  navigate("/student/meditrack", {
-    state: {
-      activeTab: tab
-    }
-  });
-};
+    // If coming from another route
+    navigate("/student/meditrack", {
+      state: {
+        activeTab: tab
+      }
+    });
+  };
 
   const handleMarkAllAsRead = async () => {
     try {
@@ -380,17 +380,6 @@ const handleNotificationClick = async (notification) => {
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking all as read:', error);
-    }
-  };
-
-  const handleDelete = async (notificationId) => {
-    try {
-      await notificationsService.deleteNotification(notificationId);
-      const wasUnread = notifications.find(n => n.id === notificationId && !n.isRead);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      if (wasUnread) setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error deleting notification:', error);
     }
   };
 
@@ -409,30 +398,30 @@ const handleNotificationClick = async (notification) => {
 
       {/* Panel */}
       <div
-  className="
-    fixed
-    top-0
-    right-0
-    sm:top-2
-    sm:right-2
-    z-[99999]
-    w-full
-    sm:w-[380px]
-    h-full
-    sm:h-[calc(100vh-16px)]
-    sm:max-h-[600px]
-    bg-white
-    sm:rounded-2xl
-    shadow-2xl
-    flex
-    flex-col
-    overflow-hidden
-    animate-slideIn
-  "
-  style={{
-    paddingTop: 'env(safe-area-inset-top, 0px)',
-  }}
->
+        className="
+          fixed
+          top-0
+          right-0
+          sm:top-2
+          sm:right-2
+          z-[99999]
+          w-full
+          sm:w-[380px]
+          h-full
+          sm:h-[calc(100vh-16px)]
+          sm:max-h-[600px]
+          bg-white
+          sm:rounded-2xl
+          shadow-2xl
+          flex
+          flex-col
+          overflow-hidden
+          animate-slideIn
+        "
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+        }}
+      >
         {/* Header */}
         <div className="bg-gradient-to-br from-[#466460] to-[#466048] px-4 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -507,17 +496,7 @@ const handleNotificationClick = async (notification) => {
                           }`}>
                             {notification.title}
                           </p>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(notification.id);
-                            }}
-                            className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
-                          >
-                            <div className="w-4 h-4">
-                              <XIcon />
-                            </div>
-                          </button>
+                          {/* DELETE BUTTON REMOVED FROM HERE */}
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
                           {notification.message}

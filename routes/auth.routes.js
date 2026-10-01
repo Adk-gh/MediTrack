@@ -1,5 +1,3 @@
-// C:\Users\HP\MediTrack\routes\auth.routes.js
-
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
@@ -67,10 +65,6 @@ const clientIpKey = (req) => {
 // DYNAMIC ADMIN ROLE MIDDLEWARE
 // ============================================================
 
-// Allows configured admin roles and sysadmin only.
-//
-// Doctors, dentists, and nurses are intentionally excluded
-// because this middleware is for administrative operations.
 const allowDynamicAdmin = async (
   req,
   res,
@@ -325,6 +319,19 @@ const registerLimiter = rateLimit({
   },
 });
 
+// ✅ ADDED: Specific 3-attempt rate limiter for resending verification emails
+const resendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes timeout
+  max: 3, // Limit to 3 requests per IP within the 15 minutes
+  keyGenerator: clientIpKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many resend attempts. Please wait 15 minutes before trying again.',
+  },
+});
+
 // ============================================================
 // REGISTER
 // ============================================================
@@ -332,11 +339,7 @@ const registerLimiter = rateLimit({
 router.post(
   '/register',
   registerLimiter,
-
-  // Multer must run before auditLog so multipart fields
-  // such as email are available through req.body.
   upload.single('image'),
-
   auditLog(
     'Register User',
     'AUTHENTICATION',
@@ -377,9 +380,7 @@ router.post(
 router.post(
   '/login',
   loginLimiter,
-
   attachLoginAuditDetails,
-
   auditLog(
     'User Login',
     'AUTHENTICATION',
@@ -412,12 +413,9 @@ router.post(
 // FORGOT PASSWORD
 // ============================================================
 
-// This route intentionally does not reveal whether an account
-// exists for the submitted email.
 router.post(
   '/forgot-password',
   emailLimiter,
-
   auditLog(
     'Request Password Reset',
     'AUTHENTICATION',
@@ -441,7 +439,6 @@ router.post(
 
 router.post(
   '/reset-password',
-
   auditLog(
     'Reset Password',
     'AUTHENTICATION',
@@ -465,8 +462,7 @@ router.post(
 
 router.post(
   '/send-verification',
-  emailLimiter,
-
+  resendLimiter, // ✅ UPDATED: Now uses the strict 3-attempt limiter
   auditLog(
     'Send Verification Email',
     'AUTHENTICATION',
@@ -490,7 +486,6 @@ router.post(
 
 router.post(
   '/verify-email',
-
   auditLog(
     'Verify Email',
     'AUTHENTICATION',
@@ -526,10 +521,7 @@ router.post(
   emailLimiter,
   authorized,
   allowDynamicAdmin,
-
-  // Read target details before the controller sends the email.
   attachTargetUserAuditDetails,
-
   auditLog(
     'Admin Resend Verification',
     'AUTHENTICATION',
