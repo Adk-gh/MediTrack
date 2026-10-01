@@ -2,12 +2,13 @@
 const cors = require("cors");
 
 const allowedOrigins = [
-  "http://localhost:5173",                 // Vite dev server
-  "https://meditrack-2-tvck.onrender.com", // Production Render web
+  "http://localhost:5173",                 // Vite dev server 
   "http://localhost",                      // Android Capacitor WebView
   "https://localhost",                     // Android Capacitor SSL WebView
   "capacitor://localhost",                 // iOS / Capacitor default scheme
-  "ionic://localhost",                     // Ionic / legacy Capacitor scheme
+  "ionic://localhost",
+  "https://meditrackdlsp.online",
+  "https://www.meditrackdlsp.online"                    // Ionic / legacy Capacitor scheme
 ];
 
 const corsOptions = {

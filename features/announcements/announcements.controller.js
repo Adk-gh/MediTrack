@@ -160,7 +160,7 @@ const getAnnouncementSharePage = async (req, res, next) => {
 
     const frontendBaseUrl =
       process.env.FRONTEND_URL ||
-      'https://meditrack-2-tvck.onrender.com';
+      'https://meditrackdlsp.online';
 
     const backendBaseUrl =
       process.env.BACKEND_URL ||

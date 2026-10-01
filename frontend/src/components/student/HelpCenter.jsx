@@ -17,10 +17,6 @@ const FAQ_DATA = [
   {
     question: 'What do I do if I cannot log in?',
     answer: 'If you are having trouble logging in, ensure you are using your official student email. If you forgot your password, click "Forgot Password" on the login screen to reset it.',
-  },
-  {
-    question: 'How do I submit an excused absence letter?',
-    answer: 'If you were absent due to medical reasons, go to the "Clearance/Certificates" section. You can upload your external medical certificate there for the school clinic to validate.',
   }
 ];
 

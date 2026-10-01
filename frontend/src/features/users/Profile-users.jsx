@@ -617,7 +617,7 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
             error: emailUpdateError,
           } = await supabase.auth.updateUser(
             { email: normalizedNewEmail },
-            { emailRedirectTo: 'https://meditrack-2-tvck.onrender.com/#/login' }
+            { emailRedirectTo: 'https://meditrackdlsp.online/#/login' }
           );
 
           if (emailUpdateError) {

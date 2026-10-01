@@ -4,6 +4,7 @@ import { supabase } from '../../supabase';
 import { createPortal } from 'react-dom';
 import DatePicker from '../../components/Datepicker';
 import AddressModal from '../../components/AddressModal';
+import { useTranslation } from 'react-i18next';
 
 // ── Frontend Email Validation Helper ──────────────────────────────────────────
 const validateEmailWithEasyEmail = async (email) => {
@@ -46,7 +47,7 @@ const getPasswordRequirements = (rules) => {
 };
 
 const validatePassword = (password, rules) => {
-  if (!rules) return { valid: true, message: '' }; // Fallback
+  if (!rules) return { valid: true, message: '' };
   const requirements = getPasswordRequirements(rules);
   const failedRequirements = requirements.filter((r) => !r.test(password));
   if (failedRequirements.length > 0) {
@@ -100,7 +101,6 @@ const isClinicStaff = (r, config) => {
 const isNonTeaching = (r, config) => {
   const role = (r || '').toLowerCase().trim();
   if (isAdmin(r, config) || isClinicStaff(r, config)) return false;
-  // Hard override: force known non-teaching roles to evaluate correctly regardless of DB config errors
   if (FALLBACK_NON_TEACHING_ROLES.includes(role)) return true;
   return config?.staff_roles?.map(x => x.toLowerCase()).includes(role);
 };
@@ -113,7 +113,6 @@ const isTeaching = (r, config) => {
 
 const isStudent = (r) => (r || '').toLowerCase().trim() === 'student';
 
-// Extracts unique values from a config field (array or JSONB object values)
 const extractUniqueConfigValues = (configField) => {
   if (!configField) return [];
   if (Array.isArray(configField)) return Array.from(new Set(configField));
@@ -127,7 +126,7 @@ const getDeptOptionsForRole = (role, configData) => {
 
   if (isStudent(role) || isTeaching(role, configData)) return depts;
   if (isNonTeaching(role, configData)) return offices;
-  return [...depts, ...offices]; // fallback for admin/clinic if needed
+  return [...depts, ...offices];
 };
 
 const STUDENT_CLASSIFICATIONS = ['Regular','Irregular','Returning'];
@@ -178,6 +177,7 @@ const labelCls  = "block text-[10px] font-bold uppercase text-slate-500 mb-1 tra
 // Shared Unsaved Changes Modal
 // ─────────────────────────────────────────────────────────────────────────────
 const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
   return createPortal(
     <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onCancel}>
@@ -188,15 +188,15 @@ const UnsavedChangesModal = ({ isOpen, onConfirm, onCancel }) => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h3 className="text-lg font-bold text-slate-800">Unsaved Changes</h3>
+          <h3 className="text-lg font-bold text-slate-800">{t('userManagement.modals.unsavedChanges', 'Unsaved Changes')}</h3>
         </div>
-        <p className="text-sm text-slate-600 mb-6">You have unsaved changes. Are you sure you want to discard them? Any edits you made will be lost.</p>
+        <p className="text-sm text-slate-600 mb-6">{t('userManagement.modals.discardWarning', 'You have unsaved changes. Are you sure you want to discard them? Any edits you made will be lost.')}</p>
         <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
           <button onClick={onCancel} className="min-h-11 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition">
-            Keep Editing
+            {t('userManagement.modals.keepEditing', 'Keep Editing')}
           </button>
           <button onClick={onConfirm} className="min-h-11 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition">
-            Discard
+            {t('userManagement.modals.discard', 'Discard')}
           </button>
         </div>
       </div>
@@ -333,16 +333,16 @@ const CustomSelect = ({ value, onChange, options, placeholder = "— Select —"
 };
 
 // Generate Grouped Role Options safely using system_config mappings
-const getRoleOptions = (configData) => {
+const getRoleOptions = (configData, t) => {
   if (!configData) return [];
   const groups = [];
   if (isCurrentUserSysAdmin) {
-    groups.push({ label: 'System Administration', options: (configData.admin_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+    groups.push({ label: t('userManagement.filters.sysadmin', 'System Administration'), options: (configData.admin_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
   }
-  groups.push({ label: 'Clinic Personnel', options: (configData.clinic_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
-  groups.push({ label: 'Teaching Personnel', options: (configData.faculty_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
-  groups.push({ label: 'Non-Teaching Personnel', options: (configData.staff_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
-  groups.push({ label: 'Student', options: [{ value: 'student', label: 'Student' }] });
+  groups.push({ label: t('userManagement.filters.clinicPersonnel', 'Clinic Personnel'), options: (configData.clinic_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: t('userManagement.filters.teachingPersonnel', 'Teaching Personnel'), options: (configData.faculty_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: t('userManagement.filters.nonTeachingPersonnel', 'Non-Teaching Personnel'), options: (configData.staff_roles || []).map(r => ({ value: r, label: capitalizeWords(r) })) });
+  groups.push({ label: t('userManagement.filters.students', 'Student'), options: [{ value: 'student', label: t('userManagement.filters.students', 'Student') }] });
   return groups;
 };
 
@@ -350,6 +350,7 @@ const getRoleOptions = (configData) => {
 // CreateUserModal
 // ─────────────────────────────────────────────────────────────────────────────
 const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -486,6 +487,26 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
   const isAdminRole = isAdmin(form.role, configData);
   const secHead = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
 
+  // Dropdown arrays translated
+  const sexOptions = [
+    { value: 'Male', label: t('userManagement.filters.male', 'Male') },
+    { value: 'Female', label: t('userManagement.filters.female', 'Female') }
+  ];
+  const yearOptions = [
+    { value: '1st Year', label: t('userManagement.modals.fields.1stYear', '1st Year') },
+    { value: '2nd Year', label: t('userManagement.modals.fields.2ndYear', '2nd Year') },
+    { value: '3rd Year', label: t('userManagement.modals.fields.3rdYear', '3rd Year') },
+    { value: '4th Year', label: t('userManagement.modals.fields.4thYear', '4th Year') },
+    { value: '5th Year', label: t('userManagement.modals.fields.5thYear', '5th Year') },
+    { value: 'Graduate', label: t('userManagement.modals.fields.graduate', 'Graduate') }
+  ];
+  const classificationOptions = STUDENT_CLASSIFICATIONS.map(c => ({
+    value: c, label: t(`userManagement.modals.fields.${c.toLowerCase()}`, c)
+  }));
+  const civilStatusOptions = ['Single','Married','Widowed','Divorced','Separated'].map(c => ({
+    value: c, label: t(`userManagement.modals.fields.${c.toLowerCase()}`, c)
+  }));
+
   return createPortal(
     <>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[9999] p-0 sm:p-4" onClick={e => e.target === e.currentTarget && handleCloseRequest()}>
@@ -497,8 +518,8 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-bold">Create New User</h3>
-              <p className="text-xs text-white/70 mt-0.5">Fill in the details below</p>
+              <h3 className="text-base font-bold">{t('userManagement.modals.createNewUser', 'Create New User')}</h3>
+              <p className="text-xs text-white/70 mt-0.5">{t('userManagement.modals.fillDetails', 'Fill in the details below')}</p>
             </div>
             <button onClick={handleCloseRequest} className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -508,10 +529,10 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             <form onSubmit={handleSubmit} id="create-form">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                <div className={secHead}>Account</div>
-                <div><label className={labelCls}>Email <span className="text-red-400">*</span></label><input className={inputCls} type="email" value={form.email} autoComplete="off" onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required /></div>
+                <div className={secHead}>{t('userManagement.modals.sections.account', 'Account')}</div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.email', 'Email')} <span className="text-red-400">*</span></label><input className={inputCls} type="email" value={form.email} autoComplete="off" onChange={e => cf('email', e.target.value)} placeholder="user@example.com" required /></div>
                 <div className="flex flex-col">
-                  <label className={labelCls}>Password <span className="text-red-400">*</span></label>
+                  <label className={labelCls}>{t('userManagement.modals.fields.password', 'Password')} <span className="text-red-400">*</span></label>
                   <div className="relative">
                     <input className={`${inputCls} pr-10`} type={showPwd ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={e => cf('password', e.target.value)} placeholder="Create a password" required />
                     <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#466460]"><EyeIcon open={showPwd} /></button>
@@ -519,63 +540,63 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
                   <PasswordRequirements password={form.password} rules={configData?.passwordRules} />
                 </div>
 
-                <div className={secHead}>Identity</div>
-                <div><label className={labelCls}>First Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.first_name} onChange={e => cf('first_name', e.target.value)} placeholder="First name" required /></div>
-                <div><label className={labelCls}>Last Name <span className="text-red-400">*</span></label><input className={inputCls} value={form.last_name} onChange={e => cf('last_name', e.target.value)} placeholder="Last name" required /></div>
-                <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={form.middle_name} onChange={e => cf('middle_name', e.target.value)} placeholder="Middle name" /></div>
+                <div className={secHead}>{t('userManagement.modals.sections.identity', 'Identity')}</div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.firstName', 'First Name')} <span className="text-red-400">*</span></label><input className={inputCls} value={form.first_name} onChange={e => cf('first_name', e.target.value)} required /></div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.lastName', 'Last Name')} <span className="text-red-400">*</span></label><input className={inputCls} value={form.last_name} onChange={e => cf('last_name', e.target.value)} required /></div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.middleName', 'Middle Name')}</label><input className={inputCls} value={form.middle_name} onChange={e => cf('middle_name', e.target.value)} /></div>
                 <div>
-                  <label className={labelCls}>Suffix</label>
+                  <label className={labelCls}>{t('userManagement.modals.fields.suffix', 'Suffix')}</label>
                   <CustomSelect value={form.suffix} onChange={v => cf('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
                 </div>
-                <div><label className={labelCls}>Birthday</label><DatePicker value={form.birthday} onChange={(val) => handleBirthdayChange(val)} /></div>
-                <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" /></div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.birthday', 'Birthday')}</label><DatePicker value={form.birthday} onChange={(val) => handleBirthdayChange(val)} /></div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.age', 'Age')}</label><input className={`${inputCls} bg-slate-50`} type="number" readOnly value={form.age} placeholder="Auto" /></div>
                 <div>
-                  <label className={labelCls}>Sex</label>
-                  <CustomSelect value={form.sex} onChange={v => cf('sex', v)} options={['Male', 'Female']} />
+                  <label className={labelCls}>{t('userManagement.modals.fields.sex', 'Sex')}</label>
+                  <CustomSelect value={form.sex} onChange={v => cf('sex', v)} options={sexOptions} />
                 </div>
                 <div>
-                  <label className={labelCls}>Civil Status</label>
-                  <CustomSelect value={form.civil_status} onChange={v => cf('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
+                  <label className={labelCls}>{t('userManagement.modals.fields.civilStatus', 'Civil Status')}</label>
+                  <CustomSelect value={form.civil_status} onChange={v => cf('civil_status', v)} options={civilStatusOptions} />
                 </div>
                 <div>
-                  <label className={labelCls}>Religion</label>
+                  <label className={labelCls}>{t('userManagement.modals.fields.religion', 'Religion')}</label>
                   <CustomSelect value={form.religion} onChange={v => cf('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
                 </div>
                 <div>
-                  <label className={labelCls}>Nationality</label>
+                  <label className={labelCls}>{t('userManagement.modals.fields.nationality', 'Nationality')}</label>
                   <CustomSelect value={form.nationality} onChange={v => cf('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
                 </div>
-                <div><label className={labelCls}>Phone Number</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.phoneNumber', 'Phone Number')}</label><input className={inputCls} value={form.phone_number} onChange={e => cf('phone_number', e.target.value)} placeholder="+63 9XX XXX XXXX" /></div>
 
-                <div className={secHead}>Role &amp; Work</div>
+                <div className={secHead}>{t('userManagement.modals.sections.roleWork', 'Role & Work')}</div>
                 <div>
-                  <label className={labelCls}>Role <span className="text-red-400">*</span></label>
-                  <CustomSelect value={form.role} onChange={handleRoleChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
+                  <label className={labelCls}>{t('userManagement.modals.fields.role', 'Role')} <span className="text-red-400">*</span></label>
+                  <CustomSelect value={form.role} onChange={handleRoleChange} options={getRoleOptions(configData, t)} grouped={true} placeholder="— Select Role —" />
                 </div>
-                <div><label className={labelCls}>University ID <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
+                <div><label className={labelCls}>{t('userManagement.modals.fields.universityId', 'University ID')} <span className="text-red-400">*</span></label><input className={inputCls} value={form.university_id} onChange={e => cf('university_id', e.target.value)} placeholder="e.g. 2021-00001" required /></div>
 
                 {isStudentRole && (
                   <>
                     <div>
-                      <label className={labelCls}>Department <span className="text-red-400">*</span></label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.department', 'Department')} <span className="text-red-400">*</span></label>
                       <CustomSelect value={form.departmentAbbr} onChange={handleDeptChangeForStudent} options={(configData?.departments || []).map(d => ({ value: d.abbr, label: d.abbr }))} />
                       {form.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[form.departmentAbbr]}</p>}
                     </div>
                     <div>
-                      <label className={labelCls}>Program <span className="text-red-400">*</span></label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.program', 'Program')} <span className="text-red-400">*</span></label>
                       <CustomSelect value={form.program} onChange={v => cf('program', v)} options={availablePrograms} disabled={!form.departmentAbbr} />
                     </div>
                     <div>
-                      <label className={labelCls}>Year Level</label>
-                      <CustomSelect value={form.year_level} onChange={v => cf('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
+                      <label className={labelCls}>{t('userManagement.modals.fields.yearLevel', 'Year Level')}</label>
+                      <CustomSelect value={form.year_level} onChange={v => cf('year_level', v)} options={yearOptions} />
                     </div>
                     <div>
-                      <label className={labelCls}>Section</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.section', 'Section')}</label>
                       <CustomSelect value={form.section} onChange={v => cf('section', v)} options={configData?.sections || []} />
                     </div>
                     <div>
-                      <label className={labelCls}>Student Classification</label>
-                      <CustomSelect value={form.student_classification} onChange={v => cf('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
+                      <label className={labelCls}>{t('userManagement.modals.fields.studentClassification', 'Student Classification')}</label>
+                      <CustomSelect value={form.student_classification} onChange={v => cf('student_classification', v)} options={classificationOptions} />
                     </div>
                   </>
                 )}
@@ -583,28 +604,28 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
                 {(isTeachingRole || isNonTeachingRole || isClinicRole || isAdminRole) && (
                   <>
                     <div>
-                      <label className={labelCls}>Department / Office {!isAdminRole && !isClinicRole && <span className="text-red-400">*</span>}</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.departmentOffice', 'Department / Office')} {!isAdminRole && !isClinicRole && <span className="text-red-400">*</span>}</label>
                       <CustomSelect value={form.department} onChange={v => cf('department', v)} options={getDeptOptionsForRole(form.role, configData)} placeholder="— Select Office —" />
                     </div>
 
                     <div>
-                      <label className={labelCls}>Job Title {!isAdminRole && <span className="text-red-400">*</span>}</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.jobTitle', 'Job Title')} {!isAdminRole && <span className="text-red-400">*</span>}</label>
                       <CustomSelect value={form.job_title} onChange={v => cf('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
                     </div>
 
                     {!isAdminRole && !isClinicRole && (
                       <div>
-                        <label className={labelCls}>Classification</label>
+                        <label className={labelCls}>{t('userManagement.modals.fields.classification', 'Classification')}</label>
                         <CustomSelect value={form.classification} onChange={v => cf('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
                       </div>
                     )}
                   </>
                 )}
 
-                <div className={secHead}>Account Flags</div>
+                <div className={secHead}>{t('userManagement.modals.sections.accountFlags', 'Account Flags')}</div>
                 {[
-                  { key: 'is_verified',      label: 'Mark as Email Verified',   desc: 'User can log in without verifying email.' },
-                  { key: 'profile_complete', label: 'Mark Profile as Complete', desc: 'Skips profile setup on first login.' },
+                  { key: 'is_verified',      label: t('userManagement.modals.fields.markEmailVerified', 'Mark as Email Verified'),   desc: t('userManagement.modals.fields.markEmailVerifiedDesc', 'User can log in without verifying email.') },
+                  { key: 'profile_complete', label: t('userManagement.modals.fields.markProfileComplete', 'Mark Profile as Complete'), desc: t('userManagement.modals.fields.markProfileCompleteDesc', 'Skips profile setup on first login.') },
                 ].map(({ key, label, desc }) => (
                   <div key={key} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                     <Toggle checked={form[key]} onChange={() => cf(key, !form[key])} />
@@ -618,11 +639,11 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
             </form>
           </div>
 
-          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 bg-slate-50 shrink-0">
-            <button type="button" onClick={handleCloseRequest} className="min-h-11 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
-            <button type="submit" form="create-form" disabled={loading} className="min-h-11 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
+          <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50 shrink-0">
+            <button type="button" onClick={handleCloseRequest} className="flex-1 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">{t('userManagement.actions.cancel', 'Cancel')}</button>
+            <button type="submit" form="create-form" disabled={loading} className="flex-1 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
               {loading && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
-              {loading ? 'Creating…' : '✓ Create User'}
+              {loading ? t('userManagement.actions.creating', 'Creating…') : t('userManagement.actions.createUser', '✓ Create User')}
             </button>
           </div>
         </div>
@@ -642,11 +663,30 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
 // Main UserManagement component
 // ─────────────────────────────────────────────────────────────────────────────
 export const UserManagement = () => {
+  const { t, i18n } = useTranslation();
+
   const [users, setUsers]               = useState([]);
   const [loading, setLoading]           = useState(true);
   const [configData, setConfigData]     = useState(null);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const [resendingId, setResendingId]   = useState(null);
+
+  // Synchronize i18n language from System Config (Sysadmin Settings) or LocalStorage
+  useEffect(() => {
+    if (!isConfigLoading) {
+      try {
+        // Look at the global system configuration first, then fall back to local storage
+        const sysLang = configData?.language || localStorage.getItem('i18nextLng') || 'English';
+        const langCode = sysLang.toLowerCase().includes('fil') ? 'fil' : 'en';
+
+        if (i18n.language !== langCode) {
+          i18n.changeLanguage(langCode);
+        }
+      } catch (e) {
+        console.error('Error synchronizing language preference:', e);
+      }
+    }
+  }, [configData, isConfigLoading, i18n]);
 
   // Search & Filters
   const [selectedRole, setSelectedRole]             = useState('all');
@@ -988,7 +1028,7 @@ export const UserManagement = () => {
     setEditForm(f => ({
       ...f, role: val, classification: rawClassification || '',
       job_title: rawJobTitle || capitalizeWords(val),
-      department: '', departmentAbbr: '', program: '' // Reset dept when role changes
+      department: '', departmentAbbr: '', program: ''
     }));
   };
 
@@ -1128,6 +1168,26 @@ export const UserManagement = () => {
   const sectionHeadCls = "col-span-full text-[10px] font-black uppercase tracking-widest text-[#466460] border-b border-[#e0eceb] pb-1 mt-2";
   const COL_COUNT = 9;
 
+  // Dropdown arrays translated
+  const sexOptions = [
+    { value: 'Male', label: t('userManagement.filters.male', 'Male') },
+    { value: 'Female', label: t('userManagement.filters.female', 'Female') }
+  ];
+  const yearOptions = [
+    { value: '1st Year', label: t('userManagement.modals.fields.1stYear', '1st Year') },
+    { value: '2nd Year', label: t('userManagement.modals.fields.2ndYear', '2nd Year') },
+    { value: '3rd Year', label: t('userManagement.modals.fields.3rdYear', '3rd Year') },
+    { value: '4th Year', label: t('userManagement.modals.fields.4thYear', '4th Year') },
+    { value: '5th Year', label: t('userManagement.modals.fields.5thYear', '5th Year') },
+    { value: 'Graduate', label: t('userManagement.modals.fields.graduate', 'Graduate') }
+  ];
+  const classificationOptions = STUDENT_CLASSIFICATIONS.map(c => ({
+    value: c, label: t(`userManagement.modals.fields.${c.toLowerCase()}`, c)
+  }));
+  const civilStatusOptions = ['Single','Married','Widowed','Divorced','Separated'].map(c => ({
+    value: c, label: t(`userManagement.modals.fields.${c.toLowerCase()}`, c)
+  }));
+
   if (isConfigLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
@@ -1147,11 +1207,11 @@ export const UserManagement = () => {
 
       <div className="grid grid-cols-2 min-[390px]:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
         {[
-          { label: 'Total', count: statTotal, color: 'text-slate-800' },
-          { label: 'Clinic', count: statClinicStaff, color: 'text-blue-600' },
-          { label: 'Students', count: statStudent, color: 'text-purple-600' },
-          { label: 'Teaching', count: statTeaching, color: 'text-emerald-600' },
-          { label: 'Non-Teaching', count: statNonTeaching, color: 'text-amber-600' },
+          { label: t('userManagement.stats.total', 'Total'), count: statTotal, color: 'text-slate-800' },
+          { label: t('userManagement.stats.clinic', 'Clinic'), count: statClinicStaff, color: 'text-blue-600' },
+          { label: t('userManagement.stats.students', 'Students'), count: statStudent, color: 'text-purple-600' },
+          { label: t('userManagement.stats.teaching', 'Teaching'), count: statTeaching, color: 'text-emerald-600' },
+          { label: t('userManagement.stats.nonTeaching', 'Non-Teaching'), count: statNonTeaching, color: 'text-amber-600' },
         ].map(s => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-xl px-2 py-3 sm:p-3.5 flex flex-col min-[390px]:flex-row items-center justify-center gap-0.5 min-[390px]:gap-2 shadow-sm min-w-0">
             <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
@@ -1172,7 +1232,7 @@ export const UserManagement = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
-                <input type="text" placeholder="Search by name, email, or ID..." value={searchInput}
+                <input type="text" placeholder={t('userManagement.filters.searchPlaceholder', 'Search by name, email, or ID...')} value={searchInput}
                   onChange={e => setSearchInput(e.target.value)}
                   className="pl-9 pr-4 py-2.5 min-h-11 w-full border border-slate-200 rounded-xl text-sm outline-none focus:border-[#466460] focus:ring-2 focus:ring-[#e0eceb] shadow-sm" />
               </div>
@@ -1186,7 +1246,7 @@ export const UserManagement = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
                 </svg>
-                <span className="hidden min-[390px]:inline">{isFiltersOpen ? 'Hide' : 'Filters'}</span>
+                <span className="hidden min-[390px]:inline">{isFiltersOpen ? t('userManagement.filters.hideFilters', 'Hide') : t('userManagement.filters.toggleFilters', 'Filters')}</span>
               </button>
             </div>
 
@@ -1197,7 +1257,7 @@ export const UserManagement = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
-                <span>Add User</span>
+                <span>{t('userManagement.actions.addUser', 'Add User')}</span>
               </button>
 
               <button onClick={fetchUsers}
@@ -1205,7 +1265,7 @@ export const UserManagement = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span>Refresh</span>
+                <span>{t('userManagement.actions.refresh', 'Refresh')}</span>
               </button>
             </div>
           </div>
@@ -1214,31 +1274,31 @@ export const UserManagement = () => {
           <div className={`grid grid-cols-1 min-[390px]:grid-cols-2 xl:flex xl:flex-wrap gap-3 items-center w-full transition-all duration-300 ${isFiltersOpen ? 'grid' : 'hidden xl:flex'}`}>
             <select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}
               className={compactSelectCls}>
-              <option value="all">All Personnel</option>
-              {isCurrentUserSysAdmin && <option value="sysadmin">System Administrators</option>}
-              <option value="student">Students</option>
-              <option value="teaching">Teaching Personnel</option>
-              <option value="non_teaching">Non-Teaching Personnel</option>
-              <option value="clinic">Clinic Personnel</option>
+              <option value="all">{t('userManagement.filters.allPersonnel', 'All Personnel')}</option>
+              {isCurrentUserSysAdmin && <option value="sysadmin">{t('userManagement.filters.sysadmin', 'System Administrators')}</option>}
+              <option value="student">{t('userManagement.filters.students', 'Students')}</option>
+              <option value="teaching">{t('userManagement.filters.teachingPersonnel', 'Teaching Personnel')}</option>
+              <option value="non_teaching">{t('userManagement.filters.nonTeachingPersonnel', 'Non-Teaching Personnel')}</option>
+              <option value="clinic">{t('userManagement.filters.clinicPersonnel', 'Clinic Personnel')}</option>
             </select>
 
             <select value={profileFilter} onChange={e => setProfileFilter(e.target.value)} className={compactSelectCls}>
-              <option value="all">All Profile Status</option>
-              <option value="complete">Complete</option>
-              <option value="pending">Pending Setup</option>
-              <option value="unregistered">Unregistered ID</option>
+              <option value="all">{t('userManagement.filters.allProfileStatus', 'All Profile Status')}</option>
+              <option value="complete">{t('userManagement.filters.complete', 'Complete')}</option>
+              <option value="pending">{t('userManagement.filters.pendingSetup', 'Pending Setup')}</option>
+              <option value="unregistered">{t('userManagement.filters.unregisteredId', 'Unregistered ID')}</option>
             </select>
 
             <select value={verifyFilter} onChange={e => setVerifyFilter(e.target.value)} className={compactSelectCls}>
-              <option value="all">All Verification</option>
-              <option value="verified">Verified</option>
-              <option value="unverified">Unverified</option>
+              <option value="all">{t('userManagement.filters.allVerification', 'All Verification')}</option>
+              <option value="verified">{t('userManagement.filters.verified', 'Verified')}</option>
+              <option value="unverified">{t('userManagement.filters.unverified', 'Unverified')}</option>
             </select>
 
             <select value={sexFilter} onChange={e => setSexFilter(e.target.value)} className={compactSelectCls}>
-              <option value="all">All Sex</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
+              <option value="all">{t('userManagement.filters.allSex', 'All Sex')}</option>
+              <option value="Male">{t('userManagement.filters.male', 'Male')}</option>
+              <option value="Female">{t('userManagement.filters.female', 'Female')}</option>
             </select>
 
             <select
@@ -1247,7 +1307,7 @@ export const UserManagement = () => {
               disabled={selectedRole === 'clinic' || selectedRole === 'sysadmin'}
               className={compactDeptSelectCls}
             >
-              <option value="all">{selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}</option>
+              <option value="all">{selectedRole === 'non_teaching' ? t('userManagement.filters.allOffices', 'All Offices') : t('userManagement.filters.allDeptsOffices', 'All Departments/Offices')}</option>
               {departmentOptions.map((department) => (
                 <option key={department.id} value={department.id}>
                   {department.abbr || department.full}
@@ -1261,7 +1321,7 @@ export const UserManagement = () => {
               disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic' || selectedRole === 'sysadmin'}
               className={compactDeptSelectCls}
             >
-              <option value="all">{selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}</option>
+              <option value="all">{selectedDepartment === 'all' ? t('userManagement.filters.selectDeptFirst', 'Select Dept First') : t('userManagement.filters.allPrograms', 'All Programs')}</option>
               {programOptions.map((program) => (
                 <option key={program.value} value={program.value}>
                   {program.label}
@@ -1270,8 +1330,8 @@ export const UserManagement = () => {
             </select>
 
             <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} className={compactSelectCls}>
-              <option value="asc">Name (A-Z)</option>
-              <option value="desc">Name (Z-A)</option>
+              <option value="asc">{t('userManagement.filters.nameAZ', 'Name (A-Z)')}</option>
+              <option value="desc">{t('userManagement.filters.nameZA', 'Name (Z-A)')}</option>
             </select>
           </div>
         </div>
@@ -1280,12 +1340,12 @@ export const UserManagement = () => {
           {loading ? (
             <div className="min-h-40 flex items-center justify-center gap-2 text-sm text-slate-400">
               <svg className="animate-spin w-5 h-5 text-[#466460]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
-              Loading users...
+              {t('userManagement.table.loading', 'Loading users...')}
             </div>
           ) : paginatedUsers.length === 0 ? (
-            <div className="min-h-40 flex items-center justify-center text-sm text-slate-400">No users found</div>
+            <div className="min-h-40 flex items-center justify-center text-sm text-slate-400">{t('userManagement.table.noUsers', 'No users found')}</div>
           ) : paginatedUsers.map((user) => {
-            const uDept = getUserDepartment(user) || 'No office or department';
+            const uDept = getUserDepartment(user) || t('userManagement.table.noOfficeDept', 'No office or department');
             const uProg = getUserProgram(user) || '';
             const hasName = Boolean((user.first_name || '').trim() || (user.last_name || '').trim());
             return (
@@ -1294,23 +1354,23 @@ export const UserManagement = () => {
                   <div className="w-11 h-11 rounded-full bg-[#e0eceb] flex items-center justify-center font-bold text-[#466460] shrink-0">{getInitials(user)}</div>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold text-slate-800 truncate">{getFullName(user)}</h3>
-                    <p className="text-xs text-slate-500 truncate">{user.email || 'No email'}</p>
-                    <p className="text-xs font-mono text-slate-400 mt-0.5">{user.university_id || 'No university ID'}</p>
+                    <p className="text-xs text-slate-500 truncate">{user.email || t('userManagement.table.noEmail', 'No email')}</p>
+                    <p className="text-xs font-mono text-slate-400 mt-0.5">{user.university_id || t('userManagement.table.noUniversityId', 'No university ID')}</p>
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0" style={getRoleBadgeStyle(user.role)}>{getRoleLabel(user.role)}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4 text-xs">
-                  <div className="min-w-0"><p className="font-bold uppercase tracking-wide text-[9px] text-slate-400">Office / Department</p><p className="mt-1 font-medium text-slate-700 break-words">{uDept}</p>{uProg && <p className="text-slate-500 break-words">{uProg}</p>}</div>
-                  <div><p className="font-bold uppercase tracking-wide text-[9px] text-slate-400">Sex</p><p className="mt-1 font-medium text-slate-700">{user.sex || '—'}</p></div>
+                  <div className="min-w-0"><p className="font-bold uppercase tracking-wide text-[9px] text-slate-400">{t('userManagement.table.headers.officeDept', 'Office / Dept')}</p><p className="mt-1 font-medium text-slate-700 break-words">{uDept}</p>{uProg && <p className="text-slate-500 break-words">{uProg}</p>}</div>
+                  <div><p className="font-bold uppercase tracking-wide text-[9px] text-slate-400">{t('userManagement.table.headers.sex', 'Sex')}</p><p className="mt-1 font-medium text-slate-700">{user.sex || '—'}</p></div>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-4">
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${user.is_verified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{user.is_verified ? 'Verified' : 'Unverified'}</span>
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${!hasName ? 'bg-slate-100 text-slate-500 border border-slate-200' : user.profile_complete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{!hasName ? 'Unregistered ID' : user.profile_complete ? 'Profile Complete' : 'Pending Setup'}</span>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${user.is_verified ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{user.is_verified ? t('userManagement.filters.verified', 'Verified') : t('userManagement.filters.unverified', 'Unverified')}</span>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${!hasName ? 'bg-slate-100 text-slate-500 border border-slate-200' : user.profile_complete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{!hasName ? t('userManagement.filters.unregisteredId', 'Unregistered ID') : user.profile_complete ? t('userManagement.filters.complete', 'Complete') : t('userManagement.filters.pendingSetup', 'Pending Setup')}</span>
                 </div>
                 <div className={`grid ${user.is_verified ? 'grid-cols-2' : 'grid-cols-3'} gap-2 mt-4`}>
-                  {!user.is_verified && <button onClick={() => resendVerificationEmail(user)} disabled={resendingId === (user.uid || user.id)} className="min-h-11 rounded-xl border border-slate-200 bg-white text-xs font-bold text-[#466460] disabled:opacity-50">{resendingId === (user.uid || user.id) ? 'Sending…' : 'Resend'}</button>}
-                  <button onClick={() => openEditModal(user)} className="min-h-11 rounded-xl bg-[#e0eceb] text-sm font-bold text-[#466460]">Edit</button>
-                  <button onClick={() => openDeleteModal(user)} className="min-h-11 rounded-xl bg-red-50 text-sm font-bold text-red-600">Archive</button>
+                  {!user.is_verified && <button onClick={() => resendVerificationEmail(user)} disabled={resendingId === (user.uid || user.id)} className="min-h-11 rounded-xl border border-slate-200 bg-white text-xs font-bold text-[#466460] disabled:opacity-50">{resendingId === (user.uid || user.id) ? t('userManagement.actions.sending', 'Sending…') : t('userManagement.actions.resend', 'Resend')}</button>}
+                  <button onClick={() => openEditModal(user)} className="min-h-11 rounded-xl bg-[#e0eceb] text-sm font-bold text-[#466460]">{t('userManagement.actions.edit', 'Edit')}</button>
+                  <button onClick={() => openDeleteModal(user)} className="min-h-11 rounded-xl bg-red-50 text-sm font-bold text-red-600">{t('userManagement.actions.archive', 'Archive')}</button>
                 </div>
               </article>
             );
@@ -1321,15 +1381,15 @@ export const UserManagement = () => {
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">#</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Name</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">University ID</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Role</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Office / Dept</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Sex</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Email</th>
-                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Profile</th>
-                <th className="bg-slate-50 text-right p-3 pr-6 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">Actions</th>
+                <th className="bg-slate-50 text-center p-3 pl-4 w-12 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.hash', '#')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.name', 'Name')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.universityId', 'University ID')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.role', 'Role')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.officeDept', 'Office / Dept')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.sex', 'Sex')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.email', 'Email')}</th>
+                <th className="bg-slate-50 text-left p-3 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.profile', 'Profile')}</th>
+                <th className="bg-slate-50 text-right p-3 pr-6 text-[10px] md:text-[11px] font-bold uppercase text-slate-500 tracking-wide whitespace-nowrap">{t('userManagement.table.headers.actions', 'Actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1340,11 +1400,11 @@ export const UserManagement = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    Loading users...
+                    {t('userManagement.table.loading', 'Loading users...')}
                   </div>
                 </td></tr>
               ) : paginatedUsers.length === 0 ? (
-                <tr><td colSpan={COL_COUNT} className="text-center py-10 text-slate-400">No users found</td></tr>
+                <tr><td colSpan={COL_COUNT} className="text-center py-10 text-slate-400">{t('userManagement.table.noUsers', 'No users found')}</td></tr>
               ) : paginatedUsers.map((user, idx) => {
                 const uDept = getUserDepartment(user) || '—';
                 const uProg = getUserProgram(user) || '';
@@ -1379,9 +1439,9 @@ export const UserManagement = () => {
                   <td className="p-3 text-sm text-slate-600 whitespace-nowrap">{user.sex || '—'}</td>
                   <td className="p-3 whitespace-nowrap">
                     {user.is_verified
-                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Verified</span>
+                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">{t('userManagement.filters.verified', 'Verified')}</span>
                       : <div className="flex items-center gap-1">
-                          <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-red-100 text-red-700">Unverified</span>
+                          <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-red-100 text-red-700">{t('userManagement.filters.unverified', 'Unverified')}</span>
                           <button
                             onClick={() => resendVerificationEmail(user)}
                             disabled={resendingId === (user.uid || user.id)}
@@ -1404,10 +1464,10 @@ export const UserManagement = () => {
                   </td>
                   <td className="p-3 whitespace-nowrap">
                     {!hasName
-                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Unregistered ID</span>
+                      ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">{t('userManagement.filters.unregisteredId', 'Unregistered ID')}</span>
                       : user.profile_complete
-                        ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">Complete</span>
-                        : <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-700">Pending Setup</span>
+                        ? <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-green-100 text-green-700">{t('userManagement.filters.complete', 'Complete')}</span>
+                        : <span className="inline-block px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-700">{t('userManagement.filters.pendingSetup', 'Pending Setup')}</span>
                     }
                   </td>
                   <td className="p-3 pr-6 whitespace-nowrap">
@@ -1435,7 +1495,11 @@ export const UserManagement = () => {
         {totalPages > 1 && (
           <div className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-600">
             <div className="text-center sm:text-left">
-              Showing <span className="font-semibold">{filteredUsers.length === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-semibold">{Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)}</span> of <span className="font-semibold">{filteredUsers.length}</span> records
+              {t('userManagement.actions.pageOf', 'Showing {{current}} to {{total}} of {{length}} records', {
+                current: filteredUsers.length === 0 ? 0 : ((currentPage - 1) * ITEMS_PER_PAGE) + 1,
+                total: Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length),
+                length: filteredUsers.length
+              })}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1443,17 +1507,17 @@ export const UserManagement = () => {
                 onClick={() => setCurrentPage(p => p - 1)}
                 className="min-h-11 px-4 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                Previous
+                {t('userManagement.actions.previous', 'Previous')}
               </button>
               <div className="text-xs font-semibold px-2">
-                Page {currentPage} of {Math.max(1, totalPages)}
+                {t('userManagement.actions.pageOf', 'Page {{current}} of {{total}}', { current: currentPage, total: Math.max(1, totalPages) })}
               </div>
               <button
                 disabled={currentPage === totalPages || totalPages === 0}
                 onClick={() => setCurrentPage(p => p + 1)}
                 className="min-h-11 px-4 py-2 rounded-xl border border-slate-200 bg-white font-medium hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                Next
+                {t('userManagement.actions.next', 'Next')}
               </button>
             </div>
           </div>
@@ -1477,7 +1541,7 @@ export const UserManagement = () => {
               <div className="bg-gradient-to-br from-[#466460] to-[#3a524f] px-4 sm:px-6 py-4 text-white shrink-0 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{getInitials(editTarget)}</div>
                 <div className="overflow-hidden">
-                  <h3 className="text-base font-bold truncate">Edit User — {getFullName(editTarget)}</h3>
+                  <h3 className="text-base font-bold truncate">{t('userManagement.modals.editUser', 'Edit User')} — {getFullName(editTarget)}</h3>
                   <p className="text-xs text-white/70 mt-0.5 truncate">{editTarget.email}</p>
                 </div>
                 <button onClick={handleEditCloseRequest} className="ml-auto w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
@@ -1490,12 +1554,12 @@ export const UserManagement = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
 
                     <div className="sm:col-span-2">
-                      <div className={sectionHeadCls}>Account Information</div>
+                      <div className={sectionHeadCls}>{t('userManagement.modals.sections.accountInfo', 'Account Information')}</div>
                     </div>
-                    <div><label className={labelCls}>University ID</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} required /></div>
-                    <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
+                    <div><label className={labelCls}>{t('userManagement.modals.fields.universityId', 'University ID')}</label><input className={inputCls} value={editForm.university_id} onChange={e => field('university_id', e.target.value)} required /></div>
+                    <div><label className={labelCls}>{t('userManagement.modals.fields.email', 'Email')}</label><input className={inputCls} type="email" value={editForm.email} onChange={e => field('email', e.target.value)} required /></div>
                     <div className="flex flex-col">
-                      <label className={labelCls}>New Password <span className="text-slate-400 font-normal">(leave blank to keep)</span></label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.newPassword', 'New Password')} <span className="text-slate-400 font-normal">{t('userManagement.modals.fields.leaveBlankKeep', '(leave blank to keep)')}</span></label>
                       <div className="relative">
                         <input className={inputCls} type={editShowPwd ? 'text' : 'password'} value={editForm.password || ''} onChange={e => field('password', e.target.value)} placeholder="Enter new password" />
                         <button type="button" onClick={() => setEditShowPwd(!editShowPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -1506,17 +1570,17 @@ export const UserManagement = () => {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <div className={sectionHeadCls}>Personal Information</div>
+                      <div className={sectionHeadCls}>{t('userManagement.modals.sections.personalInfo', 'Personal Information')}</div>
                     </div>
-                    <div><label className={labelCls}>First Name</label><input className={inputCls} value={editForm.first_name} onChange={e => field('first_name', e.target.value)} required /></div>
-                    <div><label className={labelCls}>Middle Name</label><input className={inputCls} value={editForm.middle_name} onChange={e => field('middle_name', e.target.value)} /></div>
-                    <div><label className={labelCls}>Last Name</label><input className={inputCls} value={editForm.last_name} onChange={e => field('last_name', e.target.value)} required /></div>
+                    <div><label className={labelCls}>{t('userManagement.modals.fields.firstName', 'First Name')}</label><input className={inputCls} value={editForm.first_name} onChange={e => field('first_name', e.target.value)} required /></div>
+                    <div><label className={labelCls}>{t('userManagement.modals.fields.middleName', 'Middle Name')}</label><input className={inputCls} value={editForm.middle_name} onChange={e => field('middle_name', e.target.value)} /></div>
+                    <div><label className={labelCls}>{t('userManagement.modals.fields.lastName', 'Last Name')}</label><input className={inputCls} value={editForm.last_name} onChange={e => field('last_name', e.target.value)} required /></div>
                     <div>
-                      <label className={labelCls}>Suffix</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.suffix', 'Suffix')}</label>
                       <CustomSelect value={editForm.suffix} onChange={v => field('suffix', v)} options={['Jr.','Sr.','II','III','IV','V']} placeholder="None" />
                     </div>
                     <div>
-                      <label className={labelCls}>Phone Number</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.phoneNumber', 'Phone Number')}</label>
                       <input
                         className={`${inputCls} ${phoneError ? 'border-red-400 bg-red-50' : ''}`}
                         value={editForm.phone_number}
@@ -1528,22 +1592,22 @@ export const UserManagement = () => {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <div className={sectionHeadCls}>Role &amp; Work Information</div>
+                      <div className={sectionHeadCls}>{t('userManagement.modals.sections.roleWorkInfo', 'Role & Work Information')}</div>
                     </div>
                     <div>
-                      <label className={labelCls}>Role</label>
-                      <CustomSelect value={editForm.role} onChange={handleRoleEditChange} options={getRoleOptions(configData)} grouped={true} placeholder="— Select Role —" />
+                      <label className={labelCls}>{t('userManagement.modals.fields.role', 'Role')}</label>
+                      <CustomSelect value={editForm.role} onChange={handleRoleEditChange} options={getRoleOptions(configData, t)} grouped={true} placeholder="— Select Role —" />
                     </div>
 
                     {isStudent(editForm.role) && (
                       <>
                         <div>
-                          <label className={labelCls}>Department</label>
+                          <label className={labelCls}>{t('userManagement.modals.fields.department', 'Department')}</label>
                           <CustomSelect value={editForm.departmentAbbr} onChange={handleDeptChangeForEditStudent} options={(configData?.departments || []).map(d => ({ value: d.abbr, label: d.abbr }))} />
                           {editForm.departmentAbbr && <p className="text-[10px] text-slate-400 mt-1">{deptAbbrToFull[editForm.departmentAbbr]}</p>}
                         </div>
                         <div>
-                          <label className={labelCls}>Program</label>
+                          <label className={labelCls}>{t('userManagement.modals.fields.program', 'Program')}</label>
                           <CustomSelect value={editForm.program} onChange={v => field('program', v)} options={programsByDeptAbbr[editForm.departmentAbbr] || []} disabled={!editForm.departmentAbbr} />
                         </div>
                       </>
@@ -1552,18 +1616,18 @@ export const UserManagement = () => {
                     {(isTeaching(editForm.role, configData) || isNonTeaching(editForm.role, configData) || isClinicStaff(editForm.role, configData) || isAdmin(editForm.role, configData)) && (
                       <>
                         <div>
-                          <label className={labelCls}>Department / Office {!isAdmin(editForm.role, configData) && !isClinicStaff(editForm.role, configData) && <span className="text-red-400">*</span>}</label>
+                          <label className={labelCls}>{t('userManagement.modals.fields.departmentOffice', 'Department / Office')} {!isAdmin(editForm.role, configData) && !isClinicStaff(editForm.role, configData) && <span className="text-red-400">*</span>}</label>
                           <CustomSelect value={editForm.department} onChange={v => field('department', v)} options={getDeptOptionsForRole(editForm.role, configData)} placeholder="— Select Office —" />
                         </div>
 
                         <div>
-                          <label className={labelCls}>Job Title {!isAdmin(editForm.role, configData) && <span className="text-red-400">*</span>}</label>
+                          <label className={labelCls}>{t('userManagement.modals.fields.jobTitle', 'Job Title')} {!isAdmin(editForm.role, configData) && <span className="text-red-400">*</span>}</label>
                           <CustomSelect value={editForm.job_title} onChange={v => field('job_title', v)} options={uniqueJobTitles} placeholder="— Select Job Title —" />
                         </div>
 
                         {!isAdmin(editForm.role, configData) && !isClinicStaff(editForm.role, configData) && (
                           <div>
-                            <label className={labelCls}>Classification</label>
+                            <label className={labelCls}>{t('userManagement.modals.fields.classification', 'Classification')}</label>
                             <CustomSelect value={editForm.classification} onChange={v => field('classification', v)} options={uniqueClassifications} placeholder="— Select Classification —" />
                           </div>
                         )}
@@ -1571,38 +1635,38 @@ export const UserManagement = () => {
                     )}
 
                     <div className="sm:col-span-2">
-                      <div className={sectionHeadCls}>Personal Details</div>
+                      <div className={sectionHeadCls}>{t('userManagement.modals.sections.personalDetails', 'Personal Details')}</div>
                     </div>
                     <div>
-                      <label className={labelCls}>Birthday</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.birthday', 'Birthday')}</label>
                       <DatePicker
                         value={editForm.birthday}
                         onChange={(val) => { field('birthday', val); field('age', calculateAge(val)); }}
                       />
                     </div>
-                    <div><label className={labelCls}>Age</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
+                    <div><label className={labelCls}>{t('userManagement.modals.fields.age', 'Age')}</label><input className={`${inputCls} bg-slate-100`} value={editForm.age} readOnly /></div>
                     <div>
-                      <label className={labelCls}>Sex</label>
-                      <CustomSelect value={editForm.sex} onChange={v => field('sex', v)} options={['Male', 'Female']} />
+                      <label className={labelCls}>{t('userManagement.modals.fields.sex', 'Sex')}</label>
+                      <CustomSelect value={editForm.sex} onChange={v => field('sex', v)} options={sexOptions} />
                     </div>
                     <div>
-                      <label className={labelCls}>Civil Status</label>
-                      <CustomSelect value={editForm.civil_status} onChange={v => field('civil_status', v)} options={['Single','Married','Widowed','Divorced','Separated']} />
+                      <label className={labelCls}>{t('userManagement.modals.fields.civilStatus', 'Civil Status')}</label>
+                      <CustomSelect value={editForm.civil_status} onChange={v => field('civil_status', v)} options={civilStatusOptions} />
                     </div>
                     <div>
                       <label className={labelCls}>Blood Type</label>
                       <CustomSelect value={editForm.blood_type} onChange={v => field('blood_type', v)} options={['A+','A-','B+','B-','AB+','AB-','O+','O-']} />
                     </div>
                     <div>
-                      <label className={labelCls}>Religion</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.religion', 'Religion')}</label>
                       <CustomSelect value={editForm.religion} onChange={v => field('religion', v)} options={['Roman Catholic','Islam','Iglesia ni Cristo','Seventh-day Adventist','Protestant','Born Again Christian','Buddhism','Hinduism','Other']} />
                     </div>
                     <div>
-                      <label className={labelCls}>Nationality</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.nationality', 'Nationality')}</label>
                       <CustomSelect value={editForm.nationality} onChange={v => field('nationality', v)} options={['Filipino','American','Chinese','Japanese','Korean','Indian','British','Australian','Canadian','Other']} />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className={labelCls}>Home Address</label>
+                      <label className={labelCls}>{t('userManagement.modals.fields.homeAddress', 'Home Address')}</label>
                       <div className="flex gap-2">
                         <input className={`${inputCls} bg-slate-50`} value={editForm.home_address} readOnly placeholder="Click to set address" />
                         <button type="button" onClick={() => setShowAddressModal(true)} className="px-3 py-2 bg-[#466460] text-white rounded-lg text-sm font-semibold hover:bg-[#3a524f] transition">
@@ -1614,25 +1678,25 @@ export const UserManagement = () => {
                     {(editForm.role === 'student') && (
                       <>
                         <div className="sm:col-span-2">
-                          <div className={sectionHeadCls}>Academic Information</div>
+                          <div className={sectionHeadCls}>{t('userManagement.modals.sections.academicInfo', 'Academic Information')}</div>
                         </div>
                         <div>
-                          <label className={labelCls}>Year Level</label>
-                          <CustomSelect value={editForm.year_level} onChange={v => field('year_level', v)} options={['1st Year','2nd Year','3rd Year','4th Year','5th Year','Graduate']} />
+                          <label className={labelCls}>{t('userManagement.modals.fields.yearLevel', 'Year Level')}</label>
+                          <CustomSelect value={editForm.year_level} onChange={v => field('year_level', v)} options={yearOptions} />
                         </div>
                         <div>
-                          <label className={labelCls}>Section</label>
+                          <label className={labelCls}>{t('userManagement.modals.fields.section', 'Section')}</label>
                           <CustomSelect value={editForm.section} onChange={v => field('section', v)} options={configData?.sections || []} />
                         </div>
                         <div>
-                          <label className={labelCls}>Student Classification</label>
-                          <CustomSelect value={editForm.student_classification} onChange={v => field('student_classification', v)} options={STUDENT_CLASSIFICATIONS} />
+                          <label className={labelCls}>{t('userManagement.modals.fields.studentClassification', 'Student Classification')}</label>
+                          <CustomSelect value={editForm.student_classification} onChange={v => field('student_classification', v)} options={classificationOptions} />
                         </div>
                       </>
                     )}
 
                     <div className="sm:col-span-2">
-                      <div className={sectionHeadCls}>Account Status</div>
+                      <div className={sectionHeadCls}>{t('userManagement.modals.sections.accountStatus', 'Account Status')}</div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                         <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -1646,7 +1710,7 @@ export const UserManagement = () => {
                                 disabled={resendingId === (editTarget.uid || editTarget.id)}
                                 className="text-[11px] text-[#466460] hover:text-[#3a524f] underline font-bold shrink-0 disabled:opacity-50 disabled:no-underline"
                               >
-                                {resendingId === (editTarget.uid || editTarget.id) ? 'Sending...' : 'Resend Email'}
+                                {resendingId === (editTarget.uid || editTarget.id) ? t('userManagement.actions.sending', 'Sending...') : t('userManagement.actions.resend', 'Resend Email')}
                               </button>
                             )}
                           </div>
@@ -1663,10 +1727,10 @@ export const UserManagement = () => {
               </div>
 
               <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 bg-slate-50 shrink-0">
-                <button type="button" onClick={handleEditCloseRequest} className="min-h-11 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">Cancel</button>
+                <button type="button" onClick={handleEditCloseRequest} className="min-h-11 bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-300 transition">{t('userManagement.actions.cancel', 'Cancel')}</button>
                 <button type="submit" form="edit-form" disabled={editSaving} className="min-h-11 bg-[#466460] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#3a524f] transition flex items-center justify-center gap-2 disabled:opacity-60">
                    {editSaving && <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
-                   {editSaving ? 'Saving...' : 'Save Changes'}
+                   {editSaving ? t('userManagement.actions.saving', 'Saving...') : t('userManagement.actions.saveChanges', 'Save Changes')}
                 </button>
               </div>
             </div>
@@ -1713,14 +1777,14 @@ export const UserManagement = () => {
                 <i className="fa-solid fa-triangle-exclamation text-amber-600 text-xl"></i>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Archive User</h3>
-                <p className="text-sm text-slate-500">You can restore it later from Archives</p>
+                <h3 className="text-lg font-bold text-slate-800">{t('userManagement.modals.archiveUser', 'Archive User')}</h3>
+                <p className="text-sm text-slate-500">{t('userManagement.modals.archiveDesc', 'You can restore it later from Archives')}</p>
               </div>
             </div>
 
             <div className="bg-slate-50 rounded-lg p-4 mb-4">
               <p className="text-sm text-slate-600">
-                Are you sure you want to archive <span className="font-semibold">{getFullName(deleteTarget)}</span>?
+                {t('userManagement.modals.archiveConfirm', 'Are you sure you want to archive')} <span className="font-semibold">{getFullName(deleteTarget)}</span>?
               </p>
               <p className="text-xs text-slate-400 mt-2">
                 Email: <span className="font-semibold">{deleteTarget?.email}</span>
@@ -1729,13 +1793,13 @@ export const UserManagement = () => {
 
             <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
               <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }} className="min-h-11 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all">
-                Cancel
+                {t('userManagement.actions.cancel', 'Cancel')}
               </button>
               <button onClick={confirmDelete} className="min-h-11 px-4 py-2.5 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0a3 3 0 013 3h-2.25a3 3 0 013-3m0 0h.008v.008h-.008V14.25m0 0h2.25a3 3 0 003-3v-2.25a3 3 0 00-3-3H9.75a3 3 0 00-3 3v2.25a3 3 0 003 3h2.25z" />
                 </svg>
-                Archive
+                {t('userManagement.actions.archive', 'Archive')}
               </button>
             </div>
           </div>

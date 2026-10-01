@@ -1,7 +1,8 @@
-
 // frontend/src/components/LoadingAnimation.jsx
 //
 // A clean full-screen scanning overlay to show while OCR / verification runs.
+// Rendered through a portal into document.body so no transformed/filtered
+// ancestor can clip or offset the `position: fixed` backdrop.
 //
 // Props:
 //   file         — File | null — uploaded image shown as preview (optional)
@@ -13,22 +14,9 @@
 //
 // Usage:
 //   {isScanning && <LoadingAnimation file={selectedFile} />}
-//
-// Custom:
-//   <LoadingAnimation
-//     file={receiptFile}
-//     title="Processing receipt"
-//     subtitle="Extracting line items…"
-//     steps={[
-//       'Reading image…',
-//       'Parsing amounts…',
-//       'Categorizing…',
-//       'Saving…',
-//     ]}
-//     accentColor="#4a5568"
-//   />
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const DEFAULT_STEPS = [
   'Reading document…',
@@ -47,6 +35,51 @@ const LoadingAnimation = ({
 }) => {
   const [step, setStep] = useState(0);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const dialogRef = useRef(null);
+
+  /*
+   * Open as a modal <dialog>. Modal dialogs render in the browser's top layer,
+   * which is always sized to the real viewport and ignores transforms, filters,
+   * overflow and z-index on any ancestor.
+   */
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+
+    if (typeof dialog.showModal === 'function') {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
+
+    return () => {
+      if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+    };
+  }, []);
+  /*
+   * Lock page scroll while the overlay is open.
+   * `important` is required because the signup page sets
+   * `overflow-y: auto !important` on html/body/#root.
+   */
+  useEffect(() => {
+    const targets = [document.documentElement, document.body];
+    const previous = targets.map((el) => ({
+      value: el.style.getPropertyValue('overflow'),
+      priority: el.style.getPropertyPriority('overflow'),
+    }));
+
+    targets.forEach((el) => el.style.setProperty('overflow', 'hidden', 'important'));
+
+    return () => {
+      targets.forEach((el, i) => {
+        if (previous[i].value) {
+          el.style.setProperty('overflow', previous[i].value, previous[i].priority);
+        } else {
+          el.style.removeProperty('overflow');
+        }
+      });
+    };
+  }, []);
 
   /*
    * Advance through the verification steps.
@@ -174,7 +207,7 @@ const LoadingAnimation = ({
     };
   };
 
-  return (
+  const overlay = (
     <>
       <style>
         {`
@@ -236,6 +269,10 @@ const LoadingAnimation = ({
             }
           }
 
+          .ocr-dialog::backdrop {
+            background: transparent;
+          }
+
           @media (max-width: 480px) {
             .ocr-loading-card {
               padding: 22px 20px 20px !important;
@@ -244,6 +281,23 @@ const LoadingAnimation = ({
 
             .ocr-document-frame {
               height: 125px !important;
+            }
+          }
+
+          @media (max-height: 640px) {
+            .ocr-loading-card {
+              padding: 18px 20px 16px !important;
+            }
+
+            .ocr-document-frame {
+              height: 90px !important;
+              margin-bottom: 14px !important;
+            }
+          }
+
+          @media (max-height: 480px) {
+            .ocr-document-frame {
+              display: none !important;
             }
           }
 
@@ -257,38 +311,56 @@ const LoadingAnimation = ({
         `}
       </style>
 
-      {/* Backdrop */}
-      <div
+      {/* Modal dialog (top layer) — scrolls if the card is taller than the viewport */}
+      <dialog
+        ref={dialogRef}
+        className="ocr-dialog"
+        aria-label={title}
+        onCancel={(e) => e.preventDefault()}
         style={{
           position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: 'auto',
+          height: 'auto',
+          maxWidth: 'none',
+          maxHeight: 'none',
+          margin: 0,
+          padding: 0,
+          border: 'none',
+          outline: 'none',
+          color: 'inherit',
           background: 'rgba(12, 27, 24, 0.78)',
           backdropFilter: 'blur(7px)',
           WebkitBackdropFilter: 'blur(7px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 20,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
-        {/* Card */}
+        <div
+          style={{
+            minHeight: '100%',
+            display: 'flex',
+            padding: 20,
+            boxSizing: 'border-box',
+          }}
+        >
+        {/* Card — margin:auto centers it when it fits and lets it scroll from the top when it doesn't */}
         <div
           className="ocr-loading-card"
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
           style={{
             width: '100%',
             maxWidth: 390,
+            margin: 'auto',
             background: '#ffffff',
             borderRadius: 20,
             padding: '26px 30px 24px',
-            boxShadow:
-              '0 28px 70px rgba(0, 0, 0, 0.30)',
-            animation:
-              'ocr-card-in 0.35s ease-out both',
+            boxShadow: '0 28px 70px rgba(0, 0, 0, 0.30)',
+            animation: 'ocr-card-in 0.35s ease-out both',
             boxSizing: 'border-box',
+            flexShrink: 0,
           }}
         >
           {/* Header */}
@@ -634,8 +706,7 @@ const LoadingAnimation = ({
                           borderRadius: '50%',
                           border: '1.5px solid rgba(255,255,255,0.35)',
                           borderTopColor: '#ffffff',
-                          animation:
-                            'ocr-spin 0.75s linear infinite',
+                          animation: 'ocr-spin 0.75s linear infinite',
                         }}
                       />
                     )}
@@ -670,8 +741,7 @@ const LoadingAnimation = ({
                           : status === 'done'
                             ? 500
                             : 400,
-                      transition:
-                        'color 0.25s ease',
+                      transition: 'color 0.25s ease',
                     }}
                   >
                     {label}
@@ -702,8 +772,7 @@ const LoadingAnimation = ({
                   height: '100%',
                   borderRadius: 10,
                   background: accentColor,
-                  transition:
-                    'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               />
             </div>
@@ -720,9 +789,7 @@ const LoadingAnimation = ({
               color: '#9aa8a5',
             }}
           >
-            <span>
-              Please keep this window open
-            </span>
+            <span>Please keep this window open</span>
 
             <span
               style={{
@@ -734,10 +801,13 @@ const LoadingAnimation = ({
             </span>
           </div>
         </div>
-      </div>
+        </div>
+      </dialog>
     </>
   );
+
+  // Portal to <body> so transformed/filtered ancestors can't trap `position: fixed`.
+  return createPortal(overlay, document.body);
 };
 
 export default LoadingAnimation;
-

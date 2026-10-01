@@ -6,17 +6,23 @@
   <meta name="description" content="MediTrack — university health records, appointments, consultations and clinic services in one secure platform." />
   <meta name="theme-color" content="#f4f7f5" />
   <title>MediTrack — Campus care, connected</title>
-  <link rel="icon" href="./logo1.jpg" />
+  <link rel="icon" href="./logo1.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
+  <script>
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('anim');
+      setTimeout(() => { if (!window.__animReady) document.documentElement.classList.remove('anim'); }, 4000);
+    }
+  </script>
 </head>
 <body>
   <div class="page-shell">
     <header class="site-header" id="siteHeader">
       <a href="#home" class="brand" aria-label="MediTrack home">
-        <img src="./logo1.jpg" alt="" />
+        <img src="./logo1.png" alt="" />
         <span><b>Medi</b>Track</span>
       </a>
 
@@ -29,8 +35,8 @@
       </nav>
 
       <div class="header-actions">
-        <a class="link-button" href="https://meditrack-2-tvck.onrender.com/#/login">Sign in</a>
-        <a class="pill-button" href="https://meditrack-2-tvck.onrender.com/#/signup">Create account <span>↗</span></a>
+        <a class="link-button" href="https://meditrackdlsp.online/#/login">Sign in</a>
+        <a class="pill-button" href="https://meditrackdlsp.online/#/signup">Create account <span>↗</span></a>
       </div>
     </header>
 
@@ -42,7 +48,7 @@
           <p>MediTrack connects students, employees, and clinic teams through one secure space for appointments, records, consultations, and health updates.</p>
 
           <div class="hero-actions">
-            <a class="primary-button" href="https://meditrack-2-tvck.onrender.com/#/login">Open MediTrack <span>→</span></a>
+            <a class="primary-button" href="https://meditrackdlsp.online/#/login">Open MediTrack <span>→</span></a>
             <a class="watch-link" href="#platform"><i>↓</i> See how it works</a>
           </div>
 
@@ -58,7 +64,7 @@
 
           <article class="app-window actual-ui">
             <div class="app-topbar actual-topbar">
-              <div class="app-brand"><img src="./logo1.jpg" alt="" /><span>MediTrack</span></div>
+              <div class="app-brand"><img src="./logo1.png" alt="" /><span>MediTrack</span></div>
               <div class="actual-bell">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 <b>4</b>
@@ -207,7 +213,7 @@
             <span id="roleLabel">PATIENT EXPERIENCE</span>
             <h3 id="roleTitle">Your health services in one familiar place.</h3>
             <p id="roleText">Manage your profile, request appointments, open consultations, receive notifications, and access approved health records from any device.</p>
-            <a href="https://meditrack-2-tvck.onrender.com/#/login">Explore the patient portal <span>→</span></a>
+            <a href="https://meditrackdlsp.online/#/login">Explore the patient portal <span>→</span></a>
           </div>
           <div class="role-panel-visual" aria-hidden="true">
             <div class="portal-card">
@@ -220,6 +226,20 @@
         </div>
       </section>
 
+      <section class="security section" id="security">
+        <div class="security-card reveal">
+          <div class="security-copy">
+            <div class="section-kicker section-kicker--light">Privacy by design</div>
+            <h2>Health information stays with the people who should see it.</h2>
+            <p>Verified identities, role-based access, protected document storage, secure sessions, and traceable administrative activity support safer campus healthcare.</p>
+            <div class="security-pills"><span>Role-based access</span><span>Verified accounts</span><span>Audit activity</span><span>Protected files</span></div>
+          </div>
+          <div class="security-mark" aria-hidden="true">
+            <div class="lock-ring"><img src="./logo1.png" alt="" /><span>SECURE</span></div>
+          </div>
+        </div>
+      </section>
+
       <section class="download-app section" id="download">
         <div class="download-shell reveal">
           <div class="download-content">
@@ -227,25 +247,102 @@
             <h2>Take MediTrack with you.</h2>
             <p>
               Access appointments, consultations, health records, and campus
-              announcements from Android, Windows, or any modern web browser.
+              announcements from Android, Windows, macOS, or iOS.
             </p>
 
-            <div class="download-buttons">
-              <a href="https://github.com/Adk-gh/MediTrack/releases/latest/download/MediTrack.apk" class="download-button download-button--primary" download>
-                <span class="download-button__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span>
-                <span><small>Download for</small><strong>Android</strong></span>
-              </a>
+<div class="download-buttons">
 
-              <a href="https://github.com/Adk-gh/MediTrack/releases/latest/download/MediTrack.Setup.0.1.0.exe" class="download-button download-button--secondary" download>
-                <span class="download-button__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
-                <span><small>Download for</small><strong>Windows</strong></span>
-              </a>
+  <!-- ANDROID -->
+  <a
+    href="https://github.com/Adk-gh/MediTrack/releases/latest/download/MediTrack.apk"
+    class="download-button download-button--primary"
+    download
+  >
+    <span class="download-button__icon">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M17.523 15.341c-.484 0-.875-.392-.875-.875s.391-.875.875-.875.875.392.875.875-.391.875-.875.875m-11.046 0c-.484 0-.875-.392-.875-.875s.391-.875.875-.875.875.392.875.875-.391.875-.875.875M17.8 8.6l1.4-2.43a.29.29 0 0 0-.1-.4.29.29 0 0 0-.4.1l-1.42 2.46A9.05 9.05 0 0 0 12 7.08a9.05 9.05 0 0 0-5.28 1.25L5.3 5.87a.29.29 0 0 0-.4-.1.29.29 0 0 0-.1.4L6.2 8.6C3.68 10.02 2 12.67 2 15.7h20c0-3.03-1.68-5.68-4.2-7.1M20.5 17H3.5c-.83 0-1.5.67-1.5 1.5S2.67 20 3.5 20h17c.83 0 1.5-.67 1.5-1.5S21.33 17 20.5 17"
+        />
+      </svg>
+    </span>
 
-              <a href="https://meditrack-2-tvck.onrender.com/#/login" class="download-button download-button--outline">
-                <span class="download-button__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></svg></span>
-                <span><small>Continue in</small><strong>Web browser</strong></span>
-              </a>
-            </div>
+    <span>
+      <small>Download for</small>
+      <strong>Android</strong>
+    </span>
+  </a>
+
+
+  <!-- WINDOWS -->
+  <a
+    href="https://github.com/Adk-gh/MediTrack/releases/latest/download/MediTrack.Setup.0.1.0.exe"
+    class="download-button download-button--secondary"
+    download
+  >
+    <span class="download-button__icon">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M3 5.1 10.9 4v7.4H3V5.1Zm8.8-1.25L21 2.5v8.9h-9.2V3.85ZM3 12.6h7.9V20L3 18.9v-6.3Zm8.8 0H21v8.9l-9.2-1.35V12.6Z"
+        />
+      </svg>
+    </span>
+
+    <span>
+      <small>Download for</small>
+      <strong>Windows</strong>
+    </span>
+  </a>
+
+
+  <!-- macOS -->
+  <a
+    href="https://github.com/Adk-gh/MediTrack/releases/latest/download/MediTrack-0.1.0-arm64.dmg"
+    class="download-button download-button--secondary"
+    target="_blank"
+    rel="noopener"
+    download
+  >
+    <span class="download-button__icon">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M16.7 12.8c0-2.5 2.1-3.7 2.2-3.8-1.2-1.7-3.1-1.9-3.8-1.9-1.6-.2-3.1 1-3.9 1-.8 0-2-1-3.3-1-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.3 2.5 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.2 3.2-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.8-1.1-2.8-4.1Zm-2.5-7.3c.7-.9 1.2-2.1 1.1-3.3-1.1.05-2.4.7-3.1 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.4-.5 3.1-1.4Z"
+        />
+      </svg>
+    </span>
+
+    <span>
+      <small>Download for</small>
+      <strong>macOS</strong>
+    </span>
+  </a>
+
+
+  <!-- iOS — NOT CLICKABLE -->
+  <div
+    class="download-button download-button--ios-coming-soon"
+    aria-label="iOS app coming soon"
+  >
+    <span class="download-button__icon">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M16.7 12.8c0-2.5 2.1-3.7 2.2-3.8-1.2-1.7-3.1-1.9-3.8-1.9-1.6-.2-3.1 1-3.9 1-.8 0-2-1-3.3-1-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.3 2.5 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.2 3.2-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.8-1.1-2.8-4.1Zm-2.5-7.3c.7-.9 1.2-2.1 1.1-3.3-1.1.05-2.4.7-3.1 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.4-.5 3.1-1.4Z"
+        />
+      </svg>
+    </span>
+
+    <span>
+      <small class="download-coming-soon">COMING SOON</small>
+      <strong>iOS</strong>
+    </span>
+
+    <span class="coming-soon-badge">SOON</span>
+  </div>
+
+</div>
 
             <p class="download-note">
               Android installation may require permission to install apps from your browser.
@@ -259,7 +356,7 @@
             <article class="download-phone">
               <div class="download-phone__top">
                 <div class="download-phone__brand">
-                  <img src="./logo1.jpg" alt="" />
+                  <img src="./logo1.png" alt="" />
                   <span>MediTrack</span>
                 </div>
                 <div class="download-phone__bell">
@@ -312,21 +409,7 @@
               </nav>
             </article>
 
-            
-          </div>
-        </div>
-      </section>
 
-<section class="security section" id="security">
-        <div class="security-card reveal">
-          <div class="security-copy">
-            <div class="section-kicker section-kicker--light">Privacy by design</div>
-            <h2>Health information stays with the people who should see it.</h2>
-            <p>Verified identities, role-based access, protected document storage, secure sessions, and traceable administrative activity support safer campus healthcare.</p>
-            <div class="security-pills"><span>Role-based access</span><span>Verified accounts</span><span>Audit activity</span><span>Protected files</span></div>
-          </div>
-          <div class="security-mark" aria-hidden="true">
-            <div class="lock-ring"><img src="./logo1.jpg" alt="" /><span>SECURE</span></div>
           </div>
         </div>
       </section>
@@ -334,17 +417,18 @@
       <section class="final-cta section">
         <div class="cta-card reveal">
           <div><span>Start with better connected care.</span><h2>Your campus health journey belongs in one place.</h2></div>
-          <div class="cta-actions"><a class="cta-primary" href="https://meditrack-2-tvck.onrender.com/#/login">Sign in to MediTrack <span>→</span></a><a href="https://meditrack-2-tvck.onrender.com/#/signup">Create an account</a></div>
+          <div class="cta-actions"><a class="cta-primary" href="https://meditrackdlsp.online/#/login">Sign in to MediTrack <span>→</span></a><a href="https://meditrackdlsp.online/#/signup">Create an account</a></div>
         </div>
       </section>
     </main>
 
     <footer>
-      <a href="#home" class="brand brand--footer"><img src="./logo1.jpg" alt="" /><span><b>Medi</b>Track</span></a>
+      <a href="#home" class="brand brand--footer"><img src="./logo1.png" alt="" /><span><b>Medi</b>Track</span></a>
       <p>University health services, connected.</p>
       <span>© <span id="year"></span> MediTrack</span>
     </footer>
   </div>
   <script src="./script.js"></script>
+
 </body>
 </html>
