@@ -353,7 +353,13 @@ const IdList = ({ ids = [], tone, emptyText }) => {
 
 export default function UniversityIdImport({ isMobile }) {
   const inputRef = useRef(null);
+
+  // State
+  const [importMethod, setImportMethod] = useState('upload'); // 'upload' | 'manual'
   const [files, setFiles] = useState([]);
+  const [manualIds, setManualIds] = useState('');
+  const [textareaFocused, setTextareaFocused] = useState(false);
+
   const [dragging, setDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState(null);
@@ -364,6 +370,11 @@ export default function UniversityIdImport({ isMobile }) {
   const totalSize = useMemo(
     () => files.reduce((sum, file) => sum + file.size, 0),
     [files]
+  );
+
+  const parsedManualIds = useMemo(
+    () => manualIds.split(/[,\n\s]+/).filter(Boolean),
+    [manualIds]
   );
 
   const showToast = (message, type = 'success') => {
@@ -419,16 +430,29 @@ export default function UniversityIdImport({ isMobile }) {
   };
 
   const requestImport = () => {
-    if (!files.length || isImporting) return;
+    if (isImporting) return;
 
-    setPendingAction({
-      type: 'import',
-      title: 'Import University IDs?',
-      message: `${files.length} file${files.length === 1 ? '' : 's'} will be processed. New IDs are saved and duplicates are skipped.`,
-      confirmText: 'Import',
-      loadingText: 'Importing...',
-      tone: 'save',
-    });
+    if (importMethod === 'upload') {
+      if (!files.length) return;
+      setPendingAction({
+        type: 'import_upload',
+        title: 'Import University IDs?',
+        message: `${files.length} file${files.length === 1 ? '' : 's'} will be processed. New IDs are saved and duplicates are skipped.`,
+        confirmText: 'Import Files',
+        loadingText: 'Importing...',
+        tone: 'save',
+      });
+    } else {
+      if (!parsedManualIds.length) return;
+      setPendingAction({
+        type: 'import_manual',
+        title: 'Import Manual IDs?',
+        message: `${parsedManualIds.length} ID${parsedManualIds.length === 1 ? '' : 's'} will be processed. New IDs are saved and duplicates are skipped.`,
+        confirmText: 'Import IDs',
+        loadingText: 'Importing...',
+        tone: 'save',
+      });
+    }
   };
 
   const requestClearFiles = () => {
@@ -443,16 +467,26 @@ export default function UniversityIdImport({ isMobile }) {
     });
   };
 
-  const performImport = async () => {
+  const performImport = async (type) => {
     setIsImporting(true);
     setError('');
     setResult(null);
 
     try {
-      const response = await universityIdService.importUniversityIds(files);
+      let response;
+
+      if (type === 'import_upload') {
+        response = await universityIdService.importUniversityIds(files);
+        setFiles([]);
+        if (inputRef.current) inputRef.current.value = '';
+      } else if (type === 'import_manual') {
+        // NOTE: Ensure your backend service has this method configured.
+        // It should accept an array of strings like: { ids: ['21-12345', '20-54321'] }
+        response = await universityIdService.importManualIds({ ids: parsedManualIds });
+        setManualIds('');
+      }
+
       setResult(response.data);
-      setFiles([]);
-      if (inputRef.current) inputRef.current.value = '';
       showToast(response.message || 'University IDs imported successfully.');
     } catch (err) {
       console.error('[UniversityIdImport] Failed to import university IDs:', err);
@@ -473,9 +507,9 @@ export default function UniversityIdImport({ isMobile }) {
       return;
     }
 
-    if (action.type === 'import') {
+    if (action.type === 'import_upload' || action.type === 'import_manual') {
       setPendingAction(null);
-      await performImport();
+      await performImport(action.type);
     }
   };
 
@@ -486,6 +520,20 @@ export default function UniversityIdImport({ isMobile }) {
     gap: 20,
     position: 'relative',
   };
+
+  const segmentedButtonStyle = (active) => ({
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    border: 'none',
+    background: active ? '#fff' : 'transparent',
+    color: active ? '#1a2e22' : '#7a9e8e',
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: 'pointer',
+    boxShadow: active ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+    transition: 'all 0.2s ease',
+  });
 
   return (
     <div style={containerStyle}>
@@ -526,272 +574,379 @@ export default function UniversityIdImport({ isMobile }) {
         onConfirm={confirmPendingAction}
       />
 
-      {/* ── Upload ── */}
-      <SectionLabel>University ID Import</SectionLabel>
+      {/* ── Mode Selection ── */}
+      <div
+        style={{
+          display: 'flex',
+          background: '#eef3f1',
+          padding: 5,
+          borderRadius: 14,
+          maxWidth: 340
+        }}
+      >
+        <button
+          style={segmentedButtonStyle(importMethod === 'upload')}
+          onClick={() => {
+            setImportMethod('upload');
+            setError('');
+          }}
+        >
+          Upload Excel
+        </button>
+        <button
+          style={segmentedButtonStyle(importMethod === 'manual')}
+          onClick={() => {
+            setImportMethod('manual');
+            setError('');
+          }}
+        >
+          Manual Entry
+        </button>
+      </div>
 
-      <SectionCard>
-        <Row
-          label="Upload Excel files"
-          sub="Authorized student and employee IDs. Only people on this list can create a MediTrack account."
-          right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CountBadge>{`${files.length}/${MAX_FILES}`}</CountBadge>
-            </div>
-          }
-        />
+      <SectionLabel>
+        {importMethod === 'upload' ? 'University ID Import' : 'Manual ID Entry'}
+      </SectionLabel>
 
-        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            onDragEnter={(event) => {
-              event.preventDefault();
-              setDragging(true);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              width: '100%',
-              minHeight: isMobile ? 160 : 190,
-              padding: '28px 20px',
-              borderRadius: 16,
-              border: `1.5px dashed ${dragging ? '#466460' : '#cbd8d3'}`,
-              background: dragging ? '#eef6f4' : '#f8fafc',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'background 0.15s ease, border-color 0.15s ease',
-            }}
-          >
-            <span
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: '#e8f5ee',
-                color: '#466460',
-              }}
-            >
-              <UploadCloud size={24} strokeWidth={2} />
-            </span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#1a2e22' }}>
-              Drop Excel files here or click to browse
-            </span>
-            <span style={{ fontSize: 12, color: '#7a9e8e' }}>
-              .xlsx or .xls · up to {MAX_FILES} files · 10 MB each
-            </span>
-          </button>
-
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            multiple
-            style={{ display: 'none' }}
-            onChange={(event) => addFiles(event.target.files)}
+      {/* ── Manual Entry UI ── */}
+      {importMethod === 'manual' && (
+        <SectionCard>
+          <Row
+            label="Type or Paste IDs"
+            sub="Enter University IDs separated by commas, spaces, or newlines."
+            right={<CountBadge>{parsedManualIds.length}</CountBadge>}
           />
 
-          <div
-            style={{
-              display: 'flex',
-              gap: 10,
-              alignItems: 'flex-start',
-              padding: '12px 14px',
-              borderRadius: 12,
-              background: '#f4f8f6',
-              border: '1px solid #e2ebe8',
-            }}
-          >
-            <Info size={15} strokeWidth={2.2} color="#466460" style={{ flexShrink: 0, marginTop: 1 }} />
-            <p style={{ margin: 0, fontSize: 12, color: '#526e64', lineHeight: 1.55 }}>
-              Put the University IDs in column A. The header can have any name or be omitted. Only
-              IDs matching{' '}
-              <strong style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: '#1a2e22' }}>
-                XX-XXXXX
-              </strong>{' '}
-              or{' '}
-              <strong style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: '#1a2e22' }}>
-                XXXX-XXXX
-              </strong>{' '}
-              are imported.
-            </p>
-          </div>
-
-          {error && (
-            <div
+          <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <textarea
+              value={manualIds}
+              onChange={(e) => setManualIds(e.target.value)}
+              onFocus={() => setTextareaFocused(true)}
+              onBlur={() => setTextareaFocused(false)}
+              placeholder="e.g. 21-12345, 20-00012&#10;19-54321"
               style={{
-                padding: '10px 14px',
-                borderRadius: 10,
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#b91c1c',
-                fontSize: 12,
-                fontWeight: 600,
-                lineHeight: 1.5,
+                width: '100%',
+                minHeight: 180,
+                padding: 16,
+                borderRadius: 14,
+                border: `1.5px solid ${textareaFocused ? '#466460' : '#e2ebe8'}`,
+                background: textareaFocused ? '#fff' : '#f8fafc',
+                fontSize: 14,
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+                outline: 'none',
+                transition: 'all 0.15s ease',
               }}
-            >
-              {error}
-            </div>
-          )}
+            />
 
-          {files.length > 0 && (
-            <div>
+            {error && (
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                  marginBottom: 10,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: 1.5,
                 }}
               >
-                <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#466460' }}>
-                  Selected files · {formatBytes(totalSize)}
-                </p>
-                <button
-                  type="button"
-                  onClick={requestClearFiles}
-                  disabled={isImporting}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    fontFamily: 'inherit',
-                    color: '#ef4444',
-                    cursor: isImporting ? 'not-allowed' : 'pointer',
-                    opacity: isImporting ? 0.6 : 1,
-                  }}
-                >
-                  Remove all
-                </button>
+                {error}
               </div>
+            )}
 
-              <div style={{ display: 'grid', gap: 8 }}>
-                {files.map((file) => (
-                  <div
-                    key={fileKey(file)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '10px 14px',
-                      borderRadius: 12,
-                      border: '1px solid #e2ebe8',
-                      background: '#fff',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: 10,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: '#f4f8f6',
-                        color: '#466460',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <FileSpreadsheet size={17} strokeWidth={2} />
-                    </span>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: '#1a2e22',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {file.name}
-                      </p>
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: '#7a9e8e' }}>
-                        {formatBytes(file.size)}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removeFile(fileKey(file))}
-                      disabled={isImporting}
-                      aria-label={`Remove ${file.name}`}
-                      style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: '50%',
-                        border: 'none',
-                        background: '#f4f8f6',
-                        color: '#7a9e8e',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        cursor: isImporting ? 'not-allowed' : 'pointer',
-                        opacity: isImporting ? 0.6 : 1,
-                      }}
-                    >
-                      <X size={15} strokeWidth={2.4} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                paddingTop: 14,
+                borderTop: '1px solid #eef3f1',
+              }}
+            >
+              <button
+                type="button"
+                onClick={requestImport}
+                disabled={!parsedManualIds.length || isImporting}
+                style={pillButtonStyle('#466460', '#fff', !parsedManualIds.length || isImporting)}
+              >
+                {isImporting
+                  ? 'Importing...'
+                  : `Import ${parsedManualIds.length || ''} ID${parsedManualIds.length === 1 ? '' : 's'}`.replace(/\s+/g, ' ')
+                }
+              </button>
             </div>
-          )}
+          </div>
+        </SectionCard>
+      )}
 
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: isMobile ? 'column-reverse' : 'row',
-              justifyContent: 'flex-end',
-              gap: 10,
-              paddingTop: 14,
-              borderTop: '1px solid #eef3f1',
-            }}
-          >
+      {/* ── File Upload UI ── */}
+      {importMethod === 'upload' && (
+        <SectionCard>
+          <Row
+            label="Upload Excel files"
+            sub="Authorized student and employee IDs. Only people on this list can create a MediTrack account."
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CountBadge>{`${files.length}/${MAX_FILES}`}</CountBadge>
+              </div>
+            }
+          />
+
+          <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              disabled={isImporting || files.length >= MAX_FILES}
-              style={pillButtonStyle(
-                '#f4f8f6',
-                '#466460',
-                isImporting || files.length >= MAX_FILES,
-                '1px solid #e2ebe8'
-              )}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                width: '100%',
+                minHeight: isMobile ? 160 : 190,
+                padding: '28px 20px',
+                borderRadius: 16,
+                border: `1.5px dashed ${dragging ? '#466460' : '#cbd8d3'}`,
+                background: dragging ? '#eef6f4' : '#f8fafc',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'background 0.15s ease, border-color 0.15s ease',
+              }}
             >
-              Add more files
+              <span
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#e8f5ee',
+                  color: '#466460',
+                }}
+              >
+                <UploadCloud size={24} strokeWidth={2} />
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#1a2e22' }}>
+                Drop Excel files here or click to browse
+              </span>
+              <span style={{ fontSize: 12, color: '#7a9e8e' }}>
+                .xlsx or .xls · up to {MAX_FILES} files · 10 MB each
+              </span>
             </button>
-            <button
-              type="button"
-              onClick={requestImport}
-              disabled={!files.length || isImporting}
-              style={pillButtonStyle('#466460', '#fff', !files.length || isImporting)}
+
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(event) => addFiles(event.target.files)}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+                padding: '12px 14px',
+                borderRadius: 12,
+                background: '#f4f8f6',
+                border: '1px solid #e2ebe8',
+              }}
             >
-              {isImporting
-                ? 'Importing...'
-                : `Import ${files.length || ''} file${files.length === 1 ? '' : 's'}`.replace(
-                    /\s+/g,
-                    ' '
-                  )}
-            </button>
+              <Info size={15} strokeWidth={2.2} color="#466460" style={{ flexShrink: 0, marginTop: 1 }} />
+              <p style={{ margin: 0, fontSize: 12, color: '#526e64', lineHeight: 1.55 }}>
+                Put the University IDs in column A. The header can have any name or be omitted. Only
+                IDs matching{' '}
+                <strong style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: '#1a2e22' }}>
+                  XX-XXXXX
+                </strong>{' '}
+                or{' '}
+                <strong style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: '#1a2e22' }}>
+                  XXXX-XXXX
+                </strong>{' '}
+                are imported.
+              </p>
+            </div>
+
+            {error && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}
+              >
+                {error}
+              </div>
+            )}
+
+            {files.length > 0 && (
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#466460' }}>
+                    Selected files · {formatBytes(totalSize)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={requestClearFiles}
+                    disabled={isImporting}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fontFamily: 'inherit',
+                      color: '#ef4444',
+                      cursor: isImporting ? 'not-allowed' : 'pointer',
+                      opacity: isImporting ? 0.6 : 1,
+                    }}
+                  >
+                    Remove all
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {files.map((file) => (
+                    <div
+                      key={fileKey(file)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '10px 14px',
+                        borderRadius: 12,
+                        border: '1px solid #e2ebe8',
+                        background: '#fff',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 10,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#f4f8f6',
+                          color: '#466460',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <FileSpreadsheet size={17} strokeWidth={2} />
+                      </span>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: '#1a2e22',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {file.name}
+                        </p>
+                        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#7a9e8e' }}>
+                          {formatBytes(file.size)}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFile(fileKey(file))}
+                        disabled={isImporting}
+                        aria-label={`Remove ${file.name}`}
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: '#f4f8f6',
+                          color: '#7a9e8e',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          cursor: isImporting ? 'not-allowed' : 'pointer',
+                          opacity: isImporting ? 0.6 : 1,
+                        }}
+                      >
+                        <X size={15} strokeWidth={2.4} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column-reverse' : 'row',
+                justifyContent: 'flex-end',
+                gap: 10,
+                paddingTop: 14,
+                borderTop: '1px solid #eef3f1',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                disabled={isImporting || files.length >= MAX_FILES}
+                style={pillButtonStyle(
+                  '#f4f8f6',
+                  '#466460',
+                  isImporting || files.length >= MAX_FILES,
+                  '1px solid #e2ebe8'
+                )}
+              >
+                Add more files
+              </button>
+              <button
+                type="button"
+                onClick={requestImport}
+                disabled={!files.length || isImporting}
+                style={pillButtonStyle('#466460', '#fff', !files.length || isImporting)}
+              >
+                {isImporting
+                  ? 'Importing...'
+                  : `Import ${files.length || ''} file${files.length === 1 ? '' : 's'}`.replace(
+                      /\s+/g,
+                      ' '
+                    )}
+              </button>
+            </div>
           </div>
-        </div>
-      </SectionCard>
+        </SectionCard>
+      )}
 
       {/* ── Result ── */}
       {result && (
@@ -799,14 +954,16 @@ export default function UniversityIdImport({ isMobile }) {
           <SectionLabel>Last Import</SectionLabel>
 
           <SectionCard>
-            <Row
-              label="Files processed"
-              sub="Excel files read in this batch."
-              right={<CountBadge>{result.filesProcessed ?? 0}</CountBadge>}
-            />
+            {importMethod === 'upload' && (
+              <Row
+                label="Files processed"
+                sub="Excel files read in this batch."
+                right={<CountBadge>{result.filesProcessed ?? 0}</CountBadge>}
+              />
+            )}
             <Row
               label="Unique IDs found"
-              sub="Valid IDs detected across all uploaded files."
+              sub="Valid IDs detected across all provided inputs."
               right={<CountBadge>{result.totalProcessed ?? 0}</CountBadge>}
             />
             <Row

@@ -729,7 +729,7 @@ const SignupForm = () => {
               </div>
               <div className="lf-field" style={{ flex: 5 }}>
                 <label htmlFor="universityId" className="lf-desktop-label">University ID<span className="lf-req">*</span></label>
-                <input id="universityId" type="text" disabled={loading} className={`lf-desktop-input ${hasError('universityId') ? 'is-invalid' : ''}`} placeholder="e.g. 2021-00123" value={formData.universityId} onChange={handleChange} onBlur={() => handleBlur('universityId')} />
+                <input id="universityId" type="text" disabled={loading} className={`lf-desktop-input ${hasError('universityId') ? 'is-invalid' : ''}`} placeholder="e.g. 00-00000" value={formData.universityId} onChange={handleChange} onBlur={() => handleBlur('universityId')} />
                 {hasError('universityId') && <span className="lf-field-error">{fieldErrors.universityId}</span>}
               </div>
             </div>
