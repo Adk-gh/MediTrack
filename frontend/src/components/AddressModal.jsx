@@ -392,6 +392,11 @@ export default function AddressModal({
   const fullAddressPreview = buildFullAddress(formData);
   const isPhilippines = formData.addressCountry === 'Philippines';
 
+  const savedAddress =
+    initialData.homeAddress ||
+    initialData.home_address ||
+    '';
+
   return createPortal(
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
@@ -431,6 +436,18 @@ export default function AddressModal({
         </div>
 
         <div className="p-4 overflow-y-auto flex-1">
+          {savedAddress && (
+            <div className="mb-4 p-4 bg-[#f4f8f6] border border-[#dce8e2] rounded-xl">
+              <p className="text-[11px] font-bold text-[#466460] uppercase tracking-wide mb-2">
+                Current Saved Address
+              </p>
+
+              <p className="text-[13px] text-[#1a2e22] leading-relaxed">
+                {savedAddress}
+              </p>
+            </div>
+          )}
+
           <div className="mb-4">
             <label className={labelCls}>Country</label>
             <select
