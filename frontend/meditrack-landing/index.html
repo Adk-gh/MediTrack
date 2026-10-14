@@ -3,10 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="MediTrack — university health records, appointments, consultations and clinic services in one secure platform." />
   <meta name="theme-color" content="#f4f7f5" />
-  <title>MediTrack — Campus care, connected</title>
+
+  <!-- ───────────── SEO ───────────── -->
+  <title>MediTrack DLSP — Campus Health Records, Appointments &amp; Consultations</title>
+  <meta name="description" content="MediTrack (MediTrack DLSP) is the online health records, appointment and consultation system for Dalubhasaan ng Lunsod ng San Pablo (DLSP). Book clinic visits, view medical and dental records, and consult with clinic staff." />
+  <meta name="keywords" content="MediTrack, MediTrack DLSP, MediTrackDLSP, Meditrac DLSP, MediTrack San Pablo, DLSP clinic, DLSP health records, Dalubhasaan ng Lunsod ng San Pablo clinic, university clinic appointment, campus health portal" />
+  <meta name="author" content="MediTrack" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <!-- IMPORTANT: change this if your landing page lives on a different domain -->
+  <link rel="canonical" href="https://meditrackdlsp.online/" />
+
+  <!-- Open Graph / social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="MediTrack" />
+  <meta property="og:title" content="MediTrack DLSP — Campus care, connected" />
+  <meta property="og:description" content="Health records, appointments and consultations for Dalubhasaan ng Lunsod ng San Pablo (DLSP) in one secure platform." />
+  <meta property="og:url" content="https://meditrackdlsp.online/" />
+  <meta property="og:image" content="https://meditrackdlsp.online/logo1.png" />
+  <meta property="og:image:alt" content="MediTrack logo" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="MediTrack DLSP — Campus care, connected" />
+  <meta name="twitter:description" content="Health records, appointments and consultations for DLSP in one secure platform." />
+  <meta name="twitter:image" content="https://meditrackdlsp.online/logo1.png" />
+
+  <!-- Structured data: tells Google the name + alternate spellings -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://meditrackdlsp.online/#website",
+        "url": "https://meditrackdlsp.online/",
+        "name": "MediTrack",
+        "alternateName": ["MediTrack DLSP", "MediTrackDLSP", "Meditrac DLSP", "MediTrack San Pablo"],
+        "inLanguage": "en"
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://meditrackdlsp.online/#org",
+        "name": "MediTrack",
+        "alternateName": ["MediTrack DLSP", "MediTrackDLSP"],
+        "url": "https://meditrackdlsp.online/",
+        "logo": "https://meditrackdlsp.online/logo1.png",
+        "description": "Health records, appointment and consultation platform for Dalubhasaan ng Lunsod ng San Pablo (DLSP)."
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "MediTrack",
+        "alternateName": "MediTrack DLSP",
+        "applicationCategory": "HealthApplication",
+        "operatingSystem": "Android, Windows, macOS, Web",
+        "url": "https://meditrackdlsp.online/",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "PHP" }
+      }
+    ]
+  }
+  </script>
+
   <link rel="icon" href="./logo1.png" />
+  <link rel="apple-touch-icon" href="./logo1.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -22,7 +79,7 @@
   <div class="page-shell">
     <header class="site-header" id="siteHeader">
       <a href="#home" class="brand" aria-label="MediTrack home">
-        <img src="./logo1.png" alt="" />
+        <img src="./logo1.png" alt="MediTrack logo" />
         <span><b>Medi</b>Track</span>
       </a>
 
@@ -45,7 +102,7 @@
         <div class="hero-copy">
           <div class="availability"><span></span> Campus clinic services are online</div>
           <h1>Healthcare that keeps up with <em>campus life.</em></h1>
-          <p>MediTrack connects students, employees, and clinic teams through one secure space for appointments, records, consultations, and health updates.</p>
+          <p>MediTrack connects students, employees, and clinic teams at Dalubhasaan ng Lunsod ng San Pablo (DLSP) through one secure space for appointments, records, consultations, and health updates.</p>
 
           <div class="hero-actions">
             <a class="primary-button" href="https://meditrackdlsp.online/#/login">Open MediTrack <span>→</span></a>
@@ -424,7 +481,7 @@
 
     <footer>
       <a href="#home" class="brand brand--footer"><img src="./logo1.png" alt="" /><span><b>Medi</b>Track</span></a>
-      <p>University health services, connected.</p>
+      <p>MediTrack DLSP — university health services for Dalubhasaan ng Lunsod ng San Pablo, connected.</p>
       <span>© <span id="year"></span> MediTrack</span>
     </footer>
   </div>
