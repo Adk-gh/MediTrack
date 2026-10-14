@@ -318,32 +318,67 @@ exports.adminResendVerification = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
 
-    const { data: userCheck } = await supabase.from('users').select('is_verified').eq('email', email.toLowerCase()).single();
-
-    if (userCheck && !userCheck.is_verified) {
-      return res.status(403).json({ success: false, message: "Email not verified. Please verify your email first.", needsVerification: true });
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required.',
+      });
     }
 
-    const userData = await userService.loginUser({ email, password });
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const { data: userCheck, error: userCheckError } = await supabase
+      .from('users')
+      .select('is_verified')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (userCheckError) {
+      console.error('[Login] User verification lookup failed:', userCheckError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to check account verification.',
+      });
+    }
+
+    if (userCheck && !userCheck.is_verified) {
+      return res.status(403).json({
+        success: false,
+        message: 'Email not verified. Please verify your email first.',
+        needsVerification: true,
+      });
+    }
+
+    const userData = await userService.loginUser({
+      email: normalizedEmail,
+      password,
+    });
 
     return res.status(200).json({
       success: true,
-      message: "Login successful!",
+      message: 'Login successful!',
       data: {
         token: userData.token,
         refreshToken: userData.refreshToken,
-        uid: userData.uid || userData.id,
-        firstName: userData.firstName || userData.first_name,
-        lastName: userData.lastName || userData.last_name,
+
+        // Keep the two identifiers separate.
+        id: userData.id,
+        uid: userData.uid,
+
+        firstName: userData.firstName,
+        lastName: userData.lastName,
         email: userData.email,
         role: userData.role,
-      }
+      },
     });
   } catch (error) {
-    const statusCode = error.statusCode || 401;
-    return res.status(statusCode).json({ success: false, message: error.message || "Login failed." });
+    console.error('[Login] Failed:', error);
+
+    return res.status(error.statusCode || 401).json({
+      success: false,
+      message: error.message || 'Login failed.',
+    });
   }
 };
 

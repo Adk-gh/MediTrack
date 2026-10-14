@@ -791,32 +791,98 @@ exports.restoreFromArchives = async (id, tableName) => {
   };
 };
 
+
 // ============================================================
 // PERMANENTLY DELETE
-//
-// Works for both sources: deletes the original row (if any)
-// and the archives snapshot (if any).
+// Supports:
+// 1. Soft-archived rows still present in their original table
+// 2. Snapshots stored in the archives table
+// 3. Items identified by either archive ID or original ID
 // ============================================================
 
 exports.permanentDelete = async (id, tableName) => {
+  if (!id) {
+    throw new Error('Archive item ID is required');
+  }
+
   const normalizedTable = validateTableName(tableName);
   const idColumn = getIdColumn(normalizedTable);
+  const archiveTypes = getArchiveTypesForTable(normalizedTable);
 
-  const archiveRecord = await getArchiveRecord(id, normalizedTable);
+  console.log('[Archives] Permanent deletion requested:', {
+    id,
+    tableName: normalizedTable,
+    idColumn,
+  });
+
+  // First determine whether the supplied ID is an archive row ID.
+  const { data: archiveById, error: archiveIdError } = await supabase
+    .from(ARCHIVE_TABLE)
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (archiveIdError) {
+    throw new Error(
+      `Failed to find archive entry: ${archiveIdError.message}`
+    );
+  }
+
+  // If it wasn't an archive ID, look for a snapshot by original ID.
+  let archiveRecord = archiveById;
+
+  if (!archiveRecord) {
+    const { data: matchingArchives, error: originalIdError } = await supabase
+      .from(ARCHIVE_TABLE)
+      .select('*')
+      .eq('original_id', id)
+      .in('type', archiveTypes)
+      .order('archived_at', { ascending: false })
+      .limit(1);
+
+    if (originalIdError) {
+      throw new Error(
+        `Failed to find archived item: ${originalIdError.message}`
+      );
+    }
+
+    archiveRecord = matchingArchives?.[0] || null;
+  }
+
+  // Prevent an archive ID for one type from deleting another type.
+  if (archiveRecord && !archiveTypes.includes(archiveRecord.type)) {
+    throw new Error(
+      `The selected archive entry is type "${archiveRecord.type}", ` +
+      `not "${normalizedTable}". Refresh the Archives page and try again.`
+    );
+  }
+
   const archivedData = parseArchiveData(archiveRecord?.data);
 
+  // Prefer the original ID saved in the archive snapshot.
   const targetItemId =
-    archiveRecord?.original_id || archivedData?.[idColumn] || id;
+    archiveRecord?.original_id ||
+    archivedData?.[idColumn] ||
+    id;
 
-  // Load original row before deleting it
+  console.log('[Archives] Resolved permanent deletion target:', {
+    suppliedId: id,
+    archiveId: archiveRecord?.id || null,
+    originalId: targetItemId,
+    tableName: normalizedTable,
+  });
+
+  // Retrieve the original row if it still exists.
   let originalRecord = null;
 
   try {
-    originalRecord = await getOriginalRecord(normalizedTable, targetItemId);
-  } catch (fetchError) {
-    console.warn(
-      '[Archives] Could not retrieve original item before permanent deletion:',
-      fetchError.message
+    originalRecord = await getOriginalRecord(
+      normalizedTable,
+      targetItemId
+    );
+  } catch (error) {
+    throw new Error(
+      `Failed to check the original ${normalizedTable} record: ${error.message}`
     );
   }
 
@@ -825,71 +891,124 @@ exports.permanentDelete = async (id, tableName) => {
     originalRecord || archivedData
   );
 
-  // Users: delete Supabase Auth account first
+  // Delete the associated Supabase Auth account for user records.
   if (normalizedTable === 'users') {
     const targetAuthUid =
-      originalRecord?.uid || archivedData?.uid || targetItemId;
+      originalRecord?.uid ||
+      archivedData?.uid ||
+      targetItemId;
 
-    console.log(
-      `>>> [Archives] Attempting Auth deletion for UID: ${targetAuthUid}`
-    );
+    if (targetAuthUid) {
+      const { error: authError } =
+        await supabase.auth.admin.deleteUser(targetAuthUid);
 
-    const { error: authError } = await supabase.auth.admin.deleteUser(
-      targetAuthUid
-    );
+      if (authError) {
+        const message = String(authError.message || '').toLowerCase();
+        const alreadyMissing =
+          message.includes('not found') || authError.status === 404;
 
-    if (authError) {
-      const authMessage = String(authError.message || '').toLowerCase();
+        if (!alreadyMissing) {
+          throw new Error(
+            `Cannot permanently delete user: Auth deletion failed: ` +
+            authError.message
+          );
+        }
 
-      const isNotFoundError =
-        authMessage.includes('not found') || authError.status === 404;
-
-      if (isNotFoundError) {
         console.warn(
-          `>>> [Archives] User ${targetAuthUid} is already missing from Auth. Continuing database cleanup.`
-        );
-      } else {
-        console.error(
-          '>>> [Archives] Failed to delete user from Supabase Auth:',
-          authError.message
-        );
-
-        throw new Error(
-          'Cannot permanently delete user: ' +
-            `Auth deletion failed - ${authError.message}`
+          '[Archives] Auth account already missing; continuing:',
+          targetAuthUid
         );
       }
-    } else {
-      console.log('>>> [Archives] Successfully deleted user from Supabase Auth');
     }
   }
 
-  // Delete original database row (no-op if it is already gone)
-  const { error: dbError } = await supabase
-    .from(normalizedTable)
-    .delete()
-    .eq(idColumn, targetItemId);
-
-  if (dbError) {
-    throw dbError;
-  }
-
-  // Remove archive entry
-  if (archiveRecord) {
-    const { error: archiveCleanupError } = await supabase
-      .from(ARCHIVE_TABLE)
+  // Delete the original record if it still exists.
+  if (originalRecord) {
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from(normalizedTable)
       .delete()
-      .eq('id', archiveRecord.id);
+      .eq(idColumn, targetItemId)
+      .select(idColumn);
 
-    if (archiveCleanupError) {
-      console.warn(
-        '[Archives] Original item was deleted, but the archive entry could not be removed:',
-        archiveCleanupError.message
+    if (deleteError) {
+      console.error('[Archives] Original record deletion failed:', {
+        tableName: normalizedTable,
+        targetItemId,
+        code: deleteError.code,
+        message: deleteError.message,
+        details: deleteError.details,
+        hint: deleteError.hint,
+      });
+
+      throw new Error(
+        `Could not permanently delete the original ${normalizedTable} record: ` +
+        deleteError.message
+      );
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+      throw new Error(
+        `No ${normalizedTable} record was deleted. Check the record ID ` +
+        `and database permissions.`
       );
     }
   }
 
-  // Notify owner (not for deleted users or announcements)
+  // Remove every matching, unrestored snapshot for this item.
+  // This also handles duplicate snapshots for the same original record.
+  let cleanupQuery = supabase
+    .from(ARCHIVE_TABLE)
+    .delete()
+    .eq('original_id', targetItemId)
+    .in('type', archiveTypes)
+    .select('id');
+
+  const { data: removedArchives, error: cleanupError } =
+    await cleanupQuery;
+
+  if (cleanupError) {
+    console.error('[Archives] Archive cleanup failed:', {
+      targetItemId,
+      tableName: normalizedTable,
+      code: cleanupError.code,
+      message: cleanupError.message,
+      details: cleanupError.details,
+      hint: cleanupError.hint,
+    });
+
+    throw new Error(
+      `The original record may have been deleted, but its archive entry ` +
+      `could not be removed: ${cleanupError.message}`
+    );
+  }
+
+  // A snapshot may be identified by its archive ID even when its
+  // original_id is missing or differs from the snapshot ID.
+  if (
+    archiveRecord &&
+    !(removedArchives || []).some((row) => row.id === archiveRecord.id)
+  ) {
+    const { data: removedArchive, error: archiveError } = await supabase
+      .from(ARCHIVE_TABLE)
+      .delete()
+      .eq('id', archiveRecord.id)
+      .select('id');
+
+    if (archiveError) {
+      throw new Error(
+        `The original record may have been deleted, but archive cleanup ` +
+        `failed: ${archiveError.message}`
+      );
+    }
+
+    if (!removedArchive || removedArchive.length === 0) {
+      throw new Error(
+        'The archive entry was not removed. Check database permissions.'
+      );
+    }
+  }
+
+  // Notify the owner where appropriate.
   if (
     normalizedTable !== 'users' &&
     normalizedTable !== 'announcements' &&
@@ -907,12 +1026,20 @@ exports.permanentDelete = async (id, tableName) => {
     });
   }
 
+  console.log('[Archives] Permanent deletion completed:', {
+    targetItemId,
+    tableName: normalizedTable,
+    archiveEntriesRemoved: removedArchives?.length || 0,
+  });
+
   return {
     id: targetItemId,
+    archiveId: archiveRecord?.id || null,
     tableName: normalizedTable,
     success: true,
   };
 };
+
 
 // ============================================================
 // CLEAN UP OLD ARCHIVES

@@ -33,17 +33,18 @@ const normalizeUser = (user) => {
     `${firstName} ${lastName}`.trim();
 
   return {
-    uid: user.id || user.uid,
+    // Internal primary key from public.users.
+    id: user.id ?? user.internalId ?? null,
+
+    // Supabase Auth UID. Do not substitute the internal ID.
+    uid: user.uid ?? user.authUid ?? null,
 
     name,
-
     firstName,
     lastName,
     middleName,
     suffix,
-
     role: user.role || "",
-
     email: user.email || "",
 
     universityId:
@@ -67,20 +68,20 @@ const normalizeUser = (user) => {
       "",
 
     vaccinationStatus:
-      user.vaccination_status ||
+      user.vaccination_status ??
       user.vaccinationStatus,
 
     vaccinationHistory:
-      user.vaccination_history ||
+      user.vaccination_history ??
       user.vaccinationHistory,
 
     emergencyContact:
-      user.emergency_contact ||
+      user.emergency_contact ??
       user.emergencyContact,
 
     isProfileSetup:
-      user.is_profile_setup ||
-      user.isProfileSetup ||
+      user.is_profile_setup ??
+      user.isProfileSetup ??
       false,
   };
 };

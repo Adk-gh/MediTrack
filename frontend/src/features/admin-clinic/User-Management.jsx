@@ -352,6 +352,7 @@ const getRoleOptions = (configData, t) => {
 const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const isSubmitting = useRef(false);
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
 
@@ -416,67 +417,108 @@ const CreateUserModal = ({ onClose, onCreated, showSnackbar, configData }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.first_name || !form.last_name || !form.email || !form.password || !form.university_id) {
-      showSnackbar('Please fill all required fields', 'error'); return;
-    }
 
-    const pwCheck = validatePassword(form.password, configData?.passwordRules);
-    if (!pwCheck.valid) {
-      showSnackbar(pwCheck.message, 'error');
-      return;
-    }
-
+    // A ref changes immediately, preventing overlapping submissions.
+    if (isSubmitting.current) return;
+    isSubmitting.current = true;
     setLoading(true);
 
     try {
-      const validationResult = await validateEmailWithEasyEmail(form.email);
-      if (!validationResult.isDeliverable) {
-        showSnackbar(validationResult.message, 'error');
-        setLoading(false);
+      if (!form.first_name || !form.last_name || !form.email || !form.password || !form.university_id) {
+        showSnackbar('Please fill all required fields', 'error');
         return;
       }
 
-      const { data: existing } = await supabase.from('users').select('id').eq('university_id', form.university_id).maybeSingle();
-      if (existing) { showSnackbar('This University ID is already registered', 'error'); setLoading(false); return; }
+      const pwCheck = validatePassword(form.password, configData?.passwordRules);
+      if (!pwCheck.valid) {
+        showSnackbar(pwCheck.message, 'error');
+        return;
+      }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-auth-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ email: form.email, password: form.password, firstName: normalizeName(form.first_name), lastName: normalizeName(form.last_name) }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to update auth user');
+      const validationResult = await validateEmailWithEasyEmail(form.email);
+      if (!validationResult.isDeliverable) {
+        showSnackbar(validationResult.message, 'error');
+        return;
+      }
 
-      const newUser = {
-        uid: result.userId,
-        first_name: normalizeName(form.first_name), middle_name: normalizeName(form.middle_name),
-        last_name: normalizeName(form.last_name), suffix: form.suffix || '',
-        email: form.email.toLowerCase(), university_id: form.university_id,
-        phone_number: form.phone_number || '', role: form.role,
-        department: form.department || '', program: form.program || '',
+      // Friendly early checks. The Edge Function also checks these securely.
+      const normalizedEmail = form.email.trim().toLowerCase();
+      const normalizedUniversityId = form.university_id.trim();
+      const { data: existingId, error: idError } = await supabase
+        .from('users').select('id').eq('university_id', normalizedUniversityId).maybeSingle();
+      if (idError) throw idError;
+      if (existingId) {
+        showSnackbar('This University ID is already registered', 'error');
+        return;
+      }
+
+      const { data: existingEmail, error: emailError } = await supabase
+        .from('users').select('id').eq('email', normalizedEmail).maybeSingle();
+      if (emailError) throw emailError;
+      if (existingEmail) {
+        showSnackbar('This email is already registered', 'error');
+        return;
+      }
+
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session?.access_token) throw new Error('Session expired. Please log in again.');
+
+      // The Edge Function creates both the Auth user and the COMPLETE profile.
+      // Do not insert a second public.users record from the frontend.
+      const profile = {
+        first_name: normalizeName(form.first_name),
+        middle_name: normalizeName(form.middle_name),
+        last_name: normalizeName(form.last_name),
+        suffix: form.suffix || '',
+        university_id: normalizedUniversityId,
+        phone_number: form.phone_number || '',
+        role: form.role,
+        department: form.department || '',
+        program: form.program || '',
         job_title: form.job_title || '',
-        birthday: form.birthday || '', age: form.age === '' ? null : Number(form.age),
-        sex: form.sex || '', blood_type: form.blood_type || '',
-        civil_status: form.civil_status || '', religion: form.religion || '',
-        nationality: form.nationality || '', home_address: form.home_address || '',
-        year_level: form.year_level || '', section: form.section || '',
+        birthday: form.birthday || null,
+        age: form.age === '' ? null : Number(form.age),
+        sex: form.sex || '',
+        blood_type: form.blood_type || '',
+        civil_status: form.civil_status || '',
+        religion: form.religion || '',
+        nationality: form.nationality || '',
+        home_address: form.home_address || '',
+        year_level: form.year_level || '',
+        section: form.section || '',
         student_classification: form.student_classification || '',
         classification: form.classification || '',
-        is_verified: form.is_verified, profile_complete: form.profile_complete,
-        created_at: new Date().toISOString(),
+        is_verified: form.is_verified,
+        profile_complete: form.profile_complete,
       };
 
-      const { data: inserted, error: insertError } = await supabase.from('users').insert(newUser).select().single();
-      if (insertError) throw insertError;
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-auth-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ email: normalizedEmail, password: form.password, profile }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.user?.uid) {
+        throw new Error(result.error || 'Failed to create user');
+      }
 
-      onCreated(inserted);
       showSnackbar('User created successfully', 'success');
+      try {
+        await onCreated(result.user);
+      } catch (refreshError) {
+        console.error('User created, but list refresh failed:', refreshError);
+      }
       onClose();
     } catch (err) {
-      showSnackbar('Error creating user: ' + (err.message || ''), 'error');
+      console.error('Error creating user:', err);
+      showSnackbar('Error creating user: ' + (err.message || 'Unknown error'), 'error');
     } finally {
       setLoading(false);
+      isSubmitting.current = false;
     }
   };
 
