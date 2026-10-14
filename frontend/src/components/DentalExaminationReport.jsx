@@ -227,9 +227,37 @@ useEffect(() => {
       'Caries': 'Caries',
       'Missing': 'Missing',
     };
+
     const filtered = Object.entries(toothData)
-      .filter(([, data]) => data?.condition && conditions.some(c => data.condition.includes(c)))
-      .map(([num, data]) => `Tooth #${num}: ${conditionLabels[data.condition] || data.condition}${data.operation ? ` (${data.operation})` : ''}`);
+      .filter(([, data]) => {
+        // 1. Check if the new 'surfaces' object exists and any surface matches the condition
+        if (data?.surfaces && typeof data.surfaces === 'object') {
+          return Object.values(data.surfaces).some(val =>
+            typeof val === 'string' && conditions.some(c => val.includes(c))
+          );
+        }
+        // 2. Check if data is a simple string (legacy string format)
+        if (typeof data === 'string') {
+          return conditions.some(c => data.includes(c));
+        }
+        // 3. Check if it's the legacy object format with a 'condition' property
+        return data?.condition && typeof data.condition === 'string' && conditions.some(c => data.condition.includes(c));
+      })
+      .map(([num, data]) => {
+        let conditionText = '';
+        if (data?.surfaces && typeof data.surfaces === 'object') {
+          const matchingSurface = Object.values(data.surfaces).find(val =>
+            typeof val === 'string' && conditions.some(c => val.includes(c))
+          );
+          conditionText = conditionLabels[matchingSurface] || matchingSurface || 'Unknown';
+        } else if (typeof data === 'string') {
+          conditionText = conditionLabels[data] || data || 'Unknown';
+        } else {
+          conditionText = conditionLabels[data?.condition] || data?.condition || 'Unknown';
+        }
+        return `Tooth #${num}: ${conditionText}${data?.operation ? ` (${data.operation})` : ''}`;
+      });
+
     return filtered.length > 0 ? filtered.join('\n') : '';
   };
 

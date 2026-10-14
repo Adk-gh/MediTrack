@@ -10,8 +10,8 @@ const createAnnouncementSchema = z.object({
   category: z.string().optional(),
   priority: z.string().optional(),
   location: z.string().optional(),
-  contactPerson: z.string().optional(),
-  contactEmail: z.string().optional(),
+  contact_person: z.string().optional(),
+  contact_email: z.string().optional(),
 
   // 🔴 CRITICAL: Allow the base64 image string to pass validation
   image: z.string().nullable().optional(),

@@ -583,68 +583,44 @@ exports.getAnnouncementById = async (
  * @param {Object} data - Form fields from req.body
  * @param {Object|null} file - Multer req.file
  */
-exports.createAnnouncement = async (
-  data,
-  file
-) => {
+
+exports.createAnnouncement = async (data, file) => {
   let imagePath = null;
+  let databaseInsertSucceeded = false;
 
   try {
-    // --------------------------------------------------------
-    // Upload image if supplied
-    // --------------------------------------------------------
-
+    // Upload the image first, if supplied.
     if (file) {
-      imagePath =
-        await uploadImageToStorage(
-          file
-        );
+      imagePath = await uploadImageToStorage(file);
     }
-
-    // --------------------------------------------------------
-    // Build database record
-    // --------------------------------------------------------
 
     const newDoc = {
       ...data,
-
-      /*
-       * PRIVATE STORAGE PATH ONLY
-       *
-       * Example:
-       *
-       * announcements/1756000000_abcd1234.jpg
-       */
-      image_url:
-        imagePath,
-
+      contact_person:
+        data.contact_person ??
+        data.contactPerson ??
+        '',
+      contact_email:
+        data.contact_email ??
+        data.contactEmail ??
+        '',
+      image_url: imagePath,
       created_at:
-        data.created_at ||
-        new Date().toISOString(),
+        data.created_at || new Date().toISOString(),
     };
 
-    // --------------------------------------------------------
-    // Remove frontend-only properties
-    // --------------------------------------------------------
-
+    // Remove frontend-only fields.
     delete newDoc.image;
     delete newDoc.imageFile;
     delete newDoc.image_path;
-
-    // Prevent legacy Base64 property
     delete newDoc.image_url_base64;
+    delete newDoc.contactPerson;
+    delete newDoc.contactEmail;
 
-    // Prevent an accidental old Base64 image_url
-    //
-    // If there is no uploaded file, image_url should
-    // remain null instead of accepting a Base64 string.
+    // Never store a Base64 image from the request body.
     if (!file) {
       newDoc.image_url = null;
     }
-
-    // --------------------------------------------------------
-    // Insert database record
-    // --------------------------------------------------------
 
     const {
       data: announcement,
@@ -655,76 +631,42 @@ exports.createAnnouncement = async (
       .select()
       .single();
 
-    // --------------------------------------------------------
-    // Database failure cleanup
-    // --------------------------------------------------------
-
     if (error) {
-      if (imagePath) {
-        await deleteImageFromStorage(
-          imagePath
-        );
-      }
-
       throw error;
     }
 
+    databaseInsertSucceeded = true;
+
     clearCache();
 
-    // --------------------------------------------------------
-    // Notification
-    // --------------------------------------------------------
-
+    // Notification failure must not undo a saved announcement.
     try {
-      await notificationsService
-        .notifyAnnouncement(
-          announcement
-        );
-
-    } catch (
-      notificationError
-    ) {
+      await notificationsService.notifyAnnouncement(
+        announcement
+      );
+    } catch (notificationError) {
       console.error(
         '[Announcements] Notification dispatch failed:',
         notificationError
       );
     }
 
-    // --------------------------------------------------------
-    // Return announcement with signed URL
-    // --------------------------------------------------------
-
-    return attachSignedImageUrl(
-      announcement
-    );
-
+    return await attachSignedImageUrl(announcement);
   } catch (error) {
-    /*
-     * If anything fails after the image upload but before
-     * the database record is successfully created, clean up
-     * the uploaded image.
-     *
-     * The database failure block above handles Supabase
-     * insert errors. This additional guard handles other
-     * unexpected errors.
-     */
-
-    if (imagePath) {
-      try {
-        await deleteImageFromStorage(
-          imagePath
-        );
-      } catch (cleanupError) {
-        console.error(
-          '[Announcements] Upload cleanup failed:',
-          cleanupError
-        );
-      }
+    // Clean up only if the database insert did not succeed.
+    if (imagePath && !databaseInsertSucceeded) {
+      await deleteImageFromStorage(imagePath);
     }
+
+    console.error(
+      '[Announcements] Create failed:',
+      error.message
+    );
 
     throw error;
   }
 };
+
 
 // ============================================================
 // UPDATE ANNOUNCEMENT

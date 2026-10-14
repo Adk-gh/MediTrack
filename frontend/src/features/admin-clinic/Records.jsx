@@ -858,29 +858,29 @@ const isEligible = (doc) => {
     return role !== 'sysadmin' && role !== 'administrator' && role !== 'admin';
   };
 
-  const loadFilterOptions = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('department, role, program, year_level, section, is_archived');
+const loadFilterOptions = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('first_name, last_name, department, role, program, year_level, section, is_archived');
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const cleaned = (data || [])
-        .filter(isEligible)
-        .map(doc => ({
-          department: doc.department || 'Unassigned',
-          role:       doc.role || doc.type || 'staff',
-          prog:       doc.program || doc.course || '',
-          year:       doc.year_level || doc.yearLevel || '',
-          section:    doc.section || '',
-        }));
+    const cleaned = (data || [])
+      .filter(isEligible)
+      .map(doc => ({
+        department: doc.department || 'Unassigned',
+        role:       doc.role || doc.type || 'staff',
+        prog:       doc.program || doc.course || '',
+        year:       doc.year_level || doc.yearLevel || '',
+        section:    doc.section || '',
+      }));
 
-      setFilterOptionsData(cleaned);
-    } catch (err) {
-      console.error('Failed to load filter options:', err);
-    }
-  };
+    setFilterOptionsData(cleaned);
+  } catch (err) {
+    console.error('Failed to load filter options:', err);
+  }
+};
 
   const loadUsers = async () => {
     try {

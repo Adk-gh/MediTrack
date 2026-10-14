@@ -2921,21 +2921,7 @@ const handleAppointmentCreated = (createdAppt) => {
 
             <div className="flex flex-col gap-2 mt-6">
               <div className="flex gap-3">
-                {/* ── Redirect to Consultation button if online consultation ── */}
-                {isOnlineConsultation(detailModal.reason) && (
-                  <button
-                    onClick={() => handleGoToConsultation(detailModal)}
-                    disabled={detailModal.status === 'done' || detailModal.status === 'missed' || detailModal.status === 'rejected'}
-                    className={`flex-1 p-[12px] border-none rounded-[10px] font-semibold text-[14px] text-white flex items-center justify-center gap-2 transition-all shadow-sm
-                      ${(detailModal.status === 'done' || detailModal.status === 'missed' || detailModal.status === 'rejected')
-                        ? 'bg-gradient-to-br from-[#94a3b8] to-[#64748b] cursor-not-allowed opacity-60'
-                        : 'bg-gradient-to-br from-[#15803d] to-[#16a34a] cursor-pointer hover:opacity-90'
-                      }`}
-                  >
-                    <IconVideo size={16} />
-                    Go to Consultation
-                  </button>
-                )}
+                
 
                 {/* ── Examine Patient Button ── */}
                 {detailModal.status !== 'rejected' && (

@@ -115,9 +115,15 @@ exports.createConsultation = async (consultationData) => {
   return data;
 };
 
+
 exports.updateConsultation = async (id, data) => {
   const updateData = { ...data };
   delete updateData.updated_at;
+
+  console.log('[updateConsultation] Request:', {
+    consultationId: id,
+    updateData,
+  });
 
   const { data: result, error } = await supabase
     .from('consultations')
@@ -126,9 +132,27 @@ exports.updateConsultation = async (id, data) => {
     .select()
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[updateConsultation] Database error:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      consultationId: id,
+      updateData,
+    });
+
+    throw new Error(error.message);
+  }
+
+  console.log('[updateConsultation] Success:', {
+    consultationId: result.id,
+    status: result.status,
+  });
+
   return result;
 };
+
 
 exports.endConsultation = async (id) => {
   const result = await exports.updateConsultation(id, {
@@ -215,11 +239,34 @@ exports.getMessagesByConsultationId = async (consultationId) => {
   return data;
 };
 
+
 exports.sendMessage = async (consultationId, messageData) => {
+  let internalSenderId = null;
+
+  // Convert Supabase Auth UID to the internal users.id
+  if (messageData.sender_id) {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('uid', messageData.sender_id)
+      .single();
+
+    if (userError || !user) {
+      console.error('[sendMessage] Failed to resolve sender UID:', {
+        senderUid: messageData.sender_id,
+        error: userError?.message,
+      });
+
+      throw new Error('Unable to find the sender in the users table.');
+    }
+
+    internalSenderId = user.id;
+  }
+
   const newMessage = {
     consultation_id: consultationId,
     message: messageData.text || messageData.message,
-    sender_id: messageData.sender_id || null,
+    sender_id: internalSenderId,
     sender_name: messageData.sender_name || null,
     sender_role: messageData.sender_role || null,
     created_at: new Date().toISOString(),
@@ -231,44 +278,15 @@ exports.sendMessage = async (consultationId, messageData) => {
     .select()
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[sendMessage] Insert failed:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      payload: newMessage,
+    });
 
-  // ── NOTIFY RECIPIENT ON NEW MESSAGE ──────────────────────────────────
-  try {
-    const { data: consultation } = await supabase
-      .from('consultations')
-      .select('patient_id, patient_name, consultation_type')
-      .eq('id', consultationId)
-      .single();
-
-    if (consultation) {
-      const senderRole = (messageData.sender_role || '').toLowerCase();
-      const isStaff = ['doctor', 'nurse', 'dentist', 'sysadmin'].includes(senderRole);
-
-      if (isStaff && consultation.patient_id) {
-        // Staff sent message -> Notify patient
-        await notificationsService.createNotification({
-          type: 'consultation_response',
-          title: `New Message from ${messageData.sender_name || 'Clinic Staff'}`,
-          message: messageData.text || messageData.message || 'You received a new consultation response.',
-          userId: consultation.patient_id,
-          referenceId: consultationId,
-          referenceType: 'consultation',
-        });
-      } else if (!isStaff && messageData.sender_id) {
-        // Patient sent message -> Notify clinical staff
-        const targetRoles = getTargetRolesForConsultation(consultation.consultation_type);
-        await notificationsService.notifyRoles(targetRoles, {
-          type: 'consultation',
-          title: `New Message from ${consultation.patient_name || 'Patient'}`,
-          message: messageData.text || messageData.message || 'Sent a new message in consultation.',
-          referenceId: consultationId,
-          referenceType: 'consultation',
-        });
-      }
-    }
-  } catch (err) {
-    console.error('[sendMessage] Notification dispatch error:', err.message);
+    throw new Error(error.message);
   }
 
   return data;
