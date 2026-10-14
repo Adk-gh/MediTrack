@@ -884,7 +884,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
                 transform: sheetTransform,
                 transition: isDragging ? 'none' : 'transform 0.3s ease-in-out',
                 willChange: 'transform',
-                touchAction: 'none',
+                touchAction: editingSection ? 'pan-y' : 'none',
               }
             : {
                 top: 0, right: 0, bottom: 0,
@@ -1559,14 +1559,14 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
 
       {/* Edit Profile Modal */}
       {editingSection && (
-        <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-4 py-8">
-          <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col shadow-2xl">
+        <div onClick={e => e.target === e.currentTarget && closeEdit()} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[3000] px-3 py-3 sm:px-4 sm:py-8">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-4rem)] flex flex-col overflow-hidden shadow-2xl">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <span className="text-base font-extrabold text-[#466460] capitalize">Edit {editingSection} Info</span>
               <button onClick={closeEdit} className="bg-none border-none text-slate-400 cursor-pointer text-lg flex items-center justify-center hover:text-slate-600">✕</button>
             </div>
 
-            <div className="px-6 py-5">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-5">
               {editingSection === 'personal' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
