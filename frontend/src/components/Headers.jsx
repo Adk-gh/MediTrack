@@ -254,6 +254,92 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [showAddressModal, setShowAddressModal] = React.useState(false);
   const [addressType, setAddressType] = React.useState(null);
 
+  // Self-service password update (never uses the admin update endpoint).
+  const [passwordModalOpen, setPasswordModalOpen] = React.useState(false);
+  const [passwordForm, setPasswordForm] = React.useState({ current: '', next: '', confirm: '' });
+  const [passwordVisible, setPasswordVisible] = React.useState({});
+  const [passwordSaving, setPasswordSaving] = React.useState(false);
+  const [passwordFeedback, setPasswordFeedback] = React.useState('');
+  const [passwordRules, setPasswordRules] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const fetchPasswordRules = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_URL}/system-config`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error('Could not load system password policy.');
+        const result = await response.json();
+        if (active) setPasswordRules(result?.data?.passwordRules || null);
+      } catch (err) {
+        console.warn('[ProfileDrawer] Password policy not available:', err.message);
+        if (active) setPasswordRules(null);
+      }
+    };
+    fetchPasswordRules();
+    return () => { active = false; };
+  }, [isOpen]);
+
+  const passwordRuleChecks = (password) => {
+    const rules = passwordRules || {};
+    const minLength = Math.max(8, Number(rules.minLength) || 8);
+    return [
+      { label: `At least ${minLength} characters`, valid: password.length >= minLength },
+      ...(rules.requireUppercase ? [{ label: 'One uppercase letter', valid: /[A-Z]/.test(password) }] : []),
+      ...(rules.requireLowercase ? [{ label: 'One lowercase letter', valid: /[a-z]/.test(password) }] : []),
+      ...(rules.requireNumber ? [{ label: 'One number', valid: /[0-9]/.test(password) }] : []),
+      ...(rules.requireSpecialCharacter ? [{ label: 'One special character', valid: /[^A-Za-z0-9]/.test(password) }] : []),
+    ];
+  };
+
+  const closePasswordModal = () => {
+    if (passwordSaving) return;
+    setPasswordModalOpen(false);
+    setPasswordForm({ current: '', next: '', confirm: '' });
+    setPasswordVisible({});
+    setPasswordFeedback('');
+  };
+
+  const handleOwnPasswordChange = async (event) => {
+    event.preventDefault();
+    if (passwordSaving) return;
+    const { current, next, confirm } = passwordForm;
+    if (!current || !next || !confirm) return setPasswordFeedback('Complete all password fields.');
+    if (next !== confirm) return setPasswordFeedback('New passwords do not match.');
+    if (current === next) return setPasswordFeedback('New password must be different.');
+    if (!passwordRuleChecks(next).every(rule => rule.valid)) return setPasswordFeedback('New password does not meet security requirements.');
+
+    setPasswordSaving(true);
+    setPasswordFeedback('');
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('Session expired. Please sign in again.');
+      // Requires @supabase/supabase-js >= 2.102.0 and current-password enforcement enabled in Auth.
+      const { error } = await supabase.auth.updateUser({
+        current_password: current,
+        password: next,
+      });
+      if (error) throw error;
+      closePasswordModalAfterSuccess();
+      setPasswordFeedback('');
+      alert('Password updated successfully.');
+    } catch (error) {
+      setPasswordFeedback(error?.message || 'Unable to update password.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const closePasswordModalAfterSuccess = () => {
+    setPasswordModalOpen(false);
+    setPasswordForm({ current: '', next: '', confirm: '' });
+    setPasswordVisible({});
+  };
+
+
   // ── Document Manager Hook ──
   const {
     uploadingDocs,
@@ -412,6 +498,8 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       const normalizedProfile = withProfileDefaults(userProfile || {});
       setFormData(normalizedProfile);
       setEditingSection(null);
+      setPasswordModalOpen(false);
+      setPasswordForm({ current: '', next: '', confirm: '' });
       setDragY(0);
       setVaccinationsDeclined(normalizedProfile.vaccinations?.declined || { dose1: false, dose2: false, booster1: false, booster2: false, history: false });
       setDentalDeclined(normalizedProfile.dentalHistory?.declined || false);
@@ -933,6 +1021,24 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             <DrawerEditableInfoRow isEditing={false} onChange={handleChange} icon="fa-envelope" label="Email Address" field="email" type="email" value={formData.email} />
           </div>
 
+          {/* Account Security — password is stored only in Supabase Auth */}
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+            <DrawerSectionHeader label="Account Security" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <i className="fa-solid fa-shield-halved text-[#466460]"></i>
+                <div>
+                  <div className="text-xs font-semibold text-slate-800">Password</div>
+                  <p className="text-[10px] text-slate-500 mt-1">Secure your account by updating your login password.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => { setPasswordFeedback(''); setPasswordModalOpen(true); }}
+                className="shrink-0 bg-[#466460] text-white px-3 py-2 rounded-lg text-[11px] font-bold hover:bg-[#38524d] transition-colors">
+                Change Password
+              </button>
+            </div>
+          </div>
+
           {/* Emergency Contact */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-red-50/30">
             <div className="flex items-center justify-between mb-3">
@@ -1194,6 +1300,60 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
           </div>
         </div>
       </div>
+
+      {/* Own-account password change modal */}
+      {passwordModalOpen && (
+        <div className="fixed inset-0 z-[7000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closePasswordModal(); }}>
+          <form onSubmit={handleOwnPasswordChange} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 sm:p-6 max-h-[90dvh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-bold text-[#1a2e22]">Change Password</h3>
+              <button type="button" onClick={closePasswordModal} disabled={passwordSaving} aria-label="Close password dialog"
+                className="text-slate-600 text-xl px-2 disabled:opacity-50">×</button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">Enter your current password and choose a new password.</p>
+            {[
+              ['current', 'Current Password'],
+              ['next', 'New Password'],
+              ['confirm', 'Confirm New Password'],
+            ].map(([field, label]) => (
+              <label key={field} className="block mb-3">
+                <span className="block text-[11px] font-bold text-slate-600 mb-1">{label}</span>
+                <div className="flex gap-2">
+                  <input required disabled={passwordSaving} type={passwordVisible[field] ? 'text' : 'password'}
+                    autoComplete={field === 'current' ? 'current-password' : 'new-password'}
+                    value={passwordForm[field]}
+                    onChange={(e) => setPasswordForm(prev => ({ ...prev, [field]: e.target.value }))}
+                    className="flex-1 min-w-0 px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-[#466460]" />
+                  <button type="button" onClick={() => setPasswordVisible(prev => ({ ...prev, [field]: !prev[field] }))}
+                    className="px-3 text-xs text-[#466460] border border-slate-300 rounded-lg"
+                    aria-label={`${passwordVisible[field] ? 'Hide' : 'Show'} ${label}`}>
+                    {passwordVisible[field] ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </label>
+            ))}
+            {passwordForm.next && (
+              <div className="p-3 rounded-lg bg-slate-50 mb-4">
+                {passwordRuleChecks(passwordForm.next).map(rule => (
+                  <p key={rule.label} className={`text-xs py-0.5 ${rule.valid ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {rule.valid ? '✓' : '○'} {rule.label}
+                  </p>
+                ))}
+              </div>
+            )}
+            {passwordFeedback && <p role="alert" className="text-xs text-red-600 mb-4">{passwordFeedback}</p>}
+            <div className="flex gap-3">
+              <button type="button" disabled={passwordSaving} onClick={closePasswordModal}
+                className="flex-1 py-3 rounded-xl bg-slate-100 font-bold text-xs text-slate-700 disabled:opacity-50">Cancel</button>
+              <button type="submit" disabled={passwordSaving || !passwordRules}
+                className="flex-1 py-3 rounded-xl bg-[#466460] font-bold text-xs text-white disabled:opacity-50">
+                {passwordSaving ? 'Updating...' : !passwordRules ? 'Policy unavailable' : 'Update Password'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Health Document Upload Modal */}
       {showDocumentUploadModal && (

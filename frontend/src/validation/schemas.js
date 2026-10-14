@@ -4,11 +4,15 @@ import { z } from "zod";
 // ── User schemas ───────────────────────────────────────────────────────────────
 
 export const registerSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
+  firstName: z.string().trim().min(1, "First name is required"),
+  lastName: z.string().trim().min(1, "Last name is required"),
   middleName: z.string().optional(),
   suffix: z.string().optional(),
-  email: z.string().email("Invalid email format"),
+  email: z
+    .string()
+    .trim()
+    .min(1, "Email address is required")
+    .email("Enter a valid email address (e.g. name@example.com)"),
   universityId: z
   .string()
   .trim()
@@ -17,8 +21,11 @@ export const registerSchema = z.object({
     /^(?:\d{2}-\d{5}|\d{4}-\d{4})$/,
     "University ID must use XX-XXXXX or XXXX-XXXX format"
   ),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  confirmPassword: z.string(),
+  // Password strength is checked in SignupForm against the live server rules
+  // (min length and character requirements are configurable), so the schema
+  // only checks that something was entered.
+  password: z.string().min(1, "Password is required"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],

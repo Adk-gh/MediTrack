@@ -1,121 +1,108 @@
-# MediTrack Technology Stack Analysis
+# MediTrack Technology Stack Analysis (Updated)
 
-> **Note** – This document periodically syncs with the code base. Any changes to dependencies should be updated here.
+> **Note** – This document now reflects only the dependencies that are actually imported and used in the code‑base, together with the file(s) that reference each one.
 
-***
+---
 
-## 1️⃣  Project Overview
+## 1️⃣ Project Overview  
 
-MediTrack is a cross‑platform student health record management system.
+| Component | Technology | Port |
+|---|---|---|
+| Backend | Node.js + Express | 5000 |
+| Front‑end | React + Vite + Ionic | 3000 |
+| OCR Service | Python Flask + PaddleOCR | 5001 |
 
-| Component   | Technology               | Port |
-| ----------- | ------------------------ | ---- |
-| Backend     | Node.js + Express        | 5000 |
-| Frontend    | React + Vite + Ionic     | 3000 |
-| OCR Service | Python Flask + PaddleOCR | 5001 |
+---
 
-***
+## 2️⃣ Backend (Node.js + Express)
 
-## 2️⃣  Backend (Node.js + Express)
+> **Dependencies listed in `package.json` that are *actually used*** (imports found via `require(...)`).
 
-> Dependencies already in *package.json*
+| Package | Version (from `package.json`) | Files that import / use it |
+|---|---|---|
+| `@supabase/supabase-js` | ^2.106.2 | `configs/database.js`, `middleware/authorized.js`, `middleware/auditLogger.js`, `services/email.service.js`, `services/systemConfig.service.js`, many service/feature files (`user.service.js`, `user.route.js`, etc.) |
+| `axios` | ^1.16.0 | `features/user/user.service.js`, `services/email.service.js`, front‑end feature components (`BulkAppointmentPanel.jsx`, `Homepage-users.jsx`, `Appointment-users.jsx`, `Consultation-users.jsx`) |
+| `cors` | ^2.8.6 | `app.js` (via `./configs/cors.js`), `configs/cors.js` |
+| `dotenv` | ^17.4.2 | `app.js`, `configs/database.js`, `configs/token.js`, `configs/email.js` |
+| `express` | ^5.2.1 | `app.js`, route files (`routes/auth.routes.js`, `routes/index.js`, `routes/appointmentValidator.js`, etc.) |
+| `express-rate-limit` | ^8.6.2 | `routes/auth.routes.js` (loginLimiter, emailLimiter, registerLimiter, resendLimiter) |
+| `helmet` | ^8.3.0 | `app.js` |
+| `multer` | ^2.2.0 | `middleware/upload.js` |
+| `jsonwebtoken` | ^9.0.3 | `configs/token.js` |
+| `nodemailer` | ^9.0.3 | `configs/email.js` (fallback SMTP transport) |
+| `@sendgrid/mail` | ^8.1.0 | `configs/email.js` (optional SendGrid transport) |
+| `resend` | ^4.8.0 | `services/email.service.js` |
+| `svix` | ^1.99.1 | `controllers/webhook.controller.js` |
+| `xlsx` | ^0.18.5 | `features/user/user.service.js` (for importing/exporting Excel files) |
+| `zod` | ^4.4.3 | Used throughout validation schemas (`validation/*.js`, feature‑specific validation files) and some service files |
+| **Removed / Unused** | — | `csurf` and `cookie-parser` were listed previously but are **not imported** anywhere in the current source tree. They have been omitted from this analysis. |
+| `form-data` | ^4.0.6 | **Not imported directly** – used internally by `axios` when sending multipart/form‑data (e.g., OCR upload). No explicit `require('form-data')` in the source. |
 
-| Package                 | Current Version | Purpose                | Notes |
-| ----------------------- | --------------- | ---------------------- | ----- |
-| `@supabase/supabase-js` | ^2.106.2        | Database & auth client | ✅     |
-| `axios`                 | ^1.16.0         | HTTP client            | ✅     |
-| `cors`                  | ^2.8.6          | CORS middleware        | ✅     |
-| `dotenv`                | ^17.4.2         | Env vars               | ✅     |
-| `express`               | ^5.2.1          | Web framework          | ✅     |
-| `express-rate-limit`    | ^6.7.0          | Rate limiting          | ✅     |
-| `csurf`                 | ^1.11.0         | CSRF protection        | ✅     |
-| `cookie-parser`         | ^1.4.6          | Cookie parsing         | ✅     |
-| `helmet`                | ^8.3.0          | Security headers       | ✅     |
-| `multer`                | ^2.1.1          | File uploads           | ✅     |
-| `jsonwebtoken`          | ^9.0.3          | JWT handling           | ✅     |
-| `nodemailer`            | ^9.0.3          | Email sending          | ✅     |
-| `resend`                | ^4.0.0          | Email service wrapper  | ✅     |
-| `zod`                   | ^4.4.3          | Schema validation      | ✅     |
+---
 
-### Missing / Can‑Optional Packages
+## 3️⃣ Front‑end (React + Vite + Ionic)
 
-The following packages are **not** in `package.json` but would add value:
+> **Dependencies listed in `frontend/package.json` that are actually imported** (ES module `import` statements).
 
-| Package      | Category | Purpose                 | Recommendation                         |
-| ------------ | -------- | ----------------------- | -------------------------------------- |
-| `morgan`     | Logging  | HTTP request logging    | Great for dev and production logs      |
-| `winston`    | Logging  | Structured logging      | Supports log rotation & external sinks |
-| `pino`       | Logging  | Ultra‑fast JSON logger  | Lightweight alternative to winston     |
-| `nodemon`    | Dev      | Auto‑restart on changes | Handy in development                   |
-| `dotenv-cli` | Dev      | Enhanced env support    | Allows env file selection in scripts   |
-|              |          |                         |                                        |
+| Package | Version (from `frontend/package.json`) | Files that import / use it |
+|---|---|---|
+| `@capacitor/android` | ^8.3.4 | Native Android project; not imported in JS but required for build |
+| `@capacitor/core` | ^8.3.4 | `src/main.jsx`, `src/services/capacitor.service.js` |
+| `@capacitor/ios` | ^8.3.4 | Native iOS project; not imported in JS |
+| `@ionic/react` | ^8.8.7 | UI components across the app (`src/components/Headers.jsx`, `src/layouts/AuthLayout.jsx`, `src/features/SignupForm.jsx`, etc.) |
+| `@mui/material` | ^9.0.1 | Admin UI components (`src/components/admin/UniversityIdImport.jsx`, etc.) |
+| `@emotion/react` / `@emotion/styled` | ^11.14.x | Used implicitly by MUI components; referenced in theme files |
+| `@supabase/supabase-js` | ^2.106.2 | `src/services/auth.service.js`, `src/services/user.service.js`, other feature services |
+| `axios` | ^1.7.0 | `src/services/auth.service.js`, `src/services/health.service.js`, various feature‑level service files |
+| `chart.js` | ^4.5.1 | Chart components (`src/components/Charts/BarChart.jsx`, `src/components/Charts/LineChart.jsx`, etc.) |
+| `react-chartjs-2` | ^5.3.1 | React wrappers for Chart.js charts |
+| `react-datepicker` | ^9.1.0 | Date picker component (`src/components/DatePicker.jsx`) |
+| `react-router-dom` | ^7.0.0 | Routing (`src/App.jsx`, `src/main.jsx`, layout components) |
+| `react-hook-form` | ^7.84.0 | Form handling in many feature components (`SignupForm.jsx`, `ProfileSetup.jsx`, etc.) |
+| `react-toastify` | ^9.1.3 | Toast notifications (`src/components/ToastProvider.jsx`, called from services) |
+| `@tanstack/react-query` | ^5.101.4 | Data‑fetching hooks (`src/hooks/useUserData.ts`, `src/hooks/useAppointments.ts`) |
+| `zod` | ^4.4.3 | Front‑end validation schemas (`src/validation/schemas.ts`) |
+| `yup` | ^1.7.1 | **Not imported directly** – present in `package.json` but unused in source files |
+| `vite-plugin-compression` | ^0.5.1 | Configured in `vite.config.ts`; not imported in component code |
+| **Removed / Unused** | — | `react-icons` was mentioned previously but has no import statements; it can be removed if not needed. |
 
-***
+---
 
-## 3️⃣  Frontend (React + Vite + Ionic)
+## 4️⃣ OCR Service (Python Flask)
 
-> Dependencies already in *frontend/package.json*
+| Package | Version | Purpose |
+|---|---|---|
+| `flask` | ^2.3.3 | Web framework |
+| `paddleocr` | ^2.7.0 | OCR engine |
+| `gunicorn` | *(not installed)* | Recommended production WSGI server |
+| `uvicorn` | *(not installed)* | Alternative ASGI server (if async needed) |
 
-| Package                             | Current Version | Purpose                    | Notes |
-| ----------------------------------- | --------------- | -------------------------- | ----- |
-| `@capacitor/android`                | ^8.3.4          | Android platform           | ✅     |
-| `@capacitor/ios`                    | ^8.3.4          | iOS platform               | ✅     |
-| `@capacitor/core`                   | ^8.3.4          | Capacitor runtime          | ✅     |
-| `@emotion/react`, `@emotion/styled` | ^11.14.x        | CSS‑in‑JS (MUI)            | ✅     |
-| `@ionic/react`                      | ^8.8.7          | Ionic interop              | ✅     |
-| `@mui/material`                     | ^9.0.1          | Material‑UI                | ✅     |
-| `@supabase/supabase-js`             | ^2.106.2        | Auth & data                | ✅     |
-| `axios`                             | ^1.7.0          | HTTP client                | ✅     |
-| `chart.js`                          | ^4.5.1          | Charting                   | ✅     |
-| `react-chartjs-2`                   | ^5.3.1          | React wrapper for Chart.js | ✅     |
-| `react-datepicker`                  | ^9.1.0          | Date picker                | ✅     |
-| `react-router-dom`                  | ^7.0.0          | Routing                    | ✅     |
-| `vite-plugin-compression`           | ^0.5.1          | Gzip / Brotli              | ✅     |
-| `yup`                               | ^1.7.1          | Form validation            | ✅     |
-| `zod`                               | ^4.3.6          | Schema validation          | ✅     |
-| `react-hook-form`                   | ^7.84.0         | Complex form handling      | ✅     |
-| `react-toastify`                    | ^9.1.3          | Toast notifications        | ✅     |
-| `react-query`                       | ^4.0.0          | Data fetching / caching    | ✅     |
-|                                     |                 |                            |       |
+---
 
-### Missing / Can‑Optional Packages
+## 5️⃣ Recommendations (based on actual usage)
 
-| Package           | Category   | Purpose                      | Recommendation                     |
-| ----------------- | ---------- | ---------------------------- | ---------------------------------- |
-| `react-query`     | Data fetch | Caching & background refetch | Improves front‑end UX              |
-| `react-toastify`  | UI         | Toasts                       | Good for alerts                    |
-| `react-hook-form` | Forms      | Performance & validation     | Scales with complex forms          |
-| `react-icons`     | Icons      | Library                      | If you prefer a different icon set |
+| Area | Recommendation | Why |
+|---|---|---|
+| **Security** | Keep `helmet`, `express-rate-limit`, and `cors` active; add `compression` middleware to reduce payload size. | Provides essential headers, rate‑limiting, CORS protection, and improves performance. |
+| **Logging** | Replace ad‑hoc `console.log` statements with a structured logger such as `pino` or `winston`. | Structured logs are easier to ship to ELK/Loki and to query. |
+| **Email** | Retain the flexible `configs/email.js` which selects SendGrid when the API key is present, otherwise falls back to Nodemailer. No additional wrappers needed. | Keeps a single source of truth for email transport. |
+| **Frontend State** | Continue using `@tanstack/react-query` for caching & background refetch; pair with `react-hook-form` for complex forms. | Gives a solid data‑fetching strategy and performant form handling. |
+| **Unused Packages** | Remove `csurf`, `cookie-parser`, `yup`, and any other listed but unused dependencies from `package.json`. Run `npm prune` after cleanup. | Reduces bundle size and eliminates confusion. |
+| **Testing** | Keep Jest for unit tests, React Testing Library for component tests, and SuperTest for API integration tests (already present). | Ensures coverage across both stacks. |
+| **Dockerisation** | Create multi‑stage Dockerfiles for the Node backend and the Python OCR service; add a `docker-compose.yml` to spin them up together with Supabase (or a local Postgres). | Simplifies local development and CI/CD pipelines. |
+| **Documentation** | Automate this `TECHNOLOGY_STACK_ANALYSIS.md` generation: add a CI step that scans `require`/`import` statements and regenerates the tables, failing the build if undocumented dependencies appear. | Guarantees the doc stays accurate as the code evolves. |
 
-***
+---
 
-## 4️⃣  OCR Service (Python Flask)
+### Next Steps
 
-> At the moment only the Flask + PaddleOCR stack is present.
+1. **Replace the contents of `docs/TECHNOLOGY_STACK_ANALYSIS.md`** with the updated text above.  
+2. Run `npm uninstall csurf cookie-parser yup` (and remove any related import statements).  
+3. Add `compression` middleware in `app.js` (e.g., `app.use(require('compression')());`).  
+4. Consider integrating a structured logger (`pino` or `winston`) and replace existing `console.log` calls.  
+5. Update CI to run a dependency‑scan script and enforce documentation consistency.
 
-|             | Package       | Version         | Purpose                 |
-| :---------- | ------------- | --------------- | ----------------------- |
-| `flask`     | ^2.3.3        | Web framework   | ✅                       |
-| `paddleocr` | ^2.7.0        | OCR             | ✅                       |
-| `gunicorn`  | Not installed | Production WSGI | Consider for deployment |
-| `uvicorn`   | Not installed | Async server    | Alternative option      |
+---
 
-***
-
-## 5️⃣  Recommendations Overview
-
-| Area                 | Recommendation                                                                                 | Why                                                       |
-| -------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **Security**         | Keep Helmet and csurf active; add `compression` and `morgan` for HTTP logging.                 | Protects against common attacks & aids debugging.         |
-| **Performance**      | Enable response compression (`compression()`).                                                 | Reduces payload size.                                     |
-| **Real‑time**        | Integrate `socket.io` if live updates (vital signs, appointment status) are needed.            | Provides WebSocket support across Node and the front‑end. |
-| **Logging**          | Switch from console logs to `winston` or `pino` in production.                                 | Structured logs facilitate Kibana/ELK or Loki.            |
-| **Testing**          | Add **React Testing Library** for component tests and **SuperTest** for API integration tests. | Ensures regressions are caught early.                     |
-| **State Management** | Use `react-query` for data refetching; switch to `react-hook-form` for complex forms.          | Improves UX with offline caching and validation.          |
-| **Deployment**       | Docker‑ise the backend and OCR service (multi‑stage).                                          | Simplifies scaling and ensures consistency.               |
-|                      |                                                                                                |                                                           |
-
-***
-
-> **Next Steps** – Add missing packages to `package.json`, run `npm install`, and verify that the API and front‑end run correctly. Then add the recommended middlewares in `app.js` and corresponding front‑end utilities.
+*Generated with 🎉 Claude Code*
 

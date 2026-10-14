@@ -1,4 +1,3 @@
-// C:\Users\HP\MediTrack\features\user\user.service.js
 
 const supabase = require('../../configs/database');
 
@@ -58,7 +57,7 @@ const normalizeDocuments = (docs) => Array.isArray(docs) ? docs : (typeof docs =
 
 const formatUserResponse = (data) => ({
 
-  id: data.id, // <-- ADD THIS
+  id: data.id, // <-- ADD THIS*
 
   uid: data.uid,
 
@@ -200,7 +199,7 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   try {
 
-    ocrResponse = await axios.post(`${process.env.OCR_SERVICE_URL || 'http\://localhost:5001'}/ocr`, ocrForm, { headers: { ...ocrForm.getHeaders() }, timeout: 120000 });
+    ocrResponse = await axios.post(`${process.env.OCR_SERVICE_URL || 'http\\://localhost:5001'}/ocr`, ocrForm, { headers: { ...ocrForm.getHeaders() }, timeout: 120000 });
 
   } catch (ocrErr) { console.error('OCR Service Connection Failed:', ocrErr.message); throwError('ID verification service is unavailable.', 502); }
 
@@ -222,7 +221,7 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
     if (normalizedRawText.includes(normalizedInputId)) ocrId = universityId;
 
-    else { const match = raw_text.match(/\b([A-Z0-9]{2,}[\s\\-]?[0-9]{2,})\b/i); if (match) ocrId = match[1]; }
+    else { const match = raw_text.match(/\b([A-Z0-9]{2,}[\s\\\-]?[0-9]{2,})\b/i); if (match) ocrId = match[1]; }
 
   }
 
@@ -608,149 +607,234 @@ exports.importUniversityIds = async (files = []) => {
 
 };
 
+// ============================================================
+
+// IMPORT UNIVERSITY IDS MANUALLY (SYSADMIN)
 
 // ============================================================
-// IMPORT UNIVERSITY IDS MANUALLY (SYSADMIN)
-// ============================================================
+
 exports.importUniversityIdsManual = async (ids = []) => {
+
   if (!Array.isArray(ids) || ids.length === 0) {
+
     throwError('Please provide at least one University ID.', 400);
+
   }
 
   const idsByKey = new Map();
 
   for (const rawId of ids) {
+
     if (rawId === null || rawId === undefined) continue;
 
     const cleanId = String(rawId)
+
       .trim()
+
       .replace(/[‐‑‒–—−]/g, '-')
+
       .replace(/\s*-\s*/g, '-');
 
     if (!cleanId) continue;
 
     const isUniversityId =
+
       /^(?:\d{2}-\d{5}|\d{4}-\d{4})$/.test(cleanId);
 
     if (!isUniversityId) {
+
       throwError(
+
         `Invalid University ID format: ${cleanId}. Accepted formats are XX-XXXXX and XXXX-XXXX.`,
+
         400
+
       );
+
     }
 
     const key = cleanId.toLowerCase();
 
     if (!idsByKey.has(key)) {
+
       idsByKey.set(key, cleanId);
+
     }
+
   }
 
   const uniqueIds = [...idsByKey.values()];
 
   if (uniqueIds.length === 0) {
+
     throwError('No valid University IDs were provided.', 400);
+
   }
 
   const existingIds = new Set();
+
   const batchSize = 500;
 
   for (let index = 0; index < uniqueIds.length; index += batchSize) {
+
     const batch = uniqueIds.slice(index, index + batchSize);
 
     const { data, error } = await supabase
+
       .from('users')
+
       .select('university_id')
+
       .in('university_id', batch);
 
     if (error) {
+
       console.error(
+
         '[Manual University ID Import] Existing-ID lookup failed:',
+
         error
+
       );
+
       throw new Error(error.message);
+
     }
 
     for (const row of data || []) {
+
       if (row.university_id) {
+
         existingIds.add(
+
           String(row.university_id).trim().toLowerCase()
+
         );
+
       }
+
     }
+
   }
 
   const duplicateIds = uniqueIds.filter((id) =>
+
     existingIds.has(id.toLowerCase())
+
   );
 
   const duplicateKeys = new Set(
+
     duplicateIds.map((id) => id.toLowerCase())
+
   );
 
   const newIds = uniqueIds.filter(
+
     (id) => !existingIds.has(id.toLowerCase())
+
   );
 
   const insertedIds = [];
 
   for (let index = 0; index < newIds.length; index += batchSize) {
+
     const batch = newIds.slice(index, index + batchSize);
 
     const { data, error } = await supabase
+
       .from('users')
+
       .upsert(
+
         batch.map((universityId) => ({
+
           university_id: universityId,
+
         })),
+
         {
+
           onConflict: 'university_id',
+
           ignoreDuplicates: true,
+
         }
+
       )
+
       .select('university_id');
 
     if (error) {
+
       console.error(
+
         '[Manual University ID Import] Insert failed:',
+
         error
+
       );
+
       throw new Error(error.message);
+
     }
 
     const insertedBatchIds = (data || []).map(
+
       (row) => row.university_id
+
     );
 
     const insertedBatchKeys = new Set(
+
       insertedBatchIds.map((id) =>
+
         String(id).trim().toLowerCase()
+
       )
+
     );
 
     insertedIds.push(...insertedBatchIds);
 
     for (const id of batch) {
+
       const key = id.toLowerCase();
 
       if (
+
         !insertedBatchKeys.has(key) &&
+
         !duplicateKeys.has(key)
+
       ) {
+
         duplicateKeys.add(key);
+
         duplicateIds.push(id);
+
       }
+
     }
+
   }
 
   return {
+
     filesProcessed: 0,
+
     totalProcessed: uniqueIds.length,
+
     inserted: insertedIds.length,
+
     duplicates: duplicateIds.length,
+
     insertedIds,
+
     duplicateIds,
+
   };
+
 };
 
 // ============================================================

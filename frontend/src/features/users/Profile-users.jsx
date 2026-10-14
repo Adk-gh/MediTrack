@@ -307,6 +307,58 @@ export default function ProfileUsers({ onLogout }) {
   const [addressModalTarget, setAddressModalTarget] = useState(null);
   const [configData, setConfigData] = useState({ departments: [], non_academic_offices: [], classifications: {}, job_titles: {}, sections: [], prompt_student_academic_update: false, academic_update_version: 1 });
 
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
+  const [passwordVisible, setPasswordVisible] = useState({});
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const changePasswordField = (field, value) => setPasswordForm(prev => ({ ...prev, [field]: value }));
+  const closePasswordModal = () => {
+    if (passwordSaving) return;
+    setPasswordModalOpen(false);
+    setPasswordForm({ current: '', next: '', confirm: '' });
+    setPasswordVisible({});
+  };
+  const passwordRuleChecks = (password) => {
+    const rules = configData?.passwordRules || {};
+    const checks = [
+      { label: `At least ${Number(rules.minLength) || 8} characters`, valid: password.length >= (Number(rules.minLength) || 8) },
+      ...(rules.requireUppercase ? [{ label: 'One uppercase letter', valid: /[A-Z]/.test(password) }] : []),
+      ...(rules.requireLowercase ? [{ label: 'One lowercase letter', valid: /[a-z]/.test(password) }] : []),
+      ...(rules.requireNumber ? [{ label: 'One number', valid: /[0-9]/.test(password) }] : []),
+      ...(rules.requireSpecialCharacter ? [{ label: 'One special character', valid: /[^A-Za-z0-9]/.test(password) }] : []),
+    ];
+    return checks;
+  };
+  const handleOwnPasswordChange = async (event) => {
+    event.preventDefault();
+    if (passwordSaving) return;
+    const { current, next, confirm } = passwordForm;
+    if (!current || !next || !confirm) return showToast('Complete all password fields.');
+    if (next !== confirm) return showToast('New passwords do not match.');
+    if (current === next) return showToast('New password must be different.');
+    if (!passwordRuleChecks(next).every(item => item.valid)) return showToast('New password does not meet security requirements.');
+    setPasswordSaving(true);
+    try {
+      // Requires @supabase/supabase-js >= 2.102.0 and Supabase Auth
+      // "Require current password when changing password" enabled.
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('Your session expired. Sign in again.');
+      const { error } = await supabase.auth.updateUser({
+        current_password: current,
+        password: next,
+      });
+      if (error) throw error;
+      setPasswordModalOpen(false);
+      setPasswordForm({ current: '', next: '', confirm: '' });
+      setPasswordVisible({});
+      showToast('Password successfully changed.');
+    } catch (error) {
+      showToast(error?.message || 'Password change failed.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const [previewDoc, setPreviewDoc] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -381,7 +433,7 @@ const fetchSystemConfig = useCallback(async () => {
     }
   }, [loading, isConfigLoading, scrollToSection]);
 
-useEffect(() => { document.body.style.overflow = (editingSection || docToDelete || addressModalOpen) ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [editingSection, docToDelete, addressModalOpen]);
+useEffect(() => { document.body.style.overflow = (editingSection || docToDelete || addressModalOpen || passwordModalOpen) ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [editingSection, docToDelete, addressModalOpen, passwordModalOpen]);
 
   // Sync i18next with the user's database preference
   useEffect(() => {
@@ -839,6 +891,17 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
           <InfoRow label={t('profile.phoneNumber')} value={profile.phoneNumber} empty={isFieldEmpty(profile.phoneNumber)} last />
         </Card>
 
+        <Card id="account-security">
+          <SectionHeader label="Account Security" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1a2e22' }}>Password</div>
+              <div style={{ fontSize: 11, color: '#6b8577', marginTop: 3 }}>Change your sign-in password securely.</div>
+            </div>
+            <button type="button" onClick={() => setPasswordModalOpen(true)} style={{ border: 'none', background: '#466460', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Change Password</button>
+          </div>
+        </Card>
+
         <Card id="emergency-section">
           <SectionHeader label={t('profile.emergencyContact')} onEdit={() => openEdit('emergency')} hasEmpty={hasEmptyEmergency} />
           <InfoRow label={t('profile.emergencyName')} value={profile.emergencyContact?.name} empty={isFieldEmpty(profile.emergencyContact?.name)} />
@@ -921,6 +984,37 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
           </Card>
         )}
       </div>
+
+      {passwordModalOpen && createPortal(
+        <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) closePasswordModal(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(26,46,34,0.48)', zIndex: 100001, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <form onSubmit={handleOwnPasswordChange} style={{ width: '100%', maxWidth: 430, maxHeight: '90dvh', overflowY: 'auto', padding: 24, borderRadius: 20, background: '#fff', boxShadow: '0 15px 45px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 17, color: '#1a2e22' }}>Change Password</h3>
+              <button type="button" disabled={passwordSaving} onClick={closePasswordModal} aria-label="Close" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20 }}>×</button>
+            </div>
+            <p style={{ fontSize: 12, color: '#6b8577', margin: '0 0 16px' }}>Enter your current password and choose a new one.</p>
+            {[
+              ['current', 'Current Password'],
+              ['next', 'New Password'],
+              ['confirm', 'Confirm New Password'],
+            ].map(([key, title]) => (
+              <FormGroup key={key} label={title}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type={passwordVisible[key] ? 'text' : 'password'} name={key} autoComplete={key === 'current' ? 'current-password' : 'new-password'} required value={passwordForm[key]} onChange={e => changePasswordField(key, e.target.value)} disabled={passwordSaving} style={inputStyle} />
+                  <button type="button" aria-label={passwordVisible[key] ? `Hide ${title}` : `Show ${title}`} onClick={() => setPasswordVisible(v => ({ ...v, [key]: !v[key] }))} style={{ border: '1px solid #c4dbd8', background: '#fff', borderRadius: 8, padding: '10px', cursor: 'pointer', color: '#466460', fontSize: 11 }}>{passwordVisible[key] ? 'Hide' : 'Show'}</button>
+                </div>
+              </FormGroup>
+            ))}
+            {passwordForm.next && <div style={{ background: '#f4f7f5', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              {passwordRuleChecks(passwordForm.next).map(rule => <div key={rule.label} style={{ color: rule.valid ? '#277453' : '#92400e', fontSize: 11, marginBottom: 3 }}>{rule.valid ? '✓' : '○'} {rule.label}</div>)}
+            </div>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" disabled={passwordSaving} onClick={closePasswordModal} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#f4f7f5', cursor: 'pointer', color: '#466460', fontWeight: 700 }}>Cancel</button>
+              <button type="submit" disabled={passwordSaving} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: '#466460', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: passwordSaving ? 0.6 : 1 }}>{passwordSaving ? 'Updating...' : 'Update Password'}</button>
+            </div>
+          </form>
+        </div>, document.body
+      )}
 
       {docToDelete && createPortal(
         <div onClick={(e) => { if (e.target === e.currentTarget && !isDeletingDoc) setDocToDelete(null); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26, 46, 34, 0.45)', backdropFilter: 'blur(3px)', zIndex: 99997, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -1020,12 +1114,11 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
               {/* Contact */}
               {editingSection === 'contact' && (
                 <>
-                  <FormGroup label={t('profile.email')}><input style={inputStyle} type="email" value={editData.email} onChange={e => handleChange('email', e.target.value)} /></FormGroup>
+                  <FormGroup label={t('profile.email')}><input style={inputStyle} type="email" value={editData.email} disabled /></FormGroup>
                   <FormGroup label={`${t('profile.phoneNumber')} (11 digits)`}>
                     <input style={inputStyle} value={editData.phoneNumber} placeholder="09123456789" maxLength={11} onChange={e => handleChange('phoneNumber', formatPhoneNumber(e.target.value))} onBlur={e => { if (e.target.value && !isValidPhoneNumber(e.target.value)) alert('Phone number must be exactly 11 digits (e.g., 09123456789)'); }} />
                     <span style={{ fontSize: 10, color: '#9bb5a5' }}>Format: 09XXXXXXXXX (11 digits)</span>
                   </FormGroup>
-                  <p style={{ fontSize: 11, color: '#9bb5a5', marginTop: -4 }}>Note: Changing your email may require you to verify your identity by signing in again.</p>
                 </>
               )}
 
