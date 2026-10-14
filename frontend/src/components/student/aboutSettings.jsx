@@ -3,11 +3,11 @@ import React, { useState } from 'react';
 import logo from '../../assets/logo.jpg';
 
 // ─── IMPORT REAL PHOTOS ──────────────────────────────────────────────────
-import abdullaImg from '../../assets/amad.jpg';
-import bermasImg from '../../assets/adi.jpg';
+import abdullaImg from '../../assets/amad.png';
+import bermasImg from '../../assets/adi.png';
 import concibidoImg from '../../assets/shanaya.jpg';
-import deVeraImg from '../../assets/Jenny.jpg';
-import latinaImg from '../../assets/hanessa.jpg';
+import deVeraImg from '../../assets/Jenny.png';
+import latinaImg from '../../assets/hanessa.png';
 import tenorioImg from '../../assets/paula.jpg';
 
 const TEAM_MEMBERS = [
