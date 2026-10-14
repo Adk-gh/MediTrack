@@ -243,13 +243,21 @@ exports.getMessagesByConsultationId = async (consultationId) => {
 exports.sendMessage = async (consultationId, messageData) => {
   let internalSenderId = null;
 
-  // Convert Supabase Auth UID to the internal users.id
+  // Resolve the sender: try Supabase Auth UID first, then fall back to users.id
   if (messageData.sender_id) {
-    const { data: user, error: userError } = await supabase
+    let { data: user, error: userError } = await supabase
       .from('users')
       .select('id')
       .eq('uid', messageData.sender_id)
-      .single();
+      .maybeSingle();
+
+    if (!user && !userError) {
+      ({ data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', messageData.sender_id)
+        .maybeSingle());
+    }
 
     if (userError || !user) {
       console.error('[sendMessage] Failed to resolve sender UID:', {
