@@ -1,9 +1,8 @@
 // backend/features/consultations/consultations.service.js
 const supabase = require('../../configs/database');
-const archiveHelper = require('../archives/archiveHelper');
 const notificationsService = require('../notifications/notifications.service');
 
-const ARCHIVE_TYPE = 'consultation';
+
 
 const getTargetRolesForConsultation = (consultationType) => {
   const type = (consultationType || '').toLowerCase();
@@ -183,15 +182,25 @@ exports.reactivateConsultation = async (id) => {
 };
 
 exports.deleteConsultation = async (id, deletedBy) => {
-  await archiveHelper.archiveAndDelete({
-    type: ARCHIVE_TYPE,
-    originalId: id,
-    tableName: 'consultations',
-    idColumn: 'id',
-    deletedBy,
-  }, supabase);
+  const actor =
+    typeof deletedBy === 'string'
+      ? deletedBy
+      : deletedBy?.email || deletedBy?.id || 'system';
 
-  return { success: true };
+  const { data, error } = await supabase
+    .from('consultations')
+    .update({
+      is_archived: true,
+      deleted_by: actor,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return { success: true, data };
 };
 
 // Messages

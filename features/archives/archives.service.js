@@ -39,9 +39,7 @@ const ALLOWED_TABLES = new Set([
 // ============================================================
 
 const normalizeTableName = (tableName) => {
-  return String(tableName || '')
-    .trim()
-    .toLowerCase();
+  return String(tableName || '').trim().toLowerCase();
 };
 
 const validateTableName = (tableName) => {
@@ -73,10 +71,7 @@ const parseArchiveData = (value) => {
     return {};
   }
 
-  if (
-    typeof value === 'object' &&
-    !Array.isArray(value)
-  ) {
+  if (typeof value === 'object' && !Array.isArray(value)) {
     return value;
   }
 
@@ -84,11 +79,7 @@ const parseArchiveData = (value) => {
     try {
       const parsed = JSON.parse(value);
 
-      if (
-        parsed &&
-        typeof parsed === 'object' &&
-        !Array.isArray(parsed)
-      ) {
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return parsed;
       }
     } catch (error) {
@@ -106,51 +97,48 @@ const getArchiveTypeForTable = (tableName) => {
   switch (tableName) {
     case 'users':
       return ARCHIVE_TYPES.USER;
-
     case 'announcements':
       return ARCHIVE_TYPES.ANNOUNCEMENT;
-
     case 'appointments':
       return ARCHIVE_TYPES.APPOINTMENT;
-
     case 'consultations':
       return ARCHIVE_TYPES.CONSULTATION;
-
     case 'medical_records':
     case 'dental_records':
       return ARCHIVE_TYPES.RECORD;
-
     case 'notifications':
       return ARCHIVE_TYPES.NOTIFICATION;
-
     default:
       return tableName;
   }
+};
+
+/**
+ * Snapshots of medical/dental records may be saved with type
+ * 'record', 'medical_record' or 'dental_record'. Match all of them.
+ */
+const getArchiveTypesForTable = (tableName) => {
+  if (tableName === 'medical_records') return ['record', 'medical_record'];
+  if (tableName === 'dental_records') return ['record', 'dental_record'];
+  return [getArchiveTypeForTable(tableName)];
 };
 
 const getReferenceType = (tableName) => {
   switch (tableName) {
     case 'users':
       return 'Users';
-
     case 'announcements':
       return 'Announcement';
-
     case 'appointments':
       return 'Appointment';
-
     case 'consultations':
       return 'Consultation';
-
     case 'medical_records':
       return 'Medical Record';
-
     case 'dental_records':
       return 'Dental Record';
-
     case 'notifications':
       return 'Notification';
-
     default:
       return formatTableName(tableName);
   }
@@ -160,63 +148,31 @@ const getItemLabel = (tableName) => {
   switch (tableName) {
     case 'users':
       return 'user account';
-
     case 'announcements':
       return 'announcement';
-
     case 'appointments':
       return 'appointment';
-
     case 'consultations':
       return 'consultation';
-
     case 'medical_records':
       return 'medical record';
-
     case 'dental_records':
       return 'dental record';
-
     case 'notifications':
       return 'notification';
-
     default:
-      return String(tableName || 'item')
-        .replace(/_/g, ' ');
+      return String(tableName || 'item').replace(/_/g, ' ');
   }
 };
 
 /**
  * Resolve the owner of an archived item.
- *
- * Appointments:
- *   record.user_id
- *
- * Consultations:
- *   record.patient_id
- *
- * Medical/Dental records:
- *   record.user_id
- *
- * Notifications:
- *   record.user_id
- *
- * Announcements:
- *   no individual owner
- *
- * Users:
- *   skipped for permanent deletion notifications
+ * Announcements have no individual owner.
  */
-const resolveOwnerUserId = (
-  tableName,
-  record = {}
-) => {
+const resolveOwnerUserId = (tableName, record = {}) => {
   switch (tableName) {
     case 'appointments':
-      return (
-        record.user_id ||
-        record.userId ||
-        null
-      );
+      return record.user_id || record.userId || null;
 
     case 'consultations':
       return (
@@ -228,25 +184,11 @@ const resolveOwnerUserId = (
 
     case 'medical_records':
     case 'dental_records':
-      return (
-        record.user_id ||
-        record.userId ||
-        null
-      );
-
     case 'notifications':
-      return (
-        record.user_id ||
-        record.userId ||
-        null
-      );
+      return record.user_id || record.userId || null;
 
     case 'users':
-      return (
-        record.id ||
-        record.uid ||
-        null
-      );
+      return record.id || record.uid || null;
 
     case 'announcements':
     default:
@@ -254,19 +196,13 @@ const resolveOwnerUserId = (
   }
 };
 
-const getArchiveRecord = async (
-  id,
-  tableName = null
-) => {
+const getArchiveRecord = async (id, tableName = null) => {
   if (!id) {
     return null;
   }
 
   // First try archive primary key.
-  const {
-    data: byArchiveId,
-    error: archiveIdError,
-  } = await supabase
+  const { data: byArchiveId, error: archiveIdError } = await supabase
     .from(ARCHIVE_TABLE)
     .select('*')
     .eq('id', id)
@@ -287,22 +223,14 @@ const getArchiveRecord = async (
     .eq('original_id', id)
     .is('restored_at', null)
     .eq('is_permanently_deleted', false)
-    .order('archived_at', {
-      ascending: false,
-    })
+    .order('archived_at', { ascending: false })
     .limit(1);
 
   if (tableName) {
-    const archiveType =
-      getArchiveTypeForTable(tableName);
-
-    query = query.eq('type', archiveType);
+    query = query.in('type', getArchiveTypesForTable(tableName));
   }
 
-  const {
-    data: rows,
-    error: originalIdError,
-  } = await query;
+  const { data: rows, error: originalIdError } = await query;
 
   if (originalIdError) {
     throw originalIdError;
@@ -311,16 +239,10 @@ const getArchiveRecord = async (
   return rows?.[0] || null;
 };
 
-const getOriginalRecord = async (
-  tableName,
-  itemId
-) => {
+const getOriginalRecord = async (tableName, itemId) => {
   const idColumn = getIdColumn(tableName);
 
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from(tableName)
     .select('*')
     .eq(idColumn, itemId)
@@ -346,15 +268,14 @@ const notifyOwner = async ({
   }
 
   try {
-    return await notificationsService
-      .createNotification({
-        type,
-        title,
-        message,
-        userId: ownerUserId,
-        referenceId,
-        referenceType,
-      });
+    return await notificationsService.createNotification({
+      type,
+      title,
+      message,
+      userId: ownerUserId,
+      referenceId,
+      referenceType,
+    });
   } catch (notificationError) {
     console.error(
       '[Archives] Failed to notify item owner:',
@@ -366,15 +287,264 @@ const notifyOwner = async ({
 };
 
 // ============================================================
+// COMBINED SOURCES
+//
+// 1. Original tables: rows where is_archived = true
+// 2. archives table:  snapshots (e.g. rows whose original was
+//                     hard-deleted)
+//
+// Audit logs / examinations in the archives table are NOT
+// listed here; they are history, not restorable items.
+// ============================================================
+
+const toName = (r) =>
+  `${r.last_name || ''}, ${r.first_name || ''} ${
+    r.middle_name ? r.middle_name + ' ' : ''
+  }`.trim();
+
+const SOURCES = [
+  {
+    table: 'users',
+    type: 'user',
+    select: '*',
+    originalId: (r) => r.uid,
+    map: (r) => ({
+      id: r.uid,
+      displayName:
+        `${r.first_name || ''} ${r.last_name || ''}`.trim() ||
+        r.email ||
+        r.university_id ||
+        'User',
+      detail: r.university_id || r.email || '',
+    }),
+  },
+  {
+    table: 'announcements',
+    type: 'announcement',
+    select: '*',
+    originalId: (r) => r.id,
+    map: (r) => ({
+      id: r.id,
+      displayName: r.title || 'Announcement',
+      detail: `Posted: ${r.author_name || 'Admin'}`,
+    }),
+  },
+  {
+    table: 'appointments',
+    type: 'appointment',
+    select: '*',
+    originalId: (r) => r.id,
+    map: (r) => ({
+      id: r.id,
+      displayName: r.patient_name || r.reason || 'Appointment',
+      detail: `${r.service_type || 'Medical'} - ${r.reason || 'No reason'}`,
+    }),
+  },
+  {
+    table: 'consultations',
+    type: 'consultation',
+    select: '*',
+    originalId: (r) => r.id,
+    map: (r) => ({
+      id: r.id,
+      displayName: r.patient_name || 'Consultation',
+      detail: `${r.consultation_type || 'General'} - ${r.status || ''}`,
+    }),
+  },
+  {
+    table: 'medical_records',
+    type: 'medical_record',
+    select: '*',
+    originalId: (r) => r.id,
+    map: (r) => ({
+      id: r.id,
+      displayName: toName(r) || 'Medical Record',
+      detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date || 'N/A'}`,
+    }),
+  },
+  {
+    table: 'dental_records',
+    type: 'dental_record',
+    select: '*',
+    originalId: (r) => r.id,
+    map: (r) => ({
+      id: r.id,
+      displayName: toName(r) || 'Dental Record',
+      detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date || 'N/A'}`,
+    }),
+  },
+  {
+    table: 'notifications',
+    type: 'notification',
+    select:
+      '*, _user:users!notifications_user_id_fkey(first_name, last_name, email)',
+    originalId: (r) => r.id,
+    map: (r) => {
+      const u = r._user || {};
+      const recipient =
+        `${u.first_name || ''} ${u.last_name || ''}`.trim() ||
+        u.email ||
+        'Unknown User';
+
+      return {
+        id: r.id,
+        displayName: r.title || 'Notification',
+        detail: `To: ${recipient} | ${r.message || ''}`,
+      };
+    },
+    deletedBy: () => 'System',
+    updatedAt: (r) => r.created_at || r.updated_at,
+  },
+];
+
+const SOURCE_BY_TABLE = Object.fromEntries(SOURCES.map((s) => [s.table, s]));
+
+const matchesType = (typeFilter, itemType) => {
+  if (!typeFilter || typeFilter === 'all') return true;
+  if (typeFilter === 'record') {
+    return itemType === 'medical_record' || itemType === 'dental_record';
+  }
+  return itemType === typeFilter;
+};
+
+/** Source 1: original tables, is_archived = true */
+const fetchSoftArchived = async (typeFilter = 'all') => {
+  const sources = SOURCES.filter((s) => matchesType(typeFilter, s.type));
+
+  const results = await Promise.all(
+    sources.map(async (s) => {
+      const { data, error } = await supabase
+        .from(s.table)
+        .select(s.select)
+        .eq('is_archived', true);
+
+      if (error) {
+        // One bad table should not break the whole list.
+        console.error(`[Archives] Failed to fetch ${s.table}:`, error.message);
+        return [];
+      }
+
+      return (data || []).map((r) => ({
+        ...r,
+        ...s.map(r),
+        archiveType: s.type,
+        table: s.table,
+        originalId: s.originalId(r),
+        archiveId: null,
+        source: 'table',
+        deletedBy: s.deletedBy ? s.deletedBy(r) : r.deleted_by || 'System',
+        updated_at: s.updatedAt ? s.updatedAt(r) : r.updated_at || r.created_at,
+      }));
+    })
+  );
+
+  return results.flat();
+};
+
+/**
+ * archives.type 'record' covers both medical and dental records.
+ * Decide which table it belongs to from the snapshot contents.
+ * ADJUST the heuristic below if your dental rows have a better
+ * marker (e.g. a column that only exists on dental_records).
+ */
+const resolveTableFromArchiveRow = (row, data) => {
+  switch (row.type) {
+    case 'user':
+      return 'users';
+    case 'announcement':
+      return 'announcements';
+    case 'appointment':
+      return 'appointments';
+    case 'consultation':
+      return 'consultations';
+    case 'notification':
+      return 'notifications';
+    case 'medical_record':
+      return 'medical_records';
+    case 'dental_record':
+      return 'dental_records';
+    case 'record': {
+      const looksDental = Object.keys(data).some((k) =>
+        /dental|teeth|tooth/i.test(k)
+      );
+      return looksDental ? 'dental_records' : 'medical_records';
+    }
+    default:
+      // audit_log, examination, unknown: not listed
+      return null;
+  }
+};
+
+/** Source 2: the archives table */
+const fetchArchiveTableItems = async (typeFilter = 'all') => {
+  const { data, error } = await supabase
+    .from(ARCHIVE_TABLE)
+    .select('*')
+    .eq('is_permanently_deleted', false)
+    .is('restored_at', null);
+
+  if (error) {
+    console.error('[Archives] Failed to fetch archives table:', error.message);
+    return [];
+  }
+
+  const items = [];
+
+  (data || []).forEach((row) => {
+    const snapshot = parseArchiveData(row.data);
+    const table = resolveTableFromArchiveRow(row, snapshot);
+    const source = table ? SOURCE_BY_TABLE[table] : null;
+
+    if (!source || !matchesType(typeFilter, source.type)) return;
+
+    items.push({
+      ...snapshot,
+      ...source.map(snapshot),
+      archiveType: source.type,
+      table: source.table,
+      originalId: row.original_id || source.originalId(snapshot),
+      archiveId: row.id,
+      source: 'archives',
+      deletedBy: row.deleted_by || 'System',
+      updated_at: row.archived_at,
+    });
+  });
+
+  return items;
+};
+
+/** Merge both sources, one entry per (table, originalId). */
+const fetchCombinedArchives = async (typeFilter = 'all') => {
+  const [tableItems, archiveItems] = await Promise.all([
+    fetchSoftArchived(typeFilter),
+    fetchArchiveTableItems(typeFilter),
+  ]);
+
+  const merged = new Map();
+  const keyOf = (i) => `${i.table}:${i.originalId}`;
+
+  // The live row wins because it reflects the current data.
+  tableItems.forEach((i) => merged.set(keyOf(i), i));
+
+  archiveItems.forEach((a) => {
+    const existing = merged.get(keyOf(a));
+
+    if (existing) {
+      existing.archiveId = a.archiveId;
+      existing.source = 'both';
+    } else {
+      merged.set(keyOf(a), a);
+    }
+  });
+
+  return Array.from(merged.values());
+};
+
+// ============================================================
 // MOVE ITEM TO ARCHIVES
 // ============================================================
 
-exports.moveToArchives = async ({
-  type,
-  originalId,
-  data,
-  deletedBy,
-}) => {
+exports.moveToArchives = async ({ type, originalId, data, deletedBy }) => {
   if (!type) {
     throw new Error('Archive type is required');
   }
@@ -391,38 +561,20 @@ exports.moveToArchives = async ({
     type,
     original_id: originalId,
 
-    // The column is JSONB, so store an object instead of
-    // JSON.stringify(data).
-    data:
-      typeof data === 'string'
-        ? parseArchiveData(data)
-        : data,
+    // The column is JSONB, so store an object instead of JSON.stringify(data).
+    data: typeof data === 'string' ? parseArchiveData(data) : data,
 
-    deleted_by:
-      deletedBy || 'system',
-
-    archived_at:
-      new Date().toISOString(),
-
-    permanent_delete_at:
-      new Date(
-        Date.now() +
-          2 *
-            365 *
-            24 *
-            60 *
-            60 *
-            1000
-      ).toISOString(),
+    deleted_by: deletedBy || 'system',
+    archived_at: new Date().toISOString(),
+    permanent_delete_at: new Date(
+      Date.now() + 2 * 365 * 24 * 60 * 60 * 1000
+    ).toISOString(),
 
     is_permanently_deleted: false,
     restored_at: null,
   };
 
-  const {
-    data: result,
-    error,
-  } = await supabase
+  const { data: result, error } = await supabase
     .from(ARCHIVE_TABLE)
     .insert(archiveEntry)
     .select()
@@ -455,77 +607,40 @@ exports.moveToArchives = async ({
 };
 
 // ============================================================
-// GET ALL ARCHIVES
+// GET ALL ARCHIVES (combined)
 // ============================================================
 
-exports.getArchives = async ({
-  type,
-  search,
-  page = 1,
-  limit = 20,
-}) => {
-  const safePage = Math.max(
-    Number.parseInt(page, 10) || 1,
-    1
-  );
+exports.getArchives = async ({ type, search, page = 1, limit = 20 }) => {
+  const safePage = Math.max(Number.parseInt(page, 10) || 1, 1);
 
   const safeLimit = Math.min(
-    Math.max(
-      Number.parseInt(limit, 10) || 20,
-      1
-    ),
+    Math.max(Number.parseInt(limit, 10) || 20, 1),
     100
   );
 
-  let query = supabase
-    .from(ARCHIVE_TABLE)
-    .select('*', {
-      count: 'exact',
-    })
-    .eq('is_permanently_deleted', false)
-    .is('restored_at', null)
-    .order('archived_at', {
-      ascending: false,
-    });
-
-  if (type && type !== 'all') {
-    query = query.eq('type', type);
-  }
+  let items = await fetchCombinedArchives(type);
 
   if (search) {
-    const safeSearch = String(search)
-      .trim()
-      .replace(/[%(),]/g, '');
+    const s = String(search).trim().toLowerCase();
 
-    if (safeSearch) {
-      query = query.or(
-        `data::text.ilike.%${safeSearch}%,` +
-          `original_id::text.ilike.%${safeSearch}%`
+    if (s) {
+      items = items.filter((a) =>
+        `${a.displayName} ${a.detail} ${a.deletedBy} ${a.archiveType}`
+          .toLowerCase()
+          .includes(s)
       );
     }
   }
 
-  const from =
-    (safePage - 1) * safeLimit;
+  items.sort(
+    (a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
+  );
 
-  const to =
-    from + safeLimit - 1;
-
-  query = query.range(from, to);
-
-  const {
-    data,
-    error,
-    count,
-  } = await query;
-
-  if (error) {
-    throw error;
-  }
+  const from = (safePage - 1) * safeLimit;
 
   return {
-    data: data || [],
-    count: count || 0,
+    data: items.slice(from, from + safeLimit),
+    count: items.length,
     page: safePage,
     limit: safeLimit,
   };
@@ -540,10 +655,7 @@ exports.getArchiveById = async (id) => {
     throw new Error('Archive ID is required');
   }
 
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from(ARCHIVE_TABLE)
     .select('*')
     .eq('id', id)
@@ -558,75 +670,38 @@ exports.getArchiveById = async (id) => {
 
 // ============================================================
 // RESTORE FROM ARCHIVES
+//
+// Works for both sources:
+//  - soft archived row in the original table -> is_archived = false
+//  - archives-only snapshot -> row re-created from archives.data
 // ============================================================
 
-exports.restoreFromArchives = async (
-  id,
-  tableName
-) => {
-  const normalizedTable =
-    validateTableName(tableName);
+exports.restoreFromArchives = async (id, tableName) => {
+  const normalizedTable = validateTableName(tableName);
+  const idColumn = getIdColumn(normalizedTable);
 
-  const idColumn =
-    getIdColumn(normalizedTable);
-
-  const archiveRecord =
-    await getArchiveRecord(
-      id,
-      normalizedTable
-    );
-
-  const archivedData =
-    parseArchiveData(
-      archiveRecord?.data
-    );
+  const archiveRecord = await getArchiveRecord(id, normalizedTable);
+  const archivedData = parseArchiveData(archiveRecord?.data);
 
   const originalId =
-    archiveRecord?.original_id ||
-    archivedData?.[idColumn] ||
-    id;
+    archiveRecord?.original_id || archivedData?.[idColumn] || id;
 
-  let existingRecord =
-    await getOriginalRecord(
-      normalizedTable,
-      originalId
-    );
+  const existingRecord = await getOriginalRecord(normalizedTable, originalId);
 
   let restoredRecord = null;
 
-  // ----------------------------------------------------------
-  // Existing original row:
-  // soft archived item
-  // ----------------------------------------------------------
-
   if (existingRecord) {
-    const restoreUpdates = {
-      is_archived: false,
-    };
+    const restoreUpdates = { is_archived: false };
 
-    if (
-      Object.prototype.hasOwnProperty.call(
-        existingRecord,
-        'deleted_by'
-      )
-    ) {
+    if (Object.prototype.hasOwnProperty.call(existingRecord, 'deleted_by')) {
       restoreUpdates.deleted_by = null;
     }
 
-    if (
-      Object.prototype.hasOwnProperty.call(
-        existingRecord,
-        'updated_at'
-      )
-    ) {
-      restoreUpdates.updated_at =
-        new Date().toISOString();
+    if (Object.prototype.hasOwnProperty.call(existingRecord, 'updated_at')) {
+      restoreUpdates.updated_at = new Date().toISOString();
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from(normalizedTable)
       .update(restoreUpdates)
       .eq(idColumn, originalId)
@@ -638,63 +713,30 @@ exports.restoreFromArchives = async (
     }
 
     restoredRecord = data;
-  }
-
-  // ----------------------------------------------------------
-  // Original row no longer exists:
-  // recreate it from archives.data
-  // ----------------------------------------------------------
-
-  else {
-    if (
-      !archiveRecord ||
-      Object.keys(archivedData).length === 0
-    ) {
+  } else {
+    if (!archiveRecord || Object.keys(archivedData).length === 0) {
       throw new Error(
         'Archived item data was not found and the original item no longer exists.'
       );
     }
 
-    const insertData = {
-      ...archivedData,
-    };
+    const insertData = { ...archivedData };
 
-    insertData[idColumn] =
-      insertData[idColumn] ||
-      originalId;
+    insertData[idColumn] = insertData[idColumn] || originalId;
 
-    if (
-      Object.prototype.hasOwnProperty.call(
-        insertData,
-        'is_archived'
-      )
-    ) {
+    if (Object.prototype.hasOwnProperty.call(insertData, 'is_archived')) {
       insertData.is_archived = false;
     }
 
-    if (
-      Object.prototype.hasOwnProperty.call(
-        insertData,
-        'deleted_by'
-      )
-    ) {
+    if (Object.prototype.hasOwnProperty.call(insertData, 'deleted_by')) {
       insertData.deleted_by = null;
     }
 
-    if (
-      Object.prototype.hasOwnProperty.call(
-        insertData,
-        'updated_at'
-      )
-    ) {
-      insertData.updated_at =
-        new Date().toISOString();
+    if (Object.prototype.hasOwnProperty.call(insertData, 'updated_at')) {
+      insertData.updated_at = new Date().toISOString();
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from(normalizedTable)
       .insert(insertData)
       .select()
@@ -707,19 +749,11 @@ exports.restoreFromArchives = async (
     restoredRecord = data;
   }
 
-  // ----------------------------------------------------------
-  // Mark archive entry restored
-  // ----------------------------------------------------------
-
+  // Mark archive entry restored (if one exists)
   if (archiveRecord) {
-    const {
-      error: archiveUpdateError,
-    } = await supabase
+    const { error: archiveUpdateError } = await supabase
       .from(ARCHIVE_TABLE)
-      .update({
-        restored_at:
-          new Date().toISOString(),
-      })
+      .update({ restored_at: new Date().toISOString() })
       .eq('id', archiveRecord.id);
 
     if (archiveUpdateError) {
@@ -730,35 +764,22 @@ exports.restoreFromArchives = async (
     }
   }
 
-  // ----------------------------------------------------------
   // Notify owner
-  // ----------------------------------------------------------
+  const ownerUserId = resolveOwnerUserId(
+    normalizedTable,
+    restoredRecord || archivedData || existingRecord
+  );
 
-  const ownerUserId =
-    resolveOwnerUserId(
-      normalizedTable,
-      restoredRecord ||
-        archivedData ||
-        existingRecord
-    );
-
-  if (
-    normalizedTable !== 'announcements' &&
-    ownerUserId
-  ) {
-    const itemLabel =
-      getItemLabel(normalizedTable);
-
+  if (normalizedTable !== 'announcements' && ownerUserId) {
     await notifyOwner({
       ownerUserId,
       type: 'archive_restored',
       title: 'Archived Item Restored',
       message:
-        `Your archived ${itemLabel} ` +
+        `Your archived ${getItemLabel(normalizedTable)} ` +
         'has been restored by an administrator.',
       referenceId: originalId,
-      referenceType:
-        getReferenceType(normalizedTable),
+      referenceType: getReferenceType(normalizedTable),
     });
   }
 
@@ -766,57 +787,32 @@ exports.restoreFromArchives = async (
     success: true,
     tableName: normalizedTable,
     id: originalId,
-    restoredAt:
-      new Date().toISOString(),
+    restoredAt: new Date().toISOString(),
   };
 };
 
 // ============================================================
 // PERMANENTLY DELETE
+//
+// Works for both sources: deletes the original row (if any)
+// and the archives snapshot (if any).
 // ============================================================
 
-exports.permanentDelete = async (
-  id,
-  tableName
-) => {
-  const normalizedTable =
-    validateTableName(tableName);
+exports.permanentDelete = async (id, tableName) => {
+  const normalizedTable = validateTableName(tableName);
+  const idColumn = getIdColumn(normalizedTable);
 
-  const idColumn =
-    getIdColumn(normalizedTable);
-
-  // ----------------------------------------------------------
-  // Find archive entry first
-  // ----------------------------------------------------------
-
-  const archiveRecord =
-    await getArchiveRecord(
-      id,
-      normalizedTable
-    );
-
-  const archivedData =
-    parseArchiveData(
-      archiveRecord?.data
-    );
+  const archiveRecord = await getArchiveRecord(id, normalizedTable);
+  const archivedData = parseArchiveData(archiveRecord?.data);
 
   const targetItemId =
-    archiveRecord?.original_id ||
-    archivedData?.[idColumn] ||
-    id;
+    archiveRecord?.original_id || archivedData?.[idColumn] || id;
 
-  // ----------------------------------------------------------
   // Load original row before deleting it
-  // ----------------------------------------------------------
-
   let originalRecord = null;
 
   try {
-    originalRecord =
-      await getOriginalRecord(
-        normalizedTable,
-        targetItemId
-      );
+    originalRecord = await getOriginalRecord(normalizedTable, targetItemId);
   } catch (fetchError) {
     console.warn(
       '[Archives] Could not retrieve original item before permanent deletion:',
@@ -824,43 +820,29 @@ exports.permanentDelete = async (
     );
   }
 
-  const ownerUserId =
-    resolveOwnerUserId(
-      normalizedTable,
-      originalRecord ||
-        archivedData
-    );
+  const ownerUserId = resolveOwnerUserId(
+    normalizedTable,
+    originalRecord || archivedData
+  );
 
-  // ----------------------------------------------------------
   // Users: delete Supabase Auth account first
-  // ----------------------------------------------------------
-
   if (normalizedTable === 'users') {
     const targetAuthUid =
-      originalRecord?.uid ||
-      archivedData?.uid ||
-      targetItemId;
+      originalRecord?.uid || archivedData?.uid || targetItemId;
 
     console.log(
       `>>> [Archives] Attempting Auth deletion for UID: ${targetAuthUid}`
     );
 
-    const {
-      error: authError,
-    } =
-      await supabase.auth.admin.deleteUser(
-        targetAuthUid
-      );
+    const { error: authError } = await supabase.auth.admin.deleteUser(
+      targetAuthUid
+    );
 
     if (authError) {
-      const authMessage =
-        String(
-          authError.message || ''
-        ).toLowerCase();
+      const authMessage = String(authError.message || '').toLowerCase();
 
       const isNotFoundError =
-        authMessage.includes('not found') ||
-        authError.status === 404;
+        authMessage.includes('not found') || authError.status === 404;
 
       if (isNotFoundError) {
         console.warn(
@@ -878,19 +860,12 @@ exports.permanentDelete = async (
         );
       }
     } else {
-      console.log(
-        '>>> [Archives] Successfully deleted user from Supabase Auth'
-      );
+      console.log('>>> [Archives] Successfully deleted user from Supabase Auth');
     }
   }
 
-  // ----------------------------------------------------------
-  // Delete original database row
-  // ----------------------------------------------------------
-
-  const {
-    error: dbError,
-  } = await supabase
+  // Delete original database row (no-op if it is already gone)
+  const { error: dbError } = await supabase
     .from(normalizedTable)
     .delete()
     .eq(idColumn, targetItemId);
@@ -899,14 +874,9 @@ exports.permanentDelete = async (
     throw dbError;
   }
 
-  // ----------------------------------------------------------
   // Remove archive entry
-  // ----------------------------------------------------------
-
   if (archiveRecord) {
-    const {
-      error: archiveCleanupError,
-    } = await supabase
+    const { error: archiveCleanupError } = await supabase
       .from(ARCHIVE_TABLE)
       .delete()
       .eq('id', archiveRecord.id);
@@ -919,33 +889,20 @@ exports.permanentDelete = async (
     }
   }
 
-  // ----------------------------------------------------------
-  // Notify owner
-  //
-  // Do not notify the permanently deleted user account.
-  // Announcements have no individual owner.
-  // ----------------------------------------------------------
-
+  // Notify owner (not for deleted users or announcements)
   if (
     normalizedTable !== 'users' &&
     normalizedTable !== 'announcements' &&
     ownerUserId
   ) {
-    const itemLabel =
-      getItemLabel(normalizedTable);
-
     await notifyOwner({
       ownerUserId,
       type: 'permanent_deletion',
       title: 'Item Permanently Deleted',
       message:
-        `Your archived ${itemLabel} ` +
+        `Your archived ${getItemLabel(normalizedTable)} ` +
         'has been permanently deleted by an administrator.',
-
-      // There is no longer a usable original record ID.
       referenceId: null,
-
-      // This makes the frontend display "Deleted".
       referenceType: 'Deleted',
     });
   }
@@ -962,13 +919,9 @@ exports.permanentDelete = async (
 // ============================================================
 
 exports.cleanupOldArchives = async () => {
-  const now =
-    new Date().toISOString();
+  const now = new Date().toISOString();
 
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from(ARCHIVE_TABLE)
     .delete()
     .eq('is_permanently_deleted', false)
@@ -986,82 +939,22 @@ exports.cleanupOldArchives = async () => {
 };
 
 // ============================================================
-// GET ARCHIVE STATISTICS
+// GET ARCHIVE STATISTICS (from the combined list)
 // ============================================================
 
 exports.getArchiveStats = async () => {
-  const {
-    data,
-    error,
-  } = await supabase
-    .from(ARCHIVE_TABLE)
-    .select('type')
-    .eq('is_permanently_deleted', false)
-    .is('restored_at', null);
+  const items = await fetchCombinedArchives('all');
+  const count = (t) => items.filter((i) => i.archiveType === t).length;
 
-  if (error) {
-    throw error;
-  }
-
-  const stats = {
-    total: data?.length || 0,
-    records: 0,
-    announcements: 0,
-    users: 0,
-    consultations: 0,
-    appointments: 0,
-    examinations: 0,
-    audit_logs: 0,
-    notifications: 0,
+  return {
+    total: items.length,
+    records: count('medical_record') + count('dental_record'),
+    announcements: count('announcement'),
+    users: count('user'),
+    consultations: count('consultation'),
+    appointments: count('appointment'),
+    notifications: count('notification'),
   };
-
-  data?.forEach((item) => {
-    const type =
-      String(item.type || '')
-        .trim()
-        .toLowerCase();
-
-    switch (type) {
-      case 'record':
-      case 'medical_record':
-      case 'dental_record':
-        stats.records += 1;
-        break;
-
-      case 'announcement':
-        stats.announcements += 1;
-        break;
-
-      case 'user':
-        stats.users += 1;
-        break;
-
-      case 'consultation':
-        stats.consultations += 1;
-        break;
-
-      case 'appointment':
-        stats.appointments += 1;
-        break;
-
-      case 'examination':
-        stats.examinations += 1;
-        break;
-
-      case 'audit_log':
-        stats.audit_logs += 1;
-        break;
-
-      case 'notification':
-        stats.notifications += 1;
-        break;
-
-      default:
-        break;
-    }
-  });
-
-  return stats;
 };
 
 exports.ARCHIVE_TYPES = ARCHIVE_TYPES;

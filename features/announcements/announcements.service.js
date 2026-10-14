@@ -1,14 +1,13 @@
 // C:\Users\HP\MediTrack\features\announcements\announcements.service.js
 
 const supabase = require('../../configs/database');
-const archiveHelper = require('../archives/archiveHelper');
 const notificationsService = require('../notifications/notifications.service');
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
 
-const ARCHIVE_TYPE = 'announcement';
+
 
 const BUCKET_NAME = 'MediStorage';
 const IMAGE_FOLDER = 'announcements';
@@ -940,34 +939,28 @@ try {
 // DELETE / ARCHIVE ANNOUNCEMENT
 // ============================================================
 
-exports.deleteAnnouncement = async (
-  id,
-  deletedBy
-) => {
-  /*
-   * We intentionally archive rather than immediately
-   * deleting the database row.
-   *
-   * The archive helper remains responsible for the
-   * announcement archive behavior.
-   */
+exports.deleteAnnouncement = async (id, deletedBy) => {
+  const actor =
+    typeof deletedBy === 'string'
+      ? deletedBy
+      : deletedBy?.email || deletedBy?.id || 'system';
 
-  await archiveHelper.archiveAndDelete(
-    {
-      type: ARCHIVE_TYPE,
-      originalId: id,
-      tableName: 'announcements',
-      idColumn: 'id',
-      deletedBy,
-    },
-    supabase
-  );
+  const { data, error } = await supabase
+    .from('announcements')
+    .update({
+      is_archived: true,
+      deleted_by: actor,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
 
   clearCache();
 
-  return {
-    id,
-  };
+  return { id, data };
 };
 
 // ============================================================

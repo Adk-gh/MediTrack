@@ -342,28 +342,43 @@ export const ConsultationManagement = () => {
   const [deleting, setDeleting] = useState(false);
 
   const handleDeleteConfirm = async () => {
-    if (!consultationToDelete) return;
-    setDeleting(true);
+  if (!consultationToDelete) return;
+  setDeleting(true);
+  try {
+    // 1. The actual archive (sets is_archived = true, row stays in consultations)
+    await consultationsService.deleteConsultation(consultationToDelete.id);
+
+    // 2. Best-effort extras: these must never block the archive
     try {
       await consultationsService.sendMessage(consultationToDelete.id, {
-        text: `This consultation has been archived by clinic administration.`,
-        sender_id: null, sender_name: "System", sender_role: "system",
+        text: 'This consultation has been archived by clinic administration.',
+        sender_id: null, sender_name: 'System', sender_role: 'system',
       });
+    } catch (e) {
+      console.warn('Archive notice not sent:', e.message);
+    }
+
+    try {
       await supabase.from('notifications').insert({
         type: 'consultation_archived', title: 'Consultation Archived',
         message: 'Your consultation has been archived by the clinic administration.',
-        user_id: consultationToDelete.patient_id, reference_id: consultationToDelete.id, reference_type: 'consultation', is_read: false
+        user_id: consultationToDelete.patient_id,
+        reference_id: consultationToDelete.id,
+        reference_type: 'consultation', is_read: false,
       });
-      await consultationsService.deleteConsultation(consultationToDelete.id);
-      showSnackbar('Consultation archived successfully. You can restore it from the Archives page.');
-      setShowDeleteModal(false); setConsultationToDelete(null); fetchConsultations(true);
-    } catch (err) {
-      console.error('Failed to archive consultation:', err);
-      showSnackbar('Failed to archive consultation', 'error');
-    } finally {
-      setDeleting(false);
+    } catch (e) {
+      console.warn('Patient notification not sent:', e.message);
     }
-  };
+
+    showSnackbar('Consultation archived successfully. You can restore it from the Archives page.');
+    setShowDeleteModal(false); setConsultationToDelete(null); fetchConsultations(true);
+  } catch (err) {
+    console.error('Failed to archive consultation:', err);
+    showSnackbar('Failed to archive consultation', 'error');
+  } finally {
+    setDeleting(false);
+  }
+};
 
   const handleEditClick = (conv) => { setConsultationToEdit(conv); setEditStatus(conv.status === 'ended' ? 'ended' : 'active'); setShowEditModal(true); };
   const [showEditModal, setShowEditModal] = useState(false);

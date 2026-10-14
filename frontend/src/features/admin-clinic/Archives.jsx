@@ -75,115 +75,38 @@ export default function Archives() {
     }
   };
 
-  // Fetch archives from all tables using is_archived flag
-  const fetchArchives = async () => {
-    setLoading(true);
-    try {
-      // Set Supabase session for authenticated fetch
-      const accessToken = localStorage.getItem('token');
-      const refreshToken = localStorage.getItem('refresh_token') || '';
-      if (accessToken) {
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
-        });
-      }
+const fetchArchives = async () => {
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('token');
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-      // Fetch archived items from all tables
-      const [
-        usersData, announcementsData, appointmentsData, consultationsData,
-        medicalData, dentalData, notificationsData
-      ] = await Promise.all([
-        supabase.from('users').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
-        supabase.from('announcements').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
-        supabase.from('appointments').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
-        supabase.from('consultations').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
-        supabase.from('medical_records').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
-        supabase.from('dental_records').select('*').eq('is_archived', true).order('updated_at', { ascending: false }),
-        supabase.from('notifications').select('*, _user:users!notifications_user_id_fkey(first_name, last_name, email)').eq('is_archived', true).order('created_at', { ascending: false }),
-      ]);
+    const all = [];
+    let pageNum = 1;
+    let total = Infinity;
 
-      // Combine all archived items with type labels
-      const allArchives = [
-        ...(usersData.data || []).map(r => ({
-          ...r,
-          archiveType: 'user',
-          table: 'users',
-          originalId: r.uid,
-          displayName: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email || r.university_id || 'User',
-          detail: r.university_id || r.email || '',
-          deletedBy: r.deleted_by || 'System'
-        })),
-        ...(announcementsData.data || []).map(r => ({
-          ...r,
-          archiveType: 'announcement',
-          table: 'announcements',
-          id: r.id,
-          displayName: r.title || 'Announcement',
-          detail: `Posted: ${r.author_name || 'Admin'}`,
-          deletedBy: r.deleted_by || 'System'
-        })),
-        ...(appointmentsData.data || []).map(r => ({
-          ...r,
-          archiveType: 'appointment',
-          table: 'appointments',
-          id: r.id,
-          displayName: r.patient_name || r.reason || 'Appointment',
-          detail: `${r.service_type || 'Medical'} - ${r.reason || 'No reason'}`,
-          deletedBy: r.deleted_by || 'System'
-        })),
-        ...(consultationsData.data || []).map(r => ({
-          ...r,
-          archiveType: 'consultation',
-          table: 'consultations',
-          id: r.id,
-          displayName: r.patient_name || 'Consultation',
-          detail: `${r.consultation_type || 'General'} - ${r.status || ''}`,
-          deletedBy: r.deleted_by || 'System'
-        })),
-        ...(medicalData.data || []).map(r => ({
-          ...r,
-          archiveType: 'medical_record',
-          table: 'medical_records',
-          id: r.id,
-          displayName: `${r.last_name || ''}, ${r.first_name || ''} ${r.middle_name ? r.middle_name + ' ' : ''}`.trim() || 'Medical Record',
-          detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date ? new Date(r.exam_date).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}`,
-          deletedBy: r.deleted_by || 'System'
-        })),
-        ...(dentalData.data || []).map(r => ({
-          ...r,
-          archiveType: 'dental_record',
-          table: 'dental_records',
-          id: r.id,
-          displayName: `${r.last_name || ''}, ${r.first_name || ''} ${r.middle_name ? r.middle_name + ' ' : ''}`.trim() || 'Dental Record',
-          detail: `ID: ${r.university_id || 'N/A'} | Visit: ${r.exam_date ? new Date(r.exam_date).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}`,
-          deletedBy: r.deleted_by || 'System'
-        })),
-        ...(notificationsData.data || []).map(r => {
-          const u = r._user || {};
-          const recipientName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown User';
-          return {
-            ...r,
-            archiveType: 'notification',
-            table: 'notifications',
-            id: r.id,
-            displayName: r.title || 'Notification',
-            detail: `To: ${recipientName} | ${r.message || ''}`,
-            deletedBy: 'System',
-            updated_at: r.created_at || r.updated_at // fallback for the date column
-          };
-        }),
-      ];
+    // The backend caps limit at 100, so page until we have everything.
+    while (all.length < total) {
+      const res = await fetch(`${API_URL}/archives?page=${pageNum}&limit=100`, { headers });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message || 'Failed to load archives');
 
-      setArchives(allArchives);
-
-    } catch (error) {
-      console.error('Error fetching archives:', error);
-      showSnackbar('Failed to load archives', 'error');
-    } finally {
-      setLoading(false);
+      const { data, count } = json.data;
+      all.push(...data);
+      total = count;
+      if (!data.length) break;
+      pageNum += 1;
     }
-  };
+
+    setArchives(all);
+  } catch (error) {
+    console.error('Error fetching archives:', error);
+    showSnackbar('Failed to load archives', 'error');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Initial Fetch
   useEffect(() => {
@@ -369,7 +292,7 @@ export default function Archives() {
   return (
     <div className="bg-slate-50 h-full min-h-0 min-w-0 flex flex-col p-3 sm:p-4 md:p-5 lg:p-6 overflow-hidden">
 
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3 mb-3 sm:mb-4 shrink-0">
         {[
           { label: 'Total', count: stats.total, color: 'text-slate-800' },
           { label: 'Records', count: stats.records, color: 'text-blue-600' },
@@ -744,30 +667,30 @@ export default function Archives() {
               </div>
 
               {/* Full Data - Collapsible */}
-<details className="group mt-4 border-t border-slate-100 pt-4">
-  <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460] flex items-center gap-1.5 transition-colors">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 group-open:rotate-90 transition-transform">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-    </svg>
-    View Full Data
-  </summary>
-  <div className="mt-3 bg-slate-50 rounded-lg border border-slate-200 max-h-64 overflow-y-auto">
-    <ul className="list-none text-xs divide-y divide-slate-200">
-      {Object.entries(selectedArchive).map(([key, value]) => (
-        <li key={key} className="flex flex-col sm:flex-row p-3 hover:bg-slate-100/50 transition-colors">
-          <span className="font-bold text-slate-500 uppercase sm:w-1/3 shrink-0 mb-1 sm:mb-0">
-            {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
-          </span>
-          <span className="text-slate-800 break-all sm:w-2/3">
-            {typeof value === 'object' && value !== null
-              ? JSON.stringify(value)
-              : String(value ?? '—')}
-          </span>
-        </li>
-      ))}
-    </ul>
-  </div>
-</details>
+              <details className="group mt-4 border-t border-slate-100 pt-4">
+                <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-[#466460] flex items-center gap-1.5 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 group-open:rotate-90 transition-transform">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                  View Full Data
+                </summary>
+                <div className="mt-3 bg-slate-50 rounded-lg border border-slate-200 max-h-64 overflow-y-auto">
+                  <ul className="list-none text-xs divide-y divide-slate-200">
+                    {Object.entries(selectedArchive).map(([key, value]) => (
+                      <li key={key} className="flex flex-col sm:flex-row p-3 hover:bg-slate-100/50 transition-colors">
+                        <span className="font-bold text-slate-500 uppercase sm:w-1/3 shrink-0 mb-1 sm:mb-0">
+                          {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
+                        </span>
+                        <span className="text-slate-800 break-all sm:w-2/3">
+                          {typeof value === 'object' && value !== null
+                            ? JSON.stringify(value)
+                            : String(value ?? '—')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
             </div>
             <div className="p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100 grid grid-cols-2 gap-3">
               <button

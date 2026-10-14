@@ -582,43 +582,41 @@ async notifyRecordRequest(requestData) {
   // DELETE NOTIFICATION
   // ============================================================
 
-  async deleteNotification(
-    notificationId,
-    userId,
-    isSysAdmin = false
-  ) {
-    let query = supabase
-      .from('notifications')
-      .delete()
-      .eq('id', notificationId);
+async deleteNotification(
+  notificationId,
+  userId,
+  isSysAdmin = false
+) {
+  let query = supabase
+    .from('notifications')
+    .update({ is_archived: true })
+    .eq('id', notificationId)
+    .or('is_archived.is.null,is_archived.eq.false');
 
-    if (!isSysAdmin) {
-      const internalId =
-        await this.getInternalUserId(userId);
+  if (!isSysAdmin) {
+    const internalId =
+      await this.getInternalUserId(userId);
 
-      query = query.eq(
-        'user_id',
-        internalId
-      );
-    }
+    query = query.eq('user_id', internalId);
+  }
 
-    const { data, error } =
-      await query.select().maybeSingle();
+  const { data, error } =
+    await query.select().maybeSingle();
 
-    if (error) throw error;
+  if (error) throw error;
 
-    if (!data) {
-      const notFoundError = new Error(
-        'Notification not found or unauthorized to delete'
-      );
+  if (!data) {
+    const notFoundError = new Error(
+      'Notification not found or unauthorized to delete'
+    );
 
-      notFoundError.status = 404;
+    notFoundError.status = 404;
 
-      throw notFoundError;
-    }
+    throw notFoundError;
+  }
 
-    return data;
-  },
+  return data;
+},
 };
 
 module.exports = notificationsService;

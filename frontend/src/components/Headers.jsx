@@ -14,6 +14,10 @@ import { useDocumentManager } from '../hooks/useDocumentManager';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// ─── Phone helpers (11-digit PH mobile numbers) ──────────────────────────────
+const formatPhoneNumber = (v) => (v || '').replace(/\D/g, '').slice(0, 11);
+const isValidPhoneNumber = (v) => /^\d{11}$/.test(v || '');
+
 // ─── Synchronous Role Helper ─────────────────────────────────────────────────
 const getStoredUserRole = () => {
   try {
@@ -254,6 +258,20 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
   const [showAddressModal, setShowAddressModal] = React.useState(false);
   const [addressType, setAddressType] = React.useState(null);
 
+  // ── Snackbar ──
+  const [message, setMessage] = React.useState(null);
+  const snackbarTimer = React.useRef(null);
+
+  const showSnackbar = (msg, type = 'success') => {
+    if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
+    setMessage({ text: msg, type });
+    snackbarTimer.current = setTimeout(() => setMessage(null), 3500);
+  };
+
+  React.useEffect(() => () => {
+    if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
+  }, []);
+
   // Self-service password update (never uses the admin update endpoint).
   const [passwordModalOpen, setPasswordModalOpen] = React.useState(false);
   const [passwordForm, setPasswordForm] = React.useState({ current: '', next: '', confirm: '' });
@@ -325,7 +343,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       if (error) throw error;
       closePasswordModalAfterSuccess();
       setPasswordFeedback('');
-      alert('Password updated successfully.');
+      showSnackbar('Password updated successfully');
     } catch (error) {
       setPasswordFeedback(error?.message || 'Unable to update password.');
     } finally {
@@ -770,7 +788,7 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       }
 
       if (Object.keys(sectionData).length === 0) {
-        alert('No changes to save');
+        showSnackbar('No changes to save', 'error');
         setIsSaving(false);
         return;
       }
@@ -780,24 +798,18 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
       // 1. Separate the email from the data destined for your backend
       const { email: newEmail, ...backendData } = sectionData;
 
-      // 2. Handle Supabase Auth Email Update separately
+      // 2. Handle Supabase Auth email update separately
       if (newEmail && newEmail !== formData.email) {
-        try {
-          const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail });
-          if (emailErr) {
-            alert(`Error updating email: ${emailErr.message}`);
-            setIsSaving(false);
-            return;
-          }
-          isEmailUpdatePending = true;
-        } catch (emailErr) {
-          alert(`Error updating email: ${emailErr.message}`);
+        const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail });
+        if (emailErr) {
+          showSnackbar(`Error updating email: ${emailErr.message}`, 'error');
           setIsSaving(false);
           return;
         }
+        isEmailUpdatePending = true;
       }
 
-      // 3. Send the REST of the data to your backend API
+      // 3. Send the rest of the data to your backend API
       let updatedProfile = { ...formData };
 
       if (Object.keys(backendData).length > 0) {
@@ -816,19 +828,20 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
         updatedProfile = { ...updatedProfile, ...data.data };
       }
 
-      // 4. Alert the user if they need to check their inbox
-      if (isEmailUpdatePending) {
-        alert("A confirmation link has been sent to your new email address. Your email will be updated in your profile once you verify it.");
-        // We do NOT update the email in the local UI state yet, because the change isn't official until verified.
-      }
-
+      // The email in local state is NOT updated yet — the change isn't official until verified.
       setFormData(withProfileDefaults(updatedProfile));
       if (onProfileUpdate) onProfileUpdate(updatedProfile);
 
       closeEdit();
+
+      showSnackbar(
+        isEmailUpdatePending
+          ? 'Profile saved. A confirmation link was sent to your new email address.'
+          : 'Profile updated successfully'
+      );
     } catch (err) {
       console.error('Error updating profile:', err);
-      alert('Error updating profile.');
+      showSnackbar(err.message || 'Error updating profile', 'error');
     }
     setIsSaving(false);
   };
@@ -1936,6 +1949,18 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
           initialData={addressType === 'personal' ? { homeAddress: editData.homeAddress } : { homeAddress: editData.emergencyContact?.address }}
           zIndex={4000}
         />
+      )}
+
+      {/* Snackbar */}
+      {message && (
+        <div className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[9000] flex items-center justify-center gap-2 text-center shadow-xl ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+          {message.type === 'success' ? (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          )}
+          {message.text}
+        </div>
       )}
     </>
   );

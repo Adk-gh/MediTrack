@@ -241,66 +241,62 @@ const buildArchiveItemDetails = (
   }
 };
 
-const loadArchiveItemForAudit = async (
-  req,
-  res,
-  next
-) => {
+const loadArchiveItemForAudit = async (req, res, next) => {
   try {
-    const tableName = String(
-      req.query?.table || ''
-    )
-      .trim()
-      .toLowerCase();
+    const tableName = String(req.query?.table || '').trim().toLowerCase();
 
     if (!ALLOWED_ARCHIVE_TABLES.has(tableName)) {
       return next();
     }
 
-    const requestedId =
-      req.params.id;
+    const requestedId = req.params.id;
+    const idColumn = tableName === 'users' ? 'uid' : 'id';
 
-    const idColumn =
-      tableName === 'users'
-        ? 'uid'
-        : 'id';
-
-    const {
-      data: record,
-      error,
-    } = await supabase
+    const { data: record, error } = await supabase
       .from(tableName)
       .select('*')
       .eq(idColumn, requestedId)
       .maybeSingle();
 
     if (error) {
-      console.warn(
-        '[Archives Audit] Failed to retrieve item details:',
-        error.message
-      );
-
+      console.warn('[Archives Audit] Failed to retrieve item details:', error.message);
       return next();
     }
 
-    if (record) {
+    let source = record;
+
+    // Fallback: original row is gone, use the archived snapshot.
+    if (!source) {
+      const { data: snapshotRow, error: snapshotError } = await supabase
+        .from('archives')
+        .select('data')
+        .or(`id.eq.${requestedId},original_id.eq.${requestedId}`)
+        .is('restored_at', null)
+        .order('archived_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (snapshotError) {
+        console.warn('[Archives Audit] Snapshot lookup failed:', snapshotError.message);
+      } else if (snapshotRow?.data) {
+        source =
+          typeof snapshotRow.data === 'string'
+            ? JSON.parse(snapshotRow.data)
+            : snapshotRow.data;
+      }
+    }
+
+    if (source) {
       req.archiveAuditTarget = {
         tableName,
         itemId: requestedId,
-        ...buildArchiveItemDetails(
-          tableName,
-          record
-        ),
+        ...buildArchiveItemDetails(tableName, source),
       };
     }
 
     return next();
   } catch (error) {
-    console.warn(
-      '[Archives Audit] Item-detail lookup failed:',
-      error.message
-    );
-
+    console.warn('[Archives Audit] Item-detail lookup failed:', error.message);
     return next();
   }
 };
