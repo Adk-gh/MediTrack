@@ -1,1439 +1,2871 @@
 // C:\Users\HP\MediTrack\frontend\src\layouts\UserDashboardLayout.jsx
+
 import React, { useState, useEffect, useRef, useCallback } from "react";
+
 import { useNavigate } from "react-router-dom";
+
 import {
+
   UserNotificationBell,
+
   UserNotificationPanel,
+
 } from "../components/UserNotifications.jsx";
+
 import { supabase } from "../supabase";
+
 import notificationsService from "../services/notifications.service.js";
+
 import { createPortal } from "react-dom";
+
 import logo from '../assets/logo.jpg';
 
+
+
 // ─── Notification type groupings ─────────────────────────────────────────────
+
 const RECORD_NOTIF_TYPES = ["record_added", "record_updated"];
 
+
+
 const formatRoleLabel = (role) => {
+
   const rawRole = String(role || "").trim();
+
+
 
   if (!rawRole) return "User";
 
+
+
   const normalized = rawRole.toLowerCase();
 
+
+
   const roleLabels = {
+
     student: "Student",
+
     instructor: "Instructor",
+
     faculty: "Faculty",
+
     employee: "Employee",
+
     staff: "Staff",
+
     nurse: "Nurse",
+
     doctor: "Doctor",
+
     dentist: "Dentist",
+
     admin: "Administrator",
+
     administrator: "Administrator",
+
     sysadmin: "System Administrator",
+
     "system administrator": "System Administrator",
+
     "non-teaching personnel": "Non-Teaching Personnel",
+
     non_teaching_personnel: "Non-Teaching Personnel",
+
     "teaching personnel": "Teaching Personnel",
+
     teaching_personnel: "Teaching Personnel",
+
   };
 
+
+
   if (roleLabels[normalized]) {
+
     return roleLabels[normalized];
+
   }
+
+
 
   return rawRole
+
     .replace(/[_-]+/g, " ")
+
     .replace(/\s+/g, " ")
+
     .replace(/\b\w/g, (char) => char.toUpperCase());
+
 };
+
+
 
 const getStoredUserRole = () => {
+
   // Prefer the currently logged-in user object because it is tied
+
   // to the active session/account.
+
   try {
+
     const storedUser = JSON.parse(localStorage.getItem("user") || "null");
 
+
+
     if (storedUser?.role) {
+
       return storedUser.role;
+
     }
+
+
 
     if (storedUser?.user_metadata?.role) {
+
       return storedUser.user_metadata.role;
+
     }
+
   } catch (_) {}
+
+
 
   // Fallback if your login flow stores role separately.
+
   const directRole = localStorage.getItem("role");
 
+
+
   if (directRole) {
+
     return directRole;
+
   }
 
+
+
   // Fallback to the cached MediTrack profile.
+
   try {
+
     const cachedProfile = JSON.parse(
+
       sessionStorage.getItem("meditrack_user_profile") || "null"
+
     );
 
+
+
     if (cachedProfile?.role) {
+
       return cachedProfile.role;
+
     }
+
   } catch (_) {}
 
+
+
   return "";
+
 };
+
+
 
 // ─── Desktop sidebar icons ────────────────────────────────────────────────────
 
+
+
 const HomeIcon = ({ active }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth={active ? "2" : "1.5"}
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     className="w-full h-full"
+
   >
+
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+
     <polyline points="9 22 9 12 15 12 15 22" />
+
   </svg>
+
 );
+
+
 
 const CalendarIcon = ({ active }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth={active ? "2" : "1.5"}
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     className="w-full h-full"
+
   >
+
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+
     <line x1="16" y1="2" x2="16" y2="6" />
+
     <line x1="8" y1="2" x2="8" y2="6" />
+
     <line x1="3" y1="10" x2="21" y2="10" />
+
   </svg>
+
 );
+
+
 
 const ConsultIcon = ({ active }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth={active ? "2" : "1.5"}
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     className="w-full h-full"
+
   >
+
     <circle cx="12" cy="8" r="4" />
+
     <path d="M18 21v-2a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v2" />
+
     <path d="M12 12v3" />
+
     <path d="M10.5 13.5h3" />
+
   </svg>
+
 );
+
+
 
 const RecordsIcon = ({ active }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth={active ? "2" : "1.5"}
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     className="w-full h-full"
+
   >
+
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+
     <polyline points="14 2 14 8 20 8" />
+
     <line x1="16" y1="13" x2="8" y2="13" />
+
     <line x1="16" y1="17" x2="8" y2="17" />
+
     <line x1="10" y1="9" x2="8" y2="9" />
+
   </svg>
+
 );
+
+
 
 const ProfileIcon = ({ active }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth={active ? "2" : "1.5"}
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     className="w-full h-full"
+
   >
+
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+
     <circle cx="12" cy="7" r="4" />
+
   </svg>
+
 );
 
+
+
 function DocumentPreviewIcon() {
+
   return (
+
     <svg
+
       viewBox="0 0 24 24"
+
       fill="none"
+
       stroke="#557a5b"
+
       strokeWidth="1.5"
+
       strokeLinecap="round"
+
       strokeLinejoin="round"
+
       className="w-12 h-12 mx-auto"
+
     >
+
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+
       <polyline points="14 2 14 8 20 8" />
+
       <line x1="16" y1="13" x2="8" y2="13" />
+
       <line x1="16" y1="17" x2="8" y2="17" />
+
       <line x1="10" y1="9" x2="8" y2="9" />
+
     </svg>
+
   );
+
 }
+
+
 
 // ─── Nav configs ──────────────────────────────────────────────────────────────
 
+
+
 const DESKTOP_NAV = [
+
   { id: "home", label: "Home", Icon: HomeIcon },
+
   { id: "booking", label: "Booking", Icon: CalendarIcon },
+
   { id: "consult", label: "Consult", Icon: ConsultIcon },
+
   { id: "records", label: "Records", Icon: RecordsIcon },
+
   { id: "profile", label: "Profile", Icon: ProfileIcon },
+
 ];
+
+
 
 // ─── Mobile pill nav icons ────────────────────────────────────────────────────
 
+
+
 const NavHomeIcon = ({ size }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth="2"
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     style={{ width: size, height: size }}
+
   >
+
     <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
+
     <path d="M9 21V12h6v9" />
+
   </svg>
+
 );
+
+
 
 const NavBookIcon = ({ size }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth="2"
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     style={{ width: size, height: size }}
+
   >
+
     <rect x="3" y="4" width="18" height="18" rx="2" />
+
     <line x1="16" y1="2" x2="16" y2="6" />
+
     <line x1="8" y1="2" x2="8" y2="6" />
+
     <line x1="3" y1="10" x2="21" y2="10" />
+
   </svg>
+
 );
+
+
 
 const NavConsultIcon = ({ size }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth="2"
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     style={{ width: size, height: size }}
+
   >
+
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+
   </svg>
+
 );
+
+
 
 const NavRecordsIcon = ({ size }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth="2"
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     style={{ width: size, height: size }}
+
   >
+
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+
     <polyline points="14 2 14 8 20 8" />
+
     <line x1="9" y1="13" x2="15" y2="13" />
+
     <line x1="9" y1="17" x2="15" y2="17" />
+
   </svg>
+
 );
+
+
 
 const NavProfileIcon = ({ size }) => (
+
   <svg
+
     viewBox="0 0 24 24"
+
     fill="none"
+
     stroke="currentColor"
+
     strokeWidth="2"
+
     strokeLinecap="round"
+
     strokeLinejoin="round"
+
     style={{ width: size, height: size }}
+
   >
+
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+
     <circle cx="12" cy="7" r="4" />
+
   </svg>
+
 );
 
+
+
 const MOBILE_NAV = [
+
   { id: "home", label: "Home", Icon: NavHomeIcon },
+
   { id: "booking", label: "Book", Icon: NavBookIcon },
+
   { id: "consult", label: "Consult", Icon: NavConsultIcon },
+
   { id: "records", label: "Records", Icon: NavRecordsIcon },
+
   { id: "profile", label: "Profile", Icon: NavProfileIcon },
+
 ];
+
+
 
 // ─── Header Profile Dropdown ──────────────────────────────────────────────────
 
+
+
 function ProfileDropdown({ userName, userRole, onLogout, onLogoutModalChange }) {
+
   const [isOpen, setIsOpen] = useState(false);
+
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   const [displayRole, setDisplayRole] = useState(() =>
+
     formatRoleLabel(userRole || getStoredUserRole())
+
   );
+
   const dropdownRef = useRef(null);
+
   const navigate = useNavigate();
 
+
+
   useEffect(() => {
+
     const refreshRole = () => {
+
       setDisplayRole(
+
         formatRoleLabel(userRole || getStoredUserRole())
+
       );
+
     };
+
+
 
     refreshRole();
 
+
+
     window.addEventListener("storage", refreshRole);
+
     window.addEventListener("meditrackUserChanged", refreshRole);
 
+
+
     return () => {
+
       window.removeEventListener("storage", refreshRole);
+
       window.removeEventListener("meditrackUserChanged", refreshRole);
+
     };
+
   }, [userRole]);
 
-  useEffect(() => {
-    if (onLogoutModalChange) {
-      onLogoutModalChange(showLogoutModal);
-    }
-  }, [showLogoutModal, onLogoutModalChange]);
+
 
   useEffect(() => {
+
+    if (onLogoutModalChange) {
+
+      onLogoutModalChange(showLogoutModal);
+
+    }
+
+  }, [showLogoutModal, onLogoutModalChange]);
+
+
+
+  useEffect(() => {
+
     const handleClickOutside = (event) => {
+
       if (
+
         dropdownRef.current &&
+
         !dropdownRef.current.contains(event.target)
+
       ) {
+
         setIsOpen(false);
+
       }
+
     };
+
+
 
     document.addEventListener("mousedown", handleClickOutside);
 
+
+
     return () => {
+
       document.removeEventListener("mousedown", handleClickOutside);
+
     };
+
   }, []);
 
+
+
   return (
+
     <>
+
       <div className="relative" ref={dropdownRef}>
+
         <button
+
           onClick={() => setIsOpen(!isOpen)}
+
           className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none flex items-center justify-center"
+
           aria-label="Profile Menu"
+
         >
+
           <svg
+
             width="14"
+
             height="14"
+
             viewBox="0 0 24 24"
+
             fill="currentColor"
+
           >
+
             <path d="M7 10l5 5 5-5z" />
+
           </svg>
+
         </button>
 
+
+
         {isOpen && (
+
           <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 py-2 z-[10000] animate-[fadeIn_0.15s_ease-out]">
+
             <div className="px-4 py-2.5 border-b border-slate-100 mb-1">
+
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">
+
                 Signed in as
+
               </p>
+
+
 
               <p className="text-xs font-bold text-slate-800 truncate">
+
                 {displayRole}
+
               </p>
+
             </div>
 
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                navigate("/student/settings");
-              }}
-              className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-              Settings
-            </button>
+
 
             <button
+
               onClick={() => {
+
                 setIsOpen(false);
-                setShowLogoutModal(true);
+
+                navigate("/student/settings");
+
               }}
-              className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+
+              className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
+
             >
+
               <svg
+
                 width="16"
+
                 height="16"
+
                 viewBox="0 0 24 24"
+
                 fill="none"
+
                 stroke="currentColor"
+
                 strokeWidth="2"
+
                 strokeLinecap="round"
+
                 strokeLinejoin="round"
+
               >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
+
+                <circle cx="12" cy="12" r="3"></circle>
+
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+
               </svg>
-              Sign Out
+
+              Settings
+
             </button>
+
+
+
+            <button
+
+              onClick={() => {
+
+                setIsOpen(false);
+
+                setShowLogoutModal(true);
+
+              }}
+
+              className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+
+            >
+
+              <svg
+
+                width="16"
+
+                height="16"
+
+                viewBox="0 0 24 24"
+
+                fill="none"
+
+                stroke="currentColor"
+
+                strokeWidth="2"
+
+                strokeLinecap="round"
+
+                strokeLinejoin="round"
+
+              >
+
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+
+                <polyline points="16 17 21 12 16 7" />
+
+                <line x1="21" y1="12" x2="9" y2="12" />
+
+              </svg>
+
+              Sign Out
+
+            </button>
+
           </div>
+
         )}
+
       </div>
 
+
+
       {showLogoutModal &&
+
         createPortal(
+
           <div
+
             onClick={(e) =>
+
               e.target === e.currentTarget && setShowLogoutModal(false)
+
             }
+
             style={{
+
               position: "fixed",
+
               inset: 0,
+
               background: "rgba(0, 0, 0, 0.55)",
+
               backdropFilter: "blur(3px)",
+
               zIndex: 999999,
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               padding: 16,
+
             }}
+
           >
+
             <div
+
               style={{
+
                 background: "#fff",
+
                 padding: "36px 32px",
+
                 borderRadius: 20,
+
                 width: "100%",
+
                 maxWidth: 320,
+
                 textAlign: "center",
+
                 boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
+
               }}
+
             >
+
               <h3
+
                 style={{
+
                   margin: "0 0 8px",
+
                   color: "#1a1a1a",
+
                   fontSize: 20,
+
                   fontWeight: 800,
+
                 }}
+
               >
+
                 Confirm Sign Out
+
               </h3>
 
+
+
               <p
+
                 style={{
+
                   margin: "0 0 28px",
+
                   color: "#6b7280",
+
                   fontSize: 14,
+
                 }}
+
               >
+
                 Are you sure you want to log out?
+
               </p>
 
+
+
               <div style={{ display: "flex", gap: 12 }}>
-                <button
-                  onClick={() => setShowLogoutModal(false)}
-                  style={{
-                    flex: 1,
-                    padding: "13px",
-                    borderRadius: 12,
-                    border: "none",
-                    background: "#f1f5f9",
-                    color: "#475569",
-                    cursor: "pointer",
-                    fontWeight: 700,
-                    fontSize: 14,
-                  }}
-                >
-                  Cancel
-                </button>
 
                 <button
-                  onClick={() => {
-                    setShowLogoutModal(false);
-                    onLogout();
-                  }}
+
+                  onClick={() => setShowLogoutModal(false)}
+
                   style={{
+
                     flex: 1,
+
                     padding: "13px",
+
                     borderRadius: 12,
+
                     border: "none",
-                    background: "#e53e3e",
-                    color: "#fff",
+
+                    background: "#f1f5f9",
+
+                    color: "#475569",
+
                     cursor: "pointer",
+
                     fontWeight: 700,
+
                     fontSize: 14,
+
                   }}
+
                 >
-                  Sign Out
+
+                  Cancel
+
                 </button>
+
+
+
+                <button
+
+                  onClick={() => {
+
+                    setShowLogoutModal(false);
+
+                    onLogout();
+
+                  }}
+
+                  style={{
+
+                    flex: 1,
+
+                    padding: "13px",
+
+                    borderRadius: 12,
+
+                    border: "none",
+
+                    background: "#e53e3e",
+
+                    color: "#fff",
+
+                    cursor: "pointer",
+
+                    fontWeight: 700,
+
+                    fontSize: 14,
+
+                  }}
+
+                >
+
+                  Sign Out
+
+                </button>
+
               </div>
+
             </div>
+
           </div>,
+
           document.body
+
         )}
+
     </>
+
   );
+
 }
+
+
 
 // ─── Floating Pill Nav ────────────────────────────────────────────────────────
 
+
+
 function MobilePillNav({
+
   activeTab,
+
   onTabChange,
+
   hidden,
+
   consultUnreadCount = 0,
+
   apptNotifCount = 0,
+
   recordNotifCount = 0,
+
 }) {
+
   const [vw, setVw] = useState(window.innerWidth);
 
+
+
   useEffect(() => {
+
     const onResize = () => setVw(window.innerWidth);
+
+
 
     window.addEventListener("resize", onResize);
 
+
+
     return () => window.removeEventListener("resize", onResize);
+
   }, []);
 
+
+
   const pillW = Math.min(480, Math.max(280, vw * 0.88));
+
   const scale = pillW / 360;
+
   const pillH = Math.round(56 * scale);
+
   const bubble = Math.round(48 * scale);
+
   const iconSm = Math.round(18 * scale);
+
   const iconLg = Math.round(20 * scale);
+
   const labelSz = Math.max(9, Math.round(10 * scale));
+
   const popUp = Math.round(24 * scale);
+
   const bottomOffset = Math.round(20 * scale);
 
+
+
   const NAV_BADGE_COUNTS = {
+
     booking: apptNotifCount,
+
     consult: consultUnreadCount,
+
     records: recordNotifCount,
+
   };
+
+
 
   if (hidden) return null;
 
+
+
   return (
+
     <nav
+
       style={{
+
         position: "fixed",
+
         bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
+
         left: "50%",
+
         transform: "translateX(-50%)",
+
         zIndex: 9999,
+
         pointerEvents: "none",
+
       }}
+
     >
+
       <div
+
         style={{
+
           display: "flex",
+
           alignItems: "center",
+
           background: "#ffffff",
+
           borderRadius: 999,
+
           padding: `0 ${Math.round(6 * scale)}px`,
+
           height: pillH,
+
           width: pillW,
+
           boxShadow: "0 4px 32px rgba(0,0,0,0.15)",
+
           pointerEvents: "auto",
+
         }}
+
       >
+
                {MOBILE_NAV.map(({ id, label, Icon }) => {
+
           const isActive = activeTab === id;
+
           const badgeCount = NAV_BADGE_COUNTS[id] || 0;
+
           const showUnreadBadge = badgeCount > 0;
 
+
+
           return (
+
             <button
+
               key={id}
+
               onClick={() => onTabChange(id)}
+
               aria-label={label}
+
               style={{
+
                 flex: 1,
+
                 display: "flex",
+
                 flexDirection: "column",
+
                 alignItems: "center",
+
                 justifyContent: "center",
+
                 height: pillH,
+
                 border: "none",
+
                 background: "none",
+
                 padding: 0,
+
                 cursor: "pointer",
+
               }}
+
             >
+
               <div
+
                 style={{
+
                   width: isActive ? bubble : Math.round(34 * scale),
+
                   height: isActive ? bubble : Math.round(34 * scale),
+
                   borderRadius: "50%",
+
                   background: isActive ? "#059669" : "transparent",
+
                   display: "flex",
+
                   alignItems: "center",
+
                   justifyContent: "center",
+
                   marginTop: isActive ? -popUp : 0,
+
                   boxShadow: isActive
+
                     ? "0 6px 20px rgba(5,150,105,0.40)"
+
                     : "none",
+
                   color: isActive ? "#ffffff" : "#94a3b8",
+
                   transition: "all 0.28s cubic-bezier(.34,1.56,.64,1)",
+
                   flexShrink: 0,
+
                   position: "relative",
+
                 }}
+
               >
+
                 <Icon size={isActive ? iconLg : iconSm} />
 
+
+
                                 {showUnreadBadge && (
+
                   <span
+
                     style={{
+
                       position: "absolute",
+
                       top: 0,
+
                       right: isActive ? 0 : Math.round(4 * scale),
+
                       minWidth: Math.round(14 * scale),
+
                       height: Math.round(14 * scale),
+
                       padding: `0 ${Math.round(2 * scale)}px`,
+
                       background: "#ef4444",
+
                       borderRadius: 999,
+
                       display: "flex",
+
                       alignItems: "center",
+
                       justifyContent: "center",
+
                       fontSize: Math.max(7, Math.round(8 * scale)),
+
                       fontWeight: 700,
+
                       lineHeight: 1,
+
                       color: "#ffffff",
+
                     }}
+
                   >
+
                     {badgeCount > 9 ? "9+" : badgeCount}
+
                   </span>
+
                 )}
+
               </div>
 
+
+
               <span
+
                 style={{
+
                   fontSize: labelSz,
+
                   fontWeight: 700,
+
                   letterSpacing: "0.04em",
+
                   color: isActive ? "#059669" : "#94a3b8",
+
                   marginTop: isActive
+
                     ? Math.round(5 * scale)
+
                     : Math.round(3 * scale),
+
                   lineHeight: 1,
+
                   transition: "color 0.2s",
+
                   whiteSpace: "nowrap",
+
                 }}
+
               >
+
                 {label}
+
               </span>
+
             </button>
+
           );
+
         })}
+
       </div>
+
     </nav>
+
   );
+
 }
+
+
 
 // ─── Preview Modal ────────────────────────────────────────────────────────────
 
+
+
 export function PreviewModal({ record, onClose, isDesktop }) {
+
   if (!record) return null;
 
+
+
   if (isDesktop) {
+
     return (
+
       <div
+
         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8"
+
         onClick={onClose}
+
       >
+
         <div
+
           className="bg-transparent rounded-3xl overflow-hidden flex flex-col"
+
           style={{ maxHeight: "80vh" }}
+
           onClick={(e) => e.stopPropagation()}
+
         >
+
           <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+
             <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.12em]">
+
               Medical Document Preview
+
             </span>
 
+
+
             <button
+
               onClick={onClose}
+
               className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 text-xl transition-colors"
+
             >
+
               ✕
+
             </button>
+
           </div>
+
+
 
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+
             <div className="bg-slate-50 rounded-3xl p-6 text-center">
+
               <div className="mb-3">
+
                 <DocumentPreviewIcon />
+
               </div>
+
+
 
               <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+
                 {record.title}
+
               </h3>
 
+
+
               <p className="text-[9px] font-bold text-slate-400 mt-0.5 mb-5">
+
                 {record.date}
+
               </p>
+
+
 
               <div className="space-y-3 text-left">
+
                 <div className="bg-white p-4 rounded-2xl shadow-sm">
+
                   <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1.5">
+
                     Clinical Assessment
+
                   </p>
+
+
 
                   <p className="text-xs text-slate-600 leading-relaxed italic">
+
                     {record.desc}
+
                   </p>
+
                 </div>
+
+
 
                 <div className="bg-white p-4 rounded-2xl shadow-sm">
+
                   <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">
+
                     Physician in Charge
+
                   </p>
+
+
 
                   <p className="text-xs font-bold text-slate-700">
+
                     {record.doc}
+
                   </p>
+
                 </div>
+
               </div>
+
             </div>
+
           </div>
+
+
 
           <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex gap-3">
+
             <button className="flex-1 py-3 bg-[#557a5b] text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 hover:bg-[#4a6b4f] transition-colors">
+
               Download PDF
+
             </button>
+
+
 
             <button className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors">
+
               Print
+
             </button>
+
           </div>
+
         </div>
+
       </div>
+
     );
+
   }
 
+
+
   return (
+
     <div className="absolute inset-0 bg-white z-50 flex flex-col animate-slideUp">
+
       <div
+
         className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 flex-shrink-0"
+
         style={{
+
           paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+
         }}
+
       >
+
         <button
+
           onClick={onClose}
+
           className="w-8 h-8 flex items-center justify-center text-slate-400 text-2xl leading-none"
+
         >
+
           ‹
+
         </button>
+
+
 
         <span className="text-[9px] font-black uppercase text-slate-400 tracking-[0.12em]">
+
           Medical Document Preview
+
         </span>
 
+
+
         <div className="w-8" />
+
       </div>
+
+
 
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+
         <div className="bg-slate-50 rounded-3xl p-5 text-center">
+
           <div className="mb-3">
+
             <DocumentPreviewIcon />
+
           </div>
+
+
 
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+
             {record.title}
+
           </h3>
 
+
+
           <p className="text-[9px] font-bold text-slate-400 mt-0.5 mb-5">
+
             {record.date}
+
           </p>
 
+
+
           <div className="space-y-3 text-left">
+
             <div className="bg-white p-4 rounded-2xl shadow-sm">
+
               <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1.5">
+
                 Clinical Assessment
+
               </p>
+
+
 
               <p className="text-xs text-slate-600 leading-relaxed italic">
+
                 {record.desc}
+
               </p>
+
             </div>
+
+
 
             <div className="bg-white p-4 rounded-2xl shadow-sm">
+
               <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.1em] mb-1">
+
                 Physician in Charge
+
               </p>
+
+
 
               <p className="text-xs font-bold text-slate-700">
+
                 {record.doc}
+
               </p>
+
             </div>
+
           </div>
+
         </div>
+
       </div>
+
+
 
       <div
+
         className="px-5 pt-4 border-t border-slate-100 space-y-3 flex-shrink-0"
+
         style={{
+
           paddingBottom: "calc(40px + env(safe-area-inset-bottom, 0px))",
+
         }}
+
       >
+
         <button className="w-full py-4 bg-[#557a5b] text-white text-[10px] font-black uppercase rounded-2xl shadow-lg shadow-green-900/20 flex items-center justify-center gap-2">
+
           Download as PDF
+
         </button>
 
+
+
         <button className="w-full py-4 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase rounded-2xl flex items-center justify-center gap-2">
+
           Print Record
+
         </button>
+
       </div>
+
     </div>
+
   );
+
 }
+
+
 
 // ─── Desktop shell ────────────────────────────────────────────────────────────
 
+
+
 function DesktopShell({
+
   activeTab,
+
   onTabChange,
+
   preview,
+
   onClosePreview,
+
   children,
+
   notificationCount,
+
   onNotificationClick,
+
   userName,
+
   userRole,
+
   onLogout,
+
   consultUnreadCount,
+
   apptNotifCount,
+
   recordNotifCount,
+
 }) {
+
   const NAV_BADGE_COUNTS = {
+
     booking: apptNotifCount,
+
     consult: consultUnreadCount,
+
     records: recordNotifCount,
+
   };
 
+
+
   return (
+
     <div className="min-h-screen bg-transparent flex flex-col">
+
       <header className="bg-transparent px-5 pb-3 flex items-center justify-between sticky top-0 z-50">
+
         <img
+
           src={logo}
+
           alt="MediTrack Logo"
+
           className="h-16 w-auto object-contain"
+
         />
 
+
+
         <div className="flex items-center gap-1 sm:gap-2">
+
           <UserNotificationBell
+
             onClick={onNotificationClick}
+
             count={notificationCount}
+
           />
 
+
+
           <ProfileDropdown userName={userName} userRole={userRole} onLogout={onLogout} />
+
         </div>
+
       </header>
 
+
+
       <div className="flex flex-1 max-w-7xl mx-auto w-full px-6 md:px-8 py-8 gap-8">
+
         <aside className="w-56 flex-shrink-0">
+
           <nav className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3 sticky top-24">
+
             {DESKTOP_NAV.map(({ id, label, Icon }) => {
+
               const isActive = activeTab === id;
+
               const badgeCount = NAV_BADGE_COUNTS[id] || 0;
+
               const showUnreadBadge = badgeCount > 0;
 
+
+
               return (
+
                 <button
+
                   key={id}
+
                   onClick={() => onTabChange(id)}
+
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all duration-200 mb-1 last:mb-0 ${
+
                     isActive
+
                       ? "bg-[#557a5b] text-white shadow-md shadow-green-900/15"
+
                       : "text-slate-600 hover:bg-slate-50"
+
                   }`}
+
                 >
+
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 relative">
+
                     <Icon active={isActive} />
 
+
+
                     {showUnreadBadge && (
+
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+
                     )}
+
                   </div>
+
+
 
                   <span className="text-[12px] font-bold">{label}</span>
 
+
+
                   {showUnreadBadge && (
+
                     <span className="ml-auto text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">
+
                       {badgeCount}
+
                     </span>
+
                   )}
+
                 </button>
+
               );
+
             })}
+
           </nav>
+
         </aside>
 
+
+
         <main className="flex-1 w-full max-w-4xl">
+
           <div
+
             className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col"
+
             style={{
+
               height: "calc(100vh - 140px)",
+
               minHeight: "600px",
+
             }}
+
           >
+
             <div
+
               className="overflow-y-auto flex-1 flex flex-col"
+
               style={{
+
                 WebkitOverflowScrolling: "touch",
+
                 touchAction: "pan-y",
+
               }}
+
             >
+
               {children}
+
             </div>
+
           </div>
+
         </main>
+
       </div>
 
+
+
       {preview && (
+
         <PreviewModal
+
           record={preview}
+
           onClose={onClosePreview}
+
           isDesktop
+
         />
+
       )}
+
     </div>
+
   );
+
 }
+
+
 
 // ─── Mobile shell ─────────────────────────────────────────────────────────────
 
+
+
 function MobileShell({
+
   activeTab,
+
   onTabChange,
+
   preview,
+
   onClosePreview,
+
   children,
+
   notificationCount,
+
   onNotificationClick,
+
   userName,
+
   userRole,
+
   onLogout,
+
   consultUnreadCount,
+
   apptNotifCount,
+
   recordNotifCount,
+
 }) {
+
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
+
+
   return (
+
     <div
+
       style={{
+
         height: "100dvh",
+
         width: "100%",
+
         display: "flex",
+
         flexDirection: "column",
+
         background: "transparent",
+
         fontFamily: "sans-serif",
+
       }}
+
     >
+
       <header
+
         className="bg-transparent px-5 flex items-center justify-between relative z-[1000] flex-shrink-0"
+
         style={{
+
           paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+
           paddingBottom: "12px",
+
         }}
+
       >
+
         <img
+
           src={logo}
+
           alt="MediTrack Logo"
+
           className="h-10 object-contain rounded-xl"
+
         />
+
+
 
         <div className="flex items-center gap-1">
+
           <UserNotificationBell
+
             onClick={onNotificationClick}
+
             count={notificationCount}
+
           />
+
+
 
           <ProfileDropdown
+
             userName={userName}
+
             userRole={userRole}
+
             onLogout={onLogout}
+
             onLogoutModalChange={setLogoutModalOpen}
+
           />
+
         </div>
+
       </header>
 
+
+
       <div
+
         style={{
+
           flex: 1,
+
           minHeight: 0,
+
           overflow: "hidden",
+
           display: "flex",
+
           flexDirection: "column",
+
           position: "relative",
+
           paddingBottom:
+
             "calc(88px + env(safe-area-inset-bottom, 0px))",
+
         }}
+
       >
+
         {children}
 
+
+
         <PreviewModal
+
           record={preview}
+
           onClose={onClosePreview}
+
           isDesktop={false}
+
         />
+
       </div>
 
+
+
       <MobilePillNav
+
         activeTab={activeTab}
+
         onTabChange={onTabChange}
+
         hidden={logoutModalOpen}
+
         consultUnreadCount={consultUnreadCount}
+
         apptNotifCount={apptNotifCount}
+
         recordNotifCount={recordNotifCount}
+
       />
+
     </div>
+
   );
+
 }
+
+
 
 // ─── Main Export ───────────────────────────────────────────────────────────────
 
+
+
 export default function UserDashboardLayout({
+
   activeTab,
+
   onTabChange,
+
   preview,
+
   onClosePreview,
+
   onLogout,
+
   userName,
+
   userRole,
+
   userId,
+
   children,
+
 }) {
+
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 641);
+
   const [showNotifications, setShowNotifications] = useState(false);
+
   const [notificationCount, setNotificationCount] = useState(0);
+
   const [consultUnreadCount, setConsultUnreadCount] = useState(0);
+
   const [apptNotifCount, setApptNotifCount] = useState(0);
+
   const [recordNotifCount, setRecordNotifCount] = useState(0);
+
   const [resolvedUserRole, setResolvedUserRole] = useState(() =>
+
     formatRoleLabel(userRole || getStoredUserRole())
+
   );
 
+
+
   useEffect(() => {
+
     const refreshRole = () => {
+
       setResolvedUserRole(
+
         formatRoleLabel(userRole || getStoredUserRole())
+
       );
+
     };
+
+
 
     refreshRole();
 
+
+
     window.addEventListener("storage", refreshRole);
+
     window.addEventListener("meditrackUserChanged", refreshRole);
 
+
+
     return () => {
+
       window.removeEventListener("storage", refreshRole);
+
       window.removeEventListener("meditrackUserChanged", refreshRole);
+
     };
+
   }, [userRole]);
 
+
+
   const handleNotificationClick = () => {
+
     setShowNotifications(true);
+
   };
 
+
+
   const handleCloseNotifications = () => {
+
     setShowNotifications(false);
+
   };
+
+
 
   // ─── Notification unread count (bell) ────────────────────────────────────
 
+
+
   useEffect(() => {
+
     const fetchUnreadCount = async () => {
+
       try {
+
         const count = await notificationsService.getUnreadCount();
+
         setNotificationCount(count);
+
       } catch (err) {
+
         console.error("Error fetching unread count:", err);
+
       }
+
     };
+
+
 
     fetchUnreadCount();
 
+
+
     const interval = setInterval(fetchUnreadCount, 30000);
 
+
+
     return () => clearInterval(interval);
+
   }, []);
 
+
+
   const fetchTypedNotifCounts = useCallback(async () => {
+
     try {
+
       const notifications = await notificationsService.getNotifications(100);
 
+
+
       const unread = (notifications || []).filter(
+
         (notification) => !(notification.is_read ?? notification.isRead)
+
       );
+
+
 
       // --- RECORDS NOTIFICATIONS ---
+
       const unreadRecordNotifications = unread.filter((notification) => {
+
         const referenceId = notification.reference_id ?? notification.referenceId;
+
         const referenceType = String(
+
           notification.reference_type ?? notification.referenceType ?? ''
+
         ).trim().toLowerCase();
 
+
+
         return (
+
           Boolean(referenceId) &&
+
           (referenceType === 'medical_record' || referenceType === 'dental_record')
+
         );
+
       });
 
+
+
       const unreadRecordKeys = new Set(
+
         unreadRecordNotifications.map((notification) => {
+
           const referenceId = notification.reference_id ?? notification.referenceId;
+
           const referenceType = String(
+
             notification.reference_type ?? notification.referenceType ?? ''
+
           ).trim().toLowerCase();
+
           return `${referenceType}:${referenceId}`;
+
         })
+
       );
+
       setRecordNotifCount(unreadRecordKeys.size);
 
+
+
  const unreadAppointmentNotifications = unread.filter((notification) => {
+
   const referenceId =
+
     notification.reference_id ??
+
     notification.referenceId;
 
+
+
   const referenceType = String(
+
     notification.reference_type ??
+
     notification.referenceType ??
+
     ''
+
   )
+
     .trim()
+
     .toLowerCase();
 
+
+
   return (
+
     Boolean(referenceId) &&
+
     (
+
       referenceType === 'appointment' ||
+
       referenceType === 'appointments'
+
     )
+
   );
+
 });
 
+
+
 const uniqueAppointmentIds = new Set(
+
   unreadAppointmentNotifications.map(
+
     (notification) =>
+
       String(
+
         notification.reference_id ??
+
         notification.referenceId
+
       )
+
   )
+
 );
+
+
 
 setApptNotifCount(uniqueAppointmentIds.size);
 
+
+
     } catch (error) {
+
       console.error('Error fetching typed notification counts:', error);
+
     }
+
   }, []);
 
+
+
   useEffect(() => {
+
     const handleRecordNotificationRead = async () => {
+
       try {
+
         const totalUnread = await notificationsService.getUnreadCount();
+
         setNotificationCount(totalUnread);
 
+
+
         sessionStorage.removeItem('meditrack_notifications');
+
         sessionStorage.removeItem('meditrack_notif_count');
 
+
+
         await fetchTypedNotifCounts();
+
       } catch (error) {
+
         console.error('Error refreshing record notification counts:', error);
+
       }
+
     };
+
+
 
     window.addEventListener('recordNotificationRead', handleRecordNotificationRead);
 
+
+
     return () => {
+
       window.removeEventListener('recordNotificationRead', handleRecordNotificationRead);
+
     };
+
   }, [fetchTypedNotifCounts]);
 
+
+
   useEffect(() => {
+
     const handleAppointmentBadgeCountChanged = (event) => {
+
       const count = Number(event.detail?.count) || 0;
+
       setApptNotifCount(count);
+
     };
+
+
 
     window.addEventListener(
+
       'appointmentBadgeCountChanged',
+
       handleAppointmentBadgeCountChanged
+
     );
 
+
+
     return () => {
+
       window.removeEventListener(
+
         'appointmentBadgeCountChanged',
+
         handleAppointmentBadgeCountChanged
+
       );
+
     };
+
   }, []);
 
-  useEffect(() => {
-    fetchTypedNotifCounts();
-    const interval = setInterval(fetchTypedNotifCounts, 30000);
-    return () => clearInterval(interval);
-  }, [fetchTypedNotifCounts]);
+
 
   useEffect(() => {
+
+    fetchTypedNotifCounts();
+
+    const interval = setInterval(fetchTypedNotifCounts, 30000);
+
+    return () => clearInterval(interval);
+
+  }, [fetchTypedNotifCounts]);
+
+
+
+  useEffect(() => {
+
     const handleAppointmentNotificationRead = async () => {
+
       try {
+
         const count = await notificationsService.getUnreadCount();
+
         setNotificationCount(count);
+
         sessionStorage.removeItem('meditrack_notif_count');
+
         await fetchTypedNotifCounts();
+
       } catch (error) {
+
         console.error('Error refreshing appointment notification counts:', error);
+
       }
+
     };
+
+
 
     window.addEventListener('appointmentNotificationRead', handleAppointmentNotificationRead);
 
+
+
     return () => {
+
       window.removeEventListener('appointmentNotificationRead', handleAppointmentNotificationRead);
+
     };
+
   }, [fetchTypedNotifCounts]);
+
+
 
   // ─── Consultation unread count ───────────────────────────────────────────
 
+
+
   const updateConsultUnreadCount = useCallback(async () => {
+
     try {
+
       let count = 0;
+
       const profileCache = JSON.parse(sessionStorage.getItem("meditrack_user_profile") || "null");
+
       const internalUserId = profileCache?.internalUserId;
 
+
+
       if (internalUserId) {
-        const { data: consultations } = await supabase
+
+        const { data: consultations, error: consultationsError } = await supabase
+
           .from("consultations")
+
           .select("id")
+
           .eq("patient_id", internalUserId);
 
+
+
+        if (consultationsError) throw consultationsError;
+
         if (consultations && consultations.length > 0) {
+
           const consultIds = consultations.map((c) => c.id);
-          const { data: unreadMsgs } = await supabase
+
+          const { data: unreadMsgs, error: unreadError } = await supabase
+
             .from("consultation_messages")
+
             .select("id")
+
             .in("consultation_id", consultIds)
+
             .neq("sender_id", internalUserId)
+
             .is("read_at", null);
 
+
+
+          if (unreadError) throw unreadError;
           count = unreadMsgs ? unreadMsgs.length : 0;
+
         }
+
       }
 
+
+
       setConsultUnreadCount(count);
+
       localStorage.setItem("consultUnreadCount", String(count));
+
     } catch (dbErr) {
+
       // fallback to local storage if DB fails
+
       setConsultUnreadCount(parseInt(localStorage.getItem("consultUnreadCount") || "0", 10));
+
     }
+
   }, []);
 
+
+
   useEffect(() => {
+
     updateConsultUnreadCount();
+
     const interval = setInterval(updateConsultUnreadCount, 10000);
 
+
+
     // Custom Event Listener to instantly drop to 0 when chat is opened
+
     const handleInstantRead = () => {
-      setConsultUnreadCount(0);
-      localStorage.setItem("consultUnreadCount", "0");
-      // Note: We deliberately do NOT call updateConsultUnreadCount() here to avoid
-      // a race condition where the query hits the database before the backend commits.
+      // The read endpoint has completed; refresh actual unread messages across both rooms.
+      updateConsultUnreadCount();
     };
 
     window.addEventListener('consultationMessagesRead', handleInstantRead);
 
+
+
     // Listen for ALL changes in consultation_messages
+
     const channel = supabase
+
       .channel("layout-consult-msgs")
+
       .on(
+
         "postgres_changes",
+
         { event: "*", schema: "public", table: "consultation_messages" },
+
         () => {
+
           // Add a slight delay to ensure DB commits from the backend API are fully visible
+
           setTimeout(() => {
+
             updateConsultUnreadCount();
+
           }, 1200);
+
         }
+
       )
+
       .subscribe();
 
+
+
     return () => {
+
       clearInterval(interval);
+
       window.removeEventListener('consultationMessagesRead', handleInstantRead);
+
       supabase.removeChannel(channel);
+
     };
+
   }, [updateConsultUnreadCount]);
+
+
 
   // ─── Real-time notification updates ─────────────────────────────────────
 
+
+
   useEffect(() => {
+
     let mounted = true;
+
     let channel;
 
+
+
     const setupNotificationRealtime = async () => {
+
       try {
+
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+
         const authUid = storedUser?.uid || storedUser?.id || null;
+
+
 
         if (!authUid) return;
 
+
+
         const internalUserId = await notificationsService.getInternalUserId(authUid);
 
+
+
         if (!mounted || !internalUserId) {
+
           return;
+
         }
 
+
+
         channel = supabase
+
           .channel('layout-notif-count')
+
           .on(
+
             'postgres_changes',
+
             {
+
               event: 'INSERT',
+
               schema: 'public',
+
               table: 'notifications',
+
               filter: `user_id=eq.${internalUserId}`,
+
             },
+
             async () => {
+
               const count = await notificationsService.getUnreadCount();
+
               setNotificationCount(count);
+
               sessionStorage.removeItem('meditrack_notif_count');
+
               await fetchTypedNotifCounts();
+
             }
+
           )
+
           .on(
+
             'postgres_changes',
+
             {
+
               event: 'UPDATE',
+
               schema: 'public',
+
               table: 'notifications',
+
               filter: `user_id=eq.${internalUserId}`,
+
             },
+
             async () => {
+
               const count = await notificationsService.getUnreadCount();
+
               setNotificationCount(count);
+
               sessionStorage.removeItem('meditrack_notif_count');
+
               await fetchTypedNotifCounts();
+
             }
+
           )
+
           .on(
+
             'postgres_changes',
+
             {
+
               event: 'DELETE',
+
               schema: 'public',
+
               table: 'notifications',
+
               filter: `user_id=eq.${internalUserId}`,
+
             },
+
             async () => {
+
               const count = await notificationsService.getUnreadCount();
+
               setNotificationCount(count);
+
               sessionStorage.removeItem('meditrack_notif_count');
+
               await fetchTypedNotifCounts();
+
             }
+
           )
+
           .subscribe();
+
       } catch (error) {
+
         console.error('Failed to subscribe to notification updates:', error);
+
       }
+
     };
+
+
 
     setupNotificationRealtime();
 
+
+
     return () => {
+
       mounted = false;
+
       if (channel) {
+
         supabase.removeChannel(channel);
+
       }
+
     };
+
   }, [fetchTypedNotifCounts]);
+
+
 
   // ─── Responsive breakpoint ───────────────────────────────────────────────
 
+
+
   useEffect(() => {
+
     const handleResize = () => {
+
       setIsDesktop(window.innerWidth >= 641);
+
     };
+
+
 
     window.addEventListener("resize", handleResize);
 
+
+
     return () => {
+
       window.removeEventListener("resize", handleResize);
+
     };
+
   }, []);
 
+
+
   const sharedProps = {
+
     activeTab,
+
     onTabChange,
+
     onLogout,
+
     userName,
+
     userRole: resolvedUserRole,
+
     userId,
+
     preview,
+
     onClosePreview,
+
     children,
+
     notificationCount,
+
     onNotificationClick: handleNotificationClick,
+
     consultUnreadCount,
+
     apptNotifCount,
+
     recordNotifCount,
+
   };
 
+
+
   return (
+
     <>
+
       {isDesktop ? (
+
         <DesktopShell {...sharedProps} />
+
       ) : (
+
         <MobileShell {...sharedProps} />
+
       )}
 
+
+
       <UserNotificationPanel
+
         isOpen={showNotifications}
+
         onClose={handleCloseNotifications}
+
       />
+
     </>
+
   );
+
 }

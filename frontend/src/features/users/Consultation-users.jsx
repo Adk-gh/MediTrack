@@ -1347,115 +1347,57 @@ export default function ConsultationUsers() {
     }
   };
 
-const markMessagesAsRead = useCallback(async () => {
-  if (!activeRoomId || !internalUserId || isEnded) {
-    return;
-  }
+const readInFlightRef = useRef(null);
 
-  const unreadClinicMessages = messages.filter(
-    (message) =>
-      message.sender_id &&
-      String(message.sender_id) !==
-        String(internalUserId) &&
-      !message.read_at
-  );
+  const markMessagesAsRead = useCallback(async () => {
+    if (!activeRoomId || !internalUserId || readInFlightRef.current === activeRoomId) return;
 
-  if (unreadClinicMessages.length === 0) {
-    return;
-  }
+    const unreadClinicMessages = messages.filter((message) =>
+      message.sender_id && String(message.sender_id) !== String(internalUserId) && !message.read_at
+    );
+    if (!unreadClinicMessages.length) return;
 
-  const token = localStorage.getItem('token');
-
-  const API_URL =
-    import.meta.env.VITE_API_URL ||
-    'http://localhost:5000/api';
-
-  const bodyToSend = {
-    sender_id: internalUserId,
-    sender_role: currentUser.role || 'student',
-  };
-
-  try {
-    const response = await fetch(
-      `${API_URL}/consultations/${activeRoomId}/messages/read`,
-      {
+    const roomId = activeRoomId;
+    readInFlightRef.current = roomId;
+    try {
+      const token = await ensureValidSession();
+      if (!token) throw new Error('Session expired. Please sign in again.');
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${apiUrl}/consultations/${roomId}/messages/read`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : {}),
-        },
-        body: JSON.stringify(bodyToSend),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      const result = await response.json();
+      if (!response.ok || result.success !== true) {
+        throw new Error(result.message || `Failed to mark messages as read (${response.status})`);
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to mark messages as read: ${response.status}`
-      );
+      const confirmedIds = new Set((result.data || []).map((message) => String(message.id)));
+      if (!confirmedIds.size) return;
+      const timestampById = new Map((result.data || []).map((message) => [String(message.id), message.read_at]));
+      const applyRead = (items) => items.map((message) => confirmedIds.has(String(message.id))
+        ? { ...message, read_at: timestampById.get(String(message.id)) || new Date().toISOString() }
+        : message);
+
+      // Only update the displayed room; a response from an earlier room must not modify another chat.
+      if (activeRoomIdRef.current === roomId) setMessages((previous) => applyRead(previous));
+      const cache = getCachedMessages(roomId);
+      if (cache) setCachedMessages(roomId, applyRead(cache));
+
+      window.dispatchEvent(new CustomEvent('consultationMessagesRead', {
+        detail: { consultationId: roomId, messageIds: [...confirmedIds] },
+      }));
+    } catch (error) {
+      console.error('Error marking consultation messages as read:', error);
+    } finally {
+      if (readInFlightRef.current === roomId) readInFlightRef.current = null;
     }
-
-    const readAt = new Date().toISOString();
-
-    // Update the chat immediately.
-    setMessages((previousMessages) =>
-      previousMessages.map((message) => {
-        const isClinicMessage =
-          message.sender_id &&
-          String(message.sender_id) !==
-            String(internalUserId);
-
-        if (isClinicMessage && !message.read_at) {
-          return {
-            ...message,
-            read_at: readAt,
-          };
-        }
-
-        return message;
-      })
-    );
-
-    setClinicUnreadCount(0);
-
-    localStorage.setItem(
-      'consultUnreadCount',
-      '0'
-    );
-
-    // Tell UserDashboardLayout to remove the Consult badge.
-    window.dispatchEvent(
-      new CustomEvent('consultationMessagesRead', {
-        detail: {
-          consultationId: activeRoomId,
-          messageIds: unreadClinicMessages.map(
-            (message) => message.id
-          ),
-        },
-      })
-    );
-  } catch (error) {
-    console.error(
-      'Error marking consultation messages as read:',
-      error
-    );
-  }
-}, [
-  activeRoomId,
-  internalUserId,
-  isEnded,
-  currentUser.role,
-  messages,
-]);
+  }, [activeRoomId, internalUserId, messages, ensureValidSession]);
 
   useEffect(() => {
-    if (activeRoomId && !isEnded && internalUserId) {
-      markMessagesAsRead();
-    }
-  }, [activeRoomId, messages, isEnded, markMessagesAsRead]);
+    if (activeRoomId && internalUserId) markMessagesAsRead();
+  }, [activeRoomId, internalUserId, markMessagesAsRead]);
 
   const handleHistoryFilterSwitch = async (filterType) => {
     setHistoryFilter(filterType);
