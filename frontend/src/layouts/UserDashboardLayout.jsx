@@ -2483,72 +2483,54 @@ setApptNotifCount(uniqueAppointmentIds.size);
 
 
   const updateConsultUnreadCount = useCallback(async () => {
-
     try {
-
-      let count = 0;
-
-      const profileCache = JSON.parse(sessionStorage.getItem("meditrack_user_profile") || "null");
-
-      const internalUserId = profileCache?.internalUserId;
-
-
-
-      if (internalUserId) {
-
-        const { data: consultations, error: consultationsError } = await supabase
-
-          .from("consultations")
-
-          .select("id")
-
-          .eq("patient_id", internalUserId);
-
-
-
-        if (consultationsError) throw consultationsError;
-
-        if (consultations && consultations.length > 0) {
-
-          const consultIds = consultations.map((c) => c.id);
-
-          const { data: unreadMsgs, error: unreadError } = await supabase
-
-            .from("consultation_messages")
-
-            .select("id")
-
-            .in("consultation_id", consultIds)
-
-            .neq("sender_id", internalUserId)
-
-            .is("read_at", null);
-
-
-
-          if (unreadError) throw unreadError;
-          count = unreadMsgs ? unreadMsgs.length : 0;
-
-        }
-
+      // Resolve the signed-in account, not just a potentially missing or stale
+      // consultation-page sessionStorage cache.
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user?.id) {
+        throw authError || new Error('No authenticated user for unread consultation lookup');
       }
 
+      const authUid = authData.user.id;
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('uid', authUid)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile?.id) throw new Error('Could not resolve consultation patient profile');
 
+      const internalUserId = profile.id;
+      const { data: consultations, error: consultationsError } = await supabase
+        .from('consultations')
+        .select('id')
+        .eq('patient_id', internalUserId);
+      if (consultationsError) throw consultationsError;
+
+      let count = 0;
+      if (consultations?.length) {
+        const consultIds = consultations.map((row) => row.id);
+        // Query the same incoming, unread message set across ALL patient rooms.
+        // Null senders are system messages and do not count as clinic unread.
+        const { count: unreadCount, error: unreadError } = await supabase
+          .from('consultation_messages')
+          .select('id', { count: 'exact', head: true })
+          .in('consultation_id', consultIds)
+          .not('sender_id', 'is', null)
+          .neq('sender_id', internalUserId)
+          .is('read_at', null);
+        if (unreadError) throw unreadError;
+        count = unreadCount ?? 0;
+      }
 
       setConsultUnreadCount(count);
-
-      localStorage.setItem("consultUnreadCount", String(count));
-
-    } catch (dbErr) {
-
-      // fallback to local storage if DB fails
-
-      setConsultUnreadCount(parseInt(localStorage.getItem("consultUnreadCount") || "0", 10));
-
+      localStorage.setItem('consultUnreadCount', String(count));
+    } catch (error) {
+      // A query/auth failure is not evidence of zero unread messages.
+      // Keep the current badge instead of incorrectly clearing it.
+      console.error('[Consult badge] Failed to refresh unread count:', error);
     }
-
   }, []);
-
 
 
   useEffect(() => {

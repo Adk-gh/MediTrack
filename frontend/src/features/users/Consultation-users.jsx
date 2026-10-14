@@ -347,15 +347,15 @@ export default function ConsultationUsers() {
   const [vvState, setVvState] = useState({ height: '100%', top: 0, isKeyboard: false });
 
   const messagesEndRef   = useRef(null);
+  const scrollAreaRef    = useRef(null);
   const scrollToBottom = useCallback((smooth = true) => {
-    setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({
-          behavior: smooth ? 'smooth' : 'auto',
-          block: 'end'
-        });
-      }
-    }, 100);
+    // Scroll only the message container, not the whole page on mobile.
+    const scroll = () => {
+      const el = scrollAreaRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(scroll));
   }, []);
 
   useEffect(() => {
@@ -606,11 +606,8 @@ export default function ConsultationUsers() {
     return candidates[0] || null;
   }, [onlineAppt, onlineApptDetails, currentTime, isApptActive]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('consultUnreadCount', String(clinicUnreadCount));
-    } catch {}
-  }, [clinicUnreadCount]);
+  // The dashboard owns the total consultation unread badge. Do not write
+  // a single room's unread count to its shared storage key here.
 
   useEffect(() => {
     if (isEnded) {
@@ -634,7 +631,6 @@ export default function ConsultationUsers() {
 
   const [startingOption,  setStartingOption]  = useState(null);
 
-  const scrollAreaRef    = useRef(null);
   const isEndedRef       = useRef(true);
   const initRanRef       = useRef(false);
   const fetchRanRef      = useRef(false);
@@ -1133,18 +1129,24 @@ export default function ConsultationUsers() {
     prevMsgCountRef.current = curr;
     prevFirstIdRef.current  = currFirst;
 
-    if (currFirst !== prevFirst && prev > 0) return;
+    // Do not auto-scroll if older messages were prepended in this room.
+    // A different first message caused by switching rooms is NOT a prepend.
+    const olderMessagesPrepended =
+      loadingMore && prev > 0 && curr > prev &&
+      messages[curr - prev]?.id === prevFirst;
+    if (olderMessagesPrepended) return;
 
-    scrollToBottom(true);
-  }, [messages, scrollToBottom]);
+    scrollToBottom(false);
+  }, [messages, loadingMore, scrollToBottom]);
 
   useEffect(() => {
-    if (!isEnded && activeRoomId) {
-      scrollToBottom(false);
-    } else {
-      scrollToBottom(true);
-    }
-  }, [activeRoomId, isEnded, scrollToBottom]);
+    // Opening a room may render cached messages before the network response.
+    // Retry once after layout settles to ensure the newest message is visible.
+    if (!activeRoomId || loadingHistory) return;
+    scrollToBottom(false);
+    const retry = setTimeout(() => scrollToBottom(false), 180);
+    return () => clearTimeout(retry);
+  }, [activeRoomId, loadingHistory, scrollToBottom]);
 
   const handleLoadMore = async () => {
     if (!activeRoomId || loadingMore || !hasMoreMessages) return;

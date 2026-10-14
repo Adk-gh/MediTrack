@@ -320,7 +320,11 @@ exports.markMessagesAsRead = async (consultationId, readerId, readerRole) => {
 
   const messagesToMark = unreadMessages.filter((msg) => msg.sender_id !== readerId);
   if (messagesToMark.length === 0) return [];
-
+console.log('[READ DEBUG] Consultation:', consultationId);
+console.log('[READ DEBUG] Reader ID:', readerId);
+console.log('[READ DEBUG] Reader Role:', readerRole);
+console.log('[READ DEBUG] Unread messages:', unreadMessages);
+console.log('[READ DEBUG] Fetch error:', fetchError);
   const messageIds = messagesToMark.map((msg) => msg.id);
 
   const { data, error } = await supabase
@@ -328,6 +332,9 @@ exports.markMessagesAsRead = async (consultationId, readerId, readerRole) => {
     .update({ read_at: new Date().toISOString() })
     .in('id', messageIds)
     .select();
+    console.log('[READ UPDATE] Message IDs:', messageIds);
+console.log('[READ UPDATE] Updated rows:', data);
+console.log('[READ UPDATE] Update error:', error);
 
   if (error) {
     console.error('[markMessagesAsRead] Update error:', error);

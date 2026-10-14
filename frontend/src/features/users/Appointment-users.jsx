@@ -239,6 +239,7 @@ export default function AppointmentUsers() {
   const [userProfile,    setUserProfile]    = useState(null);
   const [hasRecords,     setHasRecords]     = useState(false);
   const [loadingRecords, setLoadingRecords] = useState(true);
+  const [recordsError, setRecordsError] = useState('');
   const [preferences, setPreferences] = useState({ language: 'English', dateFormat: 'MM/DD/YYYY' });
   const [appointmentNotifications, setAppointmentNotifications] = useState([]);
 
@@ -252,54 +253,104 @@ export default function AppointmentUsers() {
     }
   }, [preferences?.language, i18n]);
 
-  const getInternalUserId = async () => {
-    if (!currentPatient?.uid && !currentPatient?.idno) return null;
-    if (currentPatient.uid) {
-      const { data } = await supabase.from('users').select('id').eq('uid', currentPatient.uid).maybeSingle();
+  // Resolve the authenticated account to public.users.id, which is the ID
+  // stored in medical_records.user_id and dental_records.user_id.
+  const getInternalUserId = useCallback(async () => {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const authenticatedUid = authData?.user?.id;
+
+    // Use authenticated UID when available, not the potentially ambiguous
+    // id field from the locally cached profile.
+    if (authenticatedUid) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id')
+        .eq('uid', authenticatedUid)
+        .maybeSingle();
+      if (error) throw error;
       if (data?.id) return data.id;
     }
-    if (currentPatient.idno) {
-      const { data } = await supabase.from('users').select('id').eq('university_id', currentPatient.idno).maybeSingle();
-      if (data?.id) return data.id;
+
+    // Compatibility for login flows that store a UID or internal ID in
+    // localStorage. Do not guess a different account when Auth is available.
+    if (!authenticatedUid) {
+      if (authError) console.warn('[Appointments] Auth lookup:', authError.message);
+      const candidate = currentPatient?.uid;
+      if (candidate) {
+        for (const column of ['uid', 'id']) {
+          const { data, error } = await supabase
+            .from('users').select('id').eq(column, candidate).maybeSingle();
+          if (error) throw error;
+          if (data?.id) return data.id;
+        }
+      }
+      const universityId = currentPatient?.idno;
+      if (universityId && universityId !== '—') {
+        const { data, error } = await supabase
+          .from('users').select('id')
+          .eq('university_id', universityId).maybeSingle();
+        if (error) throw error;
+        if (data?.id) return data.id;
+      }
     }
     return null;
-  };
-
-  useEffect(() => {
-    const checkRecords = async () => {
-      const internalId = await getInternalUserId();
-      if (!internalId) {
-        setLoadingRecords(false);
-        setHasRecords(false);
-        return;
-      }
-      try {
-        const { data: medicalData } = await supabase.from('medical_records').select('id, status').eq('user_id', internalId).eq('is_archived', false);
-        const { data: dentalData } = await supabase.from('dental_records').select('id, status').eq('user_id', internalId).eq('is_archived', false);
-        setHasRecords((medicalData && medicalData.length > 0) || (dentalData && dentalData.length > 0));
-      } catch (err) {
-        setHasRecords(false);
-      } finally {
-        setLoadingRecords(false);
-      }
-    };
-    checkRecords();
   }, [currentPatient?.uid, currentPatient?.idno]);
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (!currentPatient?.uid && !currentPatient?.idno) return;
+    let cancelled = false;
+    const checkRecords = async () => {
+      setLoadingRecords(true);
+      setRecordsError('');
       try {
-        let profile = null;
-        if (currentPatient.uid) {
-          const { data } = await supabase.from('users').select('id, university_id, department, program, year_level, section, preferences').eq('uid', currentPatient.uid).maybeSingle();
-          if (data) profile = data;
+        const internalId = await getInternalUserId();
+        if (!internalId) {
+          throw new Error('Could not resolve your patient profile. Please sign in again.');
         }
-        if (!profile && currentPatient.idno) {
-          const { data } = await supabase.from('users').select('id, university_id, department, program, year_level, section, preferences').eq('university_id', currentPatient.idno).maybeSingle();
-          if (data) profile = data;
+
+        // A row may have is_archived NULL in older records. Both NULL and
+        // false are considered unarchived; only true is excluded.
+        const [medicalResult, dentalResult] = await Promise.all([
+          supabase.from('medical_records').select('id')
+            .eq('user_id', internalId)
+            .or('is_archived.is.null,is_archived.eq.false')
+            .limit(1),
+          supabase.from('dental_records').select('id')
+            .eq('user_id', internalId)
+            .or('is_archived.is.null,is_archived.eq.false')
+            .limit(1),
+        ]);
+        if (medicalResult.error) throw medicalResult.error;
+        if (dentalResult.error) throw dentalResult.error;
+        if (!cancelled) {
+          setHasRecords(Boolean(medicalResult.data?.length || dentalResult.data?.length));
         }
-        if (profile) {
+      } catch (err) {
+        console.error('[Appointments] Failed to verify patient records:', err);
+        if (!cancelled) {
+          setHasRecords(false);
+          setRecordsError(err?.message || 'Unable to check clinic records.');
+        }
+      } finally {
+        if (!cancelled) setLoadingRecords(false);
+      }
+    };
+    checkRecords();
+    return () => { cancelled = true; };
+  }, [getInternalUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchUserProfile = async () => {
+      try {
+        const internalId = await getInternalUserId();
+        if (!internalId) return;
+        const { data: profile, error } = await supabase
+          .from('users')
+          .select('id, university_id, department, program, year_level, section, preferences')
+          .eq('id', internalId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled && profile) {
           setUserProfile(profile);
           if (profile.preferences) {
             setPreferences({
@@ -308,10 +359,13 @@ export default function AppointmentUsers() {
             });
           }
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error('[Appointments] Failed to load patient profile:', err);
+      }
     };
     fetchUserProfile();
-  }, [currentPatient?.uid, currentPatient?.idno]);
+    return () => { cancelled = true; };
+  }, [getInternalUserId]);
 
   const [showModal,         setShowModal]         = useState(false);
   const [submitting,        setSubmitting]        = useState(false);
@@ -757,7 +811,7 @@ const handleSubmit = async () => {
       <style>{ptrStyles}</style>
 
       {/* ── GLOBAL BLOCK: No records? Hide everything! ── */}
-      {!loadingRecords && !hasRecords ? (
+      {!loadingRecords && (recordsError || !hasRecords) ? (
         <div className="flex flex-col h-full bg-[#f7faf8] items-center justify-center p-8 flex-1">
           <div className="text-center max-w-sm">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#E8EFEC] flex items-center justify-center">
@@ -765,8 +819,8 @@ const handleSubmit = async () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{t('consultation.visitClinicFirst', 'Visit the Clinic First')}</h3>
-            <p className="text-[13px] text-[#64748b]">{t('appointments.visitClinicDescAppt', 'Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before requesting digital appointments.')}</p>
+            <h3 className="text-[15px] font-semibold text-[#1a2e22] mb-2">{recordsError ? 'Unable to Load Health Records' : t('consultation.visitClinicFirst', 'Visit the Clinic First')}</h3>
+            <p className="text-[13px] text-[#64748b]">{recordsError || t('appointments.visitClinicDescAppt', 'Please proceed to the clinic for a face-to-face consultation to create your medical or dental record before requesting digital appointments.')}</p>
           </div>
         </div>
       ) : (
