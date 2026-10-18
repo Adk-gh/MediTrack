@@ -330,8 +330,49 @@ function sortRecords(records) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Public: get specific record by ID (with ownership check)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getRecordById(recordId, user) {
+  if (!recordId) throw new Error('recordId is required');
+
+  // Determine the table by attempting to find the record in either
+  for (const table of Object.values(RECORD_TABLES)) {
+    const { data: record, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('id', recordId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (record) {
+      // SECURITY CHECK:
+      // Allow access if:
+      // 1. The user is a sysadmin
+      // 2. The user is a clinic staff member (doctor/dentist/nurse)
+      // 3. The user is the owner of the record
+      const isAdmin = user?.role === 'sysadmin';
+      const isStaff = ['doctor', 'dentist', 'nurse'].includes(user?.role);
+      const isOwner = record.user_id === user?.id;
+
+      if (!isAdmin && !isStaff && !isOwner) {
+        const forbiddenError = new Error('You do not have permission to view this record.');
+        forbiddenError.statusCode = 403;
+        throw forbiddenError;
+      }
+      return record;
+    }
+  }
+
+  const notFoundError = new Error('Record not found');
+  notFoundError.statusCode = 404;
+  throw notFoundError;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Public: fetch all approved records for a user (by Supabase Auth UID)
 // ─────────────────────────────────────────────────────────────────────────────
+
 
 exports.getUserRecords = async (authUserId) => {
   if (!authUserId) throw new Error('authUserId is required for getUserRecords');
@@ -461,7 +502,7 @@ exports.requestCertificate = async (recordId, body, requester) => {
 // Public: update record status (approve / reject / etc.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.updateRecordStatus = async (recordId, recordType, status) => {
+exports.updateRecordStatus = async (recordId, recordType, status, user) => {
   if (!recordId) throw new Error('recordId is required for updateRecordStatus');
 
   const table = getRecordTable(recordType);
@@ -485,6 +526,19 @@ exports.updateRecordStatus = async (recordId, recordType, status) => {
     const err = new Error('Record not found');
     err.statusCode = 404;
     throw err;
+  }
+
+  // SECURITY CHECK:
+  // Allow status updates only if:
+  // 1. The user is a sysadmin
+  // 2. The user is a clinic staff member (doctor/dentist/nurse)
+  const isAdmin = user?.role === 'sysadmin';
+  const isStaff = ['doctor', 'dentist', 'nurse'].includes(user?.role);
+
+  if (!isAdmin && !isStaff) {
+    const forbiddenError = new Error('You do not have permission to update the status of this record.');
+    forbiddenError.statusCode = 403;
+    throw forbiddenError;
   }
 
   const updatePayload = {
@@ -527,7 +581,7 @@ exports.updateRecordStatus = async (recordId, recordType, status) => {
 // Notifies the patient when status or certificate issuance changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.updateRecord = async (recordId, recordType, updates) => {
+exports.updateRecord = async (recordId, recordType, updates, user) => {
   if (!recordId) throw new Error('recordId is required for updateRecord');
 
   const table = getRecordTable(recordType);
@@ -543,6 +597,21 @@ exports.updateRecord = async (recordId, recordType, updates) => {
     const err = new Error('Record not found');
     err.statusCode = 404;
     throw err;
+  }
+
+  // SECURITY CHECK:
+  // Allow updates if:
+  // 1. The user is a sysadmin
+  // 2. The user is a clinic staff member (doctor/dentist/nurse)
+  // 3. The user is the owner of the record
+  const isAdmin = user?.role === 'sysadmin';
+  const isStaff = ['doctor', 'dentist', 'nurse'].includes(user?.role);
+  const isOwner = existing.user_id === user?.id;
+
+  if (!isAdmin && !isStaff && !isOwner) {
+    const forbiddenError = new Error('You do not have permission to update this record.');
+    forbiddenError.statusCode = 403;
+    throw forbiddenError;
   }
 
   const allowedUpdates = { ...updates };
@@ -675,7 +744,7 @@ if (
 // Always notifies the patient.
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.archiveRecord = async (recordId, recordType) => {
+exports.archiveRecord = async (recordId, recordType, user) => {
   if (!recordId) throw new Error('recordId is required for archiveRecord');
 
   const table = getRecordTable(recordType);
@@ -692,6 +761,21 @@ exports.archiveRecord = async (recordId, recordType) => {
     const err = new Error('Record not found');
     err.statusCode = 404;
     throw err;
+  }
+
+  // SECURITY CHECK:
+  // Allow archiving only if:
+  // 1. The user is a sysadmin
+  // 2. The user is a clinic staff member (doctor/dentist/nurse)
+  // 3. The user is the owner of the record
+  const isAdmin = user?.role === 'sysadmin';
+  const isStaff = ['doctor', 'dentist', 'nurse'].includes(user?.role);
+  const isOwner = existing.user_id === user?.id;
+
+  if (!isAdmin && !isStaff && !isOwner) {
+    const forbiddenError = new Error('You do not have permission to archive this record.');
+    forbiddenError.statusCode = 403;
+    throw forbiddenError;
   }
 
   const { data, error } = await supabase

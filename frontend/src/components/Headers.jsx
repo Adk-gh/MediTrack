@@ -10,6 +10,7 @@ import notificationsService from '../services/notifications.service.js';
 import { supabase } from '../supabase';
 import logo from '../assets/logo.jpg';
 import logo1 from '../assets/logo1.png';
+import green from '../assets/green.jpg';
 import { useDocumentManager } from '../hooks/useDocumentManager';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -2345,38 +2346,37 @@ export const MobileHeader = ({
       min-h-[76px]
       sm:px-6 sm:min-h-[82px]
     ">
-      {onMenuClick ? (
-        <button
-          type="button"
-          data-hamburger="true"
-          onClick={onMenuClick}
-          className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white flex-shrink-0"
-          aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-          aria-expanded={isMenuOpen}
-        >
-          <svg
-            width="23"
-            height="23"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+        {onMenuClick && (
+          <button
+            type="button"
+            data-hamburger="true"
+            onClick={onMenuClick}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white flex-shrink-0"
+            aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isMenuOpen}
           >
-            <line x1="4" y1="6" x2="20" y2="6" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-            <line x1="4" y1="18" x2="20" y2="18" />
-          </svg>
-        </button>
-      ) : (
-        <img
-          src={logo1}
-          alt="MediTrack Logo"
-          className="w-[110px] h-[44px] sm:w-[160px] sm:h-[58px] lg:w-[200px] lg:h-[70px] object-contain"
-          style={{ mixBlendMode: 'multiply' }}
-          onError={e => { e.target.src = 'https://placehold.co/200x70/466460/white?text=MediTrack'; }}
-        />
-      )}
+            <svg
+              width="23"
+              height="23"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            >
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+          </button>
+        )}
+        <div className="flex items-center gap-2 min-w-0" aria-label="MediTrack">
+          <span className="text-white font-extrabold tracking-tight text-[15px] sm:text-lg truncate">
+            MediTrack
+          </span>
+        </div>
+      </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
         {onNotificationClick && (
@@ -2553,13 +2553,13 @@ export const MobileNavigationDrawer = ({ isOpen, onClose, activeTab, onTabChange
 
       {/* Drawer */}
       <div
-        className="fixed top-0 left-0 bottom-0 w-[80%] max-w-[320px] bg-[#f8faf9] z-[4501] flex flex-col rounded-r-[24px] shadow-2xl transition-transform duration-300 ease-in-out"
+        className="fixed top-0 left-0 bottom-0 w-[80%] max-w-[320px] bg-white z-[4501] flex flex-col overflow-hidden rounded-none shadow-none transition-transform duration-300 ease-in-out"
         style={{
           transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
         }}
       >
         {/* Drawer Header with Status Bar Padding */}
-        <div className="bg-[#466460] pt-[calc(max(env(safe-area-inset-top),24px)+16px)] pb-5 px-5 flex items-center justify-between rounded-tr-[24px] flex-shrink-0">
+        <div className="bg-[#466460] pt-[calc(max(env(safe-area-inset-top),24px)+16px)] pb-5 px-5 flex items-center justify-between flex-shrink-0">
           <h2 className="text-white font-extrabold tracking-widest uppercase text-[13px]">Navigation</h2>
           <button
             onClick={onClose}

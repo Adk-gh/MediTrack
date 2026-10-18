@@ -837,7 +837,7 @@ const ProfileSetup = ({ user, onComplete }) => {
         .ps-mobile-wrapper {
           position: fixed;
           inset: 0;
-          z-index: 100;
+          z-index: 99999;
           width: 100%;
           height: 100dvh;
           min-height: 100dvh;

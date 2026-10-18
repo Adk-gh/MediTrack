@@ -1,141 +1,573 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   Chart as ChartJS,
-  CategoryScale, LinearScale, BarElement,
-  Title, Tooltip, Legend, ArcElement,
-  PointElement, LineElement, Filler,
-  RadialLinearScale
-} from 'chart.js';
-import { Bar, Doughnut, Line, PolarArea } from 'react-chartjs-2';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
-import authService from '../../services/auth.service.js';
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+  Filler,
+  RadialLinearScale,
+} from "chart.js";
+import { Bar, Doughnut, Line, PolarArea } from "react-chartjs-2";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
+import authService from "../../services/auth.service.js";
+import DatePicker from "../../components/Datepicker";
 
 ChartJS.register(
-  CategoryScale, LinearScale, BarElement,
-  Title, Tooltip, Legend, ArcElement,
-  PointElement, LineElement, Filler,
-  RadialLinearScale
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+  Filler,
+  RadialLinearScale,
 );
 
 // ─── Brand palette ────────────────────────────────────────────────────────
-const BRAND = '466460';
-const BRAND_DARK = '3A524F';
-const HEADER_TEXT = 'FFFFFF';
-const LIGHT_BG = 'F4F7F6';
-const BORDER_COLOR = 'D9E2E1';
+const BRAND = "466460";
+const BRAND_DARK = "3A524F";
+const HEADER_TEXT = "FFFFFF";
+const LIGHT_BG = "F4F7F6";
+const BORDER_COLOR = "D9E2E1";
 
 // ─── Medical conditions ─────────────────────────────────────────────────────
 const MEDICAL_CONDITIONS = [
-  { id: 'asthma', name: 'Asthma', keywords: ['asthma'], category: 'Respiratory', color: '#ef4444' },
-  { id: 'diabetes', name: 'Diabetes', keywords: ['diabetes', 'diabetic'], category: 'Endocrine', color: '#f97316' },
-  { id: 'hypertension', name: 'Hypertension', keywords: ['hypertension', 'high blood pressure', 'bp'], category: 'Cardiovascular', color: '#eab308' },
-  { id: 'heart_disease', name: 'Heart Disease', keywords: ['heart disease', 'heart problem', 'cardiac'], category: 'Cardiovascular', color: '#84cc16' },
-  { id: 'kidney', name: 'Kidney Disease', keywords: ['kidney', 'renal'], color: '#06b6d4' },
-  { id: 'liver', name: 'Liver Disease', keywords: ['liver', 'hepatitis'], color: '#8b5cf6' },
-  { id: 'tb', name: 'Tuberculosis', keywords: ['tuberculosis', 'tb'], category: 'Infectious', color: '#ec4899' },
-  { id: 'thyroid', name: 'Thyroid', keywords: ['thyroid'], category: 'Endocrine', color: '#14b8a6' },
-  { id: 'anemia', name: 'Anemia', keywords: ['anemia'], category: 'Hematological', color: '#f43f5e' },
-  { id: 'epilepsy', name: 'Epilepsy', keywords: ['epilepsy', 'seizure'], category: 'Neurological', color: '#0ea5e9' },
-  { id: 'vision', name: 'Vision Problems', keywords: ['vision', 'eye problem', 'blurred vision'], category: 'Vision', color: '#22c55e' },
-  { id: 'hearing', name: 'Hearing Problems', keywords: ['hearing', 'ear problem', 'deaf'], category: 'Hearing', color: '#a855f7' },
-  { id: 'orthopedic', name: 'Orthopedic', keywords: ['orthopedic', 'bone', 'joint', 'fracture'], category: 'Musculoskeletal', color: '#eab308' },
-  { id: 'dental', name: 'Dental Problems', keywords: ['dental', 'teeth', 'tooth'], category: 'Dental', color: '#06b6d4' },
-  { id: 'nutritional', name: 'Nutritional', keywords: ['nutritional', 'malnutrition', 'underweight', 'obesity'], category: 'Nutritional', color: '#f97316' },
-  { id: 'normal', name: 'Normal Findings', keywords: ['normal', 'no findings', 'healthy', 'fit'], category: 'Normal', color: '#10b981' },
-  { id: 'cough', name: 'Cough/URTI', keywords: ['cough', 'upper respiratory', 'urti'], category: 'Respiratory', color: '#f59e0b' },
-  { id: 'fever', name: 'Fever', keywords: ['fever', 'pyrexia', 'febrile'], category: 'General', color: '#ef4444' },
-  { id: 'headache', name: 'Headache', keywords: ['headache', 'head pain', 'migraine'], category: 'Neurological', color: '#8b5cf6' },
-  { id: 'allergy', name: 'Allergies', keywords: ['allergy', 'allergic'], category: 'Immune', color: '#ec4899' },
-  { id: 'skin_rash', name: 'Skin Conditions', keywords: ['skin', 'rash', 'dermatitis', 'eczema'], category: 'Dermatological', color: '#14b8a6' },
-  { id: 'gi', name: 'GI Problems', keywords: ['stomach', 'gastritis', 'nausea', 'abdominal'], category: 'Gastrointestinal', color: '#0ea5e9' },
+  {
+    id: "asthma",
+    name: "Asthma",
+    keywords: ["asthma"],
+    category: "Respiratory",
+    color: "#ef4444",
+  },
+  {
+    id: "diabetes",
+    name: "Diabetes",
+    keywords: ["diabetes", "diabetic"],
+    category: "Endocrine",
+    color: "#f97316",
+  },
+  {
+    id: "hypertension",
+    name: "Hypertension",
+    keywords: ["hypertension", "high blood pressure", "bp"],
+    category: "Cardiovascular",
+    color: "#eab308",
+  },
+  {
+    id: "heart_disease",
+    name: "Heart Disease",
+    keywords: ["heart disease", "heart problem", "cardiac"],
+    category: "Cardiovascular",
+    color: "#84cc16",
+  },
+  {
+    id: "kidney",
+    name: "Kidney Disease",
+    keywords: ["kidney", "renal"],
+    color: "#06b6d4",
+  },
+  {
+    id: "liver",
+    name: "Liver Disease",
+    keywords: ["liver", "hepatitis"],
+    color: "#8b5cf6",
+  },
+  {
+    id: "tb",
+    name: "Tuberculosis",
+    keywords: ["tuberculosis", "tb"],
+    category: "Infectious",
+    color: "#ec4899",
+  },
+  {
+    id: "thyroid",
+    name: "Thyroid",
+    keywords: ["thyroid"],
+    category: "Endocrine",
+    color: "#14b8a6",
+  },
+  {
+    id: "anemia",
+    name: "Anemia",
+    keywords: ["anemia"],
+    category: "Hematological",
+    color: "#f43f5e",
+  },
+  {
+    id: "epilepsy",
+    name: "Epilepsy",
+    keywords: ["epilepsy", "seizure"],
+    category: "Neurological",
+    color: "#0ea5e9",
+  },
+  {
+    id: "vision",
+    name: "Vision Problems",
+    keywords: ["vision", "eye problem", "blurred vision"],
+    category: "Vision",
+    color: "#22c55e",
+  },
+  {
+    id: "hearing",
+    name: "Hearing Problems",
+    keywords: ["hearing", "ear problem", "deaf"],
+    category: "Hearing",
+    color: "#a855f7",
+  },
+  {
+    id: "orthopedic",
+    name: "Orthopedic",
+    keywords: ["orthopedic", "bone", "joint", "fracture"],
+    category: "Musculoskeletal",
+    color: "#eab308",
+  },
+  {
+    id: "dental",
+    name: "Dental Problems",
+    keywords: ["dental", "teeth", "tooth"],
+    category: "Dental",
+    color: "#06b6d4",
+  },
+  {
+    id: "nutritional",
+    name: "Nutritional",
+    keywords: ["nutritional", "malnutrition", "underweight", "obesity"],
+    category: "Nutritional",
+    color: "#f97316",
+  },
+  {
+    id: "normal",
+    name: "Normal Findings",
+    keywords: ["normal", "no findings", "healthy", "fit"],
+    category: "Normal",
+    color: "#10b981",
+  },
+  {
+    id: "cough",
+    name: "Cough/URTI",
+    keywords: ["cough", "upper respiratory", "urti"],
+    category: "Respiratory",
+    color: "#f59e0b",
+  },
+  {
+    id: "fever",
+    name: "Fever",
+    keywords: ["fever", "pyrexia", "febrile"],
+    category: "General",
+    color: "#ef4444",
+  },
+  {
+    id: "headache",
+    name: "Headache",
+    keywords: ["headache", "head pain", "migraine"],
+    category: "Neurological",
+    color: "#8b5cf6",
+  },
+  {
+    id: "allergy",
+    name: "Allergies",
+    keywords: ["allergy", "allergic"],
+    category: "Immune",
+    color: "#ec4899",
+  },
+  {
+    id: "skin_rash",
+    name: "Skin Conditions",
+    keywords: ["skin", "rash", "dermatitis", "eczema"],
+    category: "Dermatological",
+    color: "#14b8a6",
+  },
+  {
+    id: "gi",
+    name: "GI Problems",
+    keywords: ["stomach", "gastritis", "nausea", "abdominal"],
+    category: "Gastrointestinal",
+    color: "#0ea5e9",
+  },
 ];
 
 const DENTAL_CONDITIONS = [
-  { id: 'extraction', name: 'Tooth Extraction', keywords: ['extraction'], category: 'Treatment History', color: '#ef4444' },
-  { id: 'pulp_therapy', name: 'Pulp Therapy', keywords: ['pulp therapy'], category: 'Treatment History', color: '#f97316' },
-  { id: 'tmj', name: 'TMJ Treatment', keywords: ['tmj treatment'], category: 'Treatment History', color: '#eab308' },
-  { id: 'oral_prophylaxis', name: 'Oral Prophylaxis', keywords: ['oral prophylaxis'], category: 'Treatment History', color: '#84cc16' },
-  { id: 'orthodontic', name: 'Orthodontic Therapy', keywords: ['orthodontic therapy', 'orthodontic'], category: 'Treatment History', color: '#06b6d4' },
-  { id: 'periodontal', name: 'Periodontal Therapy', keywords: ['periodontal therapy', 'periodontal'], category: 'Treatment History', color: '#8b5cf6' },
-  { id: 'filling', name: 'Filling/Restoration', keywords: ['filling', 'restoration'], category: 'Treatment History', color: '#ec4899' },
-  { id: 'prosthodontic', name: 'Prosthodontic Therapy', keywords: ['prosthodontic therapy', 'prosthodontic'], category: 'Treatment History', color: '#14b8a6' },
-  { id: 'drug_allergy', name: 'Drug Allergy', keywords: ['drug sensitivity', 'allergy'], category: 'Conditions', color: '#f43f5e' },
-  { id: 'caries', name: 'Caries', keywords: ['caries', 'cavity'], category: 'Tooth Conditions', color: '#f59e0b' },
-  { id: 'filled', name: 'Filled Teeth', keywords: ['filled'], category: 'Tooth Conditions', color: '#22c55e' },
-  { id: 'missing', name: 'Missing Teeth', keywords: ['missing'], category: 'Tooth Conditions', color: '#94a3b8' },
-  { id: 'good_oral_hygiene', name: 'Good Oral Hygiene', keywords: ['good'], category: 'Oral Hygiene', color: '#10b981' },
-  { id: 'fair_oral_hygiene', name: 'Fair Oral Hygiene', keywords: ['fair'], category: 'Oral Hygiene', color: '#eab308' },
-  { id: 'poor_oral_hygiene', name: 'Poor Oral Hygiene', keywords: ['poor'], category: 'Oral Hygiene', color: '#ef4444' },
+  {
+    id: "extraction",
+    name: "Tooth Extraction",
+    keywords: ["extraction"],
+    category: "Treatment History",
+    color: "#ef4444",
+  },
+  {
+    id: "pulp_therapy",
+    name: "Pulp Therapy",
+    keywords: ["pulp therapy"],
+    category: "Treatment History",
+    color: "#f97316",
+  },
+  {
+    id: "tmj",
+    name: "TMJ Treatment",
+    keywords: ["tmj treatment"],
+    category: "Treatment History",
+    color: "#eab308",
+  },
+  {
+    id: "oral_prophylaxis",
+    name: "Oral Prophylaxis",
+    keywords: ["oral prophylaxis"],
+    category: "Treatment History",
+    color: "#84cc16",
+  },
+  {
+    id: "orthodontic",
+    name: "Orthodontic Therapy",
+    keywords: ["orthodontic therapy", "orthodontic"],
+    category: "Treatment History",
+    color: "#06b6d4",
+  },
+  {
+    id: "periodontal",
+    name: "Periodontal Therapy",
+    keywords: ["periodontal therapy", "periodontal"],
+    category: "Treatment History",
+    color: "#8b5cf6",
+  },
+  {
+    id: "filling",
+    name: "Filling/Restoration",
+    keywords: ["filling", "restoration"],
+    category: "Treatment History",
+    color: "#ec4899",
+  },
+  {
+    id: "prosthodontic",
+    name: "Prosthodontic Therapy",
+    keywords: ["prosthodontic therapy", "prosthodontic"],
+    category: "Treatment History",
+    color: "#14b8a6",
+  },
+  {
+    id: "drug_allergy",
+    name: "Drug Allergy",
+    keywords: ["drug sensitivity", "allergy"],
+    category: "Conditions",
+    color: "#f43f5e",
+  },
+  {
+    id: "caries",
+    name: "Caries",
+    keywords: ["caries", "cavity"],
+    category: "Tooth Conditions",
+    color: "#f59e0b",
+  },
+  {
+    id: "filled",
+    name: "Filled Teeth",
+    keywords: ["filled"],
+    category: "Tooth Conditions",
+    color: "#22c55e",
+  },
+  {
+    id: "missing",
+    name: "Missing Teeth",
+    keywords: ["missing"],
+    category: "Tooth Conditions",
+    color: "#94a3b8",
+  },
+  {
+    id: "good_oral_hygiene",
+    name: "Good Oral Hygiene",
+    keywords: ["good"],
+    category: "Oral Hygiene",
+    color: "#10b981",
+  },
+  {
+    id: "fair_oral_hygiene",
+    name: "Fair Oral Hygiene",
+    keywords: ["fair"],
+    category: "Oral Hygiene",
+    color: "#eab308",
+  },
+  {
+    id: "poor_oral_hygiene",
+    name: "Poor Oral Hygiene",
+    keywords: ["poor"],
+    category: "Oral Hygiene",
+    color: "#ef4444",
+  },
 ];
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+const MONTHS_FULL = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 // ─── Icons ────────────────────────────────────────────────────────────────
 const IconTable = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <line x1="3" y1="9" x2="21" y2="9" />
+    <line x1="9" y1="21" x2="9" y2="9" />
+  </svg>
 );
 const IconDownload = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M21 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
 );
 const IconFileText = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><polyline points="10 9 9 9 8 9"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
 );
 const IconCalendar = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
 );
 const IconActivity = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
 );
 const IconFilter = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+  </svg>
 );
 const IconStethoscope = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3" />
+    <path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4" />
+    <circle cx="20" cy="10" r="2" />
+  </svg>
 );
 const IconAlert = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
 );
 const IconUsers = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
 );
 const IconTooth = ({ size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 3v18"/><path d="M8 3v4a4 4 0 0 0 8 0V3"/><path d="M6 8h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2z"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M12 3v18" />
+    <path d="M8 3v4a4 4 0 0 0 8 0V3" />
+    <path d="M6 8h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2z" />
+    <path d="M8 14h.01" />
+    <path d="M12 14h.01" />
+    <path d="M16 14h.01" />
+    <path d="M8 18h.01" />
+    <path d="M12 18h.01" />
+    <path d="M16 18h.01" />
+  </svg>
 );
 
 // ─── Card components ───────────────────────────────────────────────────────
-const GlassCard = ({ children, className = '' }) => (
-  <div className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}>
+const GlassCard = ({ children, className = "" }) => (
+  <div
+    className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}
+  >
     {children}
   </div>
 );
-const StatBox = ({ title, value, subtitle, icon: Icon, color = '#466460', className = '' }) => (
-  <div className={`p-3 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-center ${className}`}>
+const StatBox = ({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  color = "#466460",
+  className = "",
+}) => (
+  <div
+    className={`p-3 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-center ${className}`}
+  >
     <div className="flex items-center justify-between mb-2">
-      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider truncate mr-1">{title}</p>
-      <div className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 bg-white shadow-sm" style={{ color }}>
+      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider truncate mr-1">
+        {title}
+      </p>
+      <div
+        className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 bg-white shadow-sm"
+        style={{ color }}
+      >
         <Icon size={14} />
       </div>
     </div>
     <h4 className="text-2xl font-bold text-slate-800 leading-none">{value}</h4>
-    {subtitle && <p className="text-xs text-slate-500 mt-1.5 truncate">{subtitle}</p>}
+    {subtitle && (
+      <p className="text-xs text-slate-500 mt-1.5 truncate">{subtitle}</p>
+    )}
   </div>
 );
-const ChartSkeleton = ({ h = '260px' }) => (
-  <div className="flex items-center justify-center bg-slate-50 rounded-lg animate-pulse" style={{ height: h }}>
+const ChartSkeleton = ({ h = "260px" }) => (
+  <div
+    className="flex items-center justify-center bg-slate-50 rounded-lg animate-pulse"
+    style={{ height: h }}
+  >
     <div className="text-slate-300 text-sm">Loading chart…</div>
   </div>
 );
 
 // ─── Excel export helpers ─────────────────────────────────────────────────
 const thinBorder = {
-  top: { style: 'thin', color: { argb: BORDER_COLOR } },
-  left: { style: 'thin', color: { argb: BORDER_COLOR } },
-  bottom: { style: 'thin', color: { argb: BORDER_COLOR } },
-  right: { style: 'thin', color: { argb: BORDER_COLOR } },
+  top: { style: "thin", color: { argb: BORDER_COLOR } },
+  left: { style: "thin", color: { argb: BORDER_COLOR } },
+  bottom: { style: "thin", color: { argb: BORDER_COLOR } },
+  right: { style: "thin", color: { argb: BORDER_COLOR } },
 };
 
 function addTitleBanner(ws, title, subtitleLines, colSpan = 4) {
@@ -143,16 +575,20 @@ function addTitleBanner(ws, title, subtitleLines, colSpan = 4) {
   const titleCell = ws.getCell(1, 1);
   titleCell.value = title;
   titleCell.font = { bold: true, size: 16, color: { argb: HEADER_TEXT } };
-  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
-  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } };
+  titleCell.alignment = { vertical: "middle", horizontal: "left" };
+  titleCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: BRAND },
+  };
   ws.getRow(1).height = 30;
 
   subtitleLines.forEach((line, i) => {
     ws.mergeCells(2 + i, 1, 2 + i, colSpan);
     const c = ws.getCell(2 + i, 1);
     c.value = line;
-    c.font = { size: 10, color: { argb: '5B6B69' }, italic: true };
-    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT_BG } };
+    c.font = { size: 10, color: { argb: "5B6B69" }, italic: true };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: LIGHT_BG } };
   });
 
   return 2 + subtitleLines.length + 1;
@@ -162,8 +598,8 @@ function addSectionHeader(ws, row, text, colSpan) {
   const c = ws.getCell(row, 1);
   c.value = text;
   c.font = { bold: true, size: 12, color: { argb: HEADER_TEXT } };
-  c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_DARK } };
-  c.alignment = { vertical: 'middle', indent: 1 };
+  c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_DARK } };
+  c.alignment = { vertical: "middle", indent: 1 };
   ws.getRow(row).height = 22;
   return row + 1;
 }
@@ -172,49 +608,65 @@ function addTableHeader(ws, row, headers) {
     const c = ws.getCell(row, i + 1);
     c.value = h;
     c.font = { bold: true, size: 10, color: { argb: HEADER_TEXT } };
-    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND } };
     c.border = thinBorder;
-    c.alignment = { vertical: 'middle', horizontal: i === 0 ? 'left' : 'center' };
+    c.alignment = {
+      vertical: "middle",
+      horizontal: i === 0 ? "left" : "center",
+    };
   });
   ws.getRow(row).height = 18;
   return row + 1;
 }
-function addDataRow(ws, row, values, { zebra = false, boldFirst = false } = {}) {
+function addDataRow(
+  ws,
+  row,
+  values,
+  { zebra = false, boldFirst = false } = {},
+) {
   values.forEach((v, i) => {
     const c = ws.getCell(row, i + 1);
     c.value = v;
     c.border = thinBorder;
     c.font = { size: 10, bold: boldFirst && i === 0 };
-    c.alignment = { horizontal: i === 0 ? 'left' : 'center', vertical: 'middle' };
+    c.alignment = {
+      horizontal: i === 0 ? "left" : "center",
+      vertical: "middle",
+    };
     if (zebra) {
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFA' } };
+      c.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "F8FAFA" },
+      };
     }
   });
   return row + 1;
 }
-function pctOf(part, total) { return total > 0 ? part / total : 0; }
-function applyPercentFormat(ws, row, col) { ws.getCell(row, col).numFmt = '0%'; }
+function pctOf(part, total) {
+  return total > 0 ? part / total : 0;
+}
+function applyPercentFormat(ws, row, col) {
+  ws.getCell(row, col).numFmt = "0%";
+}
 
-// ExcelJS does not create native Excel chart objects. These helpers render the
-// same report data to an off-screen Chart.js canvas and embed the resulting PNG
-// in the workbook beside the source tables.
 function createChartImage({ type, labels, datasets, options = {} }) {
-  if (typeof document === 'undefined') return null;
+  if (typeof document === "undefined") return null;
 
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement("canvas");
   canvas.width = 960;
   canvas.height = 420;
 
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext("2d");
   if (!context) return null;
 
   const whiteBackground = {
-    id: 'excelWhiteBackground',
+    id: "excelWhiteBackground",
     beforeDraw: (chart) => {
       const { ctx, width, height } = chart;
       ctx.save();
-      ctx.globalCompositeOperation = 'destination-over';
-      ctx.fillStyle = '#ffffff';
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
       ctx.restore();
     },
@@ -237,28 +689,29 @@ function createChartImage({ type, labels, datasets, options = {} }) {
       plugins: {
         legend: {
           display: true,
-          position: type === 'doughnut' ? 'right' : 'top',
+          position: type === "doughnut" ? "right" : "top",
           labels: { boxWidth: 14, font: { size: 12 } },
         },
         ...customPlugins,
       },
-      scales: type === 'doughnut'
-        ? undefined
-        : {
-            x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-            y: {
-              beginAtZero: true,
-              ticks: { precision: 0, stepSize: 1, font: { size: 11 } },
-              grid: { color: 'rgba(0,0,0,0.06)' },
+      scales:
+        type === "doughnut"
+          ? undefined
+          : {
+              x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+              y: {
+                beginAtZero: true,
+                ticks: { precision: 0, stepSize: 1, font: { size: 11 } },
+                grid: { color: "rgba(0,0,0,0.06)" },
+              },
+              ...customScales,
             },
-            ...customScales,
-          },
     },
     plugins: [whiteBackground],
   });
 
-  chart.update('none');
-  const image = chart.toBase64Image('image/png', 1);
+  chart.update("none");
+  const image = chart.toBase64Image("image/png", 1);
   chart.destroy();
   return image;
 }
@@ -270,7 +723,7 @@ function addChartImage(
   title,
   chartConfig,
   colSpan = 4,
-  options = {}
+  options = {},
 ) {
   const image = createChartImage(chartConfig);
   if (!image) return row;
@@ -294,34 +747,41 @@ function addChartImage(
     worksheet.mergeCells(startRow, firstColumn, startRow, lastColumn);
     const titleCell = worksheet.getCell(startRow, firstColumn);
     titleCell.value = title;
-    titleCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF466460' } };
-    titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
-    titleCell.border = {
-      top: { style: 'thin', color: { argb: 'FF466460' } },
-      left: { style: 'thin', color: { argb: 'FF466460' } },
-      bottom: { style: 'thin', color: { argb: 'FF466460' } },
-      right: { style: 'thin', color: { argb: 'FF466460' } },
+    titleCell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+    titleCell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF466460" },
     };
-    worksheet.getRow(startRow).height = Math.max(worksheet.getRow(startRow).height || 15, 22);
+    titleCell.alignment = { vertical: "middle", horizontal: "left" };
+    titleCell.border = {
+      top: { style: "thin", color: { argb: "FF466460" } },
+      left: { style: "thin", color: { argb: "FF466460" } },
+      bottom: { style: "thin", color: { argb: "FF466460" } },
+      right: { style: "thin", color: { argb: "FF466460" } },
+    };
+    worksheet.getRow(startRow).height = Math.max(
+      worksheet.getRow(startRow).height || 15,
+      22,
+    );
 
-    const imageId = workbook.addImage({ base64: image, extension: 'png' });
+    const imageId = workbook.addImage({ base64: image, extension: "png" });
     worksheet.addImage(imageId, {
       tl: { col: startCol, row: startRow },
       ext: { width, height },
-      editAs: 'oneCell',
+      editAs: "oneCell",
     });
 
     return row;
   }
 
   row = addSectionHeader(worksheet, row, title, colSpan);
-  const imageId = workbook.addImage({ base64: image, extension: 'png' });
+  const imageId = workbook.addImage({ base64: image, extension: "png" });
 
   worksheet.addImage(imageId, {
     tl: { col: 0, row: row - 1 },
     ext: { width: 720, height: 315 },
-    editAs: 'oneCell',
+    editAs: "oneCell",
   });
 
   for (let imageRow = row; imageRow < row + 16; imageRow += 1) {
@@ -347,21 +807,15 @@ function getSchoolYear(dateInput) {
 
 // ─── Department Normalization Helpers ─────────────────────────────────────
 const normalizeText = (value) =>
-  String(value || '')
+  String(value || "")
     .trim()
     .toLowerCase();
 
 const getUserDepartment = (user) =>
-  user?.department ||
-  user?.dept ||
-  user?.college ||
-  '';
+  user?.department || user?.dept || user?.college || "";
 
 const getUserProgram = (user) =>
-  user?.program ||
-  user?.course ||
-  user?.degree_program ||
-  '';
+  user?.program || user?.course || user?.degree_program || "";
 
 const departmentMatches = (userDepartment, departmentConfig) => {
   if (!departmentConfig) return false;
@@ -381,19 +835,16 @@ const departmentMatches = (userDepartment, departmentConfig) => {
 const programMatches = (userProgram, selectedProgramValue) =>
   normalizeText(userProgram) === normalizeText(selectedProgramValue);
 
-
 // ─── Personnel classification (system_config is the source of truth) ───────
 const normalizeRole = (value) =>
-  String(value || '')
+  String(value || "")
     .trim()
     .toLowerCase();
 
 const getConfiguredRoles = (config, key) => {
   const values = config?.[key];
 
-  return Array.isArray(values)
-    ? values.map(normalizeRole).filter(Boolean)
-    : [];
+  return Array.isArray(values) ? values.map(normalizeRole).filter(Boolean) : [];
 };
 
 const roleIsConfiguredAs = (role, config, key) =>
@@ -401,21 +852,19 @@ const roleIsConfiguredAs = (role, config, key) =>
 
 const getPersonnelType = (userOrRole, config) => {
   const role = normalizeRole(
-    typeof userOrRole === 'string'
-      ? userOrRole
-      : userOrRole?.role
+    typeof userOrRole === "string" ? userOrRole : userOrRole?.role,
   );
 
-  if (!role) return 'unclassified';
-  if (role === 'student') return 'student';
+  if (!role) return "unclassified";
+  if (role === "student") return "student";
 
   // Priority prevents one role from appearing in multiple personnel groups.
-  if (roleIsConfiguredAs(role, config, 'admin_roles')) return 'admin';
-  if (roleIsConfiguredAs(role, config, 'clinic_roles')) return 'clinic';
-  if (roleIsConfiguredAs(role, config, 'staff_roles')) return 'non_teaching';
-  if (roleIsConfiguredAs(role, config, 'faculty_roles')) return 'teaching';
+  if (roleIsConfiguredAs(role, config, "admin_roles")) return "admin";
+  if (roleIsConfiguredAs(role, config, "clinic_roles")) return "clinic";
+  if (roleIsConfiguredAs(role, config, "staff_roles")) return "non_teaching";
+  if (roleIsConfiguredAs(role, config, "faculty_roles")) return "teaching";
 
-  return 'unclassified';
+  return "unclassified";
 };
 
 const buildPersonnelCounts = (userList, config) => {
@@ -438,15 +887,21 @@ const buildPersonnelCounts = (userList, config) => {
 
 // ─── Export scope labels (used by the export modal) ────────────────────────
 const EXPORT_SCOPES = {
-  full: { label: 'Full Report', hint: 'All sections in one workbook' },
-  summary: { label: 'Summary Report', hint: 'Overview metrics and visit classifications' },
-  visits: { label: 'Visit Analytics', hint: 'Patient vs non-patient visits' },
-  appointments: { label: 'Appointments', hint: 'Status, monthly trend & duration' },
-  medical: { label: 'Medical Exams', hint: 'Fitness & findings summary' },
-  dental: { label: 'Dental', hint: 'Dental summary & conditions' },
-  conditions: { label: 'Health Conditions', hint: 'Full condition breakdown' },
-  demographics: { label: 'Demographics', hint: 'Users by role' },
-  monthly: { label: 'Monthly Comparison', hint: 'Medical vs dental by month' },
+  full: { label: "Full Report", hint: "All sections in one workbook" },
+  summary: {
+    label: "Summary Report",
+    hint: "Overview metrics and visit classifications",
+  },
+  visits: { label: "Visit Analytics", hint: "Patient vs non-patient visits" },
+  appointments: {
+    label: "Appointments",
+    hint: "Status, monthly trend & duration",
+  },
+  medical: { label: "Medical Exams", hint: "Fitness & findings summary" },
+  dental: { label: "Dental", hint: "Dental summary & conditions" },
+  conditions: { label: "Health Conditions", hint: "Full condition breakdown" },
+  demographics: { label: "Demographics", hint: "Users by role" },
+  monthly: { label: "Monthly Comparison", hint: "Medical vs dental by month" },
 };
 
 // ─── Main component ───────────────────────────────────────────────────────
@@ -458,14 +913,15 @@ export const Reports = () => {
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
 
-  const [dateRange, setDateRange] = useState('all');
-  const [schoolYear, setSchoolYear] = useState('all');
-  const [specificMonth, setSpecificMonth] = useState('all');
+  const [dateRange, setDateRange] = useState("all");
+  const [schoolYear, setSchoolYear] = useState("all");
+  const [specificMonth, setSpecificMonth] = useState("all");
+  const [selectedDate, setSelectedDate] = useState("");
 
   const [systemConfig, setSystemConfig] = useState(null);
-  const [selectedRole, setSelectedRole] = useState('all');
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
-  const [selectedProgram, setSelectedProgram] = useState('all');
+  const [selectedRole, setSelectedRole] = useState("all");
+  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [selectedProgram, setSelectedProgram] = useState("all");
 
   // ─── Export modal state ───────────────────────────────────────────────
   const [confirmExport, setConfirmExport] = useState(null);
@@ -473,7 +929,7 @@ export const Reports = () => {
   const [message, setMessage] = useState(null);
   const snackbarTimer = useRef(null);
 
-  const showSnackbar = (msg, type = 'success') => {
+  const showSnackbar = (msg, type = "success") => {
     if (snackbarTimer.current) clearTimeout(snackbarTimer.current);
     setMessage({ text: msg, type });
     snackbarTimer.current = setTimeout(() => setMessage(null), 3000);
@@ -487,7 +943,7 @@ export const Reports = () => {
 
       const configRes = await fetch(
         `${import.meta.env.VITE_API_URL}/system-config`,
-        { headers }
+        { headers },
       ).catch(() => null);
 
       let loadedConfig = null;
@@ -497,25 +953,29 @@ export const Reports = () => {
         loadedConfig = configJson?.data || configJson || null;
         setSystemConfig(loadedConfig);
       } else {
-        console.error('[Reports] Failed to fetch system configuration');
+        console.error("[Reports] Failed to fetch system configuration");
         setSystemConfig(null);
       }
 
       // ---- filter archived -------------------------------------------------
       const filterArchived = (data) => {
         if (!Array.isArray(data)) return [];
-        return data.filter(item => {
+        return data.filter((item) => {
           const archived = item.is_archived;
           return (
-            archived !== true && archived !== 1 &&
-            String(archived).toLowerCase().trim() !== 'true' &&
-            String(archived).trim() !== '1'
+            archived !== true &&
+            archived !== 1 &&
+            String(archived).toLowerCase().trim() !== "true" &&
+            String(archived).trim() !== "1"
           );
         });
       };
 
       // ---- Users -----------------------------------------------------------
-      const usersRes = await fetch(`${import.meta.env.VITE_API_URL}/user/users`, { headers }).catch(() => null);
+      const usersRes = await fetch(
+        `${import.meta.env.VITE_API_URL}/user/users`,
+        { headers },
+      ).catch(() => null);
       let usersData = [];
 
       if (usersRes && usersRes.ok) {
@@ -524,14 +984,17 @@ export const Reports = () => {
 
         // Admin roles are excluded based only on system_config.admin_roles.
         usersData = rawData.filter(
-          (user) => getPersonnelType(user, loadedConfig) !== 'admin'
+          (user) => getPersonnelType(user, loadedConfig) !== "admin",
         );
       }
 
       setUsers(usersData);
 
       // ---- Appointments ----------------------------------------------------
-      const apptRes = await fetch(`${import.meta.env.VITE_API_URL}/appointments`, { headers }).catch(() => null);
+      const apptRes = await fetch(
+        `${import.meta.env.VITE_API_URL}/appointments`,
+        { headers },
+      ).catch(() => null);
       let apptData = [];
       if (apptRes && apptRes.ok) {
         const json = await apptRes.json();
@@ -540,7 +1003,10 @@ export const Reports = () => {
       setAppointments(apptData);
 
       // ---- Medical Examinations --------------------------------------------
-      const medRes = await fetch(`${import.meta.env.VITE_API_URL}/examinations/medical`, { headers }).catch(() => null);
+      const medRes = await fetch(
+        `${import.meta.env.VITE_API_URL}/examinations/medical`,
+        { headers },
+      ).catch(() => null);
       let medData = [];
       if (medRes && medRes.ok) {
         const json = await medRes.json();
@@ -549,7 +1015,10 @@ export const Reports = () => {
       setMedicalRecords(medData);
 
       // ---- Dental Examinations ---------------------------------------------
-      const denRes = await fetch(`${import.meta.env.VITE_API_URL}/examinations/dental`, { headers }).catch(() => null);
+      const denRes = await fetch(
+        `${import.meta.env.VITE_API_URL}/examinations/dental`,
+        { headers },
+      ).catch(() => null);
       let denData = [];
       if (denRes && denRes.ok) {
         const json = await denRes.json();
@@ -557,29 +1026,32 @@ export const Reports = () => {
       }
       setDentalRecords(denData);
     } catch (err) {
-      console.error('Error fetching reports data:', err);
-      setError('Failed to load reports data');
+      console.error("Error fetching reports data:", err);
+      setError("Failed to load reports data");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // ------------------------------------------------------------------------
   //  Options building
   // ------------------------------------------------------------------------
   const departmentOptions = useMemo(() => {
     const depts = systemConfig?.departments || [];
-    const offices = systemConfig?.non_academic_offices || systemConfig?.offices || [];
+    const offices =
+      systemConfig?.non_academic_offices || systemConfig?.offices || [];
 
     let rawList = [];
 
-    if (selectedRole === 'student' || selectedRole === 'teaching') {
+    if (selectedRole === "student" || selectedRole === "teaching") {
       rawList = depts;
-    } else if (selectedRole === 'non_teaching') {
+    } else if (selectedRole === "non_teaching") {
       rawList = offices;
-    } else if (selectedRole === 'clinic') {
+    } else if (selectedRole === "clinic") {
       return []; // Clinic personnel generally don't use this filter
     } else {
       rawList = [...depts, ...offices];
@@ -592,7 +1064,7 @@ export const Reports = () => {
     return rawList
       .filter(Boolean)
       .map((department, index) => {
-        if (typeof department === 'string') {
+        if (typeof department === "string") {
           return {
             id: department,
             full: department,
@@ -602,9 +1074,13 @@ export const Reports = () => {
         }
 
         return {
-          id: department.id || department.abbr || department.full || `department-${index}`,
-          full: department.full || department.name || department.abbr || '',
-          abbr: department.abbr || department.code || department.full || '',
+          id:
+            department.id ||
+            department.abbr ||
+            department.full ||
+            `department-${index}`,
+          full: department.full || department.name || department.abbr || "",
+          abbr: department.abbr || department.code || department.full || "",
           programs: Array.isArray(department.programs)
             ? department.programs
             : Array.isArray(department.courses)
@@ -616,7 +1092,7 @@ export const Reports = () => {
   }, [systemConfig, selectedRole]);
 
   const selectedDepartmentConfig = useMemo(() => {
-    if (selectedDepartment === 'all') {
+    if (selectedDepartment === "all") {
       return null;
     }
 
@@ -625,19 +1101,24 @@ export const Reports = () => {
         (department) =>
           department.id === selectedDepartment ||
           department.abbr === selectedDepartment ||
-          department.full === selectedDepartment
+          department.full === selectedDepartment,
       ) || null
     );
   }, [departmentOptions, selectedDepartment]);
 
   const programOptions = useMemo(() => {
-    if (!selectedDepartmentConfig || selectedRole === 'teaching' || selectedRole === 'non_teaching' || selectedRole === 'clinic') {
+    if (
+      !selectedDepartmentConfig ||
+      selectedRole === "teaching" ||
+      selectedRole === "non_teaching" ||
+      selectedRole === "clinic"
+    ) {
       return [];
     }
 
     return selectedDepartmentConfig.programs
       .map((program) => {
-        if (typeof program === 'string') {
+        if (typeof program === "string") {
           return {
             value: program,
             label: program,
@@ -651,22 +1132,18 @@ export const Reports = () => {
             program.code ||
             program.name ||
             program.full ||
-            '',
+            "",
 
           label:
-            program.full ||
-            program.name ||
-            program.abbr ||
-            program.code ||
-            '',
+            program.full || program.name || program.abbr || program.code || "",
         };
       })
       .filter((program) => program.value);
   }, [selectedDepartmentConfig, selectedRole]);
 
   useEffect(() => {
-    setSelectedDepartment('all');
-    setSelectedProgram('all');
+    setSelectedDepartment("all");
+    setSelectedProgram("all");
   }, [selectedRole]);
 
   // ------------------------------------------------------------------------
@@ -676,16 +1153,22 @@ export const Reports = () => {
     const now = new Date();
     let startDate = new Date(0);
 
+    if (dateRange === "year") {
+      startDate = new Date(now.getFullYear(), 0, 1);
+    } else if (dateRange === "quarter") {
+      startDate = new Date(
+        now.getFullYear(),
+        now.getMonth() - 3,
+        now.getDate(),
+      );
+    } else if (dateRange === "month") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
     const usersById = new Map();
 
     users.forEach((user) => {
-      [
-        user.id,
-        user.uid,
-        user.user_id,
-        user.auth_user_id,
-        user.university_id,
-      ]
+      [user.id, user.uid, user.user_id, user.auth_user_id, user.university_id]
         .filter(Boolean)
         .forEach((id) => {
           usersById.set(String(id), user);
@@ -722,20 +1205,20 @@ export const Reports = () => {
 
       if (!user) {
         return (
-          selectedRole === 'all' &&
-          selectedDepartment === 'all' &&
-          selectedProgram === 'all'
+          selectedRole === "all" &&
+          selectedDepartment === "all" &&
+          selectedProgram === "all"
         );
       }
 
       // 1. Check Role
-if (selectedRole !== 'all') {
-  const personnelType = getPersonnelType(user, systemConfig);
+      if (selectedRole !== "all") {
+        const personnelType = getPersonnelType(user, systemConfig);
 
-  if (personnelType !== selectedRole) {
-    return false;
-  }
-}
+        if (personnelType !== selectedRole) {
+          return false;
+        }
+      }
 
       // 2. Check Department
       if (
@@ -747,7 +1230,7 @@ if (selectedRole !== 'all') {
 
       // 3. Check Program
       if (
-        selectedProgram !== 'all' &&
+        selectedProgram !== "all" &&
         !programMatches(getUserProgram(user), selectedProgram)
       ) {
         return false;
@@ -760,141 +1243,176 @@ if (selectedRole !== 'all') {
       if (!dateInput) return false;
       const d = new Date(dateInput);
       if (isNaN(d.getTime())) return false;
-      if (dateRange !== 'all' && d < startDate) return false;
-      if (schoolYear !== 'all' && getSchoolYear(d) !== schoolYear) return false;
-      if (specificMonth !== 'all' && d.getMonth() !== parseInt(specificMonth)) return false;
+
+      // Handle the new daily date filter
+      if (selectedDate) {
+        const [year, month, day] = selectedDate.split("-").map(Number);
+        if (
+          d.getFullYear() !== year ||
+          d.getMonth() !== month - 1 ||
+          d.getDate() !== day
+        ) {
+          return false;
+        }
+      } else {
+        // Fallback to range / month / school year if no daily date is selected
+        if (dateRange !== "all" && d < startDate) return false;
+        if (schoolYear !== "all" && getSchoolYear(d) !== schoolYear)
+          return false;
+        if (specificMonth !== "all" && d.getMonth() !== parseInt(specificMonth))
+          return false;
+      }
       return true;
     };
 
     const filteredUsers = users.filter(matchesPopulationFilters);
 
     const filteredAppts = appointments.filter((appointment) => {
-      let dateValue =
-        appointment.created_at ||
-        appointment.createdAt;
+      let dateValue = appointment.created_at || appointment.createdAt;
 
-      if (
-        appointment.year &&
-        appointment.month &&
-        appointment.day
-      ) {
+      if (appointment.year && appointment.month && appointment.day) {
         dateValue = new Date(
           Number(appointment.year),
           Number(appointment.month) - 1,
-          Number(appointment.day)
+          Number(appointment.day),
         ).toISOString();
       }
 
-      return (
-        applyRange(dateValue) &&
-        matchesPopulationFilters(appointment)
-      );
+      return applyRange(dateValue) && matchesPopulationFilters(appointment);
     });
 
     const filteredMed = medicalRecords.filter((record) => {
       const dateValue =
-        record.exam_date ||
-        record.created_at ||
-        record.createdAt;
+        record.exam_date || record.created_at || record.createdAt;
 
-      return (
-        applyRange(dateValue) &&
-        matchesPopulationFilters(record)
-      );
+      return applyRange(dateValue) && matchesPopulationFilters(record);
     });
 
     const filteredDen = dentalRecords.filter((record) => {
       const dateValue =
-        record.exam_date ||
-        record.created_at ||
-        record.createdAt;
+        record.exam_date || record.created_at || record.createdAt;
 
-      return (
-        applyRange(dateValue) &&
-        matchesPopulationFilters(record)
-      );
+      return applyRange(dateValue) && matchesPopulationFilters(record);
     });
 
     const monthlyAppts = Array(12).fill(0);
     const monthlyMed = Array(12).fill(0);
     const monthlyDen = Array(12).fill(0);
-    filteredAppts.forEach(a => { if (a.month) monthlyAppts[Number(a.month) - 1]++; });
-    filteredMed.forEach(r => {
+    filteredAppts.forEach((a) => {
+      if (a.month) monthlyAppts[Number(a.month) - 1]++;
+    });
+    filteredMed.forEach((r) => {
       const d = new Date(r.exam_date || r.created_at || r.createdAt || 0);
       if (d.getFullYear() === now.getFullYear()) monthlyMed[d.getMonth()]++;
     });
-    filteredDen.forEach(r => {
+    filteredDen.forEach((r) => {
       const d = new Date(r.exam_date || r.created_at || r.createdAt || 0);
       if (d.getFullYear() === now.getFullYear()) monthlyDen[d.getMonth()]++;
     });
 
     const normalizeVisitType = (value) => {
-      const type = String(value || '').trim().toLowerCase();
-      return type === 'patient' || type === 'non_patient'
+      const type = String(value || "")
+        .trim()
+        .toLowerCase();
+      return type === "patient" || type === "non_patient"
         ? type
-        : 'unclassified';
+        : "unclassified";
     };
 
     const visitRecords = [
-      ...filteredMed.map(record => ({ ...record, serviceType: 'Medical' })),
-      ...filteredDen.map(record => ({ ...record, serviceType: 'Dental' })),
-    ].map(record => {
-      const recordUser = getRecordUser(record);
-      const dateValue = record.exam_date || record.created_at || record.createdAt || null;
+      ...filteredMed.map((record) => ({ ...record, serviceType: "Medical" })),
+      ...filteredDen.map((record) => ({ ...record, serviceType: "Dental" })),
+    ]
+      .map((record) => {
+        const recordUser = getRecordUser(record);
+        const dateValue =
+          record.exam_date || record.created_at || record.createdAt || null;
 
-      return {
-        ...record,
-        visitType: normalizeVisitType(record.visit_type || record.visitType),
-        visitReason: record.visit_reason || record.visitReason || '',
-        visitDate: dateValue,
-        patientName:
-          `${record.last_name || recordUser?.last_name || ''}, ${record.first_name || recordUser?.first_name || ''}`
-            .replace(/^,\s*|,\s*$/g, '') ||
-          recordUser?.name ||
-          'Unknown',
-        universityId: record.university_id || recordUser?.university_id || '',
-        personnelType: recordUser
-          ? getPersonnelType(recordUser, systemConfig)
-          : 'unknown',
-      };
-    }).sort((a, b) => new Date(b.visitDate || 0) - new Date(a.visitDate || 0));
+        return {
+          ...record,
+          visitType: normalizeVisitType(record.visit_type || record.visitType),
+          visitReason: record.visit_reason || record.visitReason || "",
+          visitDate: dateValue,
+          patientName:
+            `${record.last_name || recordUser?.last_name || ""}, ${record.first_name || recordUser?.first_name || ""}`.replace(
+              /^,\s*|,\s*$/g,
+              "",
+            ) ||
+            recordUser?.name ||
+            "Unknown",
+          universityId: record.university_id || recordUser?.university_id || "",
+          personnelType: recordUser
+            ? getPersonnelType(recordUser, systemConfig)
+            : "unknown",
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.visitDate || 0).getTime() -
+          new Date(a.visitDate || 0).getTime(),
+      );
 
-    const patientVisits = visitRecords.filter(record => record.visitType === 'patient').length;
-    const nonPatientVisits = visitRecords.filter(record => record.visitType === 'non_patient').length;
-    const unclassifiedVisits = visitRecords.filter(record => record.visitType === 'unclassified').length;
+    const patientVisits = visitRecords.filter(
+      (record) => record.visitType === "patient",
+    ).length;
+    const nonPatientVisits = visitRecords.filter(
+      (record) => record.visitType === "non_patient",
+    ).length;
+    const unclassifiedVisits = visitRecords.filter(
+      (record) => record.visitType === "unclassified",
+    ).length;
     const monthlyPatientVisits = Array(12).fill(0);
     const monthlyNonPatientVisits = Array(12).fill(0);
     const monthlyUnclassifiedVisits = Array(12).fill(0);
 
-    visitRecords.forEach(record => {
+    visitRecords.forEach((record) => {
       const date = new Date(record.visitDate || 0);
-      if (isNaN(date.getTime()) || date.getFullYear() !== now.getFullYear()) return;
+      if (isNaN(date.getTime()) || date.getFullYear() !== now.getFullYear())
+        return;
 
-      if (record.visitType === 'patient') monthlyPatientVisits[date.getMonth()] += 1;
-      else if (record.visitType === 'non_patient') monthlyNonPatientVisits[date.getMonth()] += 1;
+      if (record.visitType === "patient")
+        monthlyPatientVisits[date.getMonth()] += 1;
+      else if (record.visitType === "non_patient")
+        monthlyNonPatientVisits[date.getMonth()] += 1;
       else monthlyUnclassifiedVisits[date.getMonth()] += 1;
     });
 
     const conditionCounts = {};
-    MEDICAL_CONDITIONS.forEach(cond => { conditionCounts[cond.id] = 0; });
+    MEDICAL_CONDITIONS.forEach((cond) => {
+      conditionCounts[cond.id] = 0;
+    });
     const findingsList = [];
 
-    let fitCount = 0, notFitCount = 0, normalFindingsCount = 0, abnormalFindingsCount = 0, approvedCount = 0, pendingCount = 0;
-    filteredMed.forEach(r => {
-      if (r.is_fit === true) fitCount++; else if (r.is_fit === false) notFitCount++;
-      if (r.is_normal_findings === true) normalFindingsCount++; else if (r.is_normal_findings === false) abnormalFindingsCount++;
-      if (r.status === 'approved' || r.is_approved === true) approvedCount++; else if (r.status === 'pending') pendingCount++;
+    let fitCount = 0,
+      notFitCount = 0,
+      normalFindingsCount = 0,
+      abnormalFindingsCount = 0,
+      approvedCount = 0,
+      pendingCount = 0;
+    filteredMed.forEach((r) => {
+      if (r.is_fit === true) fitCount++;
+      else if (r.is_fit === false) notFitCount++;
+      if (r.is_normal_findings === true) normalFindingsCount++;
+      else if (r.is_normal_findings === false) abnormalFindingsCount++;
+      if (r.status === "approved" || r.is_approved === true) approvedCount++;
+      else if (r.status === "pending") pendingCount++;
 
-      const finding1 = (r.finding1 || '').toLowerCase();
-      const checkedMedical = Array.isArray(r.checked_medical) ? r.checked_medical.join(' ').toLowerCase() : '';
-      const checkedFamily = Array.isArray(r.checked_family) ? r.checked_family.join(' ').toLowerCase() : '';
-      const checkedHealth = Array.isArray(r.checked_health) ? r.checked_health.join(' ').toLowerCase() : '';
-      const otherHistory = (r.other_medical_history || '').toLowerCase();
+      const finding1 = (r.finding1 || "").toLowerCase();
+      const checkedMedical = Array.isArray(r.checked_medical)
+        ? r.checked_medical.join(" ").toLowerCase()
+        : "";
+      const checkedFamily = Array.isArray(r.checked_family)
+        ? r.checked_family.join(" ").toLowerCase()
+        : "";
+      const checkedHealth = Array.isArray(r.checked_health)
+        ? r.checked_health.join(" ").toLowerCase()
+        : "";
+      const otherHistory = (r.other_medical_history || "").toLowerCase();
       const searchText = `${finding1} ${checkedMedical} ${checkedFamily} ${checkedHealth} ${otherHistory}`;
 
       const foundConditions = new Set();
-      MEDICAL_CONDITIONS.forEach(cond => {
-        cond.keywords.forEach(keyword => {
+      MEDICAL_CONDITIONS.forEach((cond) => {
+        cond.keywords.forEach((keyword) => {
           if (searchText.includes(keyword) && !foundConditions.has(cond.id)) {
             foundConditions.add(cond.id);
             conditionCounts[cond.id]++;
@@ -903,8 +1421,13 @@ if (selectedRole !== 'all') {
       });
 
       findingsList.push({
-        id: r.id, name: `${r.last_name || ''}, ${r.first_name || ''}`.replace(/^, |, $/g, '') || 'Unknown',
-        universityId: r.university_id || '',
+        id: r.id,
+        name:
+          `${r.last_name || ""}, ${r.first_name || ""}`.replace(
+            /^, |, $/g,
+            "",
+          ) || "Unknown",
+        universityId: r.university_id || "",
         finding1: r.finding1 || null,
         checkedMedical: r.checked_medical || [],
         checkedHealth: r.checked_health || [],
@@ -919,7 +1442,7 @@ if (selectedRole !== 'all') {
     const categoryBreakdown = {};
 
     MEDICAL_CONDITIONS.forEach((condition) => {
-      const category = condition.category || 'Other';
+      const category = condition.category || "Other";
       const count = Number(conditionCounts[condition.id]) || 0;
 
       if (count > 0) {
@@ -929,32 +1452,57 @@ if (selectedRole !== 'all') {
     });
 
     const dentalConditionCounts = {};
-    DENTAL_CONDITIONS.forEach(cond => { dentalConditionCounts[cond.id] = 0; });
+    DENTAL_CONDITIONS.forEach((cond) => {
+      dentalConditionCounts[cond.id] = 0;
+    });
     const dentalFindingsList = [];
 
-    filteredDen.forEach(r => {
-      const dentalHistory = typeof r.dental_history === 'string' ? JSON.parse(r.dental_history || '{}') : (r.dental_history || {});
-      const intraoral = typeof r.intraoral === 'string' ? JSON.parse(r.intraoral || '{}') : (r.intraoral || {});
-      DENTAL_CONDITIONS.forEach(cond => {
-        cond.keywords.forEach(keyword => {
-          Object.values(dentalHistory).forEach(val => {
-            if (String(val).toLowerCase().includes(keyword.toLowerCase()) && String(val).toLowerCase() !== 'no') dentalConditionCounts[cond.id]++;
+    filteredDen.forEach((r) => {
+      const dentalHistory =
+        typeof r.dental_history === "string"
+          ? JSON.parse(r.dental_history || "{}")
+          : r.dental_history || {};
+      const intraoral =
+        typeof r.intraoral === "string"
+          ? JSON.parse(r.intraoral || "{}")
+          : r.intraoral || {};
+      DENTAL_CONDITIONS.forEach((cond) => {
+        cond.keywords.forEach((keyword) => {
+          Object.values(dentalHistory).forEach((val) => {
+            if (
+              String(val).toLowerCase().includes(keyword.toLowerCase()) &&
+              String(val).toLowerCase() !== "no"
+            )
+              dentalConditionCounts[cond.id]++;
           });
-          Object.values(intraoral).forEach(val => {
-            if (String(val).toLowerCase().includes(keyword.toLowerCase()) && !['no','false'].includes(String(val).toLowerCase())) dentalConditionCounts[cond.id]++;
+          Object.values(intraoral).forEach((val) => {
+            if (
+              String(val).toLowerCase().includes(keyword.toLowerCase()) &&
+              !["no", "false"].includes(String(val).toLowerCase())
+            )
+              dentalConditionCounts[cond.id]++;
           });
         });
       });
       dentalFindingsList.push({
-        id: r.id, name: `${r.last_name || ''}, ${r.first_name || ''}`.replace(/^, |, $/g, '') || 'Unknown',
-        universityId: r.university_id || '',
-        dentalHistory, intraoral, status: r.status, examDate: r.exam_date,
+        id: r.id,
+        name:
+          `${r.last_name || ""}, ${r.first_name || ""}`.replace(
+            /^, |, $/g,
+            "",
+          ) || "Unknown",
+        universityId: r.university_id || "",
+        dentalHistory,
+        intraoral,
+        status: r.status,
+        examDate: r.exam_date,
       });
     });
 
     const dentalCategoryBreakdown = {};
-    DENTAL_CONDITIONS.forEach(cond => {
-      if (!dentalCategoryBreakdown[cond.category]) dentalCategoryBreakdown[cond.category] = 0;
+    DENTAL_CONDITIONS.forEach((cond) => {
+      if (!dentalCategoryBreakdown[cond.category])
+        dentalCategoryBreakdown[cond.category] = 0;
       dentalCategoryBreakdown[cond.category] += dentalConditionCounts[cond.id];
     });
 
@@ -964,7 +1512,7 @@ if (selectedRole !== 'all') {
       dental: filteredDen,
       users: filteredUsers,
       clinicStaffCount: filteredUsers.filter(
-        (user) => getPersonnelType(user, systemConfig) === 'clinic'
+        (user) => getPersonnelType(user, systemConfig) === "clinic",
       ).length,
       monthlyAppts,
       monthlyMed,
@@ -981,14 +1529,21 @@ if (selectedRole !== 'all') {
       monthlyNonPatientVisits,
       monthlyUnclassifiedVisits,
       visitRecords,
-      completedAppts: filteredAppts.filter(a => a.status === 'done').length,
-      pendingAppts: filteredAppts.filter(a => a.status === 'pending').length,
-      approvedAppts: filteredAppts.filter(a => a.status === 'approved').length,
-      missedAppts: filteredAppts.filter(a => ['declined', 'rejected'].includes(a.status?.toLowerCase())).length,
-      rejectedAppts: filteredAppts.filter(a => ['declined', 'rejected'].includes(a.status?.toLowerCase())).length,
+      completedAppts: filteredAppts.filter((a) => a.status === "done").length,
+      pendingAppts: filteredAppts.filter((a) => a.status === "pending").length,
+      approvedAppts: filteredAppts.filter((a) => a.status === "approved")
+        .length,
+      missedAppts: filteredAppts.filter((a) =>
+        ["declined", "rejected"].includes(a.status?.toLowerCase()),
+      ).length,
+      rejectedAppts: filteredAppts.filter((a) =>
+        ["declined", "rejected"].includes(a.status?.toLowerCase()),
+      ).length,
       conditionCounts,
       categoryBreakdown,
-      mostCommonCondition: Object.entries(conditionCounts).sort((a, b) => b[1] - a[1])[0],
+      mostCommonCondition: Object.entries(conditionCounts).sort(
+        (a, b) => b[1] - a[1],
+      )[0],
       fitCount,
       notFitCount,
       normalFindingsCount,
@@ -999,7 +1554,9 @@ if (selectedRole !== 'all') {
       dentalConditionCounts,
       dentalCategoryBreakdown,
       dentalFindingsList,
-      mostCommonDentalCondition: Object.entries(dentalConditionCounts).sort((a, b) => b[1] - a[1])[0],
+      mostCommonDentalCondition: Object.entries(dentalConditionCounts).sort(
+        (a, b) => b[1] - a[1],
+      )[0],
     };
   }, [
     appointments,
@@ -1009,96 +1566,151 @@ if (selectedRole !== 'all') {
     dateRange,
     schoolYear,
     specificMonth,
+    selectedDate,
     selectedRole,
     selectedDepartment,
     selectedProgram,
     selectedDepartmentConfig,
-    systemConfig
+    systemConfig,
   ]);
 
   // ------------------------------------------------------------------------
   //  Chart data memoization
   // ------------------------------------------------------------------------
-  const appointmentTrendsData = useMemo(() => ({
-    labels: MONTHS,
-    datasets: [{ label: 'Appointments', data: processedData.monthlyAppts, borderColor: '#466460', backgroundColor: 'rgba(70, 100, 96, 0.1)', fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 6 }]
-  }), [processedData.monthlyAppts]);
-
-  const medicalDentalData = useMemo(() => ({
-    labels: ['Medical Exams', 'Dental Exams'],
-    datasets: [{ data: [processedData.totalMed, processedData.totalDen], backgroundColor: ['#466460', '#e07a5f'], borderWidth: 0 }]
-  }), [processedData.totalMed, processedData.totalDen]);
-
-  const visitClassificationData = useMemo(() => ({
-    labels: ['Patient Visits', 'Non-Patient Visits', 'Unclassified'],
-    datasets: [{
-      data: [
-        processedData.patientVisits,
-        processedData.nonPatientVisits,
-        processedData.unclassifiedVisits,
+  const appointmentTrendsData = useMemo(
+    () => ({
+      labels: MONTHS,
+      datasets: [
+        {
+          label: "Appointments",
+          data: processedData.monthlyAppts,
+          borderColor: "#466460",
+          backgroundColor: "rgba(70, 100, 96, 0.1)",
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
       ],
-      backgroundColor: ['#e07a5f', '#3b82f6', '#cbd5e1'],
-      borderWidth: 0,
-    }],
-  }), [
-    processedData.patientVisits,
-    processedData.nonPatientVisits,
-    processedData.unclassifiedVisits,
-  ]);
+    }),
+    [processedData.monthlyAppts],
+  );
 
-  const monthlyVisitClassificationData = useMemo(() => ({
-    labels: MONTHS,
-    datasets: [
-      {
-        label: 'Patient Visits',
-        data: processedData.monthlyPatientVisits,
-        borderColor: '#e07a5f',
-        backgroundColor: 'rgba(224,122,95,0.12)',
-        fill: false,
-        tension: 0.35,
-      },
-      {
-        label: 'Non-Patient Visits',
-        data: processedData.monthlyNonPatientVisits,
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59,130,246,0.12)',
-        borderDash: [6, 3],
-        fill: false,
-        tension: 0.35,
-      },
+  const medicalDentalData = useMemo(
+    () => ({
+      labels: ["Medical Exams", "Dental Exams"],
+      datasets: [
+        {
+          data: [processedData.totalMed, processedData.totalDen],
+          backgroundColor: ["#466460", "#e07a5f"],
+          borderWidth: 0,
+        },
+      ],
+    }),
+    [processedData.totalMed, processedData.totalDen],
+  );
+
+  const visitClassificationData = useMemo(
+    () => ({
+      labels: ["Patient Visits", "Non-Patient Visits", "Unclassified"],
+      datasets: [
+        {
+          data: [
+            processedData.patientVisits,
+            processedData.nonPatientVisits,
+            processedData.unclassifiedVisits,
+          ],
+          backgroundColor: ["#e07a5f", "#3b82f6", "#cbd5e1"],
+          borderWidth: 0,
+        },
+      ],
+    }),
+    [
+      processedData.patientVisits,
+      processedData.nonPatientVisits,
+      processedData.unclassifiedVisits,
     ],
-  }), [processedData.monthlyPatientVisits, processedData.monthlyNonPatientVisits]);
+  );
 
-  const appointmentStatusData = useMemo(() => ({
-    labels: ['Completed', 'Pending', 'Approved', 'Missed', 'Rejected'],
-    datasets: [{
-      label: 'Appointments',
-      data: [
-        processedData.completedAppts,
-        processedData.pendingAppts,
-        processedData.approvedAppts,
-        processedData.missedAppts,
-        processedData.rejectedAppts
+  const monthlyVisitClassificationData = useMemo(
+    () => ({
+      labels: MONTHS,
+      datasets: [
+        {
+          label: "Patient Visits",
+          data: processedData.monthlyPatientVisits,
+          borderColor: "#e07a5f",
+          backgroundColor: "rgba(224,122,95,0.12)",
+          fill: false,
+          tension: 0.35,
+        },
+        {
+          label: "Non-Patient Visits",
+          data: processedData.monthlyNonPatientVisits,
+          borderColor: "#3b82f6",
+          backgroundColor: "rgba(59,130,246,0.12)",
+          borderDash: [6, 3],
+          fill: false,
+          tension: 0.35,
+        },
       ],
-      backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#f97316', '#ef4444'],
-      borderRadius: 6
-    }]
-  }), [processedData]);
+    }),
+    [processedData.monthlyPatientVisits, processedData.monthlyNonPatientVisits],
+  );
 
-  const monthlyComparisonData = useMemo(() => ({
-    labels: MONTHS,
-    datasets: [{ label: 'Medical', data: processedData.monthlyMed, backgroundColor: '#466460', borderRadius: 4 }, { label: 'Dental', data: processedData.monthlyDen, backgroundColor: '#e07a5f', borderRadius: 4 }]
-  }), [processedData.monthlyMed, processedData.monthlyDen]);
+  const appointmentStatusData = useMemo(
+    () => ({
+      labels: ["Completed", "Pending", "Approved", "Missed", "Rejected"],
+      datasets: [
+        {
+          label: "Appointments",
+          data: [
+            processedData.completedAppts,
+            processedData.pendingAppts,
+            processedData.approvedAppts,
+            processedData.missedAppts,
+            processedData.rejectedAppts,
+          ],
+          backgroundColor: [
+            "#10b981",
+            "#f59e0b",
+            "#3b82f6",
+            "#f97316",
+            "#ef4444",
+          ],
+          borderRadius: 6,
+        },
+      ],
+    }),
+    [processedData],
+  );
+
+  const monthlyComparisonData = useMemo(
+    () => ({
+      labels: MONTHS,
+      datasets: [
+        {
+          label: "Medical",
+          data: processedData.monthlyMed,
+          backgroundColor: "#466460",
+          borderRadius: 4,
+        },
+        {
+          label: "Dental",
+          data: processedData.monthlyDen,
+          backgroundColor: "#e07a5f",
+          borderRadius: 4,
+        },
+      ],
+    }),
+    [processedData.monthlyMed, processedData.monthlyDen],
+  );
 
   const topHealthConditions = useMemo(() => {
-    return MEDICAL_CONDITIONS
-      .map((condition) => ({
-        ...condition,
-        count:
-          Number(
-            processedData.conditionCounts?.[condition.id]
-          ) || 0,
-      }))
+    return MEDICAL_CONDITIONS.map((condition) => ({
+      ...condition,
+      count: Number(processedData.conditionCounts?.[condition.id]) || 0,
+    }))
       .filter((condition) => condition.count > 0)
       .sort((a, b) => {
         if (b.count !== a.count) {
@@ -1112,147 +1724,129 @@ if (selectedRole !== 'all') {
 
   const conditionDistributionData = useMemo(
     () => ({
-      labels: topHealthConditions.map(
-        (condition) => condition.name
-      ),
+      labels: topHealthConditions.map((condition) => condition.name),
 
       datasets: [
         {
-          data: topHealthConditions.map(
-            (condition) => condition.count
-          ),
+          data: topHealthConditions.map((condition) => condition.count),
 
           backgroundColor: topHealthConditions.map(
-            (condition) => `${condition.color}80`
+            (condition) => `${condition.color}80`,
           ),
 
-          borderColor: topHealthConditions.map(
-            (condition) => condition.color
-          ),
+          borderColor: topHealthConditions.map((condition) => condition.color),
 
           borderWidth: 1,
         },
       ],
     }),
-    [topHealthConditions]
+    [topHealthConditions],
   );
 
-const categoryBreakdownData = useMemo(() => {
-  const activeCategories = Object.entries(
-    processedData.categoryBreakdown || {}
-  )
-    .filter(([category, count]) => {
-      return category && Number(count) > 0;
-    })
-    .sort((a, b) => b[1] - a[1]);
+  const categoryBreakdownData = useMemo(() => {
+    const activeCategories = Object.entries(
+      processedData.categoryBreakdown || {},
+    )
+      .filter(([category, count]) => {
+        return category && Number(count) > 0;
+      })
+      .sort((a, b) => b[1] - a[1]);
 
-  return {
-    labels: activeCategories.map(([category]) => category),
+    return {
+      labels: activeCategories.map(([category]) => category),
 
-    datasets: [
-      {
-        label: 'Cases',
-        data: activeCategories.map(([, count]) => count),
+      datasets: [
+        {
+          label: "Cases",
+          data: activeCategories.map(([, count]) => count),
 
-        backgroundColor: activeCategories.map(
-          (_, index) =>
-            [
-              '#ef4444',
-              '#f97316',
-              '#eab308',
-              '#84cc16',
-              '#06b6d4',
-              '#8b5cf6',
-              '#ec4899',
-              '#14b8a6',
-              '#0ea5e9',
-              '#22c55e'
-            ][index % 10]
-        ),
+          backgroundColor: activeCategories.map(
+            (_, index) =>
+              [
+                "#ef4444",
+                "#f97316",
+                "#eab308",
+                "#84cc16",
+                "#06b6d4",
+                "#8b5cf6",
+                "#ec4899",
+                "#14b8a6",
+                "#0ea5e9",
+                "#22c55e",
+              ][index % 10],
+          ),
 
-        borderRadius: 6
-      }
-    ]
-  };
-}, [processedData.categoryBreakdown]);
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [processedData.categoryBreakdown]);
 
-const dentalConditionData = useMemo(() => {
-  const activeConditions = DENTAL_CONDITIONS
-    .map((condition) => ({
+  const dentalConditionData = useMemo(() => {
+    const activeConditions = DENTAL_CONDITIONS.map((condition) => ({
       ...condition,
-      count: Number(
-        processedData.dentalConditionCounts?.[condition.id]
-      ) || 0,
+      count: Number(processedData.dentalConditionCounts?.[condition.id]) || 0,
     }))
-    .filter((condition) => condition.count > 0)
-    .sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
+      .filter((condition) => condition.count > 0)
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
 
-      return a.name.localeCompare(b.name);
-    });
+        return a.name.localeCompare(b.name);
+      });
 
-  return {
-    labels: activeConditions.map(
-      (condition) => condition.name
-    ),
+    return {
+      labels: activeConditions.map((condition) => condition.name),
 
-    datasets: [
+      datasets: [
+        {
+          label: "Count",
+          data: activeConditions.map((condition) => condition.count),
+          backgroundColor: activeConditions.map((condition) => condition.color),
+          borderRadius: 4,
+        },
+      ],
+    };
+  }, [processedData.dentalConditionCounts]);
+
+  const patientTypeData = useMemo(() => {
+    const typeCounts = buildPersonnelCounts(processedData.users, systemConfig);
+
+    const rows = [
       {
-        label: 'Count',
-        data: activeConditions.map(
-          (condition) => condition.count
-        ),
-        backgroundColor: activeConditions.map(
-          (condition) => condition.color
-        ),
-        borderRadius: 4,
+        label: "Students",
+        value: typeCounts.student,
+        color: "#466460",
       },
-    ],
-  };
-}, [processedData.dentalConditionCounts]);
-
-const patientTypeData = useMemo(() => {
-  const typeCounts = buildPersonnelCounts(
-    processedData.users,
-    systemConfig
-  );
-
-  const rows = [
-    {
-      label: 'Students',
-      value: typeCounts.student,
-      color: '#466460',
-    },
-    {
-      label: 'Teaching Staff',
-      value: typeCounts.teaching,
-      color: '#e07a5f',
-    },
-    {
-      label: 'Non-Teaching Staff',
-      value: typeCounts.non_teaching,
-      color: '#3b82f6',
-    },
-    {
-      label: 'Clinic Staff',
-      value: typeCounts.clinic,
-      color: '#81b29a',
-    },
-  ].filter((row) => row.value > 0);
-
-  return {
-    labels: rows.map((row) => row.label),
-    datasets: [
       {
-        data: rows.map((row) => row.value),
-        backgroundColor: rows.map((row) => row.color),
-        borderWidth: 0,
+        label: "Teaching Staff",
+        value: typeCounts.teaching,
+        color: "#e07a5f",
       },
-    ],
-  };
-}, [processedData.users, systemConfig]);
+      {
+        label: "Non-Teaching Staff",
+        value: typeCounts.non_teaching,
+        color: "#3b82f6",
+      },
+      {
+        label: "Clinic Staff",
+        value: typeCounts.clinic,
+        color: "#81b29a",
+      },
+    ].filter((row) => row.value > 0);
+
+    return {
+      labels: rows.map((row) => row.label),
+      datasets: [
+        {
+          data: rows.map((row) => row.value),
+          backgroundColor: rows.map((row) => row.color),
+          borderWidth: 0,
+        },
+      ],
+    };
+  }, [processedData.users, systemConfig]);
   // ------------------------------------------------------------------------
   //  Appointment duration summary (average across all appointments)
   // ------------------------------------------------------------------------
@@ -1260,20 +1854,23 @@ const patientTypeData = useMemo(() => {
     const durations = [];
     const byStatus = {};
 
-    processedData.appointments.forEach(a => {
+    processedData.appointments.forEach((a) => {
       const created = a.created_at || a.createdAt;
       const updated = a.updated_at || a.updatedAt;
       if (!created || !updated) return;
-      const hours = (new Date(updated).getTime() - new Date(created).getTime()) / (1000 * 60 * 60);
+      const hours =
+        (new Date(updated).getTime() - new Date(created).getTime()) /
+        (1000 * 60 * 60);
       if (!Number.isFinite(hours) || hours < 0) return;
 
       durations.push(hours);
-      const status = a.status || 'unknown';
+      const status = a.status || "unknown";
       if (!byStatus[status]) byStatus[status] = [];
       byStatus[status].push(hours);
     });
 
-    const avg = (arr) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0);
+    const avg = (arr) =>
+      arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
 
     const statusBreakdown = Object.entries(byStatus)
       .map(([status, arr]) => ({ status, avg: avg(arr), count: arr.length }))
@@ -1293,55 +1890,55 @@ const patientTypeData = useMemo(() => {
   //  Shared subtitle / label helpers for exports
   // ------------------------------------------------------------------------
   const getFilterLabels = useCallback(() => {
-    const todayLabel = new Date().toLocaleDateString(
-      'en-US',
-      {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }
-    );
+    const todayLabel = new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
 
-    const rangeLabel =
-      dateRange === 'all'
-        ? 'All Time'
-        : dateRange === 'month'
-          ? 'This Month'
-          : dateRange === 'quarter'
-            ? 'Last 3 Months'
-            : 'This Year';
+    let rangeLabel = "All Time";
+    if (selectedDate) {
+      rangeLabel = `Daily: ${selectedDate}`;
+    } else {
+      rangeLabel =
+        dateRange === "all"
+          ? "All Time"
+          : dateRange === "month"
+            ? "This Month"
+            : dateRange === "quarter"
+              ? "Last 3 Months"
+              : "This Year";
+    }
 
-    const syLabel =
-      schoolYear === 'all'
-        ? 'All SY'
-        : `SY ${schoolYear}`;
+    const syLabel = schoolYear === "all" ? "All SY" : `SY ${schoolYear}`;
 
     const monthLabel =
-      specificMonth === 'all'
-        ? ''
-        : MONTHS_FULL[parseInt(specificMonth)];
+      specificMonth === "all" ? "" : MONTHS_FULL[parseInt(specificMonth)];
 
     const roleLabel =
-      selectedRole === 'all' ? 'All Personnel' :
-      selectedRole === 'student' ? 'Students' :
-      selectedRole === 'teaching' ? 'Teaching Personnel' :
-      selectedRole === 'non_teaching' ? 'Non-Teaching Personnel' : 'Clinic Personnel';
+      selectedRole === "all"
+        ? "All Personnel"
+        : selectedRole === "student"
+          ? "Students"
+          : selectedRole === "teaching"
+            ? "Teaching Personnel"
+            : selectedRole === "non_teaching"
+              ? "Non-Teaching Personnel"
+              : "Clinic Personnel";
 
     const departmentLabel =
       selectedDepartmentConfig?.full ||
       selectedDepartmentConfig?.abbr ||
-      'All Departments/Offices';
+      "All Departments/Offices";
 
-    const selectedProgramOption =
-      programOptions.find(
-        (program) => program.value === selectedProgram
-      );
+    const selectedProgramOption = programOptions.find(
+      (program) => program.value === selectedProgram,
+    );
 
     const programLabel =
-      selectedProgram === 'all'
-        ? 'All Programs'
-        : selectedProgramOption?.label ||
-          selectedProgram;
+      selectedProgram === "all"
+        ? "All Programs"
+        : selectedProgramOption?.label || selectedProgram;
 
     return {
       todayLabel,
@@ -1356,6 +1953,7 @@ const patientTypeData = useMemo(() => {
     dateRange,
     schoolYear,
     specificMonth,
+    selectedDate,
     selectedRole,
     selectedDepartmentConfig,
     selectedProgram,
@@ -1368,7 +1966,7 @@ const patientTypeData = useMemo(() => {
   const exportFullReportXlsx = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'MediTrack';
+      workbook.creator = "MediTrack";
       workbook.created = new Date();
 
       const {
@@ -1396,60 +1994,109 @@ const patientTypeData = useMemo(() => {
 
       // ---- Overview -------------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Overview');
-        ws.columns = [{ width: 28 }, { width: 24 }, { width: 14 }, { width: 14 }];
-        let r = addTitleBanner(ws, 'MediTrack Health Report', subtitle, 4);
-        r = addSectionHeader(ws, r, 'Overview Statistics', 4);
-        r = addTableHeader(ws, r, ['Category', 'Metric', 'Count', '']);
+        const ws = workbook.addWorksheet("Overview");
+        ws.columns = [
+          { width: 28 },
+          { width: 24 },
+          { width: 14 },
+          { width: 14 },
+        ];
+        let r = addTitleBanner(ws, "MediTrack Health Report", subtitle, 4);
+        r = addSectionHeader(ws, r, "Overview Statistics", 4);
+        r = addTableHeader(ws, r, ["Category", "Metric", "Count", ""]);
         const overviewRows = [
-          ['Overview', 'Total Medical Exams', processedData.totalMed],
-          ['Overview', 'Total Dental Exams', processedData.totalDen],
-          ['Overview', 'Total Appointments', processedData.totalAppts],
-          ['Overview', 'Total Users', processedData.totalUsers],
-          ['Overview', 'Total Clinic Staff', processedData.clinicStaffCount],
-          ['Visits', 'Total Clinic Visits', processedData.totalVisits],
-          ['Visits', 'Patient Visits', processedData.patientVisits],
-          ['Visits', 'Non-Patient Visits', processedData.nonPatientVisits],
-          ['Visits', 'Unclassified Visits', processedData.unclassifiedVisits],
+          ["Overview", "Total Medical Exams", processedData.totalMed],
+          ["Overview", "Total Dental Exams", processedData.totalDen],
+          ["Overview", "Total Appointments", processedData.totalAppts],
+          ["Overview", "Total Users", processedData.totalUsers],
+          ["Overview", "Total Clinic Staff", processedData.clinicStaffCount],
+          ["Visits", "Total Clinic Visits", processedData.totalVisits],
+          ["Visits", "Patient Visits", processedData.patientVisits],
+          ["Visits", "Non-Patient Visits", processedData.nonPatientVisits],
+          ["Visits", "Unclassified Visits", processedData.unclassifiedVisits],
         ].sort((a, b) => b[2] - a[2]);
-        overviewRows.forEach((row, i) => { r = addDataRow(ws, r, [...row, ''], { zebra: i % 2 === 1 }); });
+        overviewRows.forEach((row, i) => {
+          r = addDataRow(ws, r, [...row, ""], { zebra: i % 2 === 1 });
+        });
         r += 2;
-        addChartImage(workbook, ws, r, 'Visit Classification Chart', {
-          type: 'doughnut',
+        addChartImage(workbook, ws, r, "Visit Classification Chart", {
+          type: "doughnut",
           ...visitClassificationData,
         });
       }
 
       // ---- Visit Analytics -------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Visit Analytics');
+        const ws = workbook.addWorksheet("Visit Analytics");
         ws.columns = [
-          { width: 22 }, { width: 22 }, { width: 18 }, { width: 20 },
-          { width: 34 }, { width: 22 }, { width: 14 },
+          { width: 22 },
+          { width: 22 },
+          { width: 18 },
+          { width: 20 },
+          { width: 34 },
+          { width: 22 },
+          { width: 14 },
         ];
-        let r = addTitleBanner(ws, 'Patient and Non-Patient Visit Analytics', subtitle, 7);
+        let r = addTitleBanner(
+          ws,
+          "Patient and Non-Patient Visit Analytics",
+          subtitle,
+          7,
+        );
 
-        r = addSectionHeader(ws, r, 'Visit Classification Summary', 7);
-        r = addTableHeader(ws, r, ['Classification', 'Count', 'Percentage', '', '', '', '']);
+        r = addSectionHeader(ws, r, "Visit Classification Summary", 7);
+        r = addTableHeader(ws, r, [
+          "Classification",
+          "Count",
+          "Percentage",
+          "",
+          "",
+          "",
+          "",
+        ]);
         const visitRows = [
-          ['Patient Visits', processedData.patientVisits],
-          ['Non-Patient Visits', processedData.nonPatientVisits],
-          ['Unclassified', processedData.unclassifiedVisits],
+          ["Patient Visits", processedData.patientVisits],
+          ["Non-Patient Visits", processedData.nonPatientVisits],
+          ["Unclassified", processedData.unclassifiedVisits],
         ];
-        r = addDataRow(ws, r, ['Total Visits', processedData.totalVisits, '', '', '', '', '']);
+        r = addDataRow(ws, r, [
+          "Total Visits",
+          processedData.totalVisits,
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
         visitRows.forEach((row, index) => {
           r = addDataRow(
             ws,
             r,
-            [row[0], row[1], pctOf(row[1], processedData.totalVisits), '', '', '', ''],
-            { zebra: index % 2 === 1 }
+            [
+              row[0],
+              row[1],
+              pctOf(row[1], processedData.totalVisits),
+              "",
+              "",
+              "",
+              "",
+            ],
+            { zebra: index % 2 === 1 },
           );
           applyPercentFormat(ws, r - 1, 3);
         });
 
         r += 1;
-        r = addSectionHeader(ws, r, 'Monthly Visit Classification', 7);
-        r = addTableHeader(ws, r, ['Month', 'Patient Visits', 'Non-Patient Visits', 'Unclassified', 'Total', '', '']);
+        r = addSectionHeader(ws, r, "Monthly Visit Classification", 7);
+        r = addTableHeader(ws, r, [
+          "Month",
+          "Patient Visits",
+          "Non-Patient Visits",
+          "Unclassified",
+          "Total",
+          "",
+          "",
+        ]);
         MONTHS.forEach((month, index) => {
           const patient = processedData.monthlyPatientVisits[index];
           const nonPatient = processedData.monthlyNonPatientVisits[index];
@@ -1457,286 +2104,564 @@ const patientTypeData = useMemo(() => {
           r = addDataRow(
             ws,
             r,
-            [month, patient, nonPatient, unclassified, patient + nonPatient + unclassified, '', ''],
-            { zebra: index % 2 === 1 }
+            [
+              month,
+              patient,
+              nonPatient,
+              unclassified,
+              patient + nonPatient + unclassified,
+              "",
+              "",
+            ],
+            { zebra: index % 2 === 1 },
           );
         });
 
         r += 2;
-        r = addChartImage(workbook, ws, r, 'Patient vs Non-Patient Visits', {
-          type: 'doughnut',
-          ...visitClassificationData,
-        }, 7);
-        r = addChartImage(workbook, ws, r, 'Monthly Visit Classification', {
-          type: 'line',
-          ...monthlyVisitClassificationData,
-        }, 7, { startRow: 28 });
-
-        r = addSectionHeader(ws, r, 'Visit Details', 7);
-        const detailHeaderRow = addTableHeader(
+        r = addChartImage(
+          workbook,
           ws,
           r,
-          ['Date', 'Patient', 'University ID', 'Service', 'Reason', 'Classification', 'Status']
+          "Patient vs Non-Patient Visits",
+          {
+            type: "doughnut",
+            ...visitClassificationData,
+          },
+          7,
         );
+        r = addChartImage(
+          workbook,
+          ws,
+          r,
+          "Monthly Visit Classification",
+          {
+            type: "line",
+            ...monthlyVisitClassificationData,
+          },
+          7,
+          { startRow: 28 },
+        );
+
+        r = addSectionHeader(ws, r, "Visit Details", 7);
+        const detailHeaderRow = addTableHeader(ws, r, [
+          "Date",
+          "Patient",
+          "University ID",
+          "Service",
+          "Reason",
+          "Classification",
+          "Status",
+        ]);
         r = detailHeaderRow;
         processedData.visitRecords.forEach((record, index) => {
-          const visitTypeLabel = record.visitType === 'patient'
-            ? 'Patient Visit'
-            : record.visitType === 'non_patient'
-              ? 'Non-Patient Visit'
-              : 'Unclassified';
+          const visitTypeLabel =
+            record.visitType === "patient"
+              ? "Patient Visit"
+              : record.visitType === "non_patient"
+                ? "Non-Patient Visit"
+                : "Unclassified";
           const dateLabel = record.visitDate
-            ? new Date(record.visitDate).toLocaleString('en-PH')
-            : '';
-          r = addDataRow(ws, r, [
-            dateLabel,
-            record.patientName,
-            record.universityId,
-            record.serviceType,
-            record.visitReason || 'Not provided',
-            visitTypeLabel,
-            record.status || '',
-          ], { zebra: index % 2 === 1 });
+            ? new Date(record.visitDate).toLocaleString("en-PH")
+            : "";
+          r = addDataRow(
+            ws,
+            r,
+            [
+              dateLabel,
+              record.patientName,
+              record.universityId,
+              record.serviceType,
+              record.visitReason || "Not provided",
+              visitTypeLabel,
+              record.status || "",
+            ],
+            { zebra: index % 2 === 1 },
+          );
         });
         ws.autoFilter = {
           from: { row: detailHeaderRow, column: 1 },
           to: { row: Math.max(detailHeaderRow, r - 1), column: 7 },
         };
-        ws.views = [{ state: 'frozen', ySplit: 1 }];
+        ws.views = [{ state: "frozen", ySplit: 1 }];
       }
 
       // ---- Appointments ---------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Appointments');
-        ws.columns = [{ width: 20 }, { width: 14 }, { width: 14 }, { width: 10 }];
-        let r = addTitleBanner(ws, 'Appointments Analysis', subtitle, 4);
-        r = addSectionHeader(ws, r, 'Status Breakdown', 4);
-        r = addTableHeader(ws, r, ['Status', 'Count', 'Percentage', '']);
+        const ws = workbook.addWorksheet("Appointments");
+        ws.columns = [
+          { width: 20 },
+          { width: 14 },
+          { width: 14 },
+          { width: 10 },
+        ];
+        let r = addTitleBanner(ws, "Appointments Analysis", subtitle, 4);
+        r = addSectionHeader(ws, r, "Status Breakdown", 4);
+        r = addTableHeader(ws, r, ["Status", "Count", "Percentage", ""]);
         const statusRows = [
-          ['Completed', processedData.completedAppts],
-          ['Pending', processedData.pendingAppts],
-          ['Approved', processedData.approvedAppts],
-          ['Missed', processedData.missedAppts],
-          ['Rejected', processedData.rejectedAppts]
+          ["Completed", processedData.completedAppts],
+          ["Pending", processedData.pendingAppts],
+          ["Approved", processedData.approvedAppts],
+          ["Missed", processedData.missedAppts],
+          ["Rejected", processedData.rejectedAppts],
         ].sort((a, b) => b[1] - a[1]);
-        statusRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], processedData.totalAppts), ''], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 3); });
+        statusRows.forEach((row, i) => {
+          r = addDataRow(
+            ws,
+            r,
+            [row[0], row[1], pctOf(row[1], processedData.totalAppts), ""],
+            { zebra: i % 2 === 1 },
+          );
+          applyPercentFormat(ws, r - 1, 3);
+        });
         r += 1;
-        r = addSectionHeader(ws, r, 'Monthly Appointments', 4);
-        r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
-        MONTHS.forEach((m, idx) => { r = addDataRow(ws, r, [m, processedData.monthlyAppts[idx], '', ''], { zebra: idx % 2 === 1 }); });
+        r = addSectionHeader(ws, r, "Monthly Appointments", 4);
+        r = addTableHeader(ws, r, ["Month", "Count", "", ""]);
+        MONTHS.forEach((m, idx) => {
+          r = addDataRow(ws, r, [m, processedData.monthlyAppts[idx], "", ""], {
+            zebra: idx % 2 === 1,
+          });
+        });
         r += 1;
-        r = addSectionHeader(ws, r, 'Duration Summary', 4);
-        r = addTableHeader(ws, r, ['Metric', 'Value', '', '']);
-        r = addDataRow(ws, r, ['Average Duration (hrs)', appointmentDurationSummary.overallAvg.toFixed(1), '', ''], { zebra: false });
-        r = addDataRow(ws, r, ['Fastest (hrs)', appointmentDurationSummary.overallMin.toFixed(1), '', ''], { zebra: true });
-        r = addDataRow(ws, r, ['Slowest (hrs)', appointmentDurationSummary.overallMax.toFixed(1), '', ''], { zebra: false });
-        r = addDataRow(ws, r, ['Tracked / Total', `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`, '', ''], { zebra: true });
+        r = addSectionHeader(ws, r, "Duration Summary", 4);
+        r = addTableHeader(ws, r, ["Metric", "Value", "", ""]);
+        r = addDataRow(
+          ws,
+          r,
+          [
+            "Average Duration (hrs)",
+            appointmentDurationSummary.overallAvg.toFixed(1),
+            "",
+            "",
+          ],
+          { zebra: false },
+        );
+        r = addDataRow(
+          ws,
+          r,
+          [
+            "Fastest (hrs)",
+            appointmentDurationSummary.overallMin.toFixed(1),
+            "",
+            "",
+          ],
+          { zebra: true },
+        );
+        r = addDataRow(
+          ws,
+          r,
+          [
+            "Slowest (hrs)",
+            appointmentDurationSummary.overallMax.toFixed(1),
+            "",
+            "",
+          ],
+          { zebra: false },
+        );
+        r = addDataRow(
+          ws,
+          r,
+          [
+            "Tracked / Total",
+            `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`,
+            "",
+            "",
+          ],
+          { zebra: true },
+        );
         r += 1;
-        r = addSectionHeader(ws, r, 'Average Duration by Status', 4);
-        r = addTableHeader(ws, r, ['Status', 'Count', 'Average Duration (hrs)', '']);
+        r = addSectionHeader(ws, r, "Average Duration by Status", 4);
+        r = addTableHeader(ws, r, [
+          "Status",
+          "Count",
+          "Average Duration (hrs)",
+          "",
+        ]);
         appointmentDurationSummary.statusBreakdown.forEach((row, i) => {
-          r = addDataRow(ws, r, [row.status, row.count, row.avg.toFixed(1), ''], { zebra: i % 2 === 1 });
+          r = addDataRow(
+            ws,
+            r,
+            [row.status, row.count, row.avg.toFixed(1), ""],
+            { zebra: i % 2 === 1 },
+          );
         });
         r += 2;
-        addChartImage(workbook, ws, r, 'Appointment Status Chart', {
-          type: 'bar',
+        addChartImage(workbook, ws, r, "Appointment Status Chart", {
+          type: "bar",
           ...appointmentStatusData,
         });
       }
 
       // ---- Medical Exams --------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Medical Exams');
-        ws.columns = [{ width: 22 }, { width: 12 }, { width: 14 }, { width: 10 }];
-        let r = addTitleBanner(ws, 'Medical Examinations', subtitle, 4);
-        r = addSectionHeader(ws, r, 'Summary', 4);
-        r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
+        const ws = workbook.addWorksheet("Medical Exams");
+        ws.columns = [
+          { width: 22 },
+          { width: 12 },
+          { width: 14 },
+          { width: 10 },
+        ];
+        let r = addTitleBanner(ws, "Medical Examinations", subtitle, 4);
+        r = addSectionHeader(ws, r, "Summary", 4);
+        r = addTableHeader(ws, r, ["Metric", "Count", "Percentage", ""]);
         const medRows = [
-          ['Fit', processedData.fitCount, pctOf(processedData.fitCount, processedData.totalMed)],
-          ['Not Fit', processedData.notFitCount, pctOf(processedData.notFitCount, processedData.totalMed)],
-          ['Normal Findings', processedData.normalFindingsCount, pctOf(processedData.normalFindingsCount, processedData.totalMed)],
-          ['Abnormal Findings', processedData.abnormalFindingsCount, pctOf(processedData.abnormalFindingsCount, processedData.totalMed)],
-          ['Approved', processedData.medApprovedCount, pctOf(processedData.medApprovedCount, processedData.totalMed)],
-          ['Pending', processedData.medPendingCount, pctOf(processedData.medPendingCount, processedData.totalMed)]
+          [
+            "Fit",
+            processedData.fitCount,
+            pctOf(processedData.fitCount, processedData.totalMed),
+          ],
+          [
+            "Not Fit",
+            processedData.notFitCount,
+            pctOf(processedData.notFitCount, processedData.totalMed),
+          ],
+          [
+            "Normal Findings",
+            processedData.normalFindingsCount,
+            pctOf(processedData.normalFindingsCount, processedData.totalMed),
+          ],
+          [
+            "Abnormal Findings",
+            processedData.abnormalFindingsCount,
+            pctOf(processedData.abnormalFindingsCount, processedData.totalMed),
+          ],
+          [
+            "Approved",
+            processedData.medApprovedCount,
+            pctOf(processedData.medApprovedCount, processedData.totalMed),
+          ],
+          [
+            "Pending",
+            processedData.medPendingCount,
+            pctOf(processedData.medPendingCount, processedData.totalMed),
+          ],
         ].sort((a, b) => b[1] - a[1]);
-        r = addDataRow(ws, r, ['Total Medical Exams', processedData.totalMed, null, ''], { zebra: false });
-        medRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 }); if (row[2] !== null) applyPercentFormat(ws, r - 1, 3); });
+        r = addDataRow(
+          ws,
+          r,
+          ["Total Medical Exams", processedData.totalMed, null, ""],
+          { zebra: false },
+        );
+        medRows.forEach((row, i) => {
+          r = addDataRow(
+            ws,
+            r,
+            [row[0], row[1], row[2] === null ? "" : row[2], ""],
+            { zebra: i % 2 === 1 },
+          );
+          if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+        });
         r += 1;
-        r = addSectionHeader(ws, r, 'Monthly Medical Exams', 4);
-        r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
-        MONTHS.forEach((m, idx) => { r = addDataRow(ws, r, [m, processedData.monthlyMed[idx], '', ''], { zebra: idx % 2 === 1 }); });
+        r = addSectionHeader(ws, r, "Monthly Medical Exams", 4);
+        r = addTableHeader(ws, r, ["Month", "Count", "", ""]);
+        MONTHS.forEach((m, idx) => {
+          r = addDataRow(ws, r, [m, processedData.monthlyMed[idx], "", ""], {
+            zebra: idx % 2 === 1,
+          });
+        });
         r += 2;
-        addChartImage(workbook, ws, r, 'Monthly Medical Examinations', {
-          type: 'line',
+        addChartImage(workbook, ws, r, "Monthly Medical Examinations", {
+          type: "line",
           labels: MONTHS,
-          datasets: [{
-            label: 'Medical Exams',
-            data: processedData.monthlyMed,
-            borderColor: '#466460',
-            backgroundColor: 'rgba(70,100,96,0.12)',
-            tension: 0.35,
-          }],
+          datasets: [
+            {
+              label: "Medical Exams",
+              data: processedData.monthlyMed,
+              borderColor: "#466460",
+              backgroundColor: "rgba(70,100,96,0.12)",
+              tension: 0.35,
+            },
+          ],
         });
       }
 
       // ---- Health Conditions -----------------------------------------------
       {
-        const ws = workbook.addWorksheet('Health Conditions');
-        ws.columns = [{ width: 24 }, { width: 20 }, { width: 10 }, { width: 12 }];
-        let r = addTitleBanner(ws, 'Health Conditions Breakdown', subtitle, 4);
-        r = addSectionHeader(ws, r, 'All Conditions', 4);
-        const headerRow = addTableHeader(ws, r, ['Condition', 'Category', 'Cases', '% of Total']);
+        const ws = workbook.addWorksheet("Health Conditions");
+        ws.columns = [
+          { width: 24 },
+          { width: 20 },
+          { width: 10 },
+          { width: 12 },
+        ];
+        let r = addTitleBanner(ws, "Health Conditions Breakdown", subtitle, 4);
+        r = addSectionHeader(ws, r, "All Conditions", 4);
+        const headerRow = addTableHeader(ws, r, [
+          "Condition",
+          "Category",
+          "Cases",
+          "% of Total",
+        ]);
         r = headerRow;
         const sortedMedConditions = [...MEDICAL_CONDITIONS]
-          .map(cond => ({ ...cond, count: processedData.conditionCounts[cond.id] }))
+          .map((cond) => ({
+            ...cond,
+            count: processedData.conditionCounts[cond.id],
+          }))
           .sort((a, b) => b.count - a.count);
         sortedMedConditions.forEach((cond, i) => {
-          r = addDataRow(ws, r, [cond.name, cond.category, cond.count, pctOf(cond.count, processedData.totalMed)], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 4);
+          r = addDataRow(
+            ws,
+            r,
+            [
+              cond.name,
+              cond.category,
+              cond.count,
+              pctOf(cond.count, processedData.totalMed),
+            ],
+            { zebra: i % 2 === 1 },
+          );
+          applyPercentFormat(ws, r - 1, 4);
         });
-        ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 4 } };
-        ws.views = [{ state: 'frozen', ySplit: headerRow }];
+        ws.autoFilter = {
+          from: { row: headerRow, column: 1 },
+          to: { row: r - 1, column: 4 },
+        };
+        ws.views = [{ state: "frozen", ySplit: headerRow }];
         r += 2;
-        addChartImage(workbook, ws, r, 'Health Conditions Chart', {
-          type: 'bar',
-          labels: sortedMedConditions.slice(0, 10).map(condition => condition.name),
-          datasets: [{
-            label: 'Cases',
-            data: sortedMedConditions.slice(0, 10).map(condition => condition.count),
-            backgroundColor: '#466460',
-          }],
-          options: { indexAxis: 'y' },
+        addChartImage(workbook, ws, r, "Health Conditions Chart", {
+          type: "bar",
+          labels: sortedMedConditions
+            .slice(0, 10)
+            .map((condition) => condition.name),
+          datasets: [
+            {
+              label: "Cases",
+              data: sortedMedConditions
+                .slice(0, 10)
+                .map((condition) => condition.count),
+              backgroundColor: "#466460",
+            },
+          ],
+          options: { indexAxis: "y" },
         });
       }
 
       // ---- Dental -----------------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Dental');
-        ws.columns = [{ width: 24 }, { width: 20 }, { width: 10 }, { width: 12 }];
-        let r = addTitleBanner(ws, 'Dental Examinations', subtitle, 4);
-        r = addSectionHeader(ws, r, 'Summary', 4);
-        r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
-        const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
-        const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
+        const ws = workbook.addWorksheet("Dental");
+        ws.columns = [
+          { width: 24 },
+          { width: 20 },
+          { width: 10 },
+          { width: 12 },
+        ];
+        let r = addTitleBanner(ws, "Dental Examinations", subtitle, 4);
+        r = addSectionHeader(ws, r, "Summary", 4);
+        r = addTableHeader(ws, r, ["Metric", "Count", "Percentage", ""]);
+        const approvedDen = processedData.dentalFindingsList.filter(
+          (d) => d.status === "approved",
+        ).length;
+        const pendingDen = processedData.dentalFindingsList.filter(
+          (d) => d.status === "pending",
+        ).length;
         const denRows = [
-          ['Approved', approvedDen, pctOf(approvedDen, processedData.totalDen)],
-          ['Pending', pendingDen, pctOf(pendingDen, processedData.totalDen)]
+          ["Approved", approvedDen, pctOf(approvedDen, processedData.totalDen)],
+          ["Pending", pendingDen, pctOf(pendingDen, processedData.totalDen)],
         ].sort((a, b) => b[1] - a[1]);
-        r = addDataRow(ws, r, ['Total Dental Exams', processedData.totalDen, null, ''], { zebra: false });
-        denRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 }); if (row[2] !== null) applyPercentFormat(ws, r - 1, 3); });
+        r = addDataRow(
+          ws,
+          r,
+          ["Total Dental Exams", processedData.totalDen, null, ""],
+          { zebra: false },
+        );
+        denRows.forEach((row, i) => {
+          r = addDataRow(
+            ws,
+            r,
+            [row[0], row[1], row[2] === null ? "" : row[2], ""],
+            { zebra: i % 2 === 1 },
+          );
+          if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+        });
         r += 1;
-        r = addSectionHeader(ws, r, 'Dental Conditions', 4);
-        const dentalHeaderRow = addTableHeader(ws, r, ['Condition', 'Category', 'Count', '']);
+        r = addSectionHeader(ws, r, "Dental Conditions", 4);
+        const dentalHeaderRow = addTableHeader(ws, r, [
+          "Condition",
+          "Category",
+          "Count",
+          "",
+        ]);
         r = dentalHeaderRow;
         const sortedDentalConditions = [...DENTAL_CONDITIONS]
-          .map(cond => ({ ...cond, count: processedData.dentalConditionCounts[cond.id] }))
+          .map((cond) => ({
+            ...cond,
+            count: processedData.dentalConditionCounts[cond.id],
+          }))
           .sort((a, b) => b.count - a.count);
-        sortedDentalConditions.forEach((cond, i) => { r = addDataRow(ws, r, [cond.name, cond.category, cond.count, ''], { zebra: i % 2 === 1 }); });
-        ws.autoFilter = { from: { row: dentalHeaderRow, column: 1 }, to: { row: r - 1, column: 3 } };
+        sortedDentalConditions.forEach((cond, i) => {
+          r = addDataRow(ws, r, [cond.name, cond.category, cond.count, ""], {
+            zebra: i % 2 === 1,
+          });
+        });
+        ws.autoFilter = {
+          from: { row: dentalHeaderRow, column: 1 },
+          to: { row: r - 1, column: 3 },
+        };
         r += 2;
-        addChartImage(workbook, ws, r, 'Dental Conditions Chart', {
-          type: 'bar',
-          labels: sortedDentalConditions.slice(0, 10).map(condition => condition.name),
-          datasets: [{
-            label: 'Count',
-            data: sortedDentalConditions.slice(0, 10).map(condition => condition.count),
-            backgroundColor: '#e07a5f',
-          }],
-          options: { indexAxis: 'y' },
+        addChartImage(workbook, ws, r, "Dental Conditions Chart", {
+          type: "bar",
+          labels: sortedDentalConditions
+            .slice(0, 10)
+            .map((condition) => condition.name),
+          datasets: [
+            {
+              label: "Count",
+              data: sortedDentalConditions
+                .slice(0, 10)
+                .map((condition) => condition.count),
+              backgroundColor: "#e07a5f",
+            },
+          ],
+          options: { indexAxis: "y" },
         });
       }
 
       // ---- Demographics ------------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Demographics');
-        ws.columns = [{ width: 20 }, { width: 14 }, { width: 14 }, { width: 10 }];
-        let r = addTitleBanner(ws, 'Patient Demographics', subtitle, 4);
-        r = addSectionHeader(ws, r, 'By Role', 4);
-        r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
-        r = addDataRow(ws, r, ['Total Users (system administrators excluded)', processedData.totalUsers, '', ''], { zebra: false });
+        const ws = workbook.addWorksheet("Demographics");
+        ws.columns = [
+          { width: 20 },
+          { width: 14 },
+          { width: 14 },
+          { width: 10 },
+        ];
+        let r = addTitleBanner(ws, "Patient Demographics", subtitle, 4);
+        r = addSectionHeader(ws, r, "By Role", 4);
+        r = addTableHeader(ws, r, ["Type", "Count", "Percentage", ""]);
+        r = addDataRow(
+          ws,
+          r,
+          [
+            "Total Users (system administrators excluded)",
+            processedData.totalUsers,
+            "",
+            "",
+          ],
+          { zebra: false },
+        );
 
         const typeCounts = buildPersonnelCounts(
           processedData.users,
-          systemConfig
+          systemConfig,
         );
 
         const demoRows = [
-          ['Students', typeCounts.student],
-          ['Teaching Personnel', typeCounts.teaching],
-          ['Non-Teaching Personnel', typeCounts.non_teaching],
-          ['Clinic Personnel', typeCounts.clinic]
+          ["Students", typeCounts.student],
+          ["Teaching Personnel", typeCounts.teaching],
+          ["Non-Teaching Personnel", typeCounts.non_teaching],
+          ["Clinic Personnel", typeCounts.clinic],
         ]
           .filter((row) => row[1] > 0)
           .sort((a, b) => b[1] - a[1]);
 
-        demoRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], processedData.totalUsers), ''], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 3); });
+        demoRows.forEach((row, i) => {
+          r = addDataRow(
+            ws,
+            r,
+            [row[0], row[1], pctOf(row[1], processedData.totalUsers), ""],
+            { zebra: i % 2 === 1 },
+          );
+          applyPercentFormat(ws, r - 1, 3);
+        });
         r += 2;
-        addChartImage(workbook, ws, r, 'Patient Demographics Chart', {
-          type: 'doughnut',
-          labels: demoRows.map(row => row[0]),
-          datasets: [{
-            data: demoRows.map(row => row[1]),
-            backgroundColor: ['#466460', '#e07a5f', '#3b82f6', '#81b29a'],
-          }],
+        addChartImage(workbook, ws, r, "Patient Demographics Chart", {
+          type: "doughnut",
+          labels: demoRows.map((row) => row[0]),
+          datasets: [
+            {
+              data: demoRows.map((row) => row[1]),
+              backgroundColor: ["#466460", "#e07a5f", "#3b82f6", "#81b29a"],
+            },
+          ],
         });
       }
 
       // ---- Monthly Comparison ------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Monthly Consultations');
-        ws.columns = [{ width: 26 }, { width: 20 }, { width: 14 }, { width: 12 }];
-        let r = addTitleBanner(ws, 'Monthly Consultations Comparison', subtitle, 4);
-        r = addSectionHeader(ws, r, 'Monthly Consultations Comparison', 4);
-        r = addTableHeader(ws, r, ['Month', 'Medical Exams', 'Dental Exams', 'Total']);
+        const ws = workbook.addWorksheet("Monthly Consultations");
+        ws.columns = [
+          { width: 26 },
+          { width: 20 },
+          { width: 14 },
+          { width: 12 },
+        ];
+        let r = addTitleBanner(
+          ws,
+          "Monthly Consultations Comparison",
+          subtitle,
+          4,
+        );
+        r = addSectionHeader(ws, r, "Monthly Consultations Comparison", 4);
+        r = addTableHeader(ws, r, [
+          "Month",
+          "Medical Exams",
+          "Dental Exams",
+          "Total",
+        ]);
         MONTHS.forEach((m, idx) => {
           const med = processedData.monthlyMed[idx];
           const den = processedData.monthlyDen[idx];
-          r = addDataRow(ws, r, [m, med, den, med + den], { zebra: idx % 2 === 1 });
+          r = addDataRow(ws, r, [m, med, den, med + den], {
+            zebra: idx % 2 === 1,
+          });
         });
         r += 2;
-        addChartImage(workbook, ws, r, 'Monthly Medical vs Dental Chart', {
-          type: 'bar',
+        addChartImage(workbook, ws, r, "Monthly Medical vs Dental Chart", {
+          type: "bar",
           ...monthlyComparisonData,
         });
       }
 
       // ---- Summary -----------------------------------------------------------
       {
-        const ws = workbook.addWorksheet('Summary Report');
-        ws.columns = [{ width: 26 }, { width: 20 }, { width: 14 }, { width: 12 }];
-        let r = addTitleBanner(ws, 'Summary Report', subtitle, 4);
-        r = addSectionHeader(ws, r, 'Summary Report', 4);
+        const ws = workbook.addWorksheet("Summary Report");
+        ws.columns = [
+          { width: 26 },
+          { width: 20 },
+          { width: 14 },
+          { width: 12 },
+        ];
+        let r = addTitleBanner(ws, "Summary Report", subtitle, 4);
+        r = addSectionHeader(ws, r, "Summary Report", 4);
         const rows = [
-          ['Users', 'Total Registered (system administrators excluded)', processedData.totalUsers],
-          ['Consultations', 'Medical', processedData.totalMed],
-          ['Consultations', 'Dental', processedData.totalDen],
-          ['Visits', 'Patient Visits', processedData.patientVisits],
-          ['Visits', 'Non-Patient Visits', processedData.nonPatientVisits],
-          ['Visits', 'Unclassified', processedData.unclassifiedVisits],
-          ['Appointments', 'Completed', processedData.completedAppts],
-          ['Appointments', 'Pending', processedData.pendingAppts],
-          ['Medical Records', 'Approved', processedData.medApprovedCount],
-          ['Medical Records', 'Pending', processedData.medPendingCount],
-          ['Fitness Status', 'Fit', processedData.fitCount],
-          ['Fitness Status', 'Not Fit', processedData.notFitCount],
-          ['Findings', 'Normal', processedData.normalFindingsCount]
+          [
+            "Users",
+            "Total Registered (system administrators excluded)",
+            processedData.totalUsers,
+          ],
+          ["Consultations", "Medical", processedData.totalMed],
+          ["Consultations", "Dental", processedData.totalDen],
+          ["Visits", "Patient Visits", processedData.patientVisits],
+          ["Visits", "Non-Patient Visits", processedData.nonPatientVisits],
+          ["Visits", "Unclassified", processedData.unclassifiedVisits],
+          ["Appointments", "Completed", processedData.completedAppts],
+          ["Appointments", "Pending", processedData.pendingAppts],
+          ["Medical Records", "Approved", processedData.medApprovedCount],
+          ["Medical Records", "Pending", processedData.medPendingCount],
+          ["Fitness Status", "Fit", processedData.fitCount],
+          ["Fitness Status", "Not Fit", processedData.notFitCount],
+          ["Findings", "Normal", processedData.normalFindingsCount],
         ].sort((a, b) => b[2] - a[2]);
-        rows.forEach((row, i) => { r = addDataRow(ws, r, [...row, ''], { zebra: i % 2 === 1 }); });
+        rows.forEach((row, i) => {
+          r = addDataRow(ws, r, [...row, ""], { zebra: i % 2 === 1 });
+        });
         r += 2;
-        addChartImage(workbook, ws, r, 'Visit Classification Chart', {
-          type: 'doughnut',
+        addChartImage(workbook, ws, r, "Visit Classification Chart", {
+          type: "doughnut",
           ...visitClassificationData,
         });
       }
 
       const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
       saveAs(blob, `MediTrack_${Date.now()}_Report.xlsx`);
 
-      showSnackbar('Full report exported successfully');
-
+      showSnackbar("Full report exported successfully");
     } catch (err) {
-      console.error('Error exporting Excel report:', err);
-      showSnackbar('Failed to export report', 'error');
+      console.error("Error exporting Excel report:", err);
+      showSnackbar("Failed to export report", "error");
     }
   };
 
@@ -1746,7 +2671,7 @@ const patientTypeData = useMemo(() => {
   const exportCategoryXlsx = async (category) => {
     try {
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'MediTrack';
+      workbook.creator = "MediTrack";
       workbook.created = new Date();
 
       const {
@@ -1773,54 +2698,94 @@ const patientTypeData = useMemo(() => {
       }
 
       const titles = {
-        visits: 'Visit Analytics',
-        appointments: 'Appointments Analysis',
-        medical: 'Medical Examinations',
-        dental: 'Dental Examinations',
-        conditions: 'Health Conditions Breakdown',
-        demographics: 'Patient Demographics',
-        monthly: 'Monthly Consultations Comparison',
-        summary: 'Summary Report'
+        visits: "Visit Analytics",
+        appointments: "Appointments Analysis",
+        medical: "Medical Examinations",
+        dental: "Dental Examinations",
+        conditions: "Health Conditions Breakdown",
+        demographics: "Patient Demographics",
+        monthly: "Monthly Consultations Comparison",
+        summary: "Summary Report",
       };
 
-      const ws = workbook.addWorksheet(titles[category] ? titles[category].slice(0, 31) : 'Report');
-      const exportColumnSpan = category === 'visits' ? 7 : 4;
-      ws.columns = category === 'visits'
-        ? [
-            { width: 22 }, { width: 22 }, { width: 18 }, { width: 20 },
-            { width: 34 }, { width: 22 }, { width: 14 },
-          ]
-        : [{ width: 26 }, { width: 20 }, { width: 14 }, { width: 12 }];
+      const ws = workbook.addWorksheet(
+        titles[category] ? titles[category].slice(0, 31) : "Report",
+      );
+      const exportColumnSpan = category === "visits" ? 7 : 4;
+      ws.columns =
+        category === "visits"
+          ? [
+              { width: 22 },
+              { width: 22 },
+              { width: 18 },
+              { width: 20 },
+              { width: 34 },
+              { width: 22 },
+              { width: 14 },
+            ]
+          : [{ width: 26 }, { width: 20 }, { width: 14 }, { width: 12 }];
       let r = addTitleBanner(
         ws,
-        `MediTrack — ${titles[category] || 'Report'}`,
+        `MediTrack — ${titles[category] || "Report"}`,
         subtitle,
-        exportColumnSpan
+        exportColumnSpan,
       );
 
       switch (category) {
-        case 'visits': {
-          r = addSectionHeader(ws, r, 'Visit Classification Summary', 7);
-          r = addTableHeader(ws, r, ['Classification', 'Count', 'Percentage', '', '', '', '']);
+        case "visits": {
+          r = addSectionHeader(ws, r, "Visit Classification Summary", 7);
+          r = addTableHeader(ws, r, [
+            "Classification",
+            "Count",
+            "Percentage",
+            "",
+            "",
+            "",
+            "",
+          ]);
           const visitRows = [
-            ['Patient Visits', processedData.patientVisits],
-            ['Non-Patient Visits', processedData.nonPatientVisits],
-            ['Unclassified', processedData.unclassifiedVisits],
+            ["Patient Visits", processedData.patientVisits],
+            ["Non-Patient Visits", processedData.nonPatientVisits],
+            ["Unclassified", processedData.unclassifiedVisits],
           ];
-          r = addDataRow(ws, r, ['Total Visits', processedData.totalVisits, '', '', '', '', '']);
+          r = addDataRow(ws, r, [
+            "Total Visits",
+            processedData.totalVisits,
+            "",
+            "",
+            "",
+            "",
+            "",
+          ]);
           visitRows.forEach((row, index) => {
             r = addDataRow(
               ws,
               r,
-              [row[0], row[1], pctOf(row[1], processedData.totalVisits), '', '', '', ''],
-              { zebra: index % 2 === 1 }
+              [
+                row[0],
+                row[1],
+                pctOf(row[1], processedData.totalVisits),
+                "",
+                "",
+                "",
+                "",
+              ],
+              { zebra: index % 2 === 1 },
             );
             applyPercentFormat(ws, r - 1, 3);
           });
 
           r += 1;
-          r = addSectionHeader(ws, r, 'Monthly Visit Classification', 7);
-          r = addTableHeader(ws, r, ['Month', 'Patient Visits', 'Non-Patient Visits', 'Unclassified', 'Total', '', '']);
+          r = addSectionHeader(ws, r, "Monthly Visit Classification", 7);
+          r = addTableHeader(ws, r, [
+            "Month",
+            "Patient Visits",
+            "Non-Patient Visits",
+            "Unclassified",
+            "Total",
+            "",
+            "",
+          ]);
           MONTHS.forEach((month, index) => {
             const patient = processedData.monthlyPatientVisits[index];
             const nonPatient = processedData.monthlyNonPatientVisits[index];
@@ -1828,261 +2793,518 @@ const patientTypeData = useMemo(() => {
             r = addDataRow(
               ws,
               r,
-              [month, patient, nonPatient, unclassified, patient + nonPatient + unclassified, '', ''],
-              { zebra: index % 2 === 1 }
+              [
+                month,
+                patient,
+                nonPatient,
+                unclassified,
+                patient + nonPatient + unclassified,
+                "",
+                "",
+              ],
+              { zebra: index % 2 === 1 },
             );
           });
 
           r += 2;
-          r = addChartImage(workbook, ws, r, 'Patient vs Non-Patient Visits', {
-            type: 'doughnut',
-            ...visitClassificationData,
-          }, 7);
-          r = addChartImage(workbook, ws, r, 'Monthly Visit Classification', {
-            type: 'line',
-            ...monthlyVisitClassificationData,
-          }, 7, { startRow: 28 });
-
-          r = addSectionHeader(ws, r, 'Visit Details', 7);
-          const detailHeaderRow = addTableHeader(
+          r = addChartImage(
+            workbook,
             ws,
             r,
-            ['Date', 'Patient', 'University ID', 'Service', 'Reason', 'Classification', 'Status']
+            "Patient vs Non-Patient Visits",
+            {
+              type: "doughnut",
+              ...visitClassificationData,
+            },
+            7,
           );
+          r = addChartImage(
+            workbook,
+            ws,
+            r,
+            "Monthly Visit Classification",
+            {
+              type: "line",
+              ...monthlyVisitClassificationData,
+            },
+            7,
+            { startRow: 28 },
+          );
+
+          r = addSectionHeader(ws, r, "Visit Details", 7);
+          const detailHeaderRow = addTableHeader(ws, r, [
+            "Date",
+            "Patient",
+            "University ID",
+            "Service",
+            "Reason",
+            "Classification",
+            "Status",
+          ]);
           r = detailHeaderRow;
           processedData.visitRecords.forEach((record, index) => {
-            const visitTypeLabel = record.visitType === 'patient'
-              ? 'Patient Visit'
-              : record.visitType === 'non_patient'
-                ? 'Non-Patient Visit'
-                : 'Unclassified';
-            r = addDataRow(ws, r, [
-              record.visitDate ? new Date(record.visitDate).toLocaleString('en-PH') : '',
-              record.patientName,
-              record.universityId,
-              record.serviceType,
-              record.visitReason || 'Not provided',
-              visitTypeLabel,
-              record.status || '',
-            ], { zebra: index % 2 === 1 });
+            const visitTypeLabel =
+              record.visitType === "patient"
+                ? "Patient Visit"
+                : record.visitType === "non_patient"
+                  ? "Non-Patient Visit"
+                  : "Unclassified";
+            r = addDataRow(
+              ws,
+              r,
+              [
+                record.visitDate
+                  ? new Date(record.visitDate).toLocaleString("en-PH")
+                  : "",
+                record.patientName,
+                record.universityId,
+                record.serviceType,
+                record.visitReason || "Not provided",
+                visitTypeLabel,
+                record.status || "",
+              ],
+              { zebra: index % 2 === 1 },
+            );
           });
           ws.autoFilter = {
             from: { row: detailHeaderRow, column: 1 },
             to: { row: Math.max(detailHeaderRow, r - 1), column: 7 },
           };
-          ws.views = [{ state: 'frozen', ySplit: 1 }];
+          ws.views = [{ state: "frozen", ySplit: 1 }];
           break;
         }
-        case 'appointments': {
-          r = addSectionHeader(ws, r, 'Status Breakdown', 4);
-          r = addTableHeader(ws, r, ['Status', 'Count', 'Percentage', '']);
+        case "appointments": {
+          r = addSectionHeader(ws, r, "Status Breakdown", 4);
+          r = addTableHeader(ws, r, ["Status", "Count", "Percentage", ""]);
           const rows = [
-            ['Completed', processedData.completedAppts],
-            ['Pending', processedData.pendingAppts],
-            ['Approved', processedData.approvedAppts],
-            ['Missed', processedData.missedAppts],
-            ['Rejected', processedData.rejectedAppts]
+            ["Completed", processedData.completedAppts],
+            ["Pending", processedData.pendingAppts],
+            ["Approved", processedData.approvedAppts],
+            ["Missed", processedData.missedAppts],
+            ["Rejected", processedData.rejectedAppts],
           ].sort((a, b) => b[1] - a[1]);
-          r = addDataRow(ws, r, ['Total', processedData.totalAppts, null, ''], { zebra: false });
-          rows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], processedData.totalAppts), ''], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 3); });
+          r = addDataRow(ws, r, ["Total", processedData.totalAppts, null, ""], {
+            zebra: false,
+          });
+          rows.forEach((row, i) => {
+            r = addDataRow(
+              ws,
+              r,
+              [row[0], row[1], pctOf(row[1], processedData.totalAppts), ""],
+              { zebra: i % 2 === 1 },
+            );
+            applyPercentFormat(ws, r - 1, 3);
+          });
           r += 1;
-          r = addSectionHeader(ws, r, 'Monthly Appointments', 4);
-          r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
-          MONTHS.forEach((m, idx) => { r = addDataRow(ws, r, [m, processedData.monthlyAppts[idx], '', ''], { zebra: idx % 2 === 1 }); });
+          r = addSectionHeader(ws, r, "Monthly Appointments", 4);
+          r = addTableHeader(ws, r, ["Month", "Count", "", ""]);
+          MONTHS.forEach((m, idx) => {
+            r = addDataRow(
+              ws,
+              r,
+              [m, processedData.monthlyAppts[idx], "", ""],
+              { zebra: idx % 2 === 1 },
+            );
+          });
           r += 1;
-          r = addSectionHeader(ws, r, 'Duration Summary', 4);
-          r = addTableHeader(ws, r, ['Metric', 'Value', '', '']);
-          r = addDataRow(ws, r, ['Average Duration (hrs)', appointmentDurationSummary.overallAvg.toFixed(1), '', ''], { zebra: false });
-          r = addDataRow(ws, r, ['Fastest (hrs)', appointmentDurationSummary.overallMin.toFixed(1), '', ''], { zebra: true });
-          r = addDataRow(ws, r, ['Slowest (hrs)', appointmentDurationSummary.overallMax.toFixed(1), '', ''], { zebra: false });
-          r = addDataRow(ws, r, ['Tracked / Total', `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`, '', ''], { zebra: true });
+          r = addSectionHeader(ws, r, "Duration Summary", 4);
+          r = addTableHeader(ws, r, ["Metric", "Value", "", ""]);
+          r = addDataRow(
+            ws,
+            r,
+            [
+              "Average Duration (hrs)",
+              appointmentDurationSummary.overallAvg.toFixed(1),
+              "",
+              "",
+            ],
+            { zebra: false },
+          );
+          r = addDataRow(
+            ws,
+            r,
+            [
+              "Fastest (hrs)",
+              appointmentDurationSummary.overallMin.toFixed(1),
+              "",
+              "",
+            ],
+            { zebra: true },
+          );
+          r = addDataRow(
+            ws,
+            r,
+            [
+              "Slowest (hrs)",
+              appointmentDurationSummary.overallMax.toFixed(1),
+              "",
+              "",
+            ],
+            { zebra: false },
+          );
+          r = addDataRow(
+            ws,
+            r,
+            [
+              "Tracked / Total",
+              `${appointmentDurationSummary.trackedCount} / ${appointmentDurationSummary.totalCount}`,
+              "",
+              "",
+            ],
+            { zebra: true },
+          );
           r += 1;
-          r = addSectionHeader(ws, r, 'Average Duration by Status', 4);
-          r = addTableHeader(ws, r, ['Status', 'Count', 'Average Duration (hrs)', '']);
+          r = addSectionHeader(ws, r, "Average Duration by Status", 4);
+          r = addTableHeader(ws, r, [
+            "Status",
+            "Count",
+            "Average Duration (hrs)",
+            "",
+          ]);
           appointmentDurationSummary.statusBreakdown.forEach((row, i) => {
-            r = addDataRow(ws, r, [row.status, row.count, row.avg.toFixed(1), ''], { zebra: i % 2 === 1 });
+            r = addDataRow(
+              ws,
+              r,
+              [row.status, row.count, row.avg.toFixed(1), ""],
+              { zebra: i % 2 === 1 },
+            );
           });
           r += 2;
-          addChartImage(workbook, ws, r, 'Appointment Status Chart', {
-            type: 'bar',
+          addChartImage(workbook, ws, r, "Appointment Status Chart", {
+            type: "bar",
             ...appointmentStatusData,
           });
           break;
         }
-        case 'medical': {
-          r = addSectionHeader(ws, r, 'Summary', 4);
-          r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
+        case "medical": {
+          r = addSectionHeader(ws, r, "Summary", 4);
+          r = addTableHeader(ws, r, ["Metric", "Count", "Percentage", ""]);
           const rows = [
-            ['Fit', processedData.fitCount, pctOf(processedData.fitCount, processedData.totalMed)],
-            ['Not Fit', processedData.notFitCount, pctOf(processedData.notFitCount, processedData.totalMed)],
-            ['Normal Findings', processedData.normalFindingsCount, pctOf(processedData.normalFindingsCount, processedData.totalMed)],
-            ['Abnormal Findings', processedData.abnormalFindingsCount, pctOf(processedData.abnormalFindingsCount, processedData.totalMed)],
-            ['Approved', processedData.medApprovedCount, pctOf(processedData.medApprovedCount, processedData.totalMed)],
-            ['Pending', processedData.medPendingCount, pctOf(processedData.medPendingCount, processedData.totalMed)]
+            [
+              "Fit",
+              processedData.fitCount,
+              pctOf(processedData.fitCount, processedData.totalMed),
+            ],
+            [
+              "Not Fit",
+              processedData.notFitCount,
+              pctOf(processedData.notFitCount, processedData.totalMed),
+            ],
+            [
+              "Normal Findings",
+              processedData.normalFindingsCount,
+              pctOf(processedData.normalFindingsCount, processedData.totalMed),
+            ],
+            [
+              "Abnormal Findings",
+              processedData.abnormalFindingsCount,
+              pctOf(
+                processedData.abnormalFindingsCount,
+                processedData.totalMed,
+              ),
+            ],
+            [
+              "Approved",
+              processedData.medApprovedCount,
+              pctOf(processedData.medApprovedCount, processedData.totalMed),
+            ],
+            [
+              "Pending",
+              processedData.medPendingCount,
+              pctOf(processedData.medPendingCount, processedData.totalMed),
+            ],
           ].sort((a, b) => b[1] - a[1]);
-          r = addDataRow(ws, r, ['Total Medical Exams', processedData.totalMed, null, ''], { zebra: false });
-          rows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 }); if (row[2] !== null) applyPercentFormat(ws, r - 1, 3); });
+          r = addDataRow(
+            ws,
+            r,
+            ["Total Medical Exams", processedData.totalMed, null, ""],
+            { zebra: false },
+          );
+          rows.forEach((row, i) => {
+            r = addDataRow(
+              ws,
+              r,
+              [row[0], row[1], row[2] === null ? "" : row[2], ""],
+              { zebra: i % 2 === 1 },
+            );
+            if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+          });
           r += 1;
-          r = addSectionHeader(ws, r, 'Monthly Medical Exams', 4);
-          r = addTableHeader(ws, r, ['Month', 'Count', '', '']);
-          MONTHS.forEach((m, idx) => { r = addDataRow(ws, r, [m, processedData.monthlyMed[idx], '', ''], { zebra: idx % 2 === 1 }); });
+          r = addSectionHeader(ws, r, "Monthly Medical Exams", 4);
+          r = addTableHeader(ws, r, ["Month", "Count", "", ""]);
+          MONTHS.forEach((m, idx) => {
+            r = addDataRow(ws, r, [m, processedData.monthlyMed[idx], "", ""], {
+              zebra: idx % 2 === 1,
+            });
+          });
           r += 2;
-          addChartImage(workbook, ws, r, 'Monthly Medical Examinations', {
-            type: 'line',
+          addChartImage(workbook, ws, r, "Monthly Medical Examinations", {
+            type: "line",
             labels: MONTHS,
-            datasets: [{
-              label: 'Medical Exams',
-              data: processedData.monthlyMed,
-              borderColor: '#466460',
-              backgroundColor: 'rgba(70,100,96,0.12)',
-              tension: 0.35,
-            }],
+            datasets: [
+              {
+                label: "Medical Exams",
+                data: processedData.monthlyMed,
+                borderColor: "#466460",
+                backgroundColor: "rgba(70,100,96,0.12)",
+                tension: 0.35,
+              },
+            ],
           });
           break;
         }
-        case 'dental': {
-          r = addSectionHeader(ws, r, 'Summary', 4);
-          r = addTableHeader(ws, r, ['Metric', 'Count', 'Percentage', '']);
-          const approvedDen = processedData.dentalFindingsList.filter(d => d.status === 'approved').length;
-          const pendingDen = processedData.dentalFindingsList.filter(d => d.status === 'pending').length;
+        case "dental": {
+          r = addSectionHeader(ws, r, "Summary", 4);
+          r = addTableHeader(ws, r, ["Metric", "Count", "Percentage", ""]);
+          const approvedDen = processedData.dentalFindingsList.filter(
+            (d) => d.status === "approved",
+          ).length;
+          const pendingDen = processedData.dentalFindingsList.filter(
+            (d) => d.status === "pending",
+          ).length;
           const rows = [
-            ['Approved', approvedDen, pctOf(approvedDen, processedData.totalDen)],
-            ['Pending', pendingDen, pctOf(pendingDen, processedData.totalDen)]
+            [
+              "Approved",
+              approvedDen,
+              pctOf(approvedDen, processedData.totalDen),
+            ],
+            ["Pending", pendingDen, pctOf(pendingDen, processedData.totalDen)],
           ].sort((a, b) => b[1] - a[1]);
-          r = addDataRow(ws, r, ['Total Dental Exams', processedData.totalDen, null, ''], { zebra: false });
-          rows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], row[2] === null ? '' : row[2], ''], { zebra: i % 2 === 1 }); if (row[2] !== null) applyPercentFormat(ws, r - 1, 3); });
+          r = addDataRow(
+            ws,
+            r,
+            ["Total Dental Exams", processedData.totalDen, null, ""],
+            { zebra: false },
+          );
+          rows.forEach((row, i) => {
+            r = addDataRow(
+              ws,
+              r,
+              [row[0], row[1], row[2] === null ? "" : row[2], ""],
+              { zebra: i % 2 === 1 },
+            );
+            if (row[2] !== null) applyPercentFormat(ws, r - 1, 3);
+          });
           r += 1;
-          r = addSectionHeader(ws, r, 'Dental Conditions', 4);
-          const dentalHeaderRow = addTableHeader(ws, r, ['Condition', 'Category', 'Count', '']);
+          r = addSectionHeader(ws, r, "Dental Conditions", 4);
+          const dentalHeaderRow = addTableHeader(ws, r, [
+            "Condition",
+            "Category",
+            "Count",
+            "",
+          ]);
           r = dentalHeaderRow;
           const sortedDentalConditions = [...DENTAL_CONDITIONS]
-            .map(cond => ({ ...cond, count: processedData.dentalConditionCounts[cond.id] }))
+            .map((cond) => ({
+              ...cond,
+              count: processedData.dentalConditionCounts[cond.id],
+            }))
             .sort((a, b) => b.count - a.count);
-          sortedDentalConditions.forEach((cond, i) => { r = addDataRow(ws, r, [cond.name, cond.category, cond.count, ''], { zebra: i % 2 === 1 }); });
-          ws.autoFilter = { from: { row: dentalHeaderRow, column: 1 }, to: { row: r - 1, column: 3 } };
+          sortedDentalConditions.forEach((cond, i) => {
+            r = addDataRow(ws, r, [cond.name, cond.category, cond.count, ""], {
+              zebra: i % 2 === 1,
+            });
+          });
+          ws.autoFilter = {
+            from: { row: dentalHeaderRow, column: 1 },
+            to: { row: r - 1, column: 3 },
+          };
           r += 2;
-          addChartImage(workbook, ws, r, 'Dental Conditions Chart', {
-            type: 'bar',
-            labels: sortedDentalConditions.slice(0, 10).map(condition => condition.name),
-            datasets: [{
-              label: 'Count',
-              data: sortedDentalConditions.slice(0, 10).map(condition => condition.count),
-              backgroundColor: '#e07a5f',
-            }],
-            options: { indexAxis: 'y' },
+          addChartImage(workbook, ws, r, "Dental Conditions Chart", {
+            type: "bar",
+            labels: sortedDentalConditions
+              .slice(0, 10)
+              .map((condition) => condition.name),
+            datasets: [
+              {
+                label: "Count",
+                data: sortedDentalConditions
+                  .slice(0, 10)
+                  .map((condition) => condition.count),
+                backgroundColor: "#e07a5f",
+              },
+            ],
+            options: { indexAxis: "y" },
           });
           break;
         }
-        case 'conditions': {
-          r = addSectionHeader(ws, r, 'All Conditions', 4);
-          const headerRow = addTableHeader(ws, r, ['Condition', 'Category', 'Cases', '% of Total']);
+        case "conditions": {
+          r = addSectionHeader(ws, r, "All Conditions", 4);
+          const headerRow = addTableHeader(ws, r, [
+            "Condition",
+            "Category",
+            "Cases",
+            "% of Total",
+          ]);
           r = headerRow;
           const sortedMedConditions = [...MEDICAL_CONDITIONS]
-            .map(cond => ({ ...cond, count: processedData.conditionCounts[cond.id] }))
+            .map((cond) => ({
+              ...cond,
+              count: processedData.conditionCounts[cond.id],
+            }))
             .sort((a, b) => b.count - a.count);
           sortedMedConditions.forEach((cond, i) => {
-            r = addDataRow(ws, r, [cond.name, cond.category, cond.count, pctOf(cond.count, processedData.totalMed)], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 4);
+            r = addDataRow(
+              ws,
+              r,
+              [
+                cond.name,
+                cond.category,
+                cond.count,
+                pctOf(cond.count, processedData.totalMed),
+              ],
+              { zebra: i % 2 === 1 },
+            );
+            applyPercentFormat(ws, r - 1, 4);
           });
-          ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 4 } };
-          ws.views = [{ state: 'frozen', ySplit: headerRow }];
+          ws.autoFilter = {
+            from: { row: headerRow, column: 1 },
+            to: { row: r - 1, column: 4 },
+          };
+          ws.views = [{ state: "frozen", ySplit: headerRow }];
           r += 2;
-          addChartImage(workbook, ws, r, 'Health Conditions Chart', {
-            type: 'bar',
-            labels: sortedMedConditions.slice(0, 10).map(condition => condition.name),
-            datasets: [{
-              label: 'Cases',
-              data: sortedMedConditions.slice(0, 10).map(condition => condition.count),
-              backgroundColor: '#466460',
-            }],
-            options: { indexAxis: 'y' },
+          addChartImage(workbook, ws, r, "Health Conditions Chart", {
+            type: "bar",
+            labels: sortedMedConditions
+              .slice(0, 10)
+              .map((condition) => condition.name),
+            datasets: [
+              {
+                label: "Cases",
+                data: sortedMedConditions
+                  .slice(0, 10)
+                  .map((condition) => condition.count),
+                backgroundColor: "#466460",
+              },
+            ],
+            options: { indexAxis: "y" },
           });
           break;
         }
-        case 'demographics': {
-          r = addSectionHeader(ws, r, 'By Role', 4);
-          r = addTableHeader(ws, r, ['Type', 'Count', 'Percentage', '']);
-          r = addDataRow(ws, r, ['Total Users (system administrators excluded)', processedData.totalUsers, '', ''], { zebra: false });
+        case "demographics": {
+          r = addSectionHeader(ws, r, "By Role", 4);
+          r = addTableHeader(ws, r, ["Type", "Count", "Percentage", ""]);
+          r = addDataRow(
+            ws,
+            r,
+            [
+              "Total Users (system administrators excluded)",
+              processedData.totalUsers,
+              "",
+              "",
+            ],
+            { zebra: false },
+          );
 
           const typeCounts = buildPersonnelCounts(
             processedData.users,
-            systemConfig
+            systemConfig,
           );
 
           const demoRows = [
-            ['Students', typeCounts.student],
-            ['Teaching Personnel', typeCounts.teaching],
-            ['Non-Teaching Personnel', typeCounts.non_teaching],
-            ['Clinic Personnel', typeCounts.clinic]
+            ["Students", typeCounts.student],
+            ["Teaching Personnel", typeCounts.teaching],
+            ["Non-Teaching Personnel", typeCounts.non_teaching],
+            ["Clinic Personnel", typeCounts.clinic],
           ]
             .filter((row) => row[1] > 0)
             .sort((a, b) => b[1] - a[1]);
 
-          demoRows.forEach((row, i) => { r = addDataRow(ws, r, [row[0], row[1], pctOf(row[1], processedData.totalUsers), ''], { zebra: i % 2 === 1 }); applyPercentFormat(ws, r - 1, 3); });
+          demoRows.forEach((row, i) => {
+            r = addDataRow(
+              ws,
+              r,
+              [row[0], row[1], pctOf(row[1], processedData.totalUsers), ""],
+              { zebra: i % 2 === 1 },
+            );
+            applyPercentFormat(ws, r - 1, 3);
+          });
           r += 2;
-          addChartImage(workbook, ws, r, 'Patient Demographics Chart', {
-            type: 'doughnut',
-            labels: demoRows.map(row => row[0]),
-            datasets: [{
-              data: demoRows.map(row => row[1]),
-              backgroundColor: ['#466460', '#e07a5f', '#3b82f6', '#81b29a'],
-            }],
+          addChartImage(workbook, ws, r, "Patient Demographics Chart", {
+            type: "doughnut",
+            labels: demoRows.map((row) => row[0]),
+            datasets: [
+              {
+                data: demoRows.map((row) => row[1]),
+                backgroundColor: ["#466460", "#e07a5f", "#3b82f6", "#81b29a"],
+              },
+            ],
           });
           break;
         }
-        case 'monthly': {
-          r = addSectionHeader(ws, r, 'Monthly Consultations Comparison', 4);
-          r = addTableHeader(ws, r, ['Month', 'Medical Exams', 'Dental Exams', 'Total']);
+        case "monthly": {
+          r = addSectionHeader(ws, r, "Monthly Consultations Comparison", 4);
+          r = addTableHeader(ws, r, [
+            "Month",
+            "Medical Exams",
+            "Dental Exams",
+            "Total",
+          ]);
           MONTHS.forEach((m, idx) => {
             const med = processedData.monthlyMed[idx];
             const den = processedData.monthlyDen[idx];
-            r = addDataRow(ws, r, [m, med, den, med + den], { zebra: idx % 2 === 1 });
+            r = addDataRow(ws, r, [m, med, den, med + den], {
+              zebra: idx % 2 === 1,
+            });
           });
           r += 2;
-          addChartImage(workbook, ws, r, 'Monthly Medical vs Dental Chart', {
-            type: 'bar',
+          addChartImage(workbook, ws, r, "Monthly Medical vs Dental Chart", {
+            type: "bar",
             ...monthlyComparisonData,
           });
           break;
         }
-        case 'summary': {
-          r = addSectionHeader(ws, r, 'Summary Report', 4);
-          r = addTableHeader(ws, r, ['Category', 'Metric', 'Count', '']);
+        case "summary": {
+          r = addSectionHeader(ws, r, "Summary Report", 4);
+          r = addTableHeader(ws, r, ["Category", "Metric", "Count", ""]);
           const rows = [
-            ['Users', 'Total Registered (system administrators excluded)', processedData.totalUsers],
-            ['Consultations', 'Medical', processedData.totalMed],
-            ['Consultations', 'Dental', processedData.totalDen],
-            ['Visits', 'Patient Visits', processedData.patientVisits],
-            ['Visits', 'Non-Patient Visits', processedData.nonPatientVisits],
-            ['Visits', 'Unclassified', processedData.unclassifiedVisits],
-            ['Appointments', 'Completed', processedData.completedAppts],
-            ['Appointments', 'Pending', processedData.pendingAppts],
-            ['Medical Records', 'Approved', processedData.medApprovedCount],
-            ['Medical Records', 'Pending', processedData.medPendingCount],
-            ['Fitness Status', 'Fit', processedData.fitCount],
-            ['Fitness Status', 'Not Fit', processedData.notFitCount],
-            ['Findings', 'Normal', processedData.normalFindingsCount]
+            [
+              "Users",
+              "Total Registered (system administrators excluded)",
+              processedData.totalUsers,
+            ],
+            ["Consultations", "Medical", processedData.totalMed],
+            ["Consultations", "Dental", processedData.totalDen],
+            ["Visits", "Patient Visits", processedData.patientVisits],
+            ["Visits", "Non-Patient Visits", processedData.nonPatientVisits],
+            ["Visits", "Unclassified", processedData.unclassifiedVisits],
+            ["Appointments", "Completed", processedData.completedAppts],
+            ["Appointments", "Pending", processedData.pendingAppts],
+            ["Medical Records", "Approved", processedData.medApprovedCount],
+            ["Medical Records", "Pending", processedData.medPendingCount],
+            ["Fitness Status", "Fit", processedData.fitCount],
+            ["Fitness Status", "Not Fit", processedData.notFitCount],
+            ["Findings", "Normal", processedData.normalFindingsCount],
           ].sort((a, b) => b[2] - a[2]);
-          rows.forEach((row, i) => { r = addDataRow(ws, r, [...row, ''], { zebra: i % 2 === 1 }); });
+          rows.forEach((row, i) => {
+            r = addDataRow(ws, r, [...row, ""], { zebra: i % 2 === 1 });
+          });
           r += 2;
-          addChartImage(workbook, ws, r, 'Visit Classification Chart', {
-            type: 'doughnut',
+          addChartImage(workbook, ws, r, "Visit Classification Chart", {
+            type: "doughnut",
             ...visitClassificationData,
           });
           break;
         }
         default:
-          addDataRow(ws, r, ['No data available for this category', '', '', '']);
+          addDataRow(ws, r, [
+            "No data available for this category",
+            "",
+            "",
+            "",
+          ]);
       }
 
       const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
       saveAs(blob, `${category}_${Date.now()}.xlsx`);
 
-      showSnackbar(`${titles[category] || 'Report'} exported successfully`);
-
+      showSnackbar(`${titles[category] || "Report"} exported successfully`);
     } catch (err) {
-      console.error('Error exporting category report:', err);
-      showSnackbar('Failed to export category report', 'error');
+      console.error("Error exporting category report:", err);
+      showSnackbar("Failed to export category report", "error");
     }
   };
 
@@ -2098,7 +3320,7 @@ const patientTypeData = useMemo(() => {
     const { scope } = confirmExport;
     setExporting(true);
     try {
-      if (scope === 'full') {
+      if (scope === "full") {
         await exportFullReportXlsx();
       } else {
         await exportCategoryXlsx(scope);
@@ -2110,10 +3332,13 @@ const patientTypeData = useMemo(() => {
   };
 
   const visitMixInsight = useMemo(() => {
-    const classifiedVisits = processedData.patientVisits + processedData.nonPatientVisits;
+    const classifiedVisits =
+      processedData.patientVisits + processedData.nonPatientVisits;
     if (classifiedVisits === 0) return null;
 
-    const patientShare = Math.round((processedData.patientVisits / classifiedVisits) * 100);
+    const patientShare = Math.round(
+      (processedData.patientVisits / classifiedVisits) * 100,
+    );
     return `${patientShare}% patient visits and ${100 - patientShare}% non-patient visits`;
   }, [processedData.patientVisits, processedData.nonPatientVisits]);
 
@@ -2121,8 +3346,12 @@ const patientTypeData = useMemo(() => {
     const mostCommon = processedData.mostCommonCondition;
     if (!mostCommon || mostCommon[1] <= 0) return null;
 
-    const condition = MEDICAL_CONDITIONS.find(item => item.id === mostCommon[0]);
-    const percentage = Math.round((mostCommon[1] / Math.max(processedData.totalMed, 1)) * 100);
+    const condition = MEDICAL_CONDITIONS.find(
+      (item) => item.id === mostCommon[0],
+    );
+    const percentage = Math.round(
+      (mostCommon[1] / Math.max(processedData.totalMed, 1)) * 100,
+    );
     return `${condition?.name || mostCommon[0]} in ${mostCommon[1]} cases (${percentage}% of records)`;
   }, [processedData.mostCommonCondition, processedData.totalMed]);
 
@@ -2134,7 +3363,6 @@ const patientTypeData = useMemo(() => {
       {/* ── Toolbar / Controls ── */}
       <div className="mb-4 sm:mb-6">
         <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:flex lg:flex-wrap lg:items-center lg:justify-end gap-2 sm:gap-3 w-full">
-
           {/* Role Filter */}
           <div className="min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconUsers size={16} className="text-slate-400 ml-2" />
@@ -2152,16 +3380,20 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* Department / Office Filter */}
-          <div className={`min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm ${selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
+          <div
+            className={`min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm ${selectedRole === "clinic" ? "opacity-60" : ""}`}
+          >
             <IconUsers size={16} className="text-slate-400 ml-2" />
             <select
               value={selectedDepartment}
               onChange={(event) => setSelectedDepartment(event.target.value)}
-              disabled={selectedRole === 'clinic'}
+              disabled={selectedRole === "clinic"}
               className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer disabled:cursor-not-allowed lg:max-w-[190px]"
             >
               <option value="all">
-                {selectedRole === 'non_teaching' ? 'All Offices' : 'All Departments/Offices'}
+                {selectedRole === "non_teaching"
+                  ? "All Offices"
+                  : "All Departments/Offices"}
               </option>
               {departmentOptions.map((department) => (
                 <option key={department.id} value={department.id}>
@@ -2172,16 +3404,25 @@ const patientTypeData = useMemo(() => {
           </div>
 
           {/* Program Filter */}
-          <div className={`min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm ${selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic' ? 'opacity-60' : ''}`}>
+          <div
+            className={`min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm ${selectedDepartment === "all" || selectedRole === "non_teaching" || selectedRole === "teaching" || selectedRole === "clinic" ? "opacity-60" : ""}`}
+          >
             <IconTable size={16} className="text-slate-400 ml-2" />
             <select
               value={selectedProgram}
               onChange={(event) => setSelectedProgram(event.target.value)}
-              disabled={selectedDepartment === 'all' || selectedRole === 'non_teaching' || selectedRole === 'teaching' || selectedRole === 'clinic'}
+              disabled={
+                selectedDepartment === "all" ||
+                selectedRole === "non_teaching" ||
+                selectedRole === "teaching" ||
+                selectedRole === "clinic"
+              }
               className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer disabled:cursor-not-allowed lg:max-w-[190px]"
             >
               <option value="all">
-                {selectedDepartment === 'all' ? 'Select Dept First' : 'All Programs'}
+                {selectedDepartment === "all"
+                  ? "Select Dept First"
+                  : "All Programs"}
               </option>
               {programOptions.map((program) => (
                 <option key={program.value} value={program.value}>
@@ -2191,12 +3432,31 @@ const patientTypeData = useMemo(() => {
             </select>
           </div>
 
+         {/* Daily Date Filter (NEW) */}
+          <div className="min-w-0 min-h-11 flex items-center rounded-xl shadow-sm">
+            <DatePicker
+              value={selectedDate}
+              onChange={(val) => {
+                setSelectedDate(val);
+                // Clear broader time filters when selecting a specific day
+                if (val) {
+                  setDateRange('all');
+                  setSpecificMonth('all');
+                  setSchoolYear('all');
+                }
+              }}
+            />
+          </div>
+
           {/* School Year Filter */}
           <div className="min-w-0 min-h-11 flex items-center gap-2 bg-white rounded-xl border border-[#e2e8f0] p-1.5 shadow-sm">
             <IconCalendar size={16} className="text-slate-400 ml-2" />
             <select
               value={schoolYear}
-              onChange={(e) => setSchoolYear(e.target.value)}
+              onChange={(e) => {
+                setSchoolYear(e.target.value);
+                if (e.target.value !== "all") setSelectedDate("");
+              }}
               className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer"
             >
               <option value="all">All School Years</option>
@@ -2212,12 +3472,17 @@ const patientTypeData = useMemo(() => {
             <IconCalendar size={16} className="text-slate-400 ml-2" />
             <select
               value={specificMonth}
-              onChange={(e) => setSpecificMonth(e.target.value)}
+              onChange={(e) => {
+                setSpecificMonth(e.target.value);
+                if (e.target.value !== "all") setSelectedDate("");
+              }}
               className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer"
             >
               <option value="all">All Months</option>
               {MONTHS_FULL.map((m, i) => (
-                <option key={i} value={i}>{m}</option>
+                <option key={i} value={i}>
+                  {m}
+                </option>
               ))}
             </select>
           </div>
@@ -2227,7 +3492,10 @@ const patientTypeData = useMemo(() => {
             <IconFilter size={16} className="text-slate-400 ml-2" />
             <select
               value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
+              onChange={(e) => {
+                setDateRange(e.target.value);
+                if (e.target.value !== "all") setSelectedDate("");
+              }}
               className="min-w-0 w-full text-sm font-semibold bg-transparent outline-none text-slate-600 pr-2 py-1 cursor-pointer"
             >
               <option value="all">All Time</option>
@@ -2239,7 +3507,7 @@ const patientTypeData = useMemo(() => {
 
           {/* Export Button */}
           <button
-            onClick={() => openExportModal('full')}
+            onClick={() => openExportModal("full")}
             className="min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#466460] text-white text-sm font-semibold rounded-xl hover:bg-[#3a524f] transition-colors shadow-sm lg:ml-1"
           >
             <IconFileText size={16} />
@@ -2252,27 +3520,80 @@ const patientTypeData = useMemo(() => {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
           <p className="text-sm text-red-600 font-medium">{error}</p>
-          <button onClick={fetchData} className="mt-2 text-xs font-semibold text-red-500 hover:underline">Retry</button>
+          <button
+            onClick={fetchData}
+            className="mt-2 text-xs font-semibold text-red-500 hover:underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
       {/* ── Report Content ── */}
       <div id="reports-content">
-
         {/* ── Top Statistics ── */}
         <GlassCard className="mb-4 sm:mb-6 p-3 sm:p-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 sm:gap-3">
-            <StatBox title="Total Users" value={processedData.totalUsers} subtitle="System admins excluded" icon={IconUsers} color="#466460" />
-            <StatBox title="Clinic Staff" value={processedData.clinicStaffCount} subtitle="Doc+Nurse+Dentist" icon={IconUsers} color="#81b29a" />
-            <StatBox title="Medical" value={processedData.totalMed} subtitle="Health Records" icon={IconStethoscope} color="#3b82f6" />
-            <StatBox title="Dental" value={processedData.totalDen} subtitle="Dental Records" icon={IconTooth} color="#e07a5f" />
-            <StatBox title="Appts" value={processedData.totalAppts} subtitle={`${processedData.completedAppts} done appointments`} icon={IconCalendar} color="#10b981" />
-            <StatBox title="Total Visits" value={processedData.totalVisits} subtitle={`${processedData.unclassifiedVisits} unclassified`} icon={IconActivity} color="#466460" />
-            <StatBox title="Patient Visits" value={processedData.patientVisits} subtitle={`${Math.round(pctOf(processedData.patientVisits, processedData.totalVisits) * 100)}% of visits`} icon={IconStethoscope} color="#e07a5f" />
-            <StatBox title="Non-Patient" value={processedData.nonPatientVisits} subtitle={`${Math.round(pctOf(processedData.nonPatientVisits, processedData.totalVisits) * 100)}% of visits`} icon={IconFileText} color="#3b82f6" />
+            <StatBox
+              title="Total Users"
+              value={processedData.totalUsers}
+              subtitle="System admins excluded"
+              icon={IconUsers}
+              color="#466460"
+            />
+            <StatBox
+              title="Clinic Staff"
+              value={processedData.clinicStaffCount}
+              subtitle="Doc+Nurse+Dentist"
+              icon={IconUsers}
+              color="#81b29a"
+            />
+            <StatBox
+              title="Medical"
+              value={processedData.totalMed}
+              subtitle="Health Records"
+              icon={IconStethoscope}
+              color="#3b82f6"
+            />
+            <StatBox
+              title="Dental"
+              value={processedData.totalDen}
+              subtitle="Dental Records"
+              icon={IconTooth}
+              color="#e07a5f"
+            />
+            <StatBox
+              title="Appts"
+              value={processedData.totalAppts}
+              subtitle={`${processedData.completedAppts} done appointments`}
+              icon={IconCalendar}
+              color="#10b981"
+            />
+            <StatBox
+              title="Total Visits"
+              value={processedData.totalVisits}
+              subtitle={`${processedData.unclassifiedVisits} unclassified`}
+              icon={IconActivity}
+              color="#466460"
+            />
+            <StatBox
+              title="Patient Visits"
+              value={processedData.patientVisits}
+              subtitle={`${Math.round(pctOf(processedData.patientVisits, processedData.totalVisits) * 100)}% of visits`}
+              icon={IconStethoscope}
+              color="#e07a5f"
+            />
+            <StatBox
+              title="Non-Patient"
+              value={processedData.nonPatientVisits}
+              subtitle={`${Math.round(pctOf(processedData.nonPatientVisits, processedData.totalVisits) * 100)}% of visits`}
+              icon={IconFileText}
+              color="#3b82f6"
+            />
           </div>
           <p className="mt-3 text-[11px] text-slate-500">
-            Total Users excludes system administrator accounts, so this number may differ from the User Management total.
+            Total Users excludes system administrator accounts, so this number
+            may differ from the User Management total.
           </p>
         </GlassCard>
 
@@ -2281,10 +3602,11 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-chart-pie mr-2"></i>Patient vs Non-Patient Visits
+                <i className="fa-solid fa-chart-pie mr-2"></i>Patient vs
+                Non-Patient Visits
               </h3>
               <button
-                onClick={() => openExportModal('visits')}
+                onClick={() => openExportModal("visits")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -2292,28 +3614,44 @@ const patientTypeData = useMemo(() => {
             </div>
             {visitMixInsight && (
               <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-blue-900">
-                <IconStethoscope size={17} className="mt-0.5 shrink-0 text-blue-600" />
+                <IconStethoscope
+                  size={17}
+                  className="mt-0.5 shrink-0 text-blue-600"
+                />
                 <div>
                   <p className="text-xs font-bold">Clinic Visit Mix</p>
-                  <p className="mt-0.5 text-[11px] text-blue-800">{visitMixInsight}</p>
+                  <p className="mt-0.5 text-[11px] text-blue-800">
+                    {visitMixInsight}
+                  </p>
                 </div>
               </div>
             )}
             <div className="h-[260px] flex justify-center">
-              {loading ? <ChartSkeleton h="260px" /> : (
-                processedData.totalVisits === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No visit data available</div>
-                ) : (
-                  <Doughnut
-                    id="visit-classification"
-                    data={visitClassificationData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 }, padding: 15 } } },
-                    }}
-                  />
-                )
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : processedData.totalVisits === 0 ? (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                  No visit data available
+                </div>
+              ) : (
+                <Doughnut
+                  id="visit-classification"
+                  data={visitClassificationData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: "right",
+                        labels: {
+                          boxWidth: 12,
+                          font: { size: 11 },
+                          padding: 15,
+                        },
+                      },
+                    },
+                  }}
+                />
               )}
             </div>
           </GlassCard>
@@ -2321,27 +3659,42 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-chart-line mr-2"></i>Monthly Visit Classification
+                <i className="fa-solid fa-chart-line mr-2"></i>Monthly Visit
+                Classification
               </h3>
               <button
-                onClick={() => openExportModal('visits')}
+                onClick={() => openExportModal("visits")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : (
                 <Line
                   id="monthly-visit-classification"
                   data={monthlyVisitClassificationData}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+                    plugins: {
+                      legend: {
+                        position: "top",
+                        labels: { boxWidth: 12, font: { size: 11 } },
+                      },
+                    },
                     scales: {
-                      x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-                      y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                      x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11 } },
+                      },
+                      y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1, precision: 0 },
+                        grid: { color: "rgba(0,0,0,0.05)" },
+                      },
                     },
                   }}
                 />
@@ -2355,10 +3708,11 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-virus mr-2"></i>Health Conditions Distribution
+                <i className="fa-solid fa-virus mr-2"></i>Health Conditions
+                Distribution
               </h3>
               <button
-                onClick={() => openExportModal('conditions')}
+                onClick={() => openExportModal("conditions")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
@@ -2366,10 +3720,15 @@ const patientTypeData = useMemo(() => {
             </div>
             {mostCommonHealthInsight && (
               <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-900">
-                <IconAlert size={17} className="mt-0.5 shrink-0 text-amber-600" />
+                <IconAlert
+                  size={17}
+                  className="mt-0.5 shrink-0 text-amber-600"
+                />
                 <div>
                   <p className="text-xs font-bold">Most Common Health Issue</p>
-                  <p className="mt-0.5 text-[11px] text-amber-800">{mostCommonHealthInsight}</p>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    {mostCommonHealthInsight}
+                  </p>
                 </div>
               </div>
             )}
@@ -2390,7 +3749,7 @@ const patientTypeData = useMemo(() => {
                     plugins: {
                       legend: {
                         display: true,
-                        position: 'right',
+                        position: "right",
                         labels: {
                           boxWidth: 10,
                           font: { size: 11 },
@@ -2400,7 +3759,7 @@ const patientTypeData = useMemo(() => {
                       tooltip: {
                         callbacks: {
                           label: (context) => {
-                            const label = context.label || 'Condition';
+                            const label = context.label || "Condition";
                             const value = context.raw || 0;
                             return `${label}: ${value}`;
                           },
@@ -2414,7 +3773,7 @@ const patientTypeData = useMemo(() => {
                           display: false,
                         },
                         grid: {
-                          color: 'rgba(0,0,0,0.05)',
+                          color: "rgba(0,0,0,0.05)",
                         },
                       },
                     },
@@ -2427,26 +3786,38 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-chart-column mr-2"></i>Health Issues by Category
+                <i className="fa-solid fa-chart-column mr-2"></i>Health Issues
+                by Category
               </h3>
               <button
-                onClick={() => openExportModal('conditions')}
+                onClick={() => openExportModal("conditions")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : (
                 <Bar
                   id="category-breakdown"
                   data={categoryBreakdownData}
                   options={{
-                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: "y",
                     plugins: { legend: { display: false } },
                     scales: {
-                      x: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
-                      y: { ticks: { font: { size: 11 } }, grid: { display: false } },
+                      x: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 11 } },
+                        grid: { color: "rgba(0,0,0,0.04)" },
+                      },
+                      y: {
+                        ticks: { font: { size: 11 } },
+                        grid: { display: false },
+                      },
                     },
                   }}
                 />
@@ -2460,26 +3831,37 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-chart-line mr-2"></i>Appointment Visit Trends
+                <i className="fa-solid fa-chart-line mr-2"></i>Appointment Visit
+                Trends
               </h3>
               <button
-                onClick={() => openExportModal('appointments')}
+                onClick={() => openExportModal("appointments")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : (
                 <Line
                   id="appointment-trends"
                   data={appointmentTrendsData}
                   options={{
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: true,
+                    maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                      x: { ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
-                      y: { beginAtZero: true, ticks: { font: { size: 11 }, stepSize: 1 }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                      x: {
+                        ticks: { font: { size: 11 } },
+                        grid: { color: "rgba(0,0,0,0.04)" },
+                      },
+                      y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 11 }, stepSize: 1 },
+                        grid: { color: "rgba(0,0,0,0.04)" },
+                      },
                     },
                   }}
                 />
@@ -2490,30 +3872,44 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-chart-pie mr-2"></i>Medical vs Dental Consultations
+                <i className="fa-solid fa-chart-pie mr-2"></i>Medical vs Dental
+                Consultations
               </h3>
               <button
-                onClick={() => openExportModal('monthly')}
+                onClick={() => openExportModal("monthly")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px] flex justify-center">
-              {loading ? <ChartSkeleton h="260px" /> : (
-                processedData.totalMed === 0 && processedData.totalDen === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No consultation data available</div>
-                ) : (
-                  <Doughnut
-                    id="medical-dental"
-                    data={medicalDentalData}
-                    options={{
-                      responsive: true, maintainAspectRatio: false,
-                      plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 }, padding: 15 } } },
-                    }}
-                  />
-                ))}
-
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : processedData.totalMed === 0 &&
+                processedData.totalDen === 0 ? (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                  No consultation data available
+                </div>
+              ) : (
+                <Doughnut
+                  id="medical-dental"
+                  data={medicalDentalData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: "right",
+                        labels: {
+                          boxWidth: 12,
+                          font: { size: 11 },
+                          padding: 15,
+                        },
+                      },
+                    },
+                  }}
+                />
+              )}
             </div>
           </GlassCard>
         </div>
@@ -2523,26 +3919,37 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-clipboard-check mr-2"></i>Appointment Status
+                <i className="fa-solid fa-clipboard-check mr-2"></i>Appointment
+                Status
               </h3>
               <button
-                onClick={() => openExportModal('appointments')}
+                onClick={() => openExportModal("appointments")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : (
                 <Bar
                   id="appointment-status"
                   data={appointmentStatusData}
                   options={{
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: true,
+                    maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                      x: { ticks: { font: { size: 11 } }, grid: { display: false } },
-                      y: { beginAtZero: true, ticks: { font: { size: 11 }, stepSize: 1 }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                      x: {
+                        ticks: { font: { size: 11 } },
+                        grid: { display: false },
+                      },
+                      y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 11 }, stepSize: 1 },
+                        grid: { color: "rgba(0,0,0,0.04)" },
+                      },
                     },
                   }}
                 />
@@ -2556,27 +3963,39 @@ const patientTypeData = useMemo(() => {
                 <i className="fa-solid fa-users mr-2"></i>Patient Demographics
               </h3>
               <button
-                onClick={() => openExportModal('demographics')}
+                onClick={() => openExportModal("demographics")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px] flex justify-center">
-              {loading ? <ChartSkeleton h="260px" /> : (
-                processedData.totalUsers === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">No patient data available</div>
-                ) : (
-                  <Doughnut
-                    id="patient-demographics"
-                    data={patientTypeData}
-                    options={{
-                      responsive: true, maintainAspectRatio: false,
-                      plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 }, padding: 15 } } },
-                    }}
-                  />
-                ))}
-
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : processedData.totalUsers === 0 ? (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                  No patient data available
+                </div>
+              ) : (
+                <Doughnut
+                  id="patient-demographics"
+                  data={patientTypeData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: "right",
+                        labels: {
+                          boxWidth: 12,
+                          font: { size: 11 },
+                          padding: 15,
+                        },
+                      },
+                    },
+                  }}
+                />
+              )}
             </div>
           </GlassCard>
         </div>
@@ -2586,26 +4005,46 @@ const patientTypeData = useMemo(() => {
           <GlassCard className="p-4 md:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-sm text-[#466460]">
-                <i className="fa-solid fa-chart-bar mr-2"></i>Monthly Consultations Comparison
+                <i className="fa-solid fa-chart-bar mr-2"></i>Monthly
+                Consultations Comparison
               </h3>
               <button
-                onClick={() => openExportModal('monthly')}
+                onClick={() => openExportModal("monthly")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
             <div className="h-[260px]">
-              {loading ? <ChartSkeleton h="260px" /> : (
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : (
                 <Bar
                   id="monthly-comparison"
                   data={monthlyComparisonData}
                   options={{
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 }, padding: 10 } } },
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: "top",
+                        labels: {
+                          boxWidth: 12,
+                          font: { size: 11 },
+                          padding: 10,
+                        },
+                      },
+                    },
                     scales: {
-                      x: { ticks: { font: { size: 11 } }, grid: { display: false } },
-                      y: { beginAtZero: true, ticks: { font: { size: 11 }, stepSize: 1 }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                      x: {
+                        ticks: { font: { size: 11 } },
+                        grid: { display: false },
+                      },
+                      y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 11 }, stepSize: 1 },
+                        grid: { color: "rgba(0,0,0,0.04)" },
+                      },
                     },
                   }}
                 />
@@ -2619,53 +4058,53 @@ const patientTypeData = useMemo(() => {
                 <i className="fa-solid fa-tooth mr-2"></i>Dental Conditions
               </h3>
               <button
-                onClick={() => openExportModal('dental')}
+                onClick={() => openExportModal("dental")}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors font-bold"
               >
                 <IconDownload size={12} /> Download
               </button>
             </div>
-<div className="h-[260px]">
-  {loading ? (
-    <ChartSkeleton h="260px" />
-  ) : dentalConditionData.labels.length === 0 ? (
-    <div className="flex items-center justify-center h-full text-slate-400 text-sm">
-      No dental conditions found for the selected filters
-    </div>
-  ) : (
-    <Bar
-      id="dental-conditions"
-      data={dentalConditionData}
-      options={{
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: 'y',
+            <div className="h-[260px]">
+              {loading ? (
+                <ChartSkeleton h="260px" />
+              ) : dentalConditionData.labels.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                  No dental conditions found for the selected filters
+                </div>
+              ) : (
+                <Bar
+                  id="dental-conditions"
+                  data={dentalConditionData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: "y",
 
-        plugins: {
-          legend: {
-            display: false,
-          },
-        },
+                    plugins: {
+                      legend: {
+                        display: false,
+                      },
+                    },
 
-        scales: {
-          x: {
-            beginAtZero: true,
-            ticks: {
-              stepSize: 1,
-              precision: 0,
-            },
-          },
+                    scales: {
+                      x: {
+                        beginAtZero: true,
+                        ticks: {
+                          stepSize: 1,
+                          precision: 0,
+                        },
+                      },
 
-          y: {
-            grid: {
-              display: false,
-            },
-          },
-        },
-      }}
-    />
-  )}
-</div>
+                      y: {
+                        grid: {
+                          display: false,
+                        },
+                      },
+                    },
+                  }}
+                />
+              )}
+            </div>
           </GlassCard>
         </div>
 
@@ -2673,10 +4112,11 @@ const patientTypeData = useMemo(() => {
         <GlassCard className="mb-6 p-4">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-sm text-[#466460] flex items-center">
-              <IconTable size={18} className="mr-2" /> Appointment Duration Summary
+              <IconTable size={18} className="mr-2" /> Appointment Duration
+              Summary
             </h3>
             <button
-              onClick={() => openExportModal('appointments')}
+              onClick={() => openExportModal("appointments")}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-100 transition-colors"
             >
               <IconDownload size={14} /> Download
@@ -2724,12 +4164,21 @@ const patientTypeData = useMemo(() => {
 
               <div className="sm:hidden space-y-2">
                 {appointmentDurationSummary.statusBreakdown.map((row) => (
-                  <div key={row.status} className="rounded-xl bg-white border border-slate-200 p-3 shadow-sm flex items-center justify-between gap-3">
+                  <div
+                    key={row.status}
+                    className="rounded-xl bg-white border border-slate-200 p-3 shadow-sm flex items-center justify-between gap-3"
+                  >
                     <div className="min-w-0">
-                      <p className="font-bold text-sm text-slate-700 capitalize truncate">{row.status}</p>
-                      <p className="text-xs text-slate-500">{row.count} appointment{row.count === 1 ? '' : 's'}</p>
+                      <p className="font-bold text-sm text-slate-700 capitalize truncate">
+                        {row.status}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {row.count} appointment{row.count === 1 ? "" : "s"}
+                      </p>
                     </div>
-                    <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#e0eceb] text-xs font-bold text-[#466460]">{row.avg.toFixed(1)} hrs</span>
+                    <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#e0eceb] text-xs font-bold text-[#466460]">
+                      {row.avg.toFixed(1)} hrs
+                    </span>
                   </div>
                 ))}
               </div>
@@ -2746,9 +4195,13 @@ const patientTypeData = useMemo(() => {
                   <tbody>
                     {appointmentDurationSummary.statusBreakdown.map((row) => (
                       <tr key={row.status}>
-                        <td className="px-3 py-1.5 font-medium capitalize">{row.status}</td>
+                        <td className="px-3 py-1.5 font-medium capitalize">
+                          {row.status}
+                        </td>
                         <td className="px-3 py-1.5">{row.count}</td>
-                        <td className="px-3 py-1.5">{row.avg.toFixed(1)} hrs</td>
+                        <td className="px-3 py-1.5">
+                          {row.avg.toFixed(1)} hrs
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2769,38 +4222,59 @@ const patientTypeData = useMemo(() => {
         createPortal(
           <div
             className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:px-4"
-            onClick={() => { if (!exporting) setConfirmExport(null); }}
+            onClick={() => {
+              if (!exporting) setConfirmExport(null);
+            }}
           >
             <div
               className="bg-white rounded-t-[28px] sm:rounded-xl shadow-xl p-5 sm:p-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] max-w-md w-full"
               onClick={(e) => e.stopPropagation()}
             >
-
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 bg-blue-100">
                   <i className="fa-solid fa-file-export text-blue-600 text-lg"></i>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">Export report</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Export all matching records</p>
+                  <h3 className="text-base font-bold text-slate-800">
+                    Export report
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Export all matching records
+                  </p>
                 </div>
               </div>
 
               {/* Export summary */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-medium text-slate-500">Records to export</span>
-                  <span className="text-sm font-bold text-[#466460]">ALL MATCHING</span>
+                  <span className="text-xs font-medium text-slate-500">
+                    Records to export
+                  </span>
+                  <span className="text-sm font-bold text-[#466460]">
+                    ALL MATCHING
+                  </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
-                  {EXPORT_SCOPES[confirmExport.scope]?.label || 'Report'}
-                  {' • '}
-                  {EXPORT_SCOPES[confirmExport.scope]?.hint || ''}
+                  {EXPORT_SCOPES[confirmExport.scope]?.label || "Report"}
+                  {" • "}
+                  {EXPORT_SCOPES[confirmExport.scope]?.hint || ""}
                 </div>
                 <div className="mt-1 text-xs text-slate-400">
-                  {dateRange === 'all' ? 'All Time' : dateRange === 'month' ? 'This Month' : dateRange === 'quarter' ? 'Last 3 Months' : 'This Year'}
-                  {schoolYear !== 'all' && ` • SY ${schoolYear}`}
-                  {specificMonth !== 'all' && ` • ${MONTHS_FULL[parseInt(specificMonth)]}`}
+                  {selectedDate
+                    ? `Daily: ${selectedDate}`
+                    : dateRange === "all"
+                      ? "All Time"
+                      : dateRange === "month"
+                        ? "This Month"
+                        : dateRange === "quarter"
+                          ? "Last 3 Months"
+                          : "This Year"}
+                  {!selectedDate &&
+                    schoolYear !== "all" &&
+                    ` • SY ${schoolYear}`}
+                  {!selectedDate &&
+                    specificMonth !== "all" &&
+                    ` • ${MONTHS_FULL[parseInt(specificMonth)]}`}
                 </div>
               </div>
 
@@ -2817,7 +4291,9 @@ const patientTypeData = useMemo(() => {
                         <i className="fa-solid fa-file-excel"></i>
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-slate-700">Excel Document</div>
+                        <div className="text-sm font-bold text-slate-700">
+                          Excel Document
+                        </div>
                         <div className="text-[10px] text-slate-500">.xlsx</div>
                       </div>
                     </div>
@@ -2827,7 +4303,8 @@ const patientTypeData = useMemo(() => {
               </div>
 
               <div className="text-xs text-slate-400 mb-5">
-                The export includes <strong>all matching records</strong> for the current filters, not just what's visible on this page.
+                The export includes <strong>all matching records</strong> for
+                the current filters, not just what's visible on this page.
               </div>
 
               <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3">
@@ -2843,34 +4320,74 @@ const patientTypeData = useMemo(() => {
                   disabled={exporting}
                   className="min-h-11 px-4 py-2.5 rounded-xl text-white font-semibold text-sm transition-all bg-[#466460] hover:bg-[#3a524f] disabled:opacity-70"
                 >
-                  {exporting ? 'Exporting…' : 'Export Excel'}
+                  {exporting ? "Exporting…" : "Export Excel"}
                 </button>
               </div>
-
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* ─────────────────────────────────────────────────────────────────────
           SNACKBAR NOTIFICATION
       ───────────────────────────────────────────────────────────────────── */}
       {message && (
-        <div className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-3 text-center shadow-xl transition-all ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+        <div
+          className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] sm:w-auto max-w-md px-4 sm:px-6 py-3 rounded-xl text-sm font-semibold z-[100000] flex items-center justify-center gap-3 text-center shadow-xl transition-all ${message.type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+        >
           <span className="shrink-0">
-            {message.type === 'success' ? (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            {message.type === "success" ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className="w-5 h-5"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className="w-5 h-5"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
               </svg>
             )}
           </span>
           <span className="whitespace-normal">{message.text}</span>
-          <button onClick={() => setMessage(null)} className="shrink-0 ml-1 w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/20 transition" title="Close">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          <button
+            onClick={() => setMessage(null)}
+            className="shrink-0 ml-1 w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/20 transition"
+            title="Close"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+              stroke="currentColor"
+              className="w-3.5 h-3.5"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
           </button>
         </div>
       )}

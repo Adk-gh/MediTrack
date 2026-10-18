@@ -653,9 +653,7 @@ const logout = async () => {
 
   try {
     const { error } =
-      await supabase.auth.signOut({
-        scope: "local",
-      });
+      await supabase.auth.signOut();
 
     if (error) {
       console.error(

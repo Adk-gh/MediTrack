@@ -293,6 +293,7 @@ router.delete(
 router.get(
   '/:id',
   authorized,
+  allowDynamicClinicStaffs,
   recordsController.getRecordById
 );
 

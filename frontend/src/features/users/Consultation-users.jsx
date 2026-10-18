@@ -9,66 +9,20 @@ import { formatUserDate } from '../../utils/dateFormat';
 import { useTranslation } from 'react-i18next';
 
 // ── CACHE KEYS ─────────────────────────────────────────────────────────────
-const MSG_CACHE_KEY      = 'meditrack_chat_messages';
-const CONSULT_CACHE_KEY  = 'meditrack_consultations';
-const PRESENCE_CACHE_KEY = 'meditrack_clinic_presence';
-const PRESENCE_TTL_MS    = 60000;
+// Caching removed to prevent staleness issues.
 
 // ── Message Cache Helpers ─────────────────────────────────────────────────
-const getCachedMessages = (consultationId) => {
-  if (!consultationId) return null;
-  try {
-    const cache = JSON.parse(sessionStorage.getItem(MSG_CACHE_KEY) || '{}');
-    const entry = cache[consultationId];
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > 5 * 60 * 1000) return null;
-    return entry.data;
-  } catch { return null; }
-};
+const getCachedMessages = (consultationId) => null;
 
-const setCachedMessages = (consultationId, messages) => {
-  if (!consultationId) return;
-  try {
-    const cache = JSON.parse(sessionStorage.getItem(MSG_CACHE_KEY) || '{}');
-    cache[consultationId] = { data: messages, timestamp: Date.now() };
-    sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify(cache));
-  } catch {}
-};
+const setCachedMessages = (consultationId, messages) => {};
 
-const getCachedConsultations = (userId) => {
-  if (!userId) return null;
-  try {
-    const cache = JSON.parse(sessionStorage.getItem(CONSULT_CACHE_KEY) || '{}');
-    const entry = cache[userId];
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > 2 * 60 * 1000) return null;
-    return entry.data;
-  } catch { return null; }
-};
+const getCachedConsultations = (userId) => null;
 
-const setCachedConsultations = (userId, data) => {
-  if (!userId) return;
-  try {
-    const cache = JSON.parse(sessionStorage.getItem(CONSULT_CACHE_KEY) || '{}');
-    cache[userId] = { data, timestamp: Date.now() };
-    sessionStorage.setItem(CONSULT_CACHE_KEY, JSON.stringify(cache));
-  } catch {}
-};
+const setCachedConsultations = (userId, data) => {};
 
-const getCachedPresence = () => {
-  try {
-    const cache = JSON.parse(sessionStorage.getItem(PRESENCE_CACHE_KEY) || 'null');
-    if (!cache) return null;
-    if (Date.now() - cache.timestamp > PRESENCE_TTL_MS) return null;
-    return cache.isOnline;
-  } catch { return null; }
-};
+const getCachedPresence = () => null;
 
-const setCachedPresence = (isOnline) => {
-  try {
-    sessionStorage.setItem(PRESENCE_CACHE_KEY, JSON.stringify({ isOnline, timestamp: Date.now() }));
-  } catch {}
-};
+const setCachedPresence = (isOnline) => {};
 
 const fetchSenderRoles = async (senderIds) => {
   if (!senderIds || senderIds.length === 0) return {};
@@ -270,6 +224,7 @@ const INITIAL_OPTIONS = [
 
 const MSG_PAGE_SIZE = 30;
 const PROFILE_CACHE_KEY = 'meditrack_user_profile';
+const CONSULT_CACHE_KEY = 'meditrack_consultations';
 
 const readProfileCache = () => {
   try { return JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || 'null'); }
@@ -327,12 +282,12 @@ export default function ConsultationUsers() {
   const [isClinicOnline,      setIsClinicOnline]      = useState(false);
   const [isEnded,             setIsEnded]             = useState(true);
   const [consultType,         setConsultType]         = useState(null);
-  const [historyFilter,       setHistoryFilter]       = useState('medical');
+  const [historyFilter,       setHistoryFilter]       = useState(null);
   const [activeRoomId,        setActiveRoomId]        = useState(null);
   const [internalUserId,      setInternalUserId]      = useState(profileCache?.internalUserId ?? null);
   const [internalName,        setInternalName]        = useState(profileCache?.internalName   ?? 'Patient');
   const [sessionReady,        setSessionReady]        = useState(!!(profileCache?.internalUserId));
-  const [loadingHistory,      setLoadingHistory]      = useState(true);
+  const [loadingHistory,      setLoadingHistory]      = useState(false);
   const [hasMoreMessages,     setHasMoreMessages]     = useState(false);
   const [loadingMore,         setLoadingMore]         = useState(false);
   const [showHistoryMenu,     setShowHistoryMenu]     = useState(false);
@@ -349,11 +304,13 @@ export default function ConsultationUsers() {
   const messagesEndRef   = useRef(null);
   const scrollAreaRef    = useRef(null);
   const scrollToBottom = useCallback((smooth = true) => {
-    // Scroll only the message container, not the whole page on mobile.
     const scroll = () => {
       const el = scrollAreaRef.current;
       if (!el) return;
-      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
     };
     requestAnimationFrame(() => requestAnimationFrame(scroll));
   }, []);
@@ -406,7 +363,14 @@ export default function ConsultationUsers() {
   const [pendingAppt,         setPendingAppt]         = useState({ medical: false, dental: false });
   const [loadingOnlineAppt,   setLoadingOnlineAppt]   = useState(true);
   const [lastEndedByType,     setLastEndedByType]     = useState({ medical: null, dental: null });
+
+  const msgChannelsRef = useRef(null);
+  const statusChannelsRef = useRef(null);
   const lastEndedByTypeRef = useRef({ medical: null, dental: null });
+  const fetchRanRef = useRef(false);
+  const activeRoomIdRef = useRef(null);
+  const isSendingRef = useRef(false);
+  const justStartedAtRef = useRef(0);
 
   useEffect(() => {
     if (preferences?.language) {
@@ -525,6 +489,9 @@ export default function ConsultationUsers() {
       const onlineRows = data.filter((a) => {
         const type = a.service_type?.toLowerCase() || '';
         const reason = a.reason?.toLowerCase() || '';
+
+        // Broaden check: look for 'online' in type, reason, OR if it's a specialized consultation
+        // In some cases, "Online" might be the only way these are flagged.
         return type.includes('online') || reason.includes('online');
       });
 
@@ -590,7 +557,32 @@ export default function ConsultationUsers() {
 
   const hasApprovedOnline = onlineAppt.medical || onlineAppt.dental;
   const hasPendingOnline  = pendingAppt.medical || pendingAppt.dental;
-  const hasAnyActiveNow   = (!isEnded && !!activeRoomId) || isApptActive('medical') || isApptActive('dental');
+  const hasAnyActiveNow   = (!isEnded && !!activeRoomId) || isApptActive('medical') || isApptActive('dental') || hasApprovedOnline;
+
+  // DEBUG: Log state to identify why the "Book First" block is showing
+  useEffect(() => {
+    console.log('[ConsultationUsers Debug] State Check:', {
+      internalUserId,
+      hasRecords,
+      onlineAppt,
+      onlineApptDetails,
+      pendingAppt,
+      hasApprovedOnline,
+      hasPendingOnline,
+      isEnded,
+      activeRoomId,
+      isApptActiveMedical: isApptActive('medical'),
+      isApptActiveDental: isApptActive('dental'),
+      hasAnyActiveNow,
+      loadingRecords,
+      loadingOnlineAppt,
+    });
+  }, [
+    internalUserId, hasRecords, onlineAppt, onlineApptDetails,
+    pendingAppt, hasApprovedOnline, hasPendingOnline,
+    isEnded, activeRoomId, hasAnyActiveNow,
+    loadingRecords, loadingOnlineAppt
+  ]);
 
   const nextApptTarget = useMemo(() => {
     const candidates = ['medical', 'dental']
@@ -633,12 +625,8 @@ export default function ConsultationUsers() {
 
   const isEndedRef       = useRef(true);
   const initRanRef       = useRef(false);
-  const fetchRanRef      = useRef(false);
-  const activeRoomIdRef  = useRef(null);
   const prevMsgCountRef  = useRef(0);
   const prevFirstIdRef   = useRef(null);
-  const isSendingRef     = useRef(false);
-  const justStartedAtRef = useRef(0);
 
   useEffect(() => { isEndedRef.current = isEnded; }, [isEnded]);
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
@@ -697,42 +685,75 @@ export default function ConsultationUsers() {
         return;
       }
 
-      await ensureValidSession();
+      try {
+        await ensureValidSession();
 
-      const { data: profiles, error } = await supabase
-        .from('users')
-        .select('id, first_name, last_name, preferences')
-        .eq('uid', authUid)
-        .limit(1);
+        const { data: profiles, error } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, preferences')
+          .eq('uid', authUid)
+          .limit(1);
 
-      const profile = profiles?.[0] || null;
-      if (error || !profile) {
+        const profile = profiles?.[0] || null;
+        if (error || !profile) {
+          setLoadingHistory(false);
+          setLoadingRecords(false);
+          setLoadingOnlineAppt(false);
+          return;
+        }
+
+        if (profile.preferences) {
+          setPreferences({
+            language: profile.preferences.language || 'English',
+            dateFormat: profile.preferences.dateFormat || 'MM/DD/YYYY',
+          });
+        }
+
+        const name = `${profile.first_name} ${profile.last_name}`.trim();
+        setInternalUserId(profile.id);
+        setInternalName(name);
+        setSessionReady(true);
+
+        writeProfileCache({ internalUserId: profile.id, internalName: name });
+
+        // Check if there is an existing active consultation for this user
+        const { data: activeConsult } = await supabase
+          .from('consultations')
+          .select('id, consultation_type')
+          .eq('patient_id', profile.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (activeConsult) {
+          setActiveRoomId(activeConsult.id);
+          setConsultType(activeConsult.consultation_type);
+          setIsEnded(false);
+          await fetchMessages(activeConsult.id);
+        } else {
+          // Set default history filter based on approved appointments if no active consult
+          // We use onlineApptDetails here, but this runs in init, so we should check the actual data
+          const medicalAppt = onlineApptDetails.medical;
+          const dentalAppt = onlineApptDetails.dental;
+
+          if (medicalAppt && !dentalAppt) {
+            setHistoryFilter('medical');
+          } else if (dentalAppt && !medicalAppt) {
+            setHistoryFilter('dental');
+          }
+        }
+
+        try {
+          await supabase.from('presence').upsert(
+            { user_id: profile.id, status: 'online', last_seen: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+        } catch {}
+      } catch (err) {
+        console.error('[ConsultationUsers] Session init error:', err);
         setLoadingHistory(false);
         setLoadingRecords(false);
         setLoadingOnlineAppt(false);
-        return;
       }
-
-      if (profile.preferences) {
-        setPreferences({
-          language: profile.preferences.language || 'English',
-          dateFormat: profile.preferences.dateFormat || 'MM/DD/YYYY',
-        });
-      }
-
-      const name = `${profile.first_name} ${profile.last_name}`.trim();
-      setInternalUserId(profile.id);
-      setInternalName(name);
-      setSessionReady(true);
-
-      writeProfileCache({ internalUserId: profile.id, internalName: name });
-
-      try {
-        await supabase.from('presence').upsert(
-          { user_id: profile.id, status: 'online', last_seen: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        );
-      } catch {}
     };
 
     run();
@@ -806,271 +827,66 @@ export default function ConsultationUsers() {
 
   useEffect(() => {
     if (!internalUserId || !sessionReady) return;
-    if (fetchRanRef.current) return;
-    fetchRanRef.current = true;
 
-    const fetchConsultation = async () => {
-      await ensureValidSession();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+    const setupRealtimeSubscriptions = async () => {
+      // Subscription for messages in the current active room
+      if (activeRoomId) {
+        const msgChannel = supabase
+          .channel(`user-msgs-${activeRoomId}`)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'consultation_messages' }, async (payload) => {
+            const newMsg = payload.new;
+            if (String(newMsg.consultation_id) === String(activeRoomId)) {
+              setMessages((prev) => {
+                if (prev.some(m => m.id === newMsg.id)) return prev;
+                return [...prev, newMsg];
+              });
+              if (newMsg.sender_id) {
+                const roles = await fetchSenderRoles([newMsg.sender_id]);
+                setSenderRoles(prev => ({ ...prev, ...roles }));
+              }
+              scrollToBottom(true);
+            }
+          })
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' }, async (payload) => {
+            const updatedMsg = payload.new;
+            if (String(updatedMsg.consultation_id) === String(activeRoomId)) {
+              setMessages((prev) => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
+            }
+          })
+          .subscribe();
 
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        const { data: activeConsults } = await supabase
-          .from('consultations')
-          .select('*')
-          .eq('patient_id', internalUserId)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        const activeConsult = activeConsults?.[0] || null;
-
-        if (activeConsult) {
-          setActiveRoomId(activeConsult.id);
-          setIsEnded(false);
-          setConsultType(activeConsult.consultation_type || null);
-          await fetchMessages(activeConsult.id);
-          setCachedConsultations(internalUserId, { activeConsult, lastEnded: null });
-          return;
-        }
-
-        const cached = getCachedConsultations(internalUserId);
-        if (cached?.activeConsult) {
-          const { data: verifyData } = await supabase
-            .from('consultations')
-            .select('id, status')
-            .eq('id', cached.activeConsult.id)
-            .single();
-
-          if (verifyData?.status === 'active') {
-            setActiveRoomId(cached.activeConsult.id);
-            setIsEnded(false);
-            setConsultType(cached.activeConsult.consultation_type || null);
-            await fetchMessages(cached.activeConsult.id);
-            return;
-          }
-        }
-
-        const { data: allEnded } = await supabase
-          .from('consultations')
-          .select('*')
-          .eq('patient_id', internalUserId)
-          .eq('status', 'ended')
-          .order('created_at', { ascending: false });
-
-        const latestByType = {};
-        (allEnded || []).forEach((c) => {
-          if (!latestByType[c.consultation_type]) latestByType[c.consultation_type] = c;
-        });
-        updateLastEndedByType({
-          medical: latestByType.medical?.id || null,
-          dental:  latestByType.dental?.id  || null,
-        });
-
-        const lastEnded = latestByType[historyFilter] || null;
-        if (lastEnded) {
-          setActiveRoomId(lastEnded.id);
-          setConsultType(lastEnded.consultation_type || null);
-          await fetchMessages(lastEnded.id);
-          setCachedConsultations(internalUserId, { activeConsult: null, lastEnded });
-        } else {
-          setCachedConsultations(internalUserId, { activeConsult: null, lastEnded: null });
-        }
-      } finally {
-        setLoadingHistory(false);
+        // We store this in a ref or a way to clean it up
+        msgChannelsRef.current = msgChannel;
       }
-    };
 
-    fetchConsultation();
-
-    const pollInterval = setInterval(async () => {
-      try {
-        if (Date.now() - justStartedAtRef.current < 8000) return;
-        await ensureValidSession();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const { data: activeData } = await supabase
-          .from('consultations')
-          .select('id, status, consultation_type')
-          .eq('patient_id', internalUserId)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        const activeRow = activeData?.[0] || null;
-        const currentRoomId = activeRoomIdRef.current;
-
-        if (activeRow) {
-          if (activeRow.id !== currentRoomId) {
-            setIsEnded(false);
-            setActiveRoomId(activeRow.id);
-            setConsultType(activeRow.consultation_type || null);
-            await fetchMessages(activeRow.id);
-          } else {
-            await fetchMessages(activeRow.id, null, true);
-          }
-          return;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const { data: recheckActive } = await supabase
-          .from('consultations')
-          .select('id, status')
-          .eq('patient_id', internalUserId)
-          .eq('status', 'active')
-          .limit(1);
-
-        if (recheckActive?.[0]) {
-          setIsEnded(false);
-          setActiveRoomId(recheckActive[0].id);
-          setConsultType(recheckActive[0].consultation_type || null);
-          await fetchMessages(recheckActive[0].id);
-          return;
-        }
-
-        const currentlyEnded = isEndedRef.current;
-        if (!currentlyEnded) {
-          const { data: endedData } = await supabase
-            .from('consultations')
-            .select('id, status, consultation_type')
-            .eq('patient_id', internalUserId)
-            .eq('status', 'ended')
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          const endedRow = endedData?.[0] || null;
-          if (endedRow) {
-            setIsEnded(true);
-            setActiveRoomId(endedRow.id);
-            setConsultType(endedRow.consultation_type || null);
-            await fetchMessages(endedRow.id);
-          } else {
-            setIsEnded(true);
-            setActiveRoomId(null);
-            setConsultType(null);
-          }
-        }
-      } catch (err) {}
-    }, 15000);
-
-    const readStatusPoll = setInterval(async () => {
-      if (!activeRoomId || isEndedRef.current) return;
-      try {
-        const { data } = await supabase
-          .from('consultation_messages')
-          .select('id, read_at')
-          .eq('consultation_id', activeRoomId);
-        if (data && data.length > 0) {
-          setMessages((msgs) =>
-            msgs.map((msg) => {
-              const updated = data.find((m) => m.id === msg.id);
-              return updated && updated.read_at !== msg.read_at ? { ...msg, read_at: updated.read_at } : msg;
-            })
-          );
-        }
-      } catch (err) {}
-    }, 5000);
-
-    const messagesChannel = supabase
-      .channel(`consultation-msgs-${internalUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'consultation_messages' },
-        async (payload) => {
-          const currentRoomId = activeRoomIdRef.current;
-          const newMsgRoomId = String(payload.new.consultation_id);
-
-          if (newMsgRoomId === String(currentRoomId)) {
-            if (isSendingRef.current) return;
-            setMessages((msgs) => {
-              if (msgs.some((m) => m.id === payload.new.id)) return msgs;
-              return [...msgs, payload.new];
-            });
-            if (payload.new.sender_id) {
-              const roles = await fetchSenderRoles([payload.new.sender_id]);
-              setSenderRoles((prev) => ({ ...prev, ...roles }));
-            }
-          } else if (isEndedRef.current && currentRoomId) {
-            const { data: consultData } = await supabase
-              .from('consultations')
-              .select('id, status')
-              .eq('id', newMsgRoomId)
-              .single();
-
-            if (consultData?.status === 'active') {
-              setIsEnded(false);
-              setActiveRoomId(newMsgRoomId);
-              await fetchMessages(newMsgRoomId);
-            }
-          }
-        })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultation_messages' },
-        (payload) => {
-          if (payload.new?.read_at) {
-            setMessages((msgs) =>
-              msgs.map((msg) =>
-                msg.id === payload.new.id ? { ...msg, read_at: payload.new.read_at } : msg
-              )
-            );
-          }
-        })
-      .subscribe();
-
-    const statusChannel = supabase
-      .channel(`consultation-status-${internalUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'consultations' },
-        async (payload) => {
+      // Subscription for consultation status changes (e.g. when clinic starts/ends)
+      const statusChannel = supabase
+        .channel(`user-status-${internalUserId}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultations' }, async (payload) => {
           if (String(payload.new.patient_id) !== String(internalUserId)) return;
+
           if (payload.new.status === 'active') {
-            justStartedAtRef.current = Date.now();
             setIsEnded(false);
             setActiveRoomId(payload.new.id);
             setConsultType(payload.new.consultation_type || null);
-            await fetchMessages(payload.new.id, null, true);
-          }
-        })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'consultations' },
-        async (payload) => {
-          if (String(payload.new.patient_id) !== String(internalUserId)) return;
-          const currentRoomId = activeRoomIdRef.current;
-
-          if (String(payload.new.id) !== String(currentRoomId)) {
-            if (payload.new.status === 'active') {
-              setIsEnded(false);
-              setActiveRoomId(payload.new.id);
-              setConsultType(payload.new.consultation_type || null);
-              await fetchMessages(payload.new.id);
-            }
-            return;
-          }
-
-          if (payload.new.status === 'ended') {
-            if (Date.now() - justStartedAtRef.current < 8000) return;
             await fetchMessages(payload.new.id);
-            setActiveRoomId(payload.new.id);
-            setConsultType(null);
+          } else if (payload.new.status === 'ended') {
             setIsEnded(true);
             setCachedConsultations(internalUserId, { activeConsult: null, lastEnded: payload.new });
-            updateLastEndedByType({
-              ...lastEndedByTypeRef.current,
-              [payload.new.consultation_type]: payload.new.id,
-            });
-          } else if (payload.new.status === 'active') {
-            justStartedAtRef.current = Date.now();
-            setIsEnded(false);
-            setConsultType(payload.new.consultation_type || null);
-            setActiveRoomId(payload.new.id);
           }
         })
-      .subscribe();
+        .subscribe();
+
+      statusChannelsRef.current = statusChannel;
+    };
+
+    setupRealtimeSubscriptions();
 
     return () => {
-      clearInterval(pollInterval);
-      clearInterval(readStatusPoll);
-      supabase.removeChannel(messagesChannel);
-      supabase.removeChannel(statusChannel);
+      if (msgChannelsRef.current) supabase.removeChannel(msgChannelsRef.current);
+      if (statusChannelsRef.current) supabase.removeChannel(statusChannelsRef.current);
     };
-  }, [internalUserId, sessionReady]);
+  }, [internalUserId, sessionReady, activeRoomId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1565,7 +1381,7 @@ const readInFlightRef = useRef(null);
     );
   };
 
-  const isLoading = loadingRecords || loadingOnlineAppt || !internalUserId;
+  const isLoading = loadingRecords || loadingOnlineAppt || !internalUserId || !sessionReady;
 
   return (
     <div style={{
@@ -1628,13 +1444,15 @@ const readInFlightRef = useRef(null);
 
             {isEnded && (
               <div className="relative">
-                <button onClick={() => setShowHistoryMenu(!showHistoryMenu)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors" title={t('consultation.chatHistory', 'View Chat History')}>
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-[#466460]">
-                    <circle cx="12" cy="5" r="1.5" />
-                    <circle cx="12" cy="12" r="1.5" />
-                    <circle cx="12" cy="19" r="1.5" />
-                  </svg>
-                </button>
+                {!hasApprovedOnline && (
+                  <button onClick={() => setShowHistoryMenu(!showHistoryMenu)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors" title={t('consultation.chatHistory', 'View Chat History')}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-[#466460]">
+                      <circle cx="12" cy="5" r="1.5" />
+                      <circle cx="12" cy="12" r="1.5" />
+                      <circle cx="12" cy="19" r="1.5" />
+                    </svg>
+                  </button>
+                )}
                 {showHistoryMenu && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowHistoryMenu(false)} />
@@ -1743,7 +1561,7 @@ const readInFlightRef = useRef(null);
                        timeText = `${t('consultation.unlocksAt', 'Unlocks at')} ${hr}:${padM} ${period}`;
                     }
 
-                    const isDisabled = !sessionReady || startingOption !== null || !isActiveNow;
+                    const isDisabled = !sessionReady || startingOption !== null || !isActiveNow || (onlineAppt.medical && opt.type === 'dental') || (onlineAppt.dental && opt.type === 'medical');
 
                     return (
                       <button

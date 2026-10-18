@@ -710,7 +710,7 @@ const SignupForm = () => {
 
       setIsScanning(false);
       showSnackbar('success', 'Account created! Check your email and click the confirmation link before signing in.');
-      setTimeout(() => navigate('/login'), 2000);
+
 
     } catch (err) {
       setIsScanning(false);

@@ -63,7 +63,7 @@ exports.forgotPassword = async (req, res) => {
       console.log('>>> [Forgot] User found, generating token for:', email);
 
       const resetToken = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour expiry
 
       const { error: updateError } = await supabase
         .from('users')
@@ -158,7 +158,7 @@ exports.register = async (req, res) => {
     const userData = await userService.registerUser({ firstName, lastName, middleName, suffix, email, password, universityId }, idFile);
 
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hour expiry
 
     await supabase.from('users').update({
       verification_token: verifyToken,
@@ -209,7 +209,7 @@ exports.sendVerificationEmail = async (req, res) => {
     if (userData.is_verified) return res.json({ success: true, message: 'This email is already verified. You can login.' });
 
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hour expiry
 
     await supabase.from('users').update({
       verification_token: verifyToken,
@@ -246,7 +246,6 @@ exports.verifyEmail = async (req, res) => {
     const { data: user, error: fetchError } = await supabase
       .from('users')
       .select('uid, verification_token_expires_at, is_verified')
-      .ilike('email', email.trim())
       .eq('verification_token', token)
       .single();
 
@@ -292,7 +291,7 @@ exports.adminResendVerification = async (req, res) => {
     if (!validationResult.isDeliverable) return res.status(400).json({ success: false, message: "Invalid email." });
 
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hour expiry
 
     await supabase.from('users').update({
       verification_token: verifyToken,
@@ -302,12 +301,18 @@ exports.adminResendVerification = async (req, res) => {
     const baseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
     const verifyUrl = `${baseUrl}/#/verify-email?token=${verifyToken}&email=${encodeURIComponent(userData.email.toLowerCase())}`;
 
-    await sendEmail({
-      to: userData.email,
-      subject: 'MediTrack - Email Verification Request',
-      html: `<a href="${verifyUrl}">Verify Email</a>`,
-    });
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #333;">Welcome to MediTrack!</h2>
+        <p>Hi ${userData.first_name},</p>
+        <p>A verification request has been sent on your behalf. Please verify your email address by clicking the button below:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verifyUrl}" style="background-color: #466460; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
+        </div>
+      </div>
+    `;
 
+    await sendEmail({ to: userData.email, subject: 'MediTrack - Email Verification', html: emailHtml });
     return res.json({ success: true, message: 'Verification email sent successfully' });
 
   } catch (error) {

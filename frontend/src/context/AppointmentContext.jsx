@@ -16,50 +16,10 @@ const AppointmentContext = createContext(null);
 const COL = 'appointments';
 
 // ── Cache config ──────────────────────────────────────────────────────────────
+const readCache = () => null;
+const writeCache = () => {};
+const clearCache = () => {};
 
-const CACHE_KEY = 'appt_cache_v1';
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-const readCache = () => {
-  try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
-
-    if (!raw) return null;
-
-    const { data, ts } = JSON.parse(raw);
-
-    if (Date.now() - ts > CACHE_TTL) {
-      sessionStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-
-    return data;
-  } catch {
-    return null;
-  }
-};
-
-const writeCache = (data) => {
-  try {
-    sessionStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({
-        data,
-        ts: Date.now(),
-      })
-    );
-  } catch {
-    // sessionStorage quota exceeded
-  }
-};
-
-const clearCache = () => {
-  try {
-    sessionStorage.removeItem(CACHE_KEY);
-  } catch {
-    // noop
-  }
-};
 
 // Maps DB row → shape the frontend components expect
 const mapRow = (row) => ({

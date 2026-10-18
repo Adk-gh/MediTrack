@@ -187,7 +187,7 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   const { data: existingByEmail, error: existingEmailError } = await supabase.from('users').select('id, uid, email, is_archived').eq('email', normalizedEmail).maybeSingle();
 
-  if (existingEmailError) { console.error('>>> [DB] Existing email check failed:', existingEmailError); throw new Error(existingEmailError.message); }
+  if (existingEmailError) { console.error('>>> [DB] Existing email check failed:', existingEmailError); throwError('An error occurred while verifying your email. Please try again later.', 500); }
 
   if (existingByEmail) throwError(existingByEmail.is_archived ? 'That email belongs to an archived account and cannot be registered again.' : 'That email is already in use.', 400);
 

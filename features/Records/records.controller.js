@@ -15,12 +15,20 @@ const setAuditData = (res, description, details = {}) => { res.locals.auditDescr
 // CONTROLLERS
 // ============================================================
 const getAllRecords = async (req, res, next) => {
-  try { return res.status(200).json({ success: true, data: await recordsService.getAllRecords() }); }
+  try {
+    if (req.user.role !== 'sysadmin' && !['admin', 'doctor', 'dentist', 'nurse'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied. Administrative privileges required to view all records.' });
+    }
+    return res.status(200).json({ success: true, data: await recordsService.getAllRecords() });
+  }
   catch (error) { next(error); }
 };
 
 const getRecordById = async (req, res, next) => {
-  try { return res.status(200).json({ success: true, data: await recordsService.getRecordById(req.params.id) }); }
+  try {
+    const record = await recordsService.getRecordById(req.params.id, req.user);
+    return res.status(200).json({ success: true, data: record });
+  }
   catch (error) { next(error); }
 };
 
@@ -70,7 +78,8 @@ const updateRecord = async (req, res, next) => {
     const result = await recordsService.updateRecord(
       recordId,
       recordType,
-      updates
+      updates,
+      req.user
     );
 
     const resolvedRecordId = resolveRecordId(
@@ -132,7 +141,8 @@ const updateRecordStatus = async (req, res, next) => {
     const result = await recordsService.updateRecordStatus(
       recordId,
       recordType,
-      status
+      status,
+      req.user
     );
 
     const resolvedRecordId = resolveRecordId(
@@ -185,7 +195,7 @@ const deleteRecord = async (req, res, next) => {
     if (!id) return res.status(400).json({ success: false, message: 'Record ID is required.' });
 
     const deletedBy = { id: resolveUserId(req), email: req.user?.email || null, name: resolveActorName(req) };
-    const result = await recordsService.deleteRecord(id, deletedBy);
+    const result = await recordsService.deleteRecord(id, deletedBy, req.user);
     const recordId = resolveRecordId(result, id), archiveId = resolveArchiveId(result);
 
     setAuditData(res, archiveId ? `Archived user account and record with ID ${recordId} under archive ID ${archiveId}.` : `Archived user account and record with ID ${recordId}.`, { operation: 'archive_user_record', recordId, archiveId, tableName: 'users', archivedBy: deletedBy });

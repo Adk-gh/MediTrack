@@ -1286,8 +1286,16 @@ export const Appointments = () => {
   };
 
   const appointments = useMemo(() => {
+    console.log('[Debug] All Raw Appointments received:', allRawAppointments);
     // Filter out archived appointments
     const unarchivedAppts = allRawAppointments.filter(a => !a.is_archived);
+    console.log('[Debug] Unarchived Appointments:', unarchivedAppts);
+    console.log('[Debug] Status distribution:',
+      allRawAppointments.reduce((acc, a) => {
+        acc[a.status] = (acc[a.status] || 0) + 1;
+        return acc;
+      }, {})
+    );
 
     const role = String(currentUserRole || '').toLowerCase().trim();
     if (role === 'dentist') {
@@ -1318,6 +1326,14 @@ export const Appointments = () => {
   // ── Multi-select pending ──
   const [selectedIds,    setSelectedIds]    = useState(new Set());
   const [searchTerm,     setSearchTerm]     = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.toLowerCase());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // ── Bulk-request batch grouping ──
   const [expandedBatches, setExpandedBatches] = useState([]);
@@ -1341,6 +1357,7 @@ export const Appointments = () => {
 
   // ── User data cache (fetched from users table) ──
   const [userDataMap, setUserDataMap] = useState({});
+  const [loadingUserData, setLoadingUserData] = useState(false);
 
   // ── Examination Modal State ──
   const [examModalOpen, setExamModalOpen] = useState(false);
@@ -1358,20 +1375,25 @@ export const Appointments = () => {
       const userIds = [...new Set(appointments.map(a => a.user_id).filter(Boolean))];
       if (userIds.length === 0) return;
 
+      // Only fetch users who are not already in the cache
+      const missingUserIds = userIds.filter(id => !userDataMap[id]);
+      if (missingUserIds.length === 0) return;
+
       try {
+        setLoadingUserData(true);
         const { data: users, error } = await supabase
           .from('users')
           .select('id, university_id, department, program, section, year_level')
-          .in('id', userIds);
+          .in('id', missingUserIds);
 
         if (error) {
           console.error('Error fetching user data:', error);
           return;
         }
 
-        const map = {};
+        const newUserData = {};
         (users || []).forEach(user => {
-          map[user.id] = {
+          newUserData[user.id] = {
             university_id: user.university_id || '',
             department: user.department || '',
             program: user.program || '',
@@ -1380,9 +1402,11 @@ export const Appointments = () => {
           };
         });
 
-        setUserDataMap(map);
+        setUserDataMap(prev => ({ ...prev, ...newUserData }));
       } catch (err) {
         console.error('Error in fetchUserData:', err);
+      } finally {
+        setLoadingUserData(false);
       }
     };
 
@@ -1447,20 +1471,22 @@ export const Appointments = () => {
 
   // ── Derived data ──
   const pendingRequests = appointments
-    .filter(a => a.status === 'pending')
+    .filter(a => String(a.status || '').toLowerCase() === 'pending')
     .sort((a, b) => new Date(a.bookedAt) - new Date(b.bookedAt));
 
-  const filteredPending = pendingRequests.filter(r => {
-    const userData = getUserData(r);
-    return !searchTerm ||
-      (r.name || '').toLowerCase().includes(searchTerm)         ||
-      (r.idno || '').toLowerCase().includes(searchTerm) ||
-      (userData.university_id || '').toLowerCase().includes(searchTerm) ||
-      (userData.department || '').toLowerCase().includes(searchTerm) ||
-      (userData.program || '').toLowerCase().includes(searchTerm) ||
-      (userData.section || '').toLowerCase().includes(searchTerm) ||
-      (r.reason || '').toLowerCase().includes(searchTerm);
-  });
+  const filteredPending = useMemo(() => {
+    return pendingRequests.filter(r => {
+      const userData = getUserData(r);
+      return !debouncedSearch ||
+        (r.name || '').toLowerCase().includes(debouncedSearch)         ||
+        (r.idno || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.university_id || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.department || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.program || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.section || '').toLowerCase().includes(debouncedSearch) ||
+        (r.reason || '').toLowerCase().includes(debouncedSearch);
+    });
+  }, [pendingRequests, debouncedSearch]);
 
   const scheduledAppts = appointments.filter(
     a => a.status === 'approved' || a.status === 'done' || a.status === 'missed'
@@ -1474,16 +1500,18 @@ export const Appointments = () => {
     .filter(a => a.status === 'rejected')
     .sort((a, b) => new Date(b.bookedAt || b.created_at) - new Date(a.bookedAt || a.created_at));
 
-  const filteredRejected = rejectedAppts.filter(r => {
-    const userData = getUserData(r);
-    return !searchTerm ||
-      (r.name || '').toLowerCase().includes(searchTerm)         ||
-      (r.idno || '').toLowerCase().includes(searchTerm) ||
-      (userData.university_id || '').toLowerCase().includes(searchTerm) ||
-      (userData.department || '').toLowerCase().includes(searchTerm)   ||
-      (userData.program || '').toLowerCase().includes(searchTerm)      ||
-      (r.reason || '').toLowerCase().includes(searchTerm);
-  });
+  const filteredRejected = useMemo(() => {
+    return rejectedAppts.filter(r => {
+      const userData = getUserData(r);
+      return !debouncedSearch ||
+        (r.name || '').toLowerCase().includes(debouncedSearch)         ||
+        (r.idno || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.university_id || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.department || '').toLowerCase().includes(debouncedSearch)   ||
+        (userData.program || '').toLowerCase().includes(debouncedSearch)      ||
+        (r.reason || '').toLowerCase().includes(debouncedSearch);
+    });
+  }, [rejectedAppts, debouncedSearch]);
 
   const filteredByDate = allApprovedAppts.filter(a => {
     if (filterDateRange === 'All') return true;
@@ -1510,23 +1538,25 @@ export const Appointments = () => {
     return true;
   });
 
-  const filteredApproved = filteredByDate.filter(a => {
-    const matchStatus = filterStatus === 'All' || a.status === filterStatus;
-    const userData = getUserData(a);
-    const matchSearch = !searchTerm ||
-      (a.name || '').toLowerCase().includes(searchTerm) ||
-      (a.idno || '').toLowerCase().includes(searchTerm) ||
-      (userData.university_id || '').toLowerCase().includes(searchTerm) ||
-      (userData.department || '').toLowerCase().includes(searchTerm) ||
-      (userData.program || '').toLowerCase().includes(searchTerm) ||
-      (a.reason || '').toLowerCase().includes(searchTerm);
-    return matchStatus && matchSearch;
-  }).sort((a, b) => {
-    const dateA = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
-    const dateB = new Date(Number(b.year), Number(b.month) - 1, Number(b.day));
-    if (dateB.getTime() !== dateA.getTime()) return dateB.getTime() - dateA.getTime();
-    return (a.time || '').localeCompare(b.time || '');
-  });
+  const filteredApproved = useMemo(() => {
+    return filteredByDate.filter(a => {
+      const matchStatus = filterStatus === 'All' || a.status === filterStatus;
+      const userData = getUserData(a);
+      const matchSearch = !debouncedSearch ||
+        (a.name || '').toLowerCase().includes(debouncedSearch) ||
+        (a.idno || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.university_id || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.department || '').toLowerCase().includes(debouncedSearch) ||
+        (userData.program || '').toLowerCase().includes(debouncedSearch) ||
+        (a.reason || '').toLowerCase().includes(debouncedSearch);
+      return matchStatus && matchSearch;
+    }).sort((a, b) => {
+      const dateA = new Date(Number(a.year), Number(a.month) - 1, Number(a.day));
+      const dateB = new Date(Number(b.year), Number(b.month) - 1, Number(b.day));
+      if (dateB.getTime() !== dateA.getTime()) return dateB.getTime() - dateA.getTime();
+      return (a.time || '').localeCompare(b.time || '');
+    });
+  }, [filteredByDate, filterStatus, debouncedSearch]);
 
   const firstDayOfWeek = new Date(calYear, calMonth - 1, 1).getDay();
   const daysInMonth    = new Date(calYear, calMonth, 0).getDate();

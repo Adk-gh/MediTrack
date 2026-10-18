@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -11,6 +11,10 @@ function createWindow() {
     height: 800,
     minWidth: 1000,
     minHeight: 700,
+    // Optional: Alternatively, you can use autoHideMenuBar: true here
+    // if you want to reveal the menu by pressing the Alt key
+    icon: path.join(__dirname, "..\\public\\white.jpg"),
+
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -25,6 +29,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Removes the default File, Edit, View, Window menu
+  Menu.setApplicationMenu(null);
+
   createWindow();
 
   app.on("activate", () => {

@@ -44,8 +44,6 @@ const updateRecordSchema = z.object({
   lastName: z.string().min(1, "Last name is required").optional(),
   email: z.string().email("Invalid email address").optional(),
   password: z.string().min(6, "Password is required").optional(),
-  universityId: z.string().min(1, "ID is required").optional(),
-  role: z.string().min(1, "Role is required").optional(),
 
   // EVERYTHING else must be optional so Zod doesn't throw the "undefined" error
   middleName: z.string().optional(),

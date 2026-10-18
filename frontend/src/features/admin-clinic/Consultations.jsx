@@ -2731,6 +2731,7 @@ export const Consultations = () => {
   const [selectedConvId, setSelectedConvId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
+  const [vvState, setVvState] = useState({ height: '100%', top: 0, isKeyboard: false });
   const [onlinePresence, setOnlinePresence] = useState({});
   const [patientProfiles, setPatientProfiles] = useState({});
   const [loadingMsgs, setLoadingMsgs] = useState(false);

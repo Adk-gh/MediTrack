@@ -182,6 +182,7 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
 
   const [activeSection, setActiveSection] = useState(getRequestedSection);
   const [isMobile, setIsMobile] = useState(false);
+  const [isAdminMenu, setIsAdminMenu] = useState(true);
 
   useEffect(() => {
     const querySection = new URLSearchParams(location.search).get('section');
@@ -221,6 +222,11 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
     setActiveSection(sectionId);
     localStorage.setItem(settingsStorageKey, sectionId);
 
+    if (isMobile && (normalizedActiveRole === 'sysadmin' || normalizedActiveRole === 'administrator')) {
+      // We are now entering a specific section, so the menu should be hidden
+      setIsAdminMenu(false);
+    }
+
     const searchParams = new URLSearchParams(location.search);
     searchParams.set('section', sectionId);
     navigate(
@@ -243,6 +249,21 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
   }, []);
 
   const handleBack = () => {
+    if (isMobile && (normalizedActiveRole === 'sysadmin' || normalizedActiveRole === 'administrator')) {
+      if (isAdminMenu) {
+        // If we are on the grid menu, back button closes the settings page
+        if (typeof onClose === 'function') {
+          onClose();
+        } else {
+          navigate(-1);
+        }
+      } else {
+        // If we are in a section, back button returns to the grid menu
+        setIsAdminMenu(true);
+      }
+      return;
+    }
+
     if (typeof onClose === 'function') {
       onClose();
     } else {
@@ -282,8 +303,54 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
     }
   };
 
-  // ── Mobile layout ────────────────────────────────────────────────────────
   if (isMobile) {
+    const isAdmin = normalizedActiveRole === 'sysadmin' || normalizedActiveRole === 'administrator';
+
+    if (isAdmin && isAdminMenu) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: '100vh', background: '#f4f8f6', overflow: 'hidden', paddingTop: 'env(safe-area-inset-top, 0px)', boxSizing: 'border-box' }}>
+          <div style={{ background: '#466460', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, height: 56, boxShadow: '0 2px 12px rgba(70,100,96,0.18)' }}>
+            <button onClick={handleBack} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+              <BackIcon />
+            </button>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#fff', flex: 1 }}>Settings ({activeRole.charAt(0).toUpperCase() + activeRole.slice(1)})</span>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', alignContent: 'start' }}>
+            {sections.map(({ id, label, icon: IconComponent }) => (
+              <button
+                key={id}
+                onClick={() => handleSectionChange(id)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '20px 12px',
+                  background: '#fff',
+                  border: '1px solid #e2ebe8',
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                }}
+                onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'}
+                onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <div style={{ width: 28, height: 28, color: '#466460' }}>
+                  <IconComponent />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, textAlign: 'center', color: '#475569', lineHeight: '1.2' }}>
+                  {label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: '100vh', background: '#f4f8f6', overflow: 'hidden', paddingTop: 'env(safe-area-inset-top, 0px)', boxSizing: 'border-box' }}>
         <div style={{ background: '#466460', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, height: 56, boxShadow: '0 2px 12px rgba(70,100,96,0.18)' }}>
@@ -293,21 +360,61 @@ export default function Settings({ onLogout, onClose, userRole: propRole }) {
           <span style={{ fontSize: 16, fontWeight: 700, color: '#fff', flex: 1 }}>Settings ({activeRole.charAt(0).toUpperCase() + activeRole.slice(1)})</span>
         </div>
 
-        <div style={{ background: '#fff', borderBottom: '1px solid #e2ebe8', padding: '8px 8px 0', display: 'flex', justifyContent: 'space-around', flexShrink: 0, overflowX: 'auto' }}>
-          {sections.map(({ id, label, icon: IconComponent }) => {
-            const isActive = activeSection === id;
-            return (
-              <button
-                key={id}
-                onClick={() => handleSectionChange(id)}
-                style={{ flex: '1 0 auto', minWidth: '70px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 4px 10px', background: 'none', border: 'none', cursor: 'pointer', borderBottom: isActive ? `2.5px solid #466460` : '2.5px solid transparent', color: isActive ? '#466460' : '#94a3b8', transition: 'all 0.15s' }}
-              >
-                <div style={{ width: 20, height: 20 }}><IconComponent /></div>
-                <span style={{ fontSize: 10, fontWeight: 700 }}>{label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {!isAdmin || isAdminMenu ? (
+          <div style={{
+            background: '#fff',
+            borderBottom: '1px solid #e2ebe8',
+            padding: '12px',
+            display: isAdmin ? 'grid' : 'flex',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            justifyContent: 'space-around',
+            flexShrink: 0,
+            overflowX: isAdmin ? 'hidden' : 'auto',
+            gap: isAdmin ? '8px' : '0'
+          }}>
+            {sections.map(({ id, label, icon: IconComponent }) => {
+              const isActive = activeSection === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => handleSectionChange(id)}
+                  style={{
+                    flex: isAdmin ? 'none' : '1 0 auto',
+                    minWidth: isAdmin ? 'auto' : '70px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: isAdmin ? '10px' : '8px 4px 10px',
+                    background: isActive ? '#edf4f2' : 'none',
+                    border: isAdmin ? '1px solid #e2ebe8' : 'none',
+                    borderRadius: isAdmin ? '12px' : '0',
+                    cursor: 'pointer',
+                    borderBottom: isAdmin ? 'none' : (isActive ? `2.5px solid #466460` : '2.5px solid transparent'),
+                    color: isActive ? '#466460' : '#94a3b8',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  <div style={{
+                    width: 20,
+                    height: 20,
+                    color: isActive ? '#466460' : '#94a3b8'
+                  }}>
+                    <IconComponent />
+                  </div>
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    lineHeight: '1.2'
+                  }}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'none' }}>
           {renderContent()}
