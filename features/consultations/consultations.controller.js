@@ -332,11 +332,6 @@ const createConsultation = async (
 
   try {
 
-    console.log(
-
-      '[Controller] Before createConsultation'
-
-    );
 
 
 
@@ -350,13 +345,6 @@ const createConsultation = async (
 
 
 
-    console.log(
-
-      '[Controller] After createConsultation, data.status:',
-
-      data?.status
-
-    );
 
 
 

@@ -120,43 +120,6 @@ app.post('/test', (req, res) => {
 });
 
 // ============================================================
-// 6. TEMPORARY IP DEBUG ROUTE
-// ============================================================
-//
-// KEEP THIS ONLY WHILE TESTING RATE LIMITING.
-//
-// Test:
-//
-// https://meditrack-1-pq7i.onrender.com/test-ip
-//
-// After confirming that different devices show different
-// IP addresses, you can remove this route.
-//
-// ============================================================
-
-app.get('/test-ip', (req, res) => {
-  console.log('=========================================');
-  console.log('IP DEBUG');
-  console.log('Client IP:', req.ip);
-  console.log('Proxy IPs:', req.ips);
-
-  console.log(
-    'X-Forwarded-For:',
-    req.headers['x-forwarded-for']
-  );
-
-  console.log('=========================================');
-
-  res.json({
-    success: true,
-    ip: req.ip,
-    ips: req.ips,
-    forwardedFor:
-      req.headers['x-forwarded-for'] || null,
-  });
-});
-
-// ============================================================
 // 7. API ROUTES
 // ============================================================
 
@@ -182,15 +145,6 @@ const server = app.listen(
   PORT,
   '0.0.0.0',
   () => {
-    console.log(`
-=========================================
-  MediTrack Node Server Running
-  Port: ${PORT}
-  Database: Supabase Connected
-  Trust Proxy: ENABLED
-  Supabase Images: ALLOWED BY CSP
-=========================================
-    `);
   }
 );
 
@@ -199,7 +153,6 @@ const server = app.listen(
 // ============================================================
 
 server.on('close', () => {
-  console.log('Server closed');
 });
 
 // ============================================================

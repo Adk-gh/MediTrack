@@ -616,67 +616,14 @@ exports.createAppointment = async (data) => {
   };
 
   // ============================================================
-  // DEBUG LOGGING
+
   // ============================================================
 
-  console.log(
-    '============================================================'
-  );
 
-  console.log('[CREATE APPOINTMENT]');
-  console.log(
-    'Requester Auth UID:',
-    requesterAuthUid
-  );
-  console.log(
-    'Requester users.id:',
-    requester.id
-  );
-  console.log(
-    'Requester Role:',
-    requesterRole
-  );
-  console.log(
-    'Selected Patient users.id:',
-    patient.id
-  );
-  console.log(
-    'University ID:',
-    patient.university_id
-  );
-  console.log(
-    'Patient Name:',
-    newDoc.patient_name
-  );
-  console.log(
-    'Service:',
-    newDoc.service_type
-  );
-  console.log(
-    'Reason:',
-    newDoc.reason
-  );
 
-  console.log(
-    'Schedule:',
-    requiresSchedule
-      ? `${newDoc.year}-${newDoc.month}-${newDoc.day} ${newDoc.time}`
-      : 'Awaiting clinic schedule'
-  );
 
-  console.log(
-    'Status:',
-    newDoc.status
-  );
 
-  console.log(
-    'Insert payload:',
-    newDoc
-  );
 
-  console.log(
-    '============================================================'
-  );
 
   // ============================================================
   // INSERT APPOINTMENT
@@ -732,10 +679,6 @@ exports.createAppointment = async (data) => {
     throw insertError;
   }
 
-  console.log(
-    '[CREATE APPOINTMENT] Successfully inserted:',
-    appointment
-  );
 
   // ============================================================
   // NOTIFICATIONS
@@ -755,9 +698,6 @@ exports.createAppointment = async (data) => {
         referenceType: 'appointment',
       });
 
-      console.log(
-        '[CREATE APPOINTMENT] Patient notification created.'
-      );
     } catch (notificationError) {
       console.error(
         '[CREATE APPOINTMENT] Patient notification failed:',
@@ -786,9 +726,6 @@ exports.createAppointment = async (data) => {
         }
       );
 
-      console.log(
-        '[CREATE APPOINTMENT] Clinic staff notifications created.'
-      );
     } catch (notificationError) {
       console.error(
         '[CREATE APPOINTMENT] Staff notification failed:',
@@ -810,9 +747,6 @@ exports.createAppointment = async (data) => {
         referenceType: 'appointment',
       });
 
-      console.log(
-        '[CREATE APPOINTMENT] Requester confirmation notification created.'
-      );
     } catch (notificationError) {
       console.error(
         '[CREATE APPOINTMENT] Requester notification failed:',
@@ -1094,8 +1028,6 @@ exports.updateAppointment = async (id, data) => {
     updateData.time = null;
   }
 
-  console.log('[UPDATE APPOINTMENT] ID:', id);
-  console.log('[UPDATE APPOINTMENT] Payload:', updateData);
 
   const {
     data: updatedAppointment,
@@ -1197,7 +1129,6 @@ exports.updateAppointment = async (id, data) => {
 // ============================================================
 
 exports.archiveAppointment = async (id) => {
-  console.log(`\n--- STARTING ARCHIVE FOR APPOINTMENT ID: ${id} ---`);
 
   // 1. Fetch existing data
   const { data: existingData, error: fetchError } = await supabase
@@ -1209,7 +1140,6 @@ exports.archiveAppointment = async (id) => {
   if (fetchError) throw fetchError;
   if (!existingData) throw new Error('Appointment not found.');
 
-  console.log(`[archiveAppointment] Found appointment. Linked user_id is:`, existingData.user_id || 'NULL');
 
   // 2. Perform the soft delete
   const { error: updateError } = await supabase
@@ -1221,11 +1151,9 @@ exports.archiveAppointment = async (id) => {
     .eq('id', id);
 
   if (updateError) throw updateError;
-  console.log(`[archiveAppointment] Database update successful (is_archived = true)`);
 
   // 3. Dispatch Notification
   if (existingData.user_id) {
-    console.log(`[archiveAppointment] Calling notificationsService.createNotification...`);
     try {
       const result = await notificationsService.createNotification({
         type: 'appointment_archived',
@@ -1235,15 +1163,12 @@ exports.archiveAppointment = async (id) => {
         referenceId: id,
         referenceType: 'appointment',
       });
-      console.log(`[archiveAppointment] SUCCESS! Notification created with ID:`, result?.id);
     } catch (notifyErr) {
       console.error('[archiveAppointment] FAILED to create notification:', notifyErr);
     }
   } else {
-    console.log('[archiveAppointment] ABORTED notification. The user_id is null for this appointment.');
   }
 
-  console.log(`--- FINISHED ARCHIVE FOR APPOINTMENT ID: ${id} ---\n`);
 
   return { id, is_archived: true };
 };

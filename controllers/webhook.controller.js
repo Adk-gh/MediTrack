@@ -262,9 +262,6 @@ exports.handleResendWebhook = async (
         break;
 
       default:
-        console.log(
-          `[ResendWebhook] Ignoring unsupported event: ${eventType}`
-        );
 
         setWebhookAuditData(
           res,
@@ -293,9 +290,6 @@ exports.handleResendWebhook = async (
         event,
       });
 
-    console.log(
-      `[ResendWebhook] ${eventType}: ${emailAddress} -> ${status}`
-    );
 
     setWebhookAuditData(
       res,

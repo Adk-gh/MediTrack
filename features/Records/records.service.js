@@ -402,11 +402,6 @@ exports.getUserRecords = async (authUserId) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 exports.requestCertificate = async (recordId, body, requester) => {
-  console.log('[RecordsService] requestCertificate called:', {
-    recordId,
-    body,
-    requester,
-  });
 
   if (!recordId) throw new Error('recordId is required for requestCertificate');
 
@@ -472,11 +467,6 @@ exports.requestCertificate = async (recordId, body, requester) => {
   const patientName =
     `${user.first_name || ''} ${user.last_name || ''}`.trim() || requester?.email || 'A patient';
 
-  console.log('[RecordsService] About to call notifyRecordRequest with:', {
-    requestId: recordId,
-    requestType,
-    patientName,
-  });
 
   try {
     const notifyResult = await notificationsService.notifyRecordRequest({
@@ -486,7 +476,6 @@ exports.requestCertificate = async (recordId, body, requester) => {
       patientName,
     });
 
-    console.log('[RecordsService] notifyRecordRequest result:', notifyResult);
   } catch (notifyError) {
     console.error('[RecordsService] notifyRecordRequest threw an error:', notifyError);
   }

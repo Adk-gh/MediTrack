@@ -2833,7 +2833,6 @@ export const Consultations = () => {
         return accessToken;
       }
 
-      console.log('[Clinic] Token expired, refreshing...');
       const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
 
       if (!refreshErr && refreshed?.session) {
@@ -2842,7 +2841,6 @@ export const Consultations = () => {
         localStorage.setItem('token', newAccess);
         if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
         try { supabase.realtime.setAuth(newAccess); } catch {}
-        console.log('[Clinic] Token refreshed successfully');
         return newAccess;
       }
 

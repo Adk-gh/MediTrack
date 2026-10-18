@@ -11,7 +11,6 @@ const {
 
 const router = express.Router();
 
-console.log('[StorageRoutes] storageRoutes.js loaded');
 
 // ============================================================
 // CONFIGURATION
@@ -284,20 +283,8 @@ const readActiveLogoMetadata = async () => {
 };
 
 const listBrandingFiles = async () => {
-  console.log(
-    '[Branding Debug] Supabase URL:',
-    process.env.SUPABASE_URL
-  );
 
-  console.log(
-    '[Branding Debug] Bucket:',
-    PUBLIC_ASSETS_BUCKET
-  );
 
-  console.log(
-    '[Branding Debug] Prefix:',
-    BRANDING_PREFIX
-  );
 
   const { data, error } = await withTimeout(
     supabase.storage
@@ -312,15 +299,7 @@ const listBrandingFiles = async () => {
     10000
   );
 
-  console.log(
-    '[Branding Debug] Files returned:',
-    data
-  );
 
-  console.log(
-    '[Branding Debug] Storage error:',
-    error
-  );
 
   if (error) {
     throw error;
@@ -485,9 +464,6 @@ const basePublicUrl =
       const publicUrl =
         `${basePublicUrl}?v=${Date.now()}`;
 
-      console.log(
-        `[Branding] Returning active logo: ${logoPath}`
-      );
 
       return res.status(200).json({
         success: true,
@@ -658,9 +634,6 @@ router.post(
           cleanPath
         )}?v=${Date.now()}`;
 
-      console.log(
-        `[Branding] Active logo changed to: ${cleanPath}`
-      );
 
       return res
         .status(200)

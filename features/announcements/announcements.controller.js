@@ -631,28 +631,9 @@ ${safeContent}
 
 const createAnnouncement = async (req, res, next) => {
   try {
-    console.log('==========================================');
-    console.log('=== NEW ANNOUNCEMENT DEBUG ===');
-    console.log('==========================================');
 
-    console.log(
-      '[Announcements] Body fields:',
-      Object.keys(req.body || {})
-    );
 
-    console.log(
-      '[Announcements] Uploaded file:',
-      req.file
-        ? {
-            fieldname: req.file.fieldname,
-            originalname: req.file.originalname,
-            mimetype: req.file.mimetype,
-            size: req.file.size,
-          }
-        : 'NO FILE'
-    );
 
-    console.log('==========================================');
 
     const result =
       await announcementsService.createAnnouncement(
@@ -736,33 +717,10 @@ const updateAnnouncement = async (req, res, next) => {
       });
     }
 
-    console.log('==========================================');
-    console.log('=== UPDATE ANNOUNCEMENT DEBUG ===');
-    console.log('==========================================');
 
-    console.log(
-      '[Announcements] ID:',
-      id
-    );
 
-    console.log(
-      '[Announcements] Body fields:',
-      Object.keys(req.body || {})
-    );
 
-    console.log(
-      '[Announcements] Replacement file:',
-      req.file
-        ? {
-            fieldname: req.file.fieldname,
-            originalname: req.file.originalname,
-            mimetype: req.file.mimetype,
-            size: req.file.size,
-          }
-        : 'NO NEW FILE'
-    );
 
-    console.log('==========================================');
 
     const result =
       await announcementsService.updateAnnouncement(

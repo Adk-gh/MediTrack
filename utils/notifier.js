@@ -16,7 +16,6 @@ const sendNotification = async ({ userId, type, title, message, referenceId = nu
     }]);
 
     if (error) throw error;
-    console.log(`🔔 Notification sent to user ${userId}`);
 
   } catch (error) {
     console.error('❌ Failed to send notification:', error.message);

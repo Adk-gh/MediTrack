@@ -532,10 +532,6 @@ export default function MediTrack() {
                   true;
 
 
-                console.log(
-                  "[MediTrack Back] Current tab:",
-                  activeTab
-                );
 
 
                 // ─────────────────────────
@@ -546,9 +542,6 @@ export default function MediTrack() {
                   activeTab === "home"
                 ) {
 
-                  console.log(
-                    "[MediTrack Back] Home → Exit app"
-                  );
 
 
                   CapacitorApp.exitApp();
@@ -562,9 +555,6 @@ export default function MediTrack() {
 
                 else {
 
-                  console.log(
-                    `[MediTrack Back] ${activeTab} → Home`
-                  );
 
 
                   setActiveTab(
@@ -585,9 +575,6 @@ export default function MediTrack() {
             );
 
 
-          console.log(
-            "[MediTrack Back] Listener registered"
-          );
 
         } catch (error) {
 

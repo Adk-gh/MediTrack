@@ -362,10 +362,6 @@ const handleSave = async () => {
       role_mappings: roleMappingsToSave,
     };
 
-    console.log(
-      '[OCR Settings] Configuration being saved:',
-      configToSave
-    );
 
     const res = await fetch(`${OCR_SERVICE_URL}/config`, {
       method: 'POST',

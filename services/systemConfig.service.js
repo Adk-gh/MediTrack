@@ -32,7 +32,6 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL
 const invalidateSystemConfigCache = () => {
     cachedConfig = null;
     lastFetchTime = 0;
-    console.log('[SystemConfig] In-memory cache invalidated.');
 };
 
 /**
@@ -146,10 +145,6 @@ const updateSystemConfig = async (configData) => {
         throw error;
     }
 
-    console.log(
-        '[SystemConfig] Current config:',
-        currentConfig
-    );
 
     // -------------------------------------------------------------
     // Remove protected fields
@@ -195,9 +190,6 @@ const updateSystemConfig = async (configData) => {
         newVersion =
             currentVersion + 1;
 
-        console.log(
-            `[SystemConfig] Starting new academic update cycle: ${currentVersion} -> ${newVersion}`
-        );
     }
 
     /*
@@ -210,10 +202,6 @@ const updateSystemConfig = async (configData) => {
     payload.updated_at =
         new Date().toISOString();
 
-    console.log(
-        '[SystemConfig] Update payload:',
-        payload
-    );
 
     // -------------------------------------------------------------
     // Update using the actual database ID we just fetched.
@@ -268,10 +256,6 @@ const updateSystemConfig = async (configData) => {
     const updatedConfig =
         updatedRows[0];
 
-    console.log(
-        '[SystemConfig] Updated configuration:',
-        updatedConfig
-    );
 
     // -------------------------------------------------------------
     // INSTANT CACHE INVALIDATION

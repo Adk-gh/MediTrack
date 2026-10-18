@@ -30,7 +30,6 @@ const validateEmailWithEasyEmail = async (email) => {
     clearTimeout(timeoutId);
     const data = await response.json();
 
-    console.log(">>> [Email Validation] API Response:", data);
 
     if (data.valid === false) return { isDeliverable: false, message: "Invalid email address format." };
     if (data.valid_mx === false) return { isDeliverable: false, message: "This email domain does not exist or cannot receive emails." };
@@ -60,7 +59,6 @@ exports.forgotPassword = async (req, res) => {
     const userExists = !userError && userData;
 
     if (userExists) {
-      console.log('>>> [Forgot] User found, generating token for:', email);
 
       const resetToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour expiry

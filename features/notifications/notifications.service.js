@@ -124,7 +124,6 @@ async notifyRoles(roles, notificationData) {
     return [];
   }
 
-  console.log('[Notifications] Looking for users with roles:', normalizedRoles);
 
   const { data: allUsers, error } = await supabase
     .from('users')
@@ -138,14 +137,6 @@ async notifyRoles(roles, notificationData) {
     return [];
   }
 
-  console.log(
-    '[Notifications] Available users:',
-    (allUsers || []).map(user => ({
-      id: user.id,
-      name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-      role: user.role,
-    }))
-  );
 
   const targetUsers = (allUsers || []).filter(user => {
     const userRole = String(user.role || '')
@@ -155,14 +146,6 @@ async notifyRoles(roles, notificationData) {
     return normalizedRoles.includes(userRole);
   });
 
-  console.log(
-    '[Notifications] Target users:',
-    targetUsers.map(user => ({
-      id: user.id,
-      name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-      role: user.role,
-    }))
-  );
 
   if (targetUsers.length === 0) {
     console.warn(
@@ -183,10 +166,6 @@ async notifyRoles(roles, notificationData) {
     created_at: new Date().toISOString(),
   }));
 
-  console.log(
-    '[Notifications] Inserting notifications:',
-    notifications
-  );
 
   const { data, error: insertError } = await supabase
     .from('notifications')
@@ -202,10 +181,6 @@ async notifyRoles(roles, notificationData) {
     return [];
   }
 
-  console.log(
-    '[Notifications] SUCCESSFULLY CREATED:',
-    data
-  );
 
   return data || [];
 },
@@ -340,16 +315,6 @@ async notifyRecordRequest(requestData) {
     message ||
     `${patientName || 'A patient'} requested a ${documentName}.`;
 
-  console.log(
-    '[Notifications] notifyRecordRequest:',
-    {
-      requestId,
-      recordType: normalizedRecordType,
-      requestType: normalizedRequestType,
-      targetRoles,
-      patientName,
-    }
-  );
 
   return await this.notifyRoles(
     targetRoles,

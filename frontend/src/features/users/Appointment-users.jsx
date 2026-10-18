@@ -445,15 +445,6 @@ const fetchAppointmentNotifications = useCallback(async () => {
       );
     });
 
-    console.log(
-  "Appointment page:",
-  unreadAppointmentNotifications.map(n => ({
-    id: n.id,
-    type: n.type,
-    referenceId: n.reference_id,
-    referenceType: n.reference_type
-  }))
-);
 
     setAppointmentNotifications(
       unreadAppointmentNotifications

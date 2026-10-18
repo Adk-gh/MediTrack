@@ -98,16 +98,10 @@ export const getAllAppointments = async (
     now - allAppointmentsCache.lastFetch < CACHE_TTL_MS;
 
   if (!forceRefresh && cacheIsValid) {
-    console.log(
-      '[Appointments] Loaded all appointments instantly from browser cache ⚡'
-    );
 
     return allAppointmentsCache.data;
   }
 
-  console.log(
-    '[Appointments] Fetching fresh data from API...'
-  );
 
   const response = await fetch(
     `${API_URL}/appointments`,
@@ -147,16 +141,10 @@ export const getAppointmentsByDate = async (
     now - cachedDate.lastFetch < CACHE_TTL_MS;
 
   if (!forceRefresh && cacheIsValid) {
-    console.log(
-      `[Appointments] Loaded date ${date} instantly from browser cache ⚡`
-    );
 
     return cachedDate.data;
   }
 
-  console.log(
-    `[Appointments] Fetching fresh data for ${date}...`
-  );
 
   const response = await fetch(
     `${API_URL}/appointments/date/${encodeURIComponent(date)}`,
@@ -282,11 +270,6 @@ export const updateAppointment = async (
     ...updates,
   };
 
-  console.log(
-    '[Appointments] Updating appointment:',
-    appointmentId,
-    payload
-  );
 
   const response = await fetch(
     `${API_URL}/appointments/${appointmentId}`,
@@ -313,9 +296,6 @@ export const deleteAppointment = async (id) => {
     throw new Error('Appointment ID is required');
   }
 
-  console.log(
-    `[Appointments] Sending archive request to backend for ID: ${id}`
-  );
 
   const response = await fetch(
     `${API_URL}/appointments/${id}`,

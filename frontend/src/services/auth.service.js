@@ -227,14 +227,7 @@ const login = async ({ email, password }) => {
     );
   }
 
-  console.log(
-    "================================================"
-  );
 
-  console.log(
-    ">>> [Auth] Starting login:",
-    normalizedEmail
-  );
 
   // ----------------------------------------------------------
   // STEP 1
@@ -298,11 +291,6 @@ const login = async ({ email, password }) => {
     );
   }
 
-  console.log(
-    ">>> [Auth] Login response:",
-    res.status,
-    data
-  );
 
   if (!res.ok) {
     throw new Error(
@@ -353,9 +341,6 @@ const login = async ({ email, password }) => {
   // Establish THIS account's session in the browser.
   // ----------------------------------------------------------
 
-  console.log(
-    ">>> [Auth] Setting Supabase frontend session..."
-  );
 
   const {
     data: sessionData,
@@ -399,15 +384,7 @@ const login = async ({ email, password }) => {
     user.uid ||
     user.id;
 
-  console.log(
-    ">>> [Auth] Backend UID:",
-    backendUid
-  );
 
-  console.log(
-    ">>> [Auth] Frontend Supabase UID:",
-    frontendUser?.id
-  );
 
   if (
     !frontendUser?.id ||
@@ -469,23 +446,9 @@ const login = async ({ email, password }) => {
 
   const savedUser = saveCurrentUser(user);
 
-  console.log(
-    ">>> [Auth] Login successful."
-  );
 
-  console.log(
-    ">>> [Auth] Active UID:",
-    savedUser?.uid
-  );
 
-  console.log(
-    ">>> [Auth] Active email:",
-    savedUser?.email
-  );
 
-  console.log(
-    "================================================"
-  );
 
   return data;
 };
@@ -602,9 +565,6 @@ const getSupabaseUser = async () => {
 // ============================================================
 
 const logout = async () => {
-  console.log(
-    ">>> [Auth] Starting logout..."
-  );
 
   // ----------------------------------------------------------
   // STEP 1
@@ -668,9 +628,6 @@ const logout = async () => {
     );
   }
 
-  console.log(
-    ">>> [Auth] Logout complete."
-  );
 };
 
 // ============================================================

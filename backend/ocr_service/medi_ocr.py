@@ -639,12 +639,10 @@ def parse_id_fields(text_lines: list) -> dict:
     full_text = " ".join(text_lines)
 
     print(
-        f"[DEBUG] raw text_lines: {text_lines}",
         flush=True
     )
 
     print(
-        f"[DEBUG] full_text: {full_text}",
         flush=True
     )
 
@@ -669,12 +667,10 @@ def parse_id_fields(text_lines: list) -> dict:
         )
 
         print(
-            f"[DEBUG] id_number matched: {fields['id_number']}",
             flush=True
         )
     else:
         print(
-            "[DEBUG] id_number NOT matched",
             flush=True
         )
 
@@ -704,7 +700,6 @@ def parse_id_fields(text_lines: list) -> dict:
             fields["id_type"] = mapping["id_type"]
 
             print(
-                f"[DEBUG] role matched: "
                 f"'{mapping['name']}' "
                 f"(matched token: '{m.group(0)}')",
                 flush=True
@@ -715,7 +710,6 @@ def parse_id_fields(text_lines: list) -> dict:
 
     if not matched:
         print(
-            "[DEBUG] No role pattern matched — defaulting to Unknown",
             flush=True
         )
 
@@ -728,7 +722,6 @@ def parse_id_fields(text_lines: list) -> dict:
         fields["name"] = name_match.group(1).strip()
 
         print(
-            f"[DEBUG] name matched: {fields['name']}",
             flush=True
         )
 
@@ -762,7 +755,6 @@ def parse_id_fields(text_lines: list) -> dict:
             )
 
             print(
-                f"[DEBUG] institution matched: "
                 f"{fields['institution']}",
                 flush=True
             )
@@ -943,7 +935,6 @@ def perform_ocr():
             )
 
             print(
-                f"[DEBUG] Final parsed result: {structured}",
                 flush=True
             )
 

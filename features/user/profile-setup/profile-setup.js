@@ -6,7 +6,6 @@ const multer = require('multer');
 const supabase = require('../../../configs/database');
 const { authorized } = require('../../../middleware/authorized');
 
-console.log('[profile-setup] ✅ NEW ROUTER LOADED');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -32,7 +31,6 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
 
     // Bypass setup completely for admins
     if (dbRole === 'sysadmin' || dbRole === 'admin') {
-      console.log(`[profile-setup] Skipping profile setup for admin: ${uid}`);
       return res.status(200).json({
         success: true,
         message: 'Admin profile bypassed successfully.',
@@ -95,7 +93,6 @@ router.post('/', authorized, upload.single('image'), async (req, res) => {
       updateData.job_title = body.jobTitle || '';
     }
 
-    console.log(`[profile-setup] uid: ${uid} | role: ${dbRole}`);
 
     // Write to Supabase
     const { data, error } = await supabase

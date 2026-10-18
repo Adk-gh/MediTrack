@@ -1721,8 +1721,6 @@ const [formData, setFormData] = useState(() => buildInitialForm(selectedPatient,
       const currentUserId = session?.user?.id;
 
       if (currentUserId && nurses.length > 0 && !formData.nurseOnDuty) {
-        console.log('[Medical] Current session uid:', currentUserId);
-        console.log('[Medical] Nurse list:', nurses);
 
         // 1. Try to find the exact match by UID
         let targetNurse = nurses.find(n => n.uid === currentUserId);

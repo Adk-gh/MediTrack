@@ -36,7 +36,6 @@ const sendEmail = async ({
       };
     }
 
-    console.log('[Resend] Email sent:', data);
 
     return {
       success: true,

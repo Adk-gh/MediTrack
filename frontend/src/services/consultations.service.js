@@ -55,11 +55,9 @@ export const getAllConsultations = async (consultationType = null, forceRefresh 
   const now = Date.now();
 
   if (!forceRefresh && !consultationType && consultationsCache.data && consultationsCache.lastFetch && (now - consultationsCache.lastFetch < CACHE_TTL_MS)) {
-    console.log('[Consultations] Loaded instantly from browser cache ⚡');
     return consultationsCache.data;
   }
 
-  console.log('[Consultations] Fetching fresh data from Backend...');
   const endpoint = consultationType ? `/consultations?type=${consultationType}` : '/consultations';
   const data = await fetchApi(endpoint);
 
@@ -138,11 +136,9 @@ export const getMessagesByConsultationId = async (consultationId, forceRefresh =
   const cachedRoom = messagesCache[consultationId];
 
   if (!forceRefresh && cachedRoom && (now - cachedRoom.lastFetch < CACHE_TTL_MS)) {
-    console.log(`[Messages] Loaded room ${consultationId} instantly from browser cache ⚡`);
     return cachedRoom.data;
   }
 
-  console.log(`[Messages] Fetching fresh messages for room ${consultationId}...`);
   const data = await fetchApi(`/consultations/${consultationId}/messages`);
 
   messagesCache[consultationId] = {

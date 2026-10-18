@@ -737,7 +737,6 @@ const ProfileSetup = ({ user, onComplete }) => {
         profile_complete: true,
       };
 
-      console.log('[ProfileSetup] Submitting payload:', JSON.stringify(payload, null, 2));
 
       const response = await fetch(`${API_URL}/user/profile-setup`, {
         method:  'POST',

@@ -65,7 +65,6 @@ export const getValidToken = async () => {
     }
 
     // Token expired - refresh it
-    console.log('[TokenMgr] Token expired, refreshing...');
     return refreshTokenInternal();
   } catch (err) {
     console.error('[TokenMgr] getValidToken error:', err);
@@ -94,7 +93,6 @@ const refreshTokenInternal = async () => {
         }
 
         try { supabase.realtime.setAuth(newAccess); } catch {}
-        console.log('[TokenMgr] Token refreshed successfully');
         return newAccess;
       }
 
@@ -117,18 +115,15 @@ const refreshTokenInternal = async () => {
 export const startTokenRefresh = (intervalMs = 10 * 60 * 1000) => {
   // Don't start multiple intervals
   if (tokenRefreshInterval) {
-    console.log('[TokenMgr] Refresh interval already running');
     return;
   }
 
-  console.log('[TokenMgr] Starting automatic token refresh every', intervalMs / 1000, 'seconds');
 
   // Initial refresh
   getValidToken();
 
   // Set up interval
   tokenRefreshInterval = setInterval(async () => {
-    console.log('[TokenMgr] Running scheduled token refresh');
     await getValidToken();
   }, intervalMs);
 };
@@ -139,7 +134,6 @@ export const stopTokenRefresh = () => {
   if (tokenRefreshInterval) {
     clearInterval(tokenRefreshInterval);
     tokenRefreshInterval = null;
-    console.log('[TokenMgr] Stopped token refresh');
   }
 };
 

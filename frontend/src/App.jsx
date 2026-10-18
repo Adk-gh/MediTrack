@@ -235,9 +235,6 @@ const ProtectedRoute = ({
 
     if (!isStaffRole) {
 
-      console.log(
-        `[ProtectedRoute] Access Denied to Dashboard. Role parsed as: "${role}"`
-      );
 
 
       return (
@@ -329,9 +326,6 @@ const ProtectedRoute = ({
       )
     ) {
 
-      console.log(
-        `[ProtectedRoute] Access Denied. User role: "${effectiveRole}", Required roles: ${allowedRoles.join(", ")}`
-      );
 
 
       if (
@@ -530,9 +524,6 @@ function AndroidBackButtonHandler() {
                   "/student/meditrack"
                 ) {
 
-                  console.log(
-                    "[App Back] Student route detected - MediTrack handles Back."
-                  );
 
                   return;
 
@@ -543,10 +534,6 @@ function AndroidBackButtonHandler() {
                   true;
 
 
-                console.log(
-                  "[App Back] Current route:",
-                  currentPath
-                );
 
 
                 // ─────────────────────────
@@ -560,9 +547,6 @@ function AndroidBackButtonHandler() {
                   "/dashboard"
                 ) {
 
-                  console.log(
-                    "[App Back] Dashboard → Exit app"
-                  );
 
 
                   CapacitorApp.exitApp();
@@ -583,18 +567,12 @@ function AndroidBackButtonHandler() {
 
                 if (canGoBack) {
 
-                  console.log(
-                    "[App Back] Going to previous route"
-                  );
 
 
                   navigate(-1);
 
                 } else {
 
-                  console.log(
-                    "[App Back] No previous route → Exit app"
-                  );
 
 
                   CapacitorApp.exitApp();
@@ -613,9 +591,6 @@ function AndroidBackButtonHandler() {
             );
 
 
-          console.log(
-            "[App Back] Listener registered successfully"
-          );
 
         } catch (error) {
 
@@ -1054,9 +1029,6 @@ function App() {
       user
     ) {
 
-      console.log(
-        "[App] User already logged in, starting token refresh..."
-      );
 
 
       startTokenRefresh();

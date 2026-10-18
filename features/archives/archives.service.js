@@ -809,11 +809,6 @@ exports.permanentDelete = async (id, tableName) => {
   const idColumn = getIdColumn(normalizedTable);
   const archiveTypes = getArchiveTypesForTable(normalizedTable);
 
-  console.log('[Archives] Permanent deletion requested:', {
-    id,
-    tableName: normalizedTable,
-    idColumn,
-  });
 
   // First determine whether the supplied ID is an archive row ID.
   const { data: archiveById, error: archiveIdError } = await supabase
@@ -865,12 +860,6 @@ exports.permanentDelete = async (id, tableName) => {
     archivedData?.[idColumn] ||
     id;
 
-  console.log('[Archives] Resolved permanent deletion target:', {
-    suppliedId: id,
-    archiveId: archiveRecord?.id || null,
-    originalId: targetItemId,
-    tableName: normalizedTable,
-  });
 
   // Retrieve the original row if it still exists.
   let originalRecord = null;
@@ -1026,11 +1015,6 @@ exports.permanentDelete = async (id, tableName) => {
     });
   }
 
-  console.log('[Archives] Permanent deletion completed:', {
-    targetItemId,
-    tableName: normalizedTable,
-    archiveEntriesRemoved: removedArchives?.length || 0,
-  });
 
   return {
     id: targetItemId,

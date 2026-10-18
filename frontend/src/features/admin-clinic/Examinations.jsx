@@ -355,10 +355,6 @@ export const Examinations = ({
       let patient = null;
 
       try {
-        console.log(
-          '[Examinations] Fetching patient:',
-          patientId
-        );
 
         /**
          * -----------------------------------------
@@ -374,10 +370,6 @@ export const Examinations = ({
         if (byId.data) {
           patient = byId.data;
 
-          console.log(
-            '[Examinations] Patient found by UUID:',
-            patient
-          );
         }
 
         /**
@@ -395,10 +387,6 @@ export const Examinations = ({
           if (byUniversityId.data) {
             patient = byUniversityId.data;
 
-            console.log(
-              '[Examinations] Patient found by university_id:',
-              patient
-            );
           }
         }
       } catch (error) {
@@ -488,10 +476,6 @@ export const Examinations = ({
             cachedIds.includes(String(patientId));
 
           if (matchesPatient) {
-            console.log(
-              '[Examinations] Patient loaded from localStorage:',
-              patientData
-            );
 
             if (!cancelled) {
               setSelectedPatient(

@@ -154,7 +154,6 @@ export const archiveRecord = async (id, recordType) => {
 
   const endpoint = recordType === 'medical' ? 'medical' : 'dental';
 
-  console.log(`[RecordsService] Sending archive request for ${endpoint} record ID: ${id}`);
 
   const res = await fetch(`${API_URL}/records/${endpoint}/${id}`, {
     method: "DELETE",
@@ -228,15 +227,6 @@ export const requestCertificate = async (
       ? "report"
       : "certificate";
 
-  console.log(
-    "[RecordsService] Submitting record request:",
-    {
-      recordId,
-      recordType: finalRecordType,
-      requestType: finalRequestType,
-      url: `${API_URL}/records/${recordId}/certificate-request`,
-    }
-  );
 
   const res = await fetch(
     `${API_URL}/records/${recordId}/certificate-request`,
@@ -275,10 +265,6 @@ export const requestCertificate = async (
     );
   }
 
-  console.log(
-    "[RecordsService] Record request submitted successfully:",
-    data
-  );
 
   return data.data;
 };

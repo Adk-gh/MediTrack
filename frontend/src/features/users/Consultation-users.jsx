@@ -559,24 +559,7 @@ export default function ConsultationUsers() {
   const hasPendingOnline  = pendingAppt.medical || pendingAppt.dental;
   const hasAnyActiveNow   = (!isEnded && !!activeRoomId) || isApptActive('medical') || isApptActive('dental') || hasApprovedOnline;
 
-  // DEBUG: Log state to identify why the "Book First" block is showing
   useEffect(() => {
-    console.log('[ConsultationUsers Debug] State Check:', {
-      internalUserId,
-      hasRecords,
-      onlineAppt,
-      onlineApptDetails,
-      pendingAppt,
-      hasApprovedOnline,
-      hasPendingOnline,
-      isEnded,
-      activeRoomId,
-      isApptActiveMedical: isApptActive('medical'),
-      isApptActiveDental: isApptActive('dental'),
-      hasAnyActiveNow,
-      loadingRecords,
-      loadingOnlineAppt,
-    });
   }, [
     internalUserId, hasRecords, onlineAppt, onlineApptDetails,
     pendingAppt, hasApprovedOnline, hasPendingOnline,

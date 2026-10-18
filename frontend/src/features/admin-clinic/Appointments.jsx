@@ -909,10 +909,6 @@ const CreateAppointmentModal = ({
         status: 'approved',
       };
 
-      console.log(
-        '[CreateAppointmentModal] Sending appointment to backend:',
-        payload
-      );
 
       const API_URL = (
         import.meta.env.VITE_API_URL ||
@@ -938,10 +934,6 @@ const CreateAppointmentModal = ({
         );
       }
 
-      console.log(
-        '[CreateAppointmentModal] Backend response:',
-        result
-      );
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -953,10 +945,6 @@ const CreateAppointmentModal = ({
 
       const inserted = result.data;
 
-      console.log(
-        '[CreateAppointmentModal] Appointment created successfully:',
-        inserted
-      );
 
       onCreated?.(inserted);
 
@@ -1049,10 +1037,6 @@ const CreateAppointmentModal = ({
                         <button
                           key={p.id}
                           onClick={() => {
-                            console.log(
-                              '[CreateAppointmentModal] Selected patient:',
-                              p
-                            );
                             setSelectedPatient(p);
                             setPatientResults([]);
                           }}
@@ -1286,16 +1270,8 @@ export const Appointments = () => {
   };
 
   const appointments = useMemo(() => {
-    console.log('[Debug] All Raw Appointments received:', allRawAppointments);
     // Filter out archived appointments
     const unarchivedAppts = allRawAppointments.filter(a => !a.is_archived);
-    console.log('[Debug] Unarchived Appointments:', unarchivedAppts);
-    console.log('[Debug] Status distribution:',
-      allRawAppointments.reduce((acc, a) => {
-        acc[a.status] = (acc[a.status] || 0) + 1;
-        return acc;
-      }, {})
-    );
 
     const role = String(currentUserRole || '').toLowerCase().trim();
     if (role === 'dentist') {

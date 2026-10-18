@@ -103,7 +103,6 @@ const setAuditData = (res, description, details = {}) => {
 
 const register = async (req, res, next) => {
   try {
-    console.log('>>> Registering User:', req.body.email);
 
     const result = await userService.registerUser(
       req.body,
@@ -244,10 +243,6 @@ const setupProfile = async (req, res, next) => {
   try {
     const uid = req.user?.uid;
 
-    console.log(
-      '>>> Attempting profile setup for UID:',
-      uid
-    );
 
     if (!uid) {
       return res.status(400).json({
@@ -431,15 +426,7 @@ const updateProfile = async (req, res, next) => {
     delete updates.academicInfoAcknowledgedVersion;
     delete updates.academic_info_acknowledged_version;
 
-    console.log(
-      '[updateProfile controller] uid:',
-      uid
-    );
 
-    console.log(
-      '[updateProfile controller] updates:',
-      JSON.stringify(updates)
-    );
 
     const updated = await userService.updateProfile(
       uid,

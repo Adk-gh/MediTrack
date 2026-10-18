@@ -36,7 +36,6 @@ export async function sendNotification({ userId, type, title, message } = {}) {
   try {
     const allowed = await ensurePermission();
     if (!allowed) {
-      console.log(`[notifier] (no permission) ${type || 'notification'} for ${userId}: ${title}`);
       return;
     }
 

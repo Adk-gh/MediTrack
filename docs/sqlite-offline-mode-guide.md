@@ -348,17 +348,14 @@ class SQLiteService {
 
       if (savedDb) {
         this.db = new this.SQL.Database(savedDb);
-        console.log('[SQLite] Database loaded from storage');
       } else {
         this.db = new this.SQL.Database();
-        console.log('[SQLite] New database created');
       }
 
       // Run migrations if needed
       await this.runMigrations();
 
       this.isInitialized = true;
-      console.log('[SQLite] Database initialized successfully');
 
       return this.db;
     } catch (error) {
@@ -427,7 +424,6 @@ class SQLiteService {
 
       // Also save to localStorage as backup
       localStorage.setItem(`sqlite_${DB_NAME}`, base64);
-      console.log('[SQLite] Database saved');
     } catch (error) {
       console.error('[SQLite] Failed to save database:', error);
       // Fallback: save to localStorage only
@@ -452,7 +448,6 @@ class SQLiteService {
       const version = currentVersion[0]?.values[0]?.[0] || 0;
 
       if (version < DB_VERSION) {
-        console.log(`[SQLite] Running migrations from v${version} to v${DB_VERSION}`);
         // Add migration logic here for future versions
       }
     }
@@ -606,7 +601,6 @@ class SQLiteService {
     // Insert initial version
     this.db.run("INSERT INTO db_version (version, applied_at) VALUES (?, datetime('now'))", [DB_VERSION]);
 
-    console.log('[SQLite] Schema created');
     await this.saveDatabase();
   }
 
@@ -745,7 +739,6 @@ class SessionManager {
     // Also save user data
     await this.saveUserData(user);
 
-    console.log('[Session] Session saved for 48 hours');
   }
 
   async saveUserData(user) {
@@ -831,7 +824,6 @@ class SessionManager {
   async restoreSession() {
     const session = await this.getValidSession();
     if (!session) {
-      console.log('[Session] No valid session found');
       return { success: false, reason: 'no_session' };
     }
 
@@ -971,7 +963,6 @@ const login = async ({ email, password }) => {
   });
 
   const data = await res.json();
-  console.log('Login response:', res.status, data);
   if (!res.ok) throw new Error(data.message);
 
   if (data.success && data.data) {
@@ -1332,7 +1323,6 @@ class OfflineAppointmentsService {
         if (res.ok) {
           await this.markAsSynced(change.record_id);
           await this.removeFromSyncQueue(change.id);
-          console.log(`[Offline Appointments] Synced ${change.operation} for ${change.record_id}`);
         }
       } catch (error) {
         console.error(`[Offline Appointments] Failed to sync ${change.id}:`, error);
@@ -1611,14 +1601,12 @@ class NetworkStatusService {
   }
 
   handleOnline() {
-    console.log('[Network] Back online!');
     this.isConnected = true;
     this.notifyListeners();
     this.triggerSync();
   }
 
   handleOffline() {
-    console.log('[Network] Gone offline');
     this.isConnected = false;
     this.notifyListeners();
   }
@@ -1653,7 +1641,6 @@ class NetworkStatusService {
         await offlineAnnouncements.syncPendingChanges();
       }
 
-      console.log('[Network] Sync triggered on reconnection');
     } catch (error) {
       console.error('[Network] Sync failed:', error);
     }
@@ -1705,7 +1692,6 @@ class SyncManager {
     // Listen for network status changes
     networkStatus.onStatusChange(async (online) => {
       if (online) {
-        console.log('[SyncManager] Network restored, starting sync...');
         await this.syncAll();
       }
     });
@@ -1733,7 +1719,6 @@ class SyncManager {
 
   async syncAll() {
     if (this.isSyncing) {
-      console.log('[SyncManager] Sync already in progress');
       return;
     }
 
@@ -1797,7 +1782,6 @@ class SyncManager {
       this.lastSyncTime = new Date();
       localStorage.setItem('lastSyncTime', this.lastSyncTime.toISOString());
 
-      console.log('[SyncManager] Full sync completed');
       this.notifyListeners('completed');
 
     } catch (error) {
@@ -2192,7 +2176,6 @@ const AppointmentUsers = () => {
         if (lastSync) setLastSynced(lastSync);
       } else {
         // Use offline data
-        console.log('[Appointments] Loading from offline storage...');
         const offlineData = await offlineAppointments.getAppointmentsByUserId(user.uid || user.id);
         setAppointments(offlineData || []);
       }

@@ -1676,9 +1676,7 @@ export const Approvals = () => {
           .ilike('status', activeTab)
           .order('created_at', { ascending: false });
 
-        console.log('[Approvals] Dental records fetched:', data?.length);
         if (data && data[0]) {
-          console.log('[Approvals] First record tooth_data raw:', data[0].tooth_data);
         }
 
         if (error) throw error;
@@ -1705,7 +1703,6 @@ export const Approvals = () => {
 
           // Parse tooth_data
           let toothDataRaw = record.tooth_data;
-          console.log('[Approvals] tooth_data raw type:', typeof toothDataRaw, 'value:', toothDataRaw);
           const toothData = typeof toothDataRaw === 'string'
             ? JSON.parse(toothDataRaw || '{}')
             : (toothDataRaw || {});
@@ -1809,7 +1806,6 @@ export const Approvals = () => {
         const currentExamType = examType;
         const currentRecordId = selectedExam.recordId || selectedExam.id;
 
-        console.log('[Approvals] Fetching history for userId:', userId, 'currentRecordId:', currentRecordId, 'examType:', currentExamType);
 
         let data;
         if (currentExamType === 'dental') {
@@ -1828,7 +1824,6 @@ export const Approvals = () => {
           const { data: dentalData, error } = await query.order('created_at', { ascending: false });
           if (error) throw error;
           data = dentalData;
-          console.log('[Approvals] Dental history fetched:', data?.length, 'records');
         } else {
           // Fetch medical records history for medical exams
           let query = supabase
@@ -1845,7 +1840,6 @@ export const Approvals = () => {
           const { data: medicalData, error } = await query.order('created_at', { ascending: false });
           if (error) throw error;
           data = medicalData;
-          console.log('[Approvals] Medical history fetched:', data?.length, 'records');
         }
 
         if (isMounted) {
@@ -2899,7 +2893,6 @@ const handleSubmitCertificate = async (data) => {
       return td;
     })();
 
-    console.log('[Dental Exam Detail] toothData:', toothData);
 
     // Filter dental procedures that are "Yes"
     const proceduresDone = Object.entries(dentalHistory)

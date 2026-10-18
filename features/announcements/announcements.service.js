@@ -331,16 +331,6 @@ const uploadImageToStorage = async (file) => {
   const filePath =
     `${IMAGE_FOLDER}/${fileName}`;
 
-  console.log(
-    '[Announcements] Uploading image:',
-    {
-      bucket: BUCKET_NAME,
-      path: filePath,
-      mimeType: file.mimetype,
-      size: file.size,
-      originalName: file.originalname,
-    }
-  );
 
   // ----------------------------------------------------------
   // Upload directly to PRIVATE Supabase Storage
@@ -375,10 +365,6 @@ const uploadImageToStorage = async (file) => {
   const uploadedPath =
     data?.path || filePath;
 
-  console.log(
-    '[Announcements] Image uploaded successfully:',
-    uploadedPath
-  );
 
   /*
    * IMPORTANT:
@@ -423,10 +409,6 @@ const deleteImageFromStorage = async (
   }
 
   try {
-    console.log(
-      '[Announcements] Deleting image:',
-      storagePath
-    );
 
     const {
       error,
@@ -442,10 +424,6 @@ const deleteImageFromStorage = async (
         error
       );
     } else {
-      console.log(
-        '[Announcements] Image deleted successfully:',
-        storagePath
-      );
     }
 
   } catch (error) {

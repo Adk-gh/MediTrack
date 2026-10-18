@@ -46,10 +46,8 @@ if (SENDGRID_API_KEY) {
 const verifyConnection = async () => {
   try {
     if (SENDGRID_API_KEY) {
-      console.log('>>> [Email] Using SendGrid for emails');
     } else {
       await transporter.verify();
-      console.log('>>> [Email] SMTP connection verified');
     }
   } catch (error) {
     console.error('>>> [Email] Connection error:', error.message);
@@ -74,7 +72,6 @@ const sendEmail = async ({ to, subject, html }) => {
         setTimeout(() => reject(new Error('Email send timeout')), timeoutMs)
       )
     ]);
-    console.log('>>> [Email] Sent:', info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error('>>> [Email] Send error:', error.message);

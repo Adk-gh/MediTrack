@@ -301,9 +301,6 @@ const updateSystemConfig = async (
           }
         );
 
-        console.log(
-          `[SystemConfig] Academic update notifications sent for version ${academicVersion}.`
-        );
       } catch (notificationError) {
         console.error(
           '[SystemConfig] Failed to notify students about academic update:',

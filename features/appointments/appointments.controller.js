@@ -170,10 +170,6 @@ const createAppointment = async (req, res, next) => {
       });
     }
 
-    console.log(
-      '[CREATE APPOINTMENT CONTROLLER] Raw request body:',
-      req.body
-    );
 
     const appointmentData = {
       ...req.body,
@@ -239,10 +235,6 @@ const createAppointment = async (req, res, next) => {
         resolveActorName(req),
     };
 
-    console.log(
-      '[CREATE APPOINTMENT CONTROLLER] Normalized data:',
-      appointmentData
-    );
 
     if (!appointmentData.userId && !appointmentData.patientId) {
       return res.status(422).json({

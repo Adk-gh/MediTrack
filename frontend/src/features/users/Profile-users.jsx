@@ -532,8 +532,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
 
     setIsSaving(true);
 
-    console.log('=== SAVE PROFILE START ===');
-    console.log('Editing Section:', editingSection);
 
     try {
       // ==========================================================
@@ -560,7 +558,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
 
       const activeUid = session.user.id;
 
-      console.log('>>> [Auth] Active Supabase Auth UID:', activeUid);
 
       // ==========================================================
       // EXTRACT SECTION DATA
@@ -612,8 +609,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
         const normalizedNewEmail = String(newEmail || '').trim().toLowerCase();
         const normalizedCurrentEmail = String(profile.email || '').trim().toLowerCase();
 
-        console.log('>>> [Email] Current:', normalizedCurrentEmail);
-        console.log('>>> [Email] Requested:', normalizedNewEmail);
 
         // --------------------------------------------------------
         // EMAIL WAS CHANGED
@@ -634,7 +629,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
           // CHECK public.users FOR DUPLICATE ACTIVE EMAIL
           // ------------------------------------------------------
 
-          console.log('>>> [Email] Checking public.users for duplicate email...');
 
           const {
             data: existingEmailUser,
@@ -662,7 +656,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
           // UPDATE SUPABASE AUTH
           // ------------------------------------------------------
 
-          console.log('>>> [Auth] Requesting Supabase Auth email change...');
 
           const {
             data: emailUpdateData,
@@ -677,7 +670,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
             throw new Error(emailUpdateError.message || 'Failed to request email change.');
           }
 
-          console.log('>>> [Auth] Email change requested successfully:', emailUpdateData);
 
           isEmailUpdatePending = true;
         }
@@ -696,7 +688,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
       let updatedProfile = { ...profile };
 
       if (Object.keys(sectionData).length > 0) {
-        console.log('>>> [Backend] Sending profile update:', sectionData);
 
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         const headers = await getAuthenticatedApiHeaders();
@@ -802,12 +793,10 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
 
       closeEdit();
 
-      console.log('>>> [Profile] Profile update completed successfully.');
     } catch (err) {
       console.error('>>> [Profile] Error updating profile:', err);
       showToast(err?.message || t('messages.profileUpdateFailed'));
     } finally {
-      console.log('=== SAVE PROFILE END ===');
       setIsSaving(false);
     }
   };
@@ -1239,7 +1228,6 @@ useEffect(() => { document.body.style.overflow = (editingSection || docToDelete 
               <button
                 type="button"
                 onClick={async () => {
-                  console.log(">>> BUTTON CLICKED EXPLICITLY");
                   await saveProfileEdits();
                 }}
                 disabled={isSaving}

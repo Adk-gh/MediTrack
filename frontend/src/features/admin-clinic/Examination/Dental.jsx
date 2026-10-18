@@ -2770,10 +2770,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
           ])
           .join(',');
 
-        console.log(
-          '[Dental] Looking up users profile with candidates:',
-          uniqueCandidates
-        );
 
         const {
           data,
@@ -2806,15 +2802,6 @@ export const Dental = ({ selectedPatient, showMessage, defaultSchoolYear, defaul
           return;
         }
 
-        console.log(
-          '[Dental] Loaded users profile:',
-          {
-            id: data.id,
-            uid: data.uid,
-            home_address: data.home_address,
-            dental_history: data.dental_history,
-          }
-        );
 
         let parsedDentalHistory = {};
 

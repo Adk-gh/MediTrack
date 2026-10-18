@@ -147,7 +147,6 @@ const resolveRole = (parsedRole, rawText) => {
 
   const combined = `${parsedRole || ''} ${rawText || ''}`.toLowerCase();
 
-  console.log(`>>> [Role] Combined text for detection:\n"${combined.substring(0, 300)}"`);
 
   const keywordMap = [
 
@@ -163,9 +162,8 @@ const resolveRole = (parsedRole, rawText) => {
 
   ];
 
-  for (const [keyword, role] of keywordMap) if (combined.includes(keyword)) { console.log(`>>> [Role] Matched keyword "${keyword}" → role: "${role}"`); return role; }
+  for (const [keyword, role] of keywordMap) if (combined.includes(keyword)) { return role; }
 
-  console.log('>>> [Role] No keyword matched — defaulting to "student"');
 
   return 'student';
 
@@ -205,7 +203,6 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   const { parsed, raw_text, success, error: ocrErrorMsg } = ocrResponse.data;
 
-  console.log('>>> [OCR] Full response:\n', JSON.stringify(ocrResponse.data, null, 2));
 
   if (!success) throwError(ocrErrorMsg || 'OCR Failed to process the image.', 400);
 
@@ -225,7 +222,6 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   }
 
-  console.log(`>>> [ID] Input: "${universityId}" | OCR detected: "${ocrId}"\n>>> [ID] Normalized input: "${normalizedInputId}" | Normalized OCR: "${normalizeId(ocrId)}"`);
 
   if (!ocrId || normalizedInputId !== normalizeId(ocrId)) throwError(`Verification Failed: ID on card (${ocrId || 'Not Found'}) does not match your input.`, 400);
 
@@ -273,7 +269,6 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   const role = universityUser.role || resolveRole(parsed?.role, raw_text);
 
-  console.log(`>>> [Role] Final role saved to DB: "${role}"`);
 
   let userResponse;
 
@@ -319,17 +314,6 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   const user = userResponse?.user;
 
-  console.log(
-
-    '>>> [Auth] userResponse:',
-
-    JSON.stringify(userResponse),
-
-    '\n>>> [Auth] user.id:',
-
-    user?.id
-
-  );
 
   if (!user?.id) {
 
@@ -387,7 +371,6 @@ exports.registerUser = async ({ firstName, middleName, lastName, suffix, email, 
 
   }
 
-  console.log(`>>> [DB] User activated with role: "${role}", UID: ${updatedUser?.uid}`);
 
   return formatUserResponse(updatedUser);
 
@@ -911,7 +894,6 @@ exports.loginUser = async ({ email, password }) => {
 
   if (!user?.id || !session) throwError('Authentication session could not be created.', 401);
 
-  console.log(`👉 Auth UID from Supabase: ${user.id} | Checking public.users table...`);
 
   const { data: existingUser, error: existingUserError } = await supabase.from('users').select('*').eq('uid', user.id).maybeSingle();
 
@@ -921,7 +903,6 @@ exports.loginUser = async ({ email, password }) => {
 
   if (!existingUser) {
 
-    console.log('>>> [Profile] No user record found, auto-creating from auth...');
 
     const newUser = {
 
@@ -941,7 +922,6 @@ exports.loginUser = async ({ email, password }) => {
 
   }
 
-  console.log(`>>> [Auth] Active profile found for UID: ${user.id}`);
 
   return { token: session.access_token, refreshToken: session.refresh_token, ...formatUserResponse(existingUser) };
 
@@ -1025,7 +1005,6 @@ exports.deleteUser = async (userId, deletedByName) => {
 
   if (!data) throwError('Active user account not found.', 404);
 
-  console.log(`>>> [Archive] User ${userId} archived successfully.`);
 
   return { uid: userId, isArchived: true };
 
@@ -1171,7 +1150,6 @@ exports.updateProfile = async (userId, updates) => {
 
       dbUpdates.email = newEmail;
 
-      console.log(`>>> [Auth] Email change requested for UID ${userId}: ${currentEmail} → ${newEmail}`);
 
     }
 
@@ -1215,7 +1193,6 @@ exports.updateProfile = async (userId, updates) => {
 
     savedData = data;
 
-    console.log(`>>> [DB] Profile updated successfully for UID: ${userId}`);
 
   }
 
@@ -1317,7 +1294,6 @@ exports.adminUpdateUser = async (targetUid, updates) => {
 
     dbUpdates.email = newEmail;
 
-    console.log(`>>> [Admin] Auth email updated for UID ${targetUid}: ${newEmail}`);
 
   }
 
@@ -1325,7 +1301,6 @@ exports.adminUpdateUser = async (targetUid, updates) => {
 
   if (!data && error?.code === 'PGRST116') {
 
-    console.log('[adminUpdateUser] No user found by uid, trying id');
 
     const retry = await supabase.from('users').update(dbUpdates).eq('id', targetUid).select().single();
 
