@@ -40,6 +40,11 @@ import {
 } from "./context/AppointmentContext.jsx";
 
 import {
+  UserProvider,
+  useUser,
+} from "./context/UserContext.jsx";
+
+import {
   LoadingProvider,
   useLoading,
 } from "./context/LoadingContext.jsx";
@@ -236,7 +241,6 @@ const ProtectedRoute = ({
     if (!isStaffRole) {
 
 
-
       return (
         <Navigate
           to="/student/meditrack"
@@ -325,7 +329,6 @@ const ProtectedRoute = ({
         effectiveRole
       )
     ) {
-
 
 
       if (
@@ -524,7 +527,6 @@ function AndroidBackButtonHandler() {
                   "/student/meditrack"
                 ) {
 
-
                   return;
 
                 }
@@ -532,8 +534,6 @@ function AndroidBackButtonHandler() {
 
                 handlingBackRef.current =
                   true;
-
-
 
 
                 // ─────────────────────────
@@ -548,18 +548,15 @@ function AndroidBackButtonHandler() {
                 ) {
 
 
-
                   CapacitorApp.exitApp();
 
 
                   handlingBackRef.current =
                     false;
 
-
                   return;
 
                 }
-
 
                 // ─────────────────────────
                 // OTHER ROUTES
@@ -568,29 +565,21 @@ function AndroidBackButtonHandler() {
                 if (canGoBack) {
 
 
-
                   navigate(-1);
 
                 } else {
-
-
 
                   CapacitorApp.exitApp();
 
                 }
 
-
                 setTimeout(() => {
-
                   handlingBackRef.current =
                     false;
-
                 }, 300);
 
               }
             );
-
-
 
         } catch (error) {
 
@@ -642,17 +631,7 @@ const AdminLayoutWrapper = ({
   const location =
     useLocation();
 
-
-  const [
-    userProfile,
-    setUserProfile,
-  ] = useState(null);
-
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const { userProfile, fetchProfile } = useUser();
 
 
   const activeTab =
@@ -676,91 +655,9 @@ const AdminLayoutWrapper = ({
 
 
   useEffect(() => {
-
-    const fetchProfile =
-      async () => {
-
-        try {
-
-          const token =
-            localStorage.getItem(
-              "token"
-            );
-
-
-          if (!token) {
-
-            navigate(
-              "/login"
-            );
-
-            return;
-
-          }
-
-
-          const response =
-            await fetch(
-              `${API_URL}/user/profile`,
-              {
-                headers: {
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-              }
-            );
-
-
-          if (
-            response.status === 401
-          ) {
-
-            authService.logout();
-
-            navigate(
-              "/login"
-            );
-
-            return;
-
-          }
-
-
-          const result =
-            await response.json();
-
-
-          if (
-            result.success &&
-            result.data
-          ) {
-
-            setUserProfile(
-              result.data
-            );
-
-          }
-
-        } catch (err) {
-
-          console.error(
-            "Error fetching profile:",
-            err
-          );
-
-        } finally {
-
-          setLoading(false);
-
-        }
-
-      };
-
-
-    fetchProfile();
-
+    fetchProfile(API_URL);
   }, [
-    navigate,
+    fetchProfile,
   ]);
 
 
@@ -776,53 +673,31 @@ const AdminLayoutWrapper = ({
     };
 
 
-  if (loading) {
-
-    return (
-
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#466460]" />
-
-      </div>
-
-    );
-
-  }
-
-
   return (
 
     <DashboardLayout
-
       userName={
         userProfile
           ? `${userProfile.firstName || ""} ${userProfile.lastName || ""}`.trim()
           : "Admin"
       }
-
       userId={
         userProfile?.universityId ||
         userProfile?.employeeId ||
         ""
       }
-
       userProfile={
         userProfile
       }
-
       onLogout={
         handleLogout
       }
-
       activeTab={
         activeTab
       }
-
       onTabChange={
         handleTabChange
       }
-
     >
 
       {children}
@@ -1030,7 +905,6 @@ function App() {
     ) {
 
 
-
       startTokenRefresh();
 
     }
@@ -1068,309 +942,300 @@ function App() {
   return (
 
     <LoadingProvider>
+      <UserProvider>
+        <AppointmentProvider>
+          {/*
+            IMPORTANT:
+            This handles only actual application routes.
+            MediTrack.jsx handles its own internal tabs.
+          */}
+          <AndroidBackButtonHandler />
 
-      <AppointmentProvider>
+          <RouteChangeHandler />
 
-        {/*
-          IMPORTANT:
-          This handles only actual application routes.
-          MediTrack.jsx handles its own internal tabs.
-        */}
+          <GlobalLoading />
 
-        <AndroidBackButtonHandler />
+          <Suspense
+            fallback={
+              <PageLoader />
+            }
+          >
 
-        <RouteChangeHandler />
+            <Routes>
 
-        <GlobalLoading />
+              {/* ─────────────────────────
+                  PUBLIC
+              ───────────────────────── */}
 
-        <Suspense
-          fallback={
-            <PageLoader />
-          }
-        >
+              <Route
+                path="/signup"
+                element={
+                  <SignupForm />
+                }
+              />
 
-          <Routes>
+              <Route
+                path="/login"
+                element={
+                  <LoginForm />
+                }
+              />
 
-            {/* ─────────────────────────
-                PUBLIC
-            ───────────────────────── */}
+              <Route
+                path="/forgot-password"
+                element={
+                  <ForgotPassword />
+                }
+              />
 
-            <Route
-              path="/signup"
-              element={
-                <SignupForm />
-              }
-            />
+              <Route
+                path="/reset-password"
+                element={
+                  <ResetPassword />
+                }
+              />
 
-            <Route
-              path="/login"
-              element={
-                <LoginForm />
-              }
-            />
+              <Route
+                path="/verify-email"
+                element={
+                  <VerifyEmail />
+                }
+              />
 
-            <Route
-              path="/forgot-password"
-              element={
-                <ForgotPassword />
-              }
-            />
+              <Route
+                path="/onboarding"
+                element={
+                  <OnboardingPage />
+                }
+              />
 
-            <Route
-              path="/reset-password"
-              element={
-                <ResetPassword />
-              }
-            />
+              {/* ─────────────────────────
+                  ADMIN / CLINIC
+              ───────────────────────────────────────────────────────────── */}
 
-            <Route
-              path="/verify-email"
-              element={
-                <VerifyEmail />
-              }
-            />
+              <Route
+                path="/dashboard"
+                element={
+                  <AdminRoute>
+                    <Dashboard />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/onboarding"
-              element={
-                <OnboardingPage />
-              }
-            />
+              <Route
+                path="/records"
+                element={
+                  <AdminRoute>
+                    <Records />
+                  </AdminRoute>
+                }
+              />
 
+              <Route
+                path="/record-management"
+                element={
+                  <AdminRoute>
+                    <RecordManagement />
+                  </AdminRoute>
+                }
+              />
 
-            {/* ─────────────────────────
-                ADMIN / CLINIC
-            ───────────────────────── */}
+              <Route
+                path="/notifications-management"
+                element={
+                  <AdminRoute>
+                    <NotificationsManagement />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/dashboard"
-              element={
-                <AdminRoute>
-                  <Dashboard />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/audit-logs"
+                element={
+                  <AdminRoute>
+                    <AuditLogs />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/records"
-              element={
-                <AdminRoute>
-                  <Records />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/appointments"
+                element={
+                  <AdminRoute>
+                    <Appointments />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/record-management"
-              element={
-                <AdminRoute>
-                  <RecordManagement />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/announcements"
+                element={
+                  <AdminRoute>
+                    <Announcements />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/notifications-management"
-              element={
-                <AdminRoute>
-                  <NotificationsManagement />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/consultations"
+                element={
+                  <AdminRoute>
+                    <Consultations />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/audit-logs"
-              element={
-                <AdminRoute>
-                  <AuditLogs />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/consultation-management"
+                element={
+                  <AdminRoute>
+                    <ConsultationManagement />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/appointments"
-              element={
-                <AdminRoute>
-                  <Appointments />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/appointment-management"
+                element={
+                  <AdminRoute>
+                    <AppointmentManagement />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/announcements"
-              element={
-                <AdminRoute>
-                  <Announcements />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/users"
+                element={
+                  <AdminRoute>
+                    <UserManagement />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/consultations"
-              element={
-                <AdminRoute>
-                  <Consultations />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/ocr-settings"
+                element={
+                  <AdminRoute>
+                    <OcrSettings />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/consultation-management"
-              element={
-                <AdminRoute>
-                  <ConsultationManagement />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/reports"
+                element={
+                  <AdminRoute>
+                    <Reports />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/appointment-management"
-              element={
-                <AdminRoute>
-                  <AppointmentManagement />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/archives"
+                element={
+                  <AdminRoute>
+                    <Archives />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/users"
-              element={
-                <AdminRoute>
-                  <UserManagement />
-                </AdminRoute>
-              }
-            />
+              {/* ─────────────────────────
+                  ROLE-RESTRICTED ADMIN
+              ───────────────────────── */}
 
-            <Route
-              path="/ocr-settings"
-              element={
-                <AdminRoute>
-                  <OcrSettings />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/examinations"
+                element={
+                  <AdminRoute
+                    allowedRoles={[
+                      "sysadmin",
+                      "doctor",
+                      "nurse",
+                      "dentist",
+                    ]}
+                  >
+                    <Examination />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/reports"
-              element={
-                <AdminRoute>
-                  <Reports />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/approvals"
+                element={
+                  <AdminRoute
+                    allowedRoles={[
+                      "sysadmin",
+                      "doctor",
+                      "nurse",
+                      "dentist",
+                    ]}
+                  >
+                    <Approvals />
+                  </AdminRoute>
+                }
+              />
 
-            <Route
-              path="/archives"
-              element={
-                <AdminRoute>
-                  <Archives />
-                </AdminRoute>
-              }
-            />
+              {/* ─────────────────────────
+                  STUDENT / PATIENT
+              ───────────────────────── */}
 
+              <Route
+                path="/student/meditrack"
+                element={
+                  <ProtectedRoute>
+                    <Meditrack />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* ─────────────────────────
-                ROLE-RESTRICTED ADMIN
-            ───────────────────────── */}
+              {/* ─────────────────────────
+                  SETTINGS
+              ───────────────────────── */}
 
-            <Route
-              path="/examinations"
-              element={
-                <AdminRoute
-                  allowedRoles={[
-                    "sysadmin",
-                    "doctor",
-                    "nurse",
-                    "dentist",
-                  ]}
-                >
-                  <Examination />
-                </AdminRoute>
-              }
-            />
+              <Route
+                path="/student/settings"
+                element={
+                  <ProtectedRoute>
 
-            <Route
-              path="/approvals"
-              element={
-                <AdminRoute
-                  allowedRoles={[
-                    "sysadmin",
-                    "doctor",
-                    "nurse",
-                    "dentist",
-                  ]}
-                >
-                  <Approvals />
-                </AdminRoute>
-              }
-            />
+                    <Settings
+                      userRole={
+                        JSON.parse(
+                          localStorage.getItem(
+                            "user"
+                          )
+                        )?.role ||
+                        "student"
+                      }
+                      onLogout={() =>
+                        authService.logout()
+                      }
+                    />
 
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* ─────────────────────────
-                STUDENT / PATIENT
-            ───────────────────────── */}
+              {/* ─────────────────────────
+                  FALLBACK
+              ───────────────────────── */}
 
-            <Route
-              path="/student/meditrack"
-              element={
-                <ProtectedRoute>
-                  <Meditrack />
-                </ProtectedRoute>
-              }
-            />
-
-
-            {/* ─────────────────────────
-                SETTINGS
-            ───────────────────────── */}
-
-            <Route
-              path="/student/settings"
-              element={
-                <ProtectedRoute>
-
-                  <Settings
-                    userRole={
-                      JSON.parse(
-                        localStorage.getItem(
-                          "user"
-                        )
-                      )?.role ||
-                      "student"
-                    }
-
-                    onLogout={() =>
-                      authService.logout()
-                    }
+              <Route
+                path="*"
+                element={
+                  <Navigate
+                    to="/login"
+                    replace
                   />
+                }
+              />
 
-                </ProtectedRoute>
-              }
-            />
+            </Routes>
 
+          </Suspense>
 
-            {/* ─────────────────────────
-                FALLBACK
-            ───────────────────────── */}
-
-            <Route
-              path="*"
-              element={
-                <Navigate
-                  to="/login"
-                  replace
-                />
-              }
-            />
-
-          </Routes>
-
-        </Suspense>
-
-      </AppointmentProvider>
-
+        </AppointmentProvider>
+      </UserProvider>
     </LoadingProvider>
-
   );
 
 }
