@@ -3464,7 +3464,7 @@ const data =
       });
       const result = await response.json();
 
-      if (result && result.length > 0) {
+      if (response.ok) {
         setUnreadCounts(prev => {
           const newMap = { ...prev };
           delete newMap[selectedConvId];
@@ -3602,7 +3602,7 @@ const data =
       {/* ── Left: Sidebar ── */}
       <div className={`w-full md:w-[38%] lg:w-1/3 min-w-0 border-r border-slate-200 flex-col flex-shrink-0 ${
         selectedConvId ? 'hidden md:flex' : 'flex'
-      }`}>
+      } pt-[max(0px,env(safe-area-inset-top))]`}>
         <div className="px-4 py-3 sm:py-4 border-b border-slate-200 bg-white">
           <h3 className="font-extrabold text-[#466460] text-lg">
             <i className="fa-regular fa-comment-dots mr-2"></i>Consultations

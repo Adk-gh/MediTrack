@@ -1153,11 +1153,6 @@ const readInFlightRef = useRef(null);
   const markMessagesAsRead = useCallback(async () => {
     if (!activeRoomId || !internalUserId || readInFlightRef.current === activeRoomId) return;
 
-    const unreadClinicMessages = messages.filter((message) =>
-      message.sender_id && String(message.sender_id) !== String(internalUserId) && !message.read_at
-    );
-    if (!unreadClinicMessages.length) return;
-
     const roomId = activeRoomId;
     readInFlightRef.current = roomId;
     try {
@@ -1167,24 +1162,21 @@ const readInFlightRef = useRef(null);
       const response = await fetch(`${apiUrl}/consultations/${roomId}/messages/read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          sender_id: internalUserId,
+          sender_role: currentUser.role || 'student',
+        }),
       });
       const result = await response.json();
-      if (!response.ok || result.success !== true) {
+      if (!response.ok || (result.success === false && !Array.isArray(result))) {
         throw new Error(result.message || `Failed to mark messages as read (${response.status})`);
       }
 
-      const confirmedIds = new Set((result.data || []).map((message) => String(message.id)));
-      if (!confirmedIds.size) return;
-      const timestampById = new Map((result.data || []).map((message) => [String(message.id), message.read_at]));
-      const applyRead = (items) => items.map((message) => confirmedIds.has(String(message.id))
-        ? { ...message, read_at: timestampById.get(String(message.id)) || new Date().toISOString() }
-        : message);
-
-      // Only update the displayed room; a response from an earlier room must not modify another chat.
-      if (activeRoomIdRef.current === roomId) setMessages((previous) => applyRead(previous));
-      const cache = getCachedMessages(roomId);
-      if (cache) setCachedMessages(roomId, applyRead(cache));
+      const confirmedIds = new Set((Array.isArray(result) ? result : result.data || []).map((message) => String(message.id)));
+      if (result && result.length > 0) {
+        // Optimistically update local state if needed,
+        // but the primary fix is ensuring the Layout is notified.
+      }
 
       window.dispatchEvent(new CustomEvent('consultationMessagesRead', {
         detail: { consultationId: roomId, messageIds: [...confirmedIds] },
@@ -1194,10 +1186,16 @@ const readInFlightRef = useRef(null);
     } finally {
       if (readInFlightRef.current === roomId) readInFlightRef.current = null;
     }
-  }, [activeRoomId, internalUserId, messages, ensureValidSession]);
+  }, [activeRoomId, internalUserId, ensureValidSession]);
 
   useEffect(() => {
-    if (activeRoomId && internalUserId) markMessagesAsRead();
+    if (activeRoomId && internalUserId) {
+      // Optimistically signal that we've entered the room to clear the nav badge instantly
+      window.dispatchEvent(new CustomEvent('consultationMessagesRead', {
+        detail: { consultationId: activeRoomId, optimistic: true },
+      }));
+      markMessagesAsRead();
+    }
   }, [activeRoomId, internalUserId, markMessagesAsRead]);
 
   const handleHistoryFilterSwitch = async (filterType) => {

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
 import { useNavigate } from "react-router-dom";
+import { Settings } from 'lucide-react';
 
 import {
 
@@ -740,50 +741,20 @@ function ProfileDropdown({ userName, userRole, onLogout, onLogoutModalChange }) 
 
 
 
-            <button
-
-              onClick={() => {
-
-                setIsOpen(false);
-
-                navigate("/student/settings");
-
-              }}
-
-              className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
-
-            >
-
-              <svg
-
-                width="16"
-
-                height="16"
-
-                viewBox="0 0 24 24"
-
-                fill="none"
-
-                stroke="currentColor"
-
-                strokeWidth="2"
-
-                strokeLinecap="round"
-
-                strokeLinejoin="round"
-
-              >
-
-                <circle cx="12" cy="12" r="3"></circle>
-
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-
-              </svg>
-
-              Settings
-
-            </button>
-
+<button
+  onClick={() => {
+    setIsOpen(false);
+    navigate('/student/settings');
+  }}
+  className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#466460] transition-colors flex items-center gap-2.5"
+>
+  <Settings
+    size={16}
+    strokeWidth={1.8}
+    className="shrink-0"
+  />
+  Settings
+</button>
 
 
             <button
@@ -2105,6 +2076,8 @@ export default function UserDashboardLayout({
   const [apptNotifCount, setApptNotifCount] = useState(0);
 
   const [recordNotifCount, setRecordNotifCount] = useState(0);
+  const isReadingRef = useRef(false);
+
 
   const [resolvedUserRole, setResolvedUserRole] = useState(() =>
 
@@ -2483,6 +2456,7 @@ setApptNotifCount(uniqueAppointmentIds.size);
 
 
   const updateConsultUnreadCount = useCallback(async () => {
+    if (isReadingRef.current) return;
     try {
       // Resolve the signed-in account, not just a potentially missing or stale
       // consultation-page sessionStorage cache.
@@ -2544,8 +2518,15 @@ setApptNotifCount(uniqueAppointmentIds.size);
     // Custom Event Listener to instantly drop to 0 when chat is opened
 
     const handleInstantRead = () => {
-      // The read endpoint has completed; refresh actual unread messages across both rooms.
-      updateConsultUnreadCount();
+      // Optimistically clear the count immediately
+      setConsultUnreadCount(0);
+
+      // Set silence window to prevent stale DB reads from reviving the badge
+      isReadingRef.current = true;
+      setTimeout(() => {
+        isReadingRef.current = false;
+        updateConsultUnreadCount();
+      }, 1500);
     };
 
     window.addEventListener('consultationMessagesRead', handleInstantRead);
@@ -2565,15 +2546,7 @@ setApptNotifCount(uniqueAppointmentIds.size);
         { event: "*", schema: "public", table: "consultation_messages" },
 
         () => {
-
-          // Add a slight delay to ensure DB commits from the backend API are fully visible
-
-          setTimeout(() => {
-
-            updateConsultUnreadCount();
-
-          }, 1200);
-
+          updateConsultUnreadCount();
         }
 
       )

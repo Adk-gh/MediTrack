@@ -15,13 +15,13 @@
     "semantic_hash": "1e61806bdeefdc77d969f84a4aa03533"
   },
   "app.js": {
-    "mtime": 1792329341.2750309,
-    "ast_hash": "8b0bed612280c45dd4b52783d852c1f7",
+    "mtime": 1792329607.635396,
+    "ast_hash": "8715f25cb43b5b5fa2366576562369cc",
     "semantic_hash": ""
   },
   "backend/ocr_service/medi_ocr.py": {
-    "mtime": 1787842092.9848926,
-    "ast_hash": "6d4491838e637a1cd965c5fcb30c0c1c",
+    "mtime": 1792329624.3332276,
+    "ast_hash": "eb692849f1eb3aae25182195d261b90d",
     "semantic_hash": ""
   },
   "configs/cors.js": {
@@ -48,26 +48,6 @@
     "mtime": 1792329342.3364244,
     "ast_hash": "9adee65a6d0bae2be5e9d19e1691264a",
     "semantic_hash": ""
-  },
-  "docs/fix-appointments-rls.sql": {
-    "mtime": 1784293353.6074169,
-    "ast_hash": "c0c777994415c5dd44d81c713ac86472",
-    "semantic_hash": "c0c777994415c5dd44d81c713ac86472"
-  },
-  "docs/fix-consultations-rls.sql": {
-    "mtime": 1784281777.4278865,
-    "ast_hash": "e1e115b5449a61807ded7611f47c5418",
-    "semantic_hash": "e1e115b5449a61807ded7611f47c5418"
-  },
-  "docs/fix-rls-policies.sql": {
-    "mtime": 1784281265.7766318,
-    "ast_hash": "aee0728046a46d5c0a55adb787ec8974",
-    "semantic_hash": "aee0728046a46d5c0a55adb787ec8974"
-  },
-  "docs/sysadmin-full-access.sql": {
-    "mtime": 1784282155.877705,
-    "ast_hash": "7880450672a1ec767a67011b60c059dd",
-    "semantic_hash": "7880450672a1ec767a67011b60c059dd"
   },
   "features/Records/records.controller.js": {
     "mtime": 1792320207.7771437,
@@ -135,8 +115,8 @@
     "semantic_hash": "83a127124ffcab14c8e31091abe7098d"
   },
   "features/appointments/appointments.service.js": {
-    "mtime": 1792329342.361372,
-    "ast_hash": "26cb7873d24cb2b2bd1e23919d8a06c0",
+    "mtime": 1792329636.4477684,
+    "ast_hash": "8075804d438303e37a7db3ae0a448f0a",
     "semantic_hash": ""
   },
   "features/appointments/appointments.validation.js": {
@@ -355,8 +335,8 @@
     "semantic_hash": "c76714d5754a5c3fbcc87b2bba27efcc"
   },
   "frontend/src/App.jsx": {
-    "mtime": 1792329349.7956364,
-    "ast_hash": "4e6c3b44486fca4617eb8edfeb7c0d13",
+    "mtime": 1792412556.5540783,
+    "ast_hash": "3b7c35e315ed38d5f33855474f04d2c8",
     "semantic_hash": ""
   },
   "frontend/src/components/AddressModal.jsx": {
@@ -550,8 +530,8 @@
     "semantic_hash": ""
   },
   "frontend/src/features/users/Consultation-users.jsx": {
-    "mtime": 1792329349.8487842,
-    "ast_hash": "c8be0f4f9f06dce5e4dae7e2fb927168",
+    "mtime": 1793462268.0362804,
+    "ast_hash": "50d0fc623e708a270e3ec063c97ff672",
     "semantic_hash": ""
   },
   "frontend/src/features/users/Meditrack.jsx": {
@@ -590,8 +570,8 @@
     "semantic_hash": ""
   },
   "frontend/src/layouts/UserDashboardLayout.jsx": {
-    "mtime": 1791994940.6810758,
-    "ast_hash": "b9e854bf3702874a4567a896c9222e49",
+    "mtime": 1793462149.4963145,
+    "ast_hash": "12e23255e72e66769154162d7df81464",
     "semantic_hash": ""
   },
   "frontend/src/main.jsx": {
@@ -835,123 +815,23 @@
     "semantic_hash": ""
   },
   "docs/System.Flow.md": {
-    "mtime": 1789878827.037066,
+    "mtime": 1792329868.8411994,
     "ast_hash": "a7f2d8063418a16f08bca0b161c06759",
     "semantic_hash": ""
   },
   "docs/TECHNOLOGY_STACK_ANALYSIS.md": {
-    "mtime": 1791965717.6412709,
-    "ast_hash": "67a5828427897ed7b824d8fa8ce628af",
-    "semantic_hash": ""
-  },
-  "docs/archive-implementation-plan.md": {
-    "mtime": 1782710977.674395,
-    "ast_hash": "b573f2703cd2c7e768d0ce11c96dc7fe",
-    "semantic_hash": ""
-  },
-  "docs/backend-transition-plan.md": {
-    "mtime": 1784358284.3753026,
-    "ast_hash": "a11cdd72061cff67bd51d91683d40d4d",
-    "semantic_hash": ""
-  },
-  "docs/database-cleanup-plan.md": {
-    "mtime": 1786431824.4132085,
-    "ast_hash": "6a9f9849a6c69682ea593d917f6cd57e",
-    "semantic_hash": ""
-  },
-  "docs/frontend-update-plan.md": {
-    "mtime": 1784619884.671566,
-    "ast_hash": "8b24543ccc1cabb229f3e7da2df22df3",
-    "semantic_hash": ""
-  },
-  "docs/medical_records&users table.md": {
-    "mtime": 1786431819.3534093,
-    "ast_hash": "e31567ef2a830d52755cf428180ceaf4",
+    "mtime": 1792329873.7069035,
+    "ast_hash": "51f04a28b0805b8a565b80a3eee718b5",
     "semantic_hash": ""
   },
   "docs/meditrack.md": {
-    "mtime": 1785838135.376919,
+    "mtime": 1792329790.7801445,
     "ast_hash": "6aa9a78ba9b57fb15b664f4a711400e0",
-    "semantic_hash": ""
-  },
-  "docs/settings.md": {
-    "mtime": 1780066241.566501,
-    "ast_hash": "52305dfff87197d4f2221315192ef1f0",
     "semantic_hash": ""
   },
   "docs/sqlite-offline-mode-guide.md": {
     "mtime": 1792329342.3465273,
     "ast_hash": "f83339d4f777360ef70a89117b081cea",
-    "semantic_hash": ""
-  },
-  "docs/supabase.md": {
-    "mtime": 1792329342.347527,
-    "ast_hash": "f96e59c64f7a3603e3f4604a588c8f36",
-    "semantic_hash": ""
-  },
-  "docs/sysadmin-renaming-guide.md": {
-    "mtime": 1784279081.9270828,
-    "ast_hash": "55ff331487dcdc6f87a099b056554a49",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/Appointments policies.txt": {
-    "mtime": 1779976021.4817767,
-    "ast_hash": "6fd6bebb4bbad5e97fd7e98a932a20a0",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/announcements policies.txt": {
-    "mtime": 1779976120.6123273,
-    "ast_hash": "1dbb85b5ebb23ea05c518350c917a3a6",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/audit_logs policies.txt": {
-    "mtime": 1779975363.2988603,
-    "ast_hash": "e6380a56e7fbf006907ae17dea4ec1d2",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/consultation_messages policies.txt": {
-    "mtime": 1779976374.4866867,
-    "ast_hash": "61c02db88e90a58a9e08025ca9179f17",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/consultations policies.txt": {
-    "mtime": 1779976225.6928885,
-    "ast_hash": "61e89a4e3e4a92340343af6d9755ebdb",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/dental_records policies.txt": {
-    "mtime": 1779975979.6631014,
-    "ast_hash": "169efb20fcc01a7fb7c3cb24b4e831aa",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/medical_records policies.txt": {
-    "mtime": 1779975916.4247956,
-    "ast_hash": "33d2616e2ab152a991257ab4ae5154d1",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/notifications policies.txt": {
-    "mtime": 1779976078.3416018,
-    "ast_hash": "c8be025f7e4ebfce609148397b9177e4",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/policies.txt": {
-    "mtime": 1782475856.70336,
-    "ast_hash": "8c1565af97661ec4d51f0bc3a64b06d6",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/presence policies.txt": {
-    "mtime": 1779976382.2732382,
-    "ast_hash": "7071e858501827c5540ae09ff3160ac3",
-    "semantic_hash": ""
-  },
-  "docs/xpolicies/users policies.txt": {
-    "mtime": 1779978021.8368986,
-    "ast_hash": "10ef27d0649b4f53b89528535a6a9f20",
-    "semantic_hash": ""
-  },
-  "docs/xtodo.md": {
-    "mtime": 1786429458.825928,
-    "ast_hash": "3b90cf683f9a979e754f9648c67d64c1",
     "semantic_hash": ""
   },
   "frontend/index.html": {
@@ -1409,11 +1289,6 @@
     "ast_hash": "79014d80b2e22fc21f12625c47314cf4",
     "semantic_hash": ""
   },
-  "docs/rentetion.md": {
-    "mtime": 1786433441.7635431,
-    "ast_hash": "8cd2fc0180add53be3c8f226c8345349",
-    "semantic_hash": ""
-  },
   "frontend/meditrack-landing/googlea8d800c0441a5ee6.html": {
     "mtime": 1791971931.8993404,
     "ast_hash": "692b8c55b237f9419334e7c7deea51a7",
@@ -1497,6 +1372,11 @@
   "frontend/src/assets/shanaya.jpg": {
     "mtime": 1787140605.5986357,
     "ast_hash": "e46525472177cd7671552a1a50e57a60",
+    "semantic_hash": ""
+  },
+  "frontend/src/context/UserContext.jsx": {
+    "mtime": 1792411987.724615,
+    "ast_hash": "a8fd0c07945a993c23064eded201d513",
     "semantic_hash": ""
   }
 }

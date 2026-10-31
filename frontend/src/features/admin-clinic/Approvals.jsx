@@ -3918,7 +3918,8 @@ const handleSubmitCertificate = async (data) => {
       </div>
 
       {/* Right Column - Examination Detail */}
-      <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-slate-50 overflow-hidden">
+      {selectedExam && (
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-slate-50 overflow-hidden animate-[fadeInSlide_0.3s_ease-out_forwards]">
         <div className="p-4 border-b border-slate-200 bg-white">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <h3 className="font-bold text-[11px] uppercase text-[#466460]">
@@ -4035,7 +4036,8 @@ const handleSubmitCertificate = async (data) => {
           {examType === 'dental' ? renderDentalExamDetail(selectedExam) : renderExamDetail(selectedExam)}
         </div>
       </div>
-
+      )}
+      
       {/* --- APPROVAL OPTIONS MODAL --- */}
       {showApproveModal && (
         <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-opacity">

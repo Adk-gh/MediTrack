@@ -1360,10 +1360,10 @@ export function ProfileDrawer({ isOpen, onClose, onLogout, userProfile, forceBot
             <div className="flex gap-3">
               <button type="button" disabled={passwordSaving} onClick={closePasswordModal}
                 className="flex-1 py-3 rounded-xl bg-slate-100 font-bold text-xs text-slate-700 disabled:opacity-50">Cancel</button>
-              <button type="submit" disabled={passwordSaving || !passwordRules}
-                className="flex-1 py-3 rounded-xl bg-[#466460] font-bold text-xs text-white disabled:opacity-50">
-                {passwordSaving ? 'Updating...' : !passwordRules ? 'Policy unavailable' : 'Update Password'}
-              </button>
+                <button type="submit" disabled={passwordSaving}
+                  className="flex-1 py-3 rounded-xl bg-[#466460] font-bold text-xs text-white disabled:opacity-50">
+                  {passwordSaving ? 'Updating...' : 'Update Password'}
+                </button>
             </div>
           </form>
         </div>

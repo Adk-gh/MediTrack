@@ -1,16 +1,16 @@
-# Graph Report - MediTrack  (2026-10-18)
+# Graph Report - MediTrack  (2026-10-31)
 
 ## Corpus Check
-- 230 files · ~656,451 words
+- 217 files · ~636,321 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2476 nodes · 3907 edges · 207 communities (142 shown, 65 thin omitted)
+- 2326 nodes · 3770 edges · 196 communities (133 shown, 63 thin omitted)
 - Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 265 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0e59129a`
+- Built from commit: `00517f79`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -56,7 +56,7 @@
 - Homepage-users.jsx
 - ResetPassword.jsx
 - announcements.route.js
-- appointments.route.js
+- getSystemConfig
 - records.route.js
 - auth.routes.js
 - routes/index.js
@@ -65,15 +65,15 @@
 - announcements/announcements.service.js
 - archives.service.js
 - parseRecordJson
-- UserPreferencesContext.jsx
+- language.js
 - Records-users.jsx
 - Appointment-users.jsx
 - Records/records.service.js
-- Firebase Firestore to Supabase Migration Guide
+- ProfileSetup.jsx
 - app.js
 - systemConfig.service.js
 - loading.jsx
-- services/announcements.service.js
+- token.service.js
 - UniversityIdImport.jsx
 - AppointmentContext.jsx
 - AppointmentManagement.jsx
@@ -108,24 +108,22 @@
 - html2canvas
 - @ionic/react
 - lucide-react
-- MediTrack Archive Function Implementation Plan
+- DoctorSettings.jsx
 - react-router-dom
 - dependencies
 - zod
 - index.ts
-- getSystemConfig
+- consultations.route.js
 - supportSettings.jsx
 - NotificationsManagement.jsx
 - build
 - auth.service.js
 - db
-- Frontend Update Plan - Medical Records JSONB Schema
-- Backend Migration Plan: Hybrid Approach
+- archive.service.js
+- @eslint/js
 - MediTrack Setup Guide
-- services/appointments.service.js
+- @sendgrid/mail
 - MediTrack Project Guidelines
-- Medical Records Database Cleanup Plan
-- Changes Required
 - AuditLogs.jsx
 - MediTrack - Student Health Record Management System
 - Getting Started
@@ -134,13 +132,10 @@
 - Firestore Collections
 - MediTrack Project Guidelines
 - services/notifications.service.js
-- ⚙️ Settings Page (Role-Based Access)
 - @emotion/react
 - Technology Stack
 - Features
 - CLAUDE.md
-- medical_records&users table.md
-- docs/xtodo.md
 - Architecture
 - Environment Variables
 - Validation
@@ -150,7 +145,7 @@
 - yup
 - xtodo.md
 - SignupForm.jsx
-- UserNotifications.jsx
+- supabase.js
 - @emotion/styled
 - notifications.controller.js
 - @mui/material
@@ -162,9 +157,6 @@
 - devDependencies
 - main.js
 - frontend/package.json
-- supabase.js
-- BulkAppointmentPanel.jsx
-- language.js
 - aboutSettings.jsx
 - dateFormat.js
 - examinations.validation.js
@@ -188,12 +180,10 @@
 - electron
 - globals
 - vite
-- @vitejs/plugin-react
 - wait-on
 - helmet
 - jsonwebtoken
 - nodemailer
-- axios
 - multer
 - resend
 - @tanstack/react-query
@@ -227,7 +217,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (207 total, 65 thin omitted)
+## Communities (196 total, 63 thin omitted)
 
 ### Community 0 - "Approvals.jsx"
 Cohesion: 0.06
@@ -247,7 +237,7 @@ Nodes (13): author, bugs, url, description, homepage, keywords, license, main (+
 
 ### Community 4 - "devDependencies"
 Cohesion: 0.08
-Nodes (25): autoprefixer, @capacitor/cli, concurrently, eslint, @eslint/js, eslint-plugin-react-hooks, eslint-plugin-react-refresh, devDependencies (+17 more)
+Nodes (25): autoprefixer, @capacitor/cli, concurrently, eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, devDependencies, autoprefixer (+17 more)
 
 ### Community 5 - "Profile-users.jsx"
 Cohesion: 0.07
@@ -270,12 +260,12 @@ Cohesion: 0.09
 Nodes (25): appointmentsService, archiveAppointment(), createAppointment(), createBulkAppointment(), deleteAppointment(), getBulkHistory(), getMyAppointments(), resolveActorName() (+17 more)
 
 ### Community 10 - "User-Management.jsx"
-Cohesion: 0.07
-Nodes (47): AddressModal(), COUNTRIES, GENERIC_BARANGAYS, BLOOD_TYPES, calcAge(), CIVIL_STATUSES, EMERGENCY_RELATIONSHIPS, isEmpty() (+39 more)
+Cohesion: 0.14
+Nodes (27): capitalizeWords(), CreateUserModal(), currentUser, departmentMatches(), extractUniqueConfigValues(), FALLBACK_CLINIC_ROLES, FALLBACK_NON_TEACHING_ROLES, FALLBACK_TEACHING_ROLES (+19 more)
 
 ### Community 11 - "Dental.jsx"
-Cohesion: 0.06
-Nodes (51): API_URL, buildDentalForm(), buildDentalHistoryProcedures(), conditionLabel, createEmptySurfaces(), decidLowerLeft, decidLowerRight, decidUpperLeft (+43 more)
+Cohesion: 0.05
+Nodes (58): ALL_YEARS, AMPM, buildDays(), DateTimePicker(), getDaysInMonth(), HOURS_12, MINUTES, MONTH_FULL (+50 more)
 
 ### Community 12 - "systemConfig.jsx"
 Cohesion: 0.10
@@ -290,8 +280,8 @@ Cohesion: 0.07
 Nodes (9): AUTO_SCHEDULE_CAPACITY, ExaminationModal(), HOUR_SLOTS, MONTH_SHORT, MONTHS, normalizePatientData(), STAFF_PURPOSES_OPTS, STAFF_REASON_SUGGESTIONS (+1 more)
 
 ### Community 15 - "Medical.jsx"
-Cohesion: 0.06
-Nodes (51): ALL_YEARS, AMPM, buildDays(), DateTimePicker(), getDaysInMonth(), HOURS_12, MINUTES, MONTH_FULL (+43 more)
+Cohesion: 0.07
+Nodes (44): API_URL, asHistoryArray(), asHistoryObject(), buildInitialForm(), createDefaultVital(), familyConditions, fetchNurses(), fetchPhysicians() (+36 more)
 
 ### Community 16 - "Headers.jsx"
 Cohesion: 0.09
@@ -299,7 +289,7 @@ Nodes (11): DEFAULT_MOBILE_ITEMS, DENTAL_PROCEDURES, DesktopNav(), formatPhoneNu
 
 ### Community 17 - "App.jsx"
 Cohesion: 0.09
-Nodes (20): Approvals, Archives, AuditLogs, Examination, GlobalLoading(), NotificationsManagement, OcrSettings, ProfileSetup (+12 more)
+Nodes (19): AdminLayoutWrapper(), Approvals, Archives, AuditLogs, Examination, NotificationsManagement, OcrSettings, ProfileSetup (+11 more)
 
 ### Community 18 - "medi_ocr.py"
 Cohesion: 0.17
@@ -311,7 +301,7 @@ Nodes (13): Any, Bool, Capacitor, AppDelegate, NSUserActivity, UIApplication, UI
 
 ### Community 20 - "UserDashboardLayout.jsx"
 Cohesion: 0.10
-Nodes (7): DESKTOP_NAV, formatRoleLabel(), getStoredUserRole(), MOBILE_NAV, ProfileDropdown(), RECORD_NOTIF_TYPES, UserDashboardLayout()
+Nodes (6): DESKTOP_NAV, formatRoleLabel(), getStoredUserRole(), MOBILE_NAV, ProfileDropdown(), RECORD_NOTIF_TYPES
 
 ### Community 21 - "database.js"
 Cohesion: 0.11
@@ -350,8 +340,8 @@ Cohesion: 0.23
 Nodes (9): Announcements(), CATEGORIES, CATEGORY_COLORS, EMPTY_FORM, formatDate(), formatDeptDisplay(), getRoleFromStorage(), PRIORITY_CONFIG (+1 more)
 
 ### Community 30 - "storageManager.jsx"
-Cohesion: 0.06
-Nodes (31): API_URL, DentistSettings(), fieldInputStyle(), API_URL, DoctorSettings(), fieldInputStyle(), halfFieldInputStyle(), API_URL (+23 more)
+Cohesion: 0.14
+Nodes (12): API_URL, FileViewerModal(), formatBytes(), formatDate(), getExtension(), isDocumentFile(), isImageFile(), isPdfFile() (+4 more)
 
 ### Community 31 - "examinations.route.js"
 Cohesion: 0.27
@@ -384,12 +374,12 @@ Cohesion: 0.13
 Nodes (18): useAppointments(), Dashboard(), DashboardContent(), FALLBACK_CLINIC_ROLES, FALLBACK_NON_TEACHING_ROLES, FALLBACK_TEACHING_ROLES, findAppointmentUser(), findRecordUser() (+10 more)
 
 ### Community 37 - "LoginForm.jsx"
-Cohesion: 0.19
-Nodes (11): LoginForm(), startTokenRefresh(), createAnnouncementSchema, createAppointmentSchema, createRecordSchema, examinationSchema, getFieldErrors(), loginSchema (+3 more)
+Cohesion: 0.13
+Nodes (16): GlobalLoading(), RouteChangeHandler(), LoadingContext, LoadingProvider(), useLoading(), LoginForm(), startTokenRefresh(), createAnnouncementSchema (+8 more)
 
 ### Community 38 - "Homepage-users.jsx"
-Cohesion: 0.21
-Nodes (11): AnnouncementCard(), AnnouncementModal(), CATEGORY_COLORS, formatApptTime(), formatDisplayDateWithMonth(), HEALTH_TIPS_KEYS, HomePageUsers(), HOUR_SLOTS (+3 more)
+Cohesion: 0.16
+Nodes (16): AnnouncementCard(), AnnouncementModal(), CATEGORY_COLORS, formatApptTime(), formatDisplayDateWithMonth(), HEALTH_TIPS_KEYS, HomePageUsers(), HOUR_SLOTS (+8 more)
 
 ### Community 39 - "ResetPassword.jsx"
 Cohesion: 0.27
@@ -408,9 +398,9 @@ Nodes (17): allowDynamicClinicStaffs(), announcementsController, {
   getSystemConfig,
 }, multer (+9 more)
 
-### Community 41 - "appointments.route.js"
-Cohesion: 0.16
-Nodes (17): allowDynamicFaculty(), allowDynamicStaffAndFaculty(), appointmentsController, {
+### Community 41 - "getSystemConfig"
+Cohesion: 0.17
+Nodes (18): allowDynamicFaculty(), allowDynamicStaffAndFaculty(), appointmentsController, {
   auditLog,
 }, {
   authorized,
@@ -420,7 +410,7 @@ Nodes (17): allowDynamicFaculty(), allowDynamicStaffAndFaculty(), appointmentsCo
   bulkCreateAppointmentSchema,
 }, express, {
   getSystemConfig,
-} (+9 more)
+} (+10 more)
 
 ### Community 42 - "records.route.js"
 Cohesion: 0.12
@@ -461,25 +451,25 @@ Nodes (40): archiveAndDelete(), archivesController, archiveItem(), archivesServi
 Cohesion: 0.17
 Nodes (20): DentalRecordRow(), formatHistoryDate(), getDentalHistory(), getDentalIntraoral(), getDentalToothData(), getDentalTreatmentRemarks(), getDentalTreatments(), getMedicalCovid() (+12 more)
 
-### Community 50 - "UserPreferencesContext.jsx"
-Cohesion: 0.22
-Nodes (6): App(), API_URL, DEFAULT_PREFERENCES, UserPreferencesContext, UserPreferencesProvider(), root
+### Community 50 - "language.js"
+Cohesion: 0.16
+Nodes (11): API_URL, DEFAULT_PREFERENCES, UserPreferencesContext, UserPreferencesProvider(), root, English(), Filipino(), getTranslations() (+3 more)
 
 ### Community 51 - "Records-users.jsx"
 Cohesion: 0.16
 Nodes (14): clearCache(), COURSE_MAP, extractToothConditions(), fmt(), formatDisplayDateWithMonth(), getDateSearchString(), getRecordTimestamp(), InfoRow() (+6 more)
 
 ### Community 52 - "Appointment-users.jsx"
-Cohesion: 0.18
-Nodes (14): AppointmentUsers(), F2F_PURPOSES, FACULTY_ROLES, formatDisplayDateWithMonth(), formatDisplayDateWithMonthAndTime(), formatTimeStringTo12Hour(), getFreshToken(), HOUR_SLOTS (+6 more)
+Cohesion: 0.17
+Nodes (15): AppointmentUsers(), F2F_PURPOSES, FACULTY_ROLES, formatDisplayDateWithMonth(), formatDisplayDateWithMonthAndTime(), formatTimeStringTo12Hour(), getFreshToken(), HOUR_SLOTS (+7 more)
 
 ### Community 53 - "Records/records.service.js"
 Cohesion: 0.10
 Nodes (42): archiveDentalRecord(), archiveMedicalRecord(), autoArchiveRecords(), createRecord(), deleteRecord(), recordsService, requestCertificate(), resolveActorName() (+34 more)
 
-### Community 54 - "Firebase Firestore to Supabase Migration Guide"
-Cohesion: 0.06
-Nodes (35): 10. Frontend Migration Checklist (Updated 2026-05-28), 11. Supabase Realtime Setup, 12. Storage Bucket Setup, 1. Data Model Analysis, 2.1 Users Table, 2.2 Appointments Table, 2.3 Examinations Table (Legacy), 2.3b Medical Records Table (+27 more)
+### Community 54 - "ProfileSetup.jsx"
+Cohesion: 0.11
+Nodes (20): AddressModal(), COUNTRIES, GENERIC_BARANGAYS, BLOOD_TYPES, calcAge(), CIVIL_STATUSES, EMERGENCY_RELATIONSHIPS, isEmpty() (+12 more)
 
 ### Community 55 - "app.js"
 Cohesion: 0.15
@@ -489,9 +479,9 @@ Nodes (10): app, corsMiddleware, express, globalErr, helmet, routes, server, all
 Cohesion: 0.16
 Nodes (15): getPublicPasswordRules(), getSystemConfig(), notificationsService, resolveActorId(), resolveActorName(), sanitizeConfigForAudit(), setAuditData(), systemConfigService (+7 more)
 
-### Community 58 - "services/announcements.service.js"
-Cohesion: 0.52
-Nodes (6): createAnnouncement(), deleteAnnouncement(), getAllAnnouncements(), getAnnouncementById(), getAuthHeaders(), updateAnnouncement()
+### Community 58 - "token.service.js"
+Cohesion: 0.18
+Nodes (8): API_URL, DentistSettings(), fieldInputStyle(), ensureValidToken(), getAuthHeaders(), getValidToken(), isTokenExpired(), refreshTokenInternal()
 
 ### Community 59 - "UniversityIdImport.jsx"
 Cohesion: 0.17
@@ -502,8 +492,8 @@ Cohesion: 0.48
 Nodes (6): AppointmentContext, AppointmentProvider(), clearCache(), mapRow(), readCache(), writeCache()
 
 ### Community 61 - "AppointmentManagement.jsx"
-Cohesion: 0.19
-Nodes (17): AppointmentManagement(), CLINIC_SLOTS, departmentMatches(), FALLBACK_CLINIC_ROLES, FALLBACK_NON_TEACHING_ROLES, FALLBACK_TEACHING_ROLES, formatDate(), formatTime() (+9 more)
+Cohesion: 0.11
+Nodes (35): AppointmentManagement(), CLINIC_SLOTS, departmentMatches(), FALLBACK_CLINIC_ROLES, FALLBACK_NON_TEACHING_ROLES, FALLBACK_TEACHING_ROLES, formatDate(), formatTime() (+27 more)
 
 ### Community 62 - "services/consultations.service.js"
 Cohesion: 0.22
@@ -523,7 +513,7 @@ Nodes (3): gradlew script, die(), warn()
 
 ### Community 69 - "dependencies"
 Cohesion: 0.12
-Nodes (17): bcrypt, cors, dotenv, express, dependencies, bcrypt, cors, dotenv (+9 more)
+Nodes (17): bcrypt, cors, dotenv, express, dependencies, axios, bcrypt, cors (+9 more)
 
 ### Community 71 - "imports"
 Cohesion: 0.50
@@ -549,23 +539,23 @@ Nodes (14): ConsultationManagement(), departmentMatches(), FALLBACK_CLINIC_ROLES
 Cohesion: 0.06
 Nodes (35): 1. User Registration (SignupForm.jsx), 2. User Login (LoginForm.jsx), Admin/Clinic Layout (DashboardLayout.jsx), Admin Dashboard Flow, Admin Records View (Records.jsx), Application Routing Flow, Appointment System Flow, Authentication Flow (+27 more)
 
-### Community 93 - "MediTrack Archive Function Implementation Plan"
-Cohesion: 0.07
-Nodes (26): 1.1 Add Archive API Endpoints (if not fully exposed), 1.2 Create Archive Helper Utility, 2.1 Create Archive Service, 3.1 Announcements Page, 3.2 Appointments Page, 3.3 Consultations Page, 3.4 Records Page, 3.5 User Management Page (+18 more)
+### Community 93 - "DoctorSettings.jsx"
+Cohesion: 0.27
+Nodes (4): API_URL, DoctorSettings(), fieldInputStyle(), halfFieldInputStyle()
 
 ### Community 95 - "dependencies"
 Cohesion: 0.22
 Nodes (9): file-saver, dependencies, axios, file-saver, react-toastify, vite-plugin-compression, axios, react-toastify (+1 more)
 
-### Community 100 - "getSystemConfig"
-Cohesion: 0.25
-Nodes (12): allowDynamicAdmin(), allowDynamicClinicStaffs(), allowDynamicPatients(), {
+### Community 100 - "consultations.route.js"
+Cohesion: 0.24
+Nodes (11): allowDynamicAdmin(), allowDynamicClinicStaffs(), allowDynamicPatients(), {
   auditLog,
 }, {
   authorized: authorize,
 }, consultationsController, express, {
   getSystemConfig,
-} (+4 more)
+} (+3 more)
 
 ### Community 101 - "supportSettings.jsx"
 Cohesion: 0.15
@@ -581,35 +571,19 @@ Nodes (13): build, appId, directories, mac, productName, win, output, category (
 
 ### Community 104 - "auth.service.js"
 Cohesion: 0.26
-Nodes (9): AdminLayoutWrapper(), clearAppUserState(), clearSupabaseLocalSession(), getProfile(), login(), logout(), normalizeUser(), IMPORTANT: (+1 more)
+Nodes (9): App(), clearAppUserState(), clearSupabaseLocalSession(), getProfile(), login(), logout(), normalizeUser(), IMPORTANT: (+1 more)
 
-### Community 118 - "Frontend Update Plan - Medical Records JSONB Schema"
-Cohesion: 0.08
-Nodes (25): 1. Medical.jsx ✅ IN PROGRESS, 2. Records.jsx, 3. Approvals.jsx, 4. ApprovalManagement.jsx, 5. Records-users.jsx, 6. Archives.jsx, 7. Record-Management.jsx, 8. Dashboard.jsx (+17 more)
-
-### Community 119 - "Backend Migration Plan: Hybrid Approach"
-Cohesion: 0.08
-Nodes (23): Backend Implementation, Backend Migration Plan: Hybrid Approach, Backend Tests (Postman/cURL), Frontend Implementation, Frontend Tests (Browser), Hybrid Architecture, Implementation Steps, Overview (+15 more)
+### Community 118 - "archive.service.js"
+Cohesion: 0.46
+Nodes (7): archiveItem(), getArchives(), getArchiveStats(), getAuthHeaders(), getCurrentUser(), permanentDeleteArchive(), restoreItem()
 
 ### Community 120 - "MediTrack Setup Guide"
 Cohesion: 0.08
 Nodes (23): Additional Resources, Android, Common Issues, iOS, MediTrack Setup Guide, Mobile App Setup (Optional), Option A: Using Existing Environment Variables, Option A: Using Virtual Environment (Recommended) (+15 more)
 
-### Community 121 - "services/appointments.service.js"
-Cohesion: 0.41
-Nodes (11): allAppointmentsCache, clearAppointmentsCache(), createAppointment(), createBulkAppointment(), dateAppointmentsCache, deleteAppointment(), getAllAppointments(), getAppointmentsByDate() (+3 more)
-
 ### Community 122 - "MediTrack Project Guidelines"
 Cohesion: 0.11
 Nodes (17): API Endpoints, Architecture, Authentication Flow, Backend (port 5000), Backend Structure, Commands, Environment Variables (.env), Frontend (port 3000) (+9 more)
-
-### Community 123 - "Medical Records Database Cleanup Plan"
-Cohesion: 0.13
-Nodes (14): Benefits:, Columns to REMOVE (move to JSONB):, COVID Vaccine Columns to MERGE:, Current Problem, Frontend Updates Required, Medical.jsx - Update formData structure:, Medical Records Database Cleanup Plan, Migration Steps (+6 more)
-
-### Community 124 - "Changes Required"
-Cohesion: 0.14
-Nodes (13): 1. Classification Dropdowns (CLASSIFICATIONS array), 2. Role-based Configuration (ROLE\_NAV\_CONFIG, ROLE\_MOBILE\_NAV\_CONFIG), 3. ProtectedRoute and Role Checks, 4. Display Labels, 5. ProfileSetup.jsx - Classification Mapping, 6. User-Management.jsx - Stats and Dropdowns, 7. Headers.jsx - Default Display, Changes Required (+5 more)
 
 ### Community 127 - "AuditLogs.jsx"
 Cohesion: 0.17
@@ -640,12 +614,8 @@ Cohesion: 0.11
 Nodes (17): API Endpoints, Architecture, Authentication Flow, Backend (port 5000), Backend Structure, Commands, Environment Variables (.env), Frontend (port 3000) (+9 more)
 
 ### Community 134 - "services/notifications.service.js"
-Cohesion: 0.36
-Nodes (11): DesktopHeader(), AllNotificationsModal(), normalizeNotification(), NotificationPanel(), deleteNotification(), getAuthHeaders(), getInternalUserId(), getNotifications() (+3 more)
-
-### Community 135 - "⚙️ Settings Page (Role-Based Access)"
-Cohesion: 0.40
-Nodes (4): 🔒 Admin-Only Sections, ⚙️ Settings Page (Role-Based Access), 👩‍💻 Staff/Registrar Sections, 🎓 Student Sections
+Cohesion: 0.34
+Nodes (13): DesktopHeader(), AllNotificationsModal(), normalizeNotification(), NotificationPanel(), UserNotificationPanel(), UserDashboardLayout(), deleteNotification(), getAuthHeaders() (+5 more)
 
 ### Community 137 - "Technology Stack"
 Cohesion: 0.40
@@ -675,9 +645,9 @@ Nodes (10): getRecipientEmail(), getSvixHeaders(), getWebhookPayload(), handleRe
 Cohesion: 0.11
 Nodes (15): DEFAULT_STEPS, LoadingAnimation(), ALLOWED_IMAGE_TYPES, API_URL, DEFAULT_PASSWORD_RULES, getPasswordRequirements(), PasswordRequirements(), POLICY_SECTIONS (+7 more)
 
-### Community 153 - "UserNotifications.jsx"
-Cohesion: 0.22
-Nodes (4): formatTimeAgo(), getNotificationIcon(), UserNotificationBell(), UserNotificationPanel()
+### Community 153 - "supabase.js"
+Cohesion: 0.13
+Nodes (6): formatTimeAgo(), getNotificationIcon(), UserNotificationBell(), ARCHIVE_TYPE_LABELS, SORT_OPTIONS, supabase
 
 ### Community 155 - "notifications.controller.js"
 Cohesion: 0.42
@@ -713,18 +683,6 @@ Nodes (5): __dirname, __filename, files, dist/**/*, electron/**/*
 Cohesion: 0.25
 Nodes (7): author, description, main, name, private, type, version
 
-### Community 168 - "supabase.js"
-Cohesion: 0.32
-Nodes (3): ARCHIVE_TYPE_LABELS, SORT_OPTIONS, supabase
-
-### Community 169 - "BulkAppointmentPanel.jsx"
-Cohesion: 0.39
-Nodes (7): BULK_PURPOSES_OPTS, BulkAppointmentPanel(), formatDisplayDateWithMonth(), getFreshToken(), isTokenExpired(), parseCsvToIds(), STATUS_STYLES
-
-### Community 170 - "language.js"
-Cohesion: 0.43
-Nodes (6): English(), Filipino(), getTranslations(), isSupportedLanguage(), normalizeLanguage(), translate()
-
 ### Community 172 - "dateFormat.js"
 Cohesion: 0.52
 Nodes (6): DATE_FORMATS, formatDate(), formatUserDate(), getDateFormat(), pad(), parseDate()
@@ -754,21 +712,21 @@ Cohesion: 0.67
 Nodes (3): @capacitor/app, @capacitor/app, AndroidBackButtonHandler()
 
 ## Knowledge Gaps
-- **844 isolated node(s):** `express`, `helmet`, `corsMiddleware`, `globalErr`, `routes` (+839 more)
+- **733 isolated node(s):** `express`, `helmet`, `corsMiddleware`, `globalErr`, `routes` (+728 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **63 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `supabase` connect `supabase.js` to `Approvals.jsx`, `Consultations.jsx`, `Profile-users.jsx`, `services/notifications.service.js`, `User-Management.jsx`, `Dental.jsx`, `Appointments.jsx`, `Medical.jsx`, `Headers.jsx`, `UserDashboardLayout.jsx`, `Consultation-users.jsx`, `UserNotifications.jsx`, `storageManager.jsx`, `Record-Management.jsx`, `Notifications.jsx`, `Homepage-users.jsx`, `BulkAppointmentPanel.jsx`, `useDocumentManager.js`, `Records-users.jsx`, `Appointment-users.jsx`, `AppointmentContext.jsx`, `AppointmentManagement.jsx`, `services/consultations.service.js`, `ConsultationManagement.jsx`, `NotificationsManagement.jsx`, `auth.service.js`, `services/appointments.service.js`, `AuditLogs.jsx`?**
-  _High betweenness centrality (0.055) - this node is a cross-community bridge._
+- **Why does `supabase` connect `supabase.js` to `Approvals.jsx`, `Consultations.jsx`, `Profile-users.jsx`, `services/notifications.service.js`, `User-Management.jsx`, `Dental.jsx`, `Appointments.jsx`, `Medical.jsx`, `Headers.jsx`, `UserDashboardLayout.jsx`, `Consultation-users.jsx`, `Record-Management.jsx`, `Notifications.jsx`, `Homepage-users.jsx`, `useDocumentManager.js`, `Records-users.jsx`, `Appointment-users.jsx`, `token.service.js`, `AppointmentContext.jsx`, `AppointmentManagement.jsx`, `services/consultations.service.js`, `ConsultationManagement.jsx`, `NotificationsManagement.jsx`, `auth.service.js`, `AuditLogs.jsx`?**
+  _High betweenness centrality (0.064) - this node is a cross-community bridge._
 - **Why does `dependencies` connect `dependencies` to `Approvals.jsx`, `@emotion/react`, `DashboardLayout.jsx`, `react-chartjs-2`, `yup`, `@emotion/styled`, `@capacitor/core`, `@mui/material`, `react-hook-form`, `@supabase/supabase-js`, `frontend/package.json`, `@capacitor/app`, `@capacitor/status-bar`, `chart.js`, `i18next`, `multer`, `react-datepicker`, `react-dom`, `react-i18next`, `@tanstack/react-query`, `@capacitor/filesystem`, `@capacitor/ios`, `@capacitor/android`, `date-fns`, `exceljs`, `@capacitor/share`, `html2canvas`, `@ionic/react`, `lucide-react`, `react-router-dom`, `zod`?**
-  _High betweenness centrality (0.054) - this node is a cross-community bridge._
+  _High betweenness centrality (0.060) - this node is a cross-community bridge._
 - **Why does `@capacitor/app` connect `@capacitor/app` to `Meditrack.jsx`, `dependencies`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **What connects `express`, `helmet`, `corsMiddleware` to the rest of the system?**
-  _844 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _733 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Approvals.jsx` be split into smaller, more focused modules?**
   _Cohesion score 0.055135135135135134 - nodes in this community are weakly interconnected._
 - **Should `user.service.js` be split into smaller, more focused modules?**
