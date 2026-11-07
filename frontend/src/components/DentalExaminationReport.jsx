@@ -552,7 +552,7 @@ useEffect(() => {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(15, 23, 42);
-      doc.text('PAMANTASAN NG LUNGSOD NG SAN PABLO', mar + 20, y + 1.5);
+      doc.text('DALUBHASAAN NG LUNGSOD NG SAN PABLO', mar + 20, y + 1.5);
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
@@ -952,7 +952,7 @@ ln(1, 5);
             )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, fontFamily: 'helvetica, sans-serif', color: '#1a2e22', letterSpacing: 0.5 }}>PAMANTASAN NG LUNGSOD NG SAN PABLO</div>
+            <div style={{ fontSize: 11, fontWeight: 700, fontFamily: 'helvetica, sans-serif', color: '#1a2e22', letterSpacing: 0.5 }}>DALUBHASAAN NG LUNGSOD NG SAN PABLO</div>
             <div style={{ fontSize: 18, fontWeight: 900, fontFamily: 'helvetica, sans-serif', color: '#466460', lineHeight: 1.2 }}>HEALTH SERVICES OFFICE</div>
             <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'helvetica, sans-serif', marginTop: 3 }}>
               Brgy. San Jose, San Pablo City &nbsp;·&nbsp; Tel No.: (049) 536-7830 &nbsp;·&nbsp; Email Address: plspofficial@plsp.edu.ph
